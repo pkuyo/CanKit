@@ -1,0 +1,25 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <AssemblyName>ZlgCAN.Net</AssemblyName>
+    <RootNamespace>ZlgCAN.Net</RootNamespace>
+     <LangVersion>latest</LangVersion>
+
+    <OutputType>Library</OutputType>
+	<Platforms>AnyCPU;x64;x86</Platforms>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="System.Runtime.CompilerServices.Unsafe" Version="6.1.2" />
+  </ItemGroup>
+
+
+
+
+  <ItemGroup>
+    <None Update="Native\**\*.*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+</Project>
