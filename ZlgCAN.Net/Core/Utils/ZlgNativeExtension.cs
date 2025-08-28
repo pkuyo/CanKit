@@ -4,7 +4,7 @@ using System.Drawing;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
-using ZlgCAN.Net.Core.Models;
+using ZlgCAN.Net.Core.Definitions;
 using ZlgCAN.Net.Native;
 using static ZlgCAN.Net.Native.ZLGCAN;
 
@@ -12,83 +12,84 @@ namespace ZlgCAN.Net.Core.Utils
 {
     public static class ZlgNativeExtension
     {
-        internal static unsafe IEnumerable<CanReceiveData> RecvCanFrames(IntPtr recvPtr, int receiveCount, CanFrameFlag filterFlag)
+        internal static IEnumerable<CanReceiveData> RecvCanFrames(ZCANDataObj[] recvData, int receiveCount)
         {
        
             for (int i = 0; i < receiveCount; i++)
             {
-                CanReceiveData reciveData = null;
-                var recData = (ZCANDataObj)Marshal.PtrToStructure(recvPtr + i * Marshal.SizeOf(typeof(ZCANDataObj)), typeof(ZCANDataObj));
-                var typeFlag = GetFrameFlag(recData.dataType);
+                CanReceiveData receiveData = null;
+                var recData = recvData[i];
+                var typeFlag = GetFrameType(recData.dataType);
+                
                 unsafe
                 {
-                    if ((typeFlag & CanFrameFlag.ClassicCan) != 0 || (typeFlag & CanFrameFlag.CanFd) != 0)
+                    if ((typeFlag & CanFrameType.CanClassic) != 0 || (typeFlag & CanFrameType.CanFd) != 0)
                     {
                         var data = ByteArrayToStruct<ZCANCANFDData>(recData.data);
                         if (data.frameType == 1)
                         {
-                            reciveData = new CanReceiveData()
+                            receiveData = new CanReceiveData()
                             {
                                 timestamp = data.timeStamp,
-                                canFrame = new FdCanFrame(data.frame.flags,data.frame.can_id, ToArray(data.frame.data, data.frame.len))
+                                canFrame = new CanFdFrame(data.frame.flags,data.frame.can_id, ToArray(data.frame.data, data.frame.len))
                             };
                         }
                         else
                         {
-                            reciveData = new CanReceiveData()
+                            receiveData = new CanReceiveData()
                             {
                                 timestamp = data.timeStamp,
-                                canFrame = new ClassicCanFrame(data.frame.can_id, ToArray(data.frame.data, data.frame.len))
+                                canFrame = new CanClassicFrame(data.frame.can_id, ToArray(data.frame.data, data.frame.len))
                             };
                         }
                     }
                 }
-                if (reciveData != null)
-                    yield return reciveData;
+                if (receiveData != null)
+                    yield return receiveData;
             }
         }
 
-        internal unsafe static IntPtr TransmitCanFrames(CanFrameBase[] canFrames, byte channelId)
+        internal static ZCANDataObj[] TransmitCanFrames(CanTransmitData[] canFrames, byte channelId)
         {
-            ZCANDataObj* p2zcanReceiveData = (ZCANDataObj*)Marshal.AllocHGlobal((int)(Marshal.SizeOf(typeof(ZLGCAN.ZCANDataObj)) * canFrames.Length));
+            ZCANDataObj[] transmitData = new ZCANDataObj[canFrames.Length];
             for(int i = 0; i< canFrames.Length;i++)
             {
-                p2zcanReceiveData[i] = canFrames[i].ToZCANObj(channelId);
+                transmitData[i] = canFrames[i].canFrame.ToZCANObj(channelId);
             }
-            return new IntPtr(p2zcanReceiveData);
+            return transmitData;
         }
 
-        internal static CanFrameFlag GetFrameFlag(uint dataType)
+        internal static CanFrameType GetFrameType(uint dataType)
         {
             if(dataType == 0 || dataType > 8)
             {
-                return CanFrameFlag.Invalid;
+                return CanFrameType.Invalid;
             }
             if (dataType == 1)
-                return (CanFrameFlag)(1 | 2);
-            return (CanFrameFlag)(1 <<(int)dataType);
+                return (CanFrameType)(1 | 2);
+            return (CanFrameType)(1 <<(int)dataType);
 
         }
 
-        internal static byte GetFrameType(CanFrameFlag flag)
+        internal static byte GetRawFrameType(CanFrameType type)
         {
-            if ((flag & CanFrameFlag.ClassicCan) != 0)
+            if ((type & CanFrameType.CanClassic) != 0)
                 return 1;
-            if ((flag & CanFrameFlag.CanFd) != 0)
+            if ((type & CanFrameType.CanFd) != 0)
                 return 1;
-            if ((flag & CanFrameFlag.Error) != 0)
+            if ((type & CanFrameType.Error) != 0)
                 return 2;
-            if ((flag & CanFrameFlag.Gps) != 0)
+            if ((type & CanFrameType.Gps) != 0)
                 return 3;
-            if ((flag & CanFrameFlag.Lin) != 0)
+            if ((type & CanFrameType.Lin) != 0)
                 return 4;
-            if ((flag & CanFrameFlag.BusStage) != 0)
+            if ((type & CanFrameType.BusStage) != 0)
                 return 5;
-            if ((flag & CanFrameFlag.LinError) != 0)
+            if ((type & CanFrameType.LinError) != 0)
                 return 6;
-            if ((flag & CanFrameFlag.LinEx) != 0)
+            if ((type & CanFrameType.LinEx) != 0)
                 return 7;
-            if ((flag & CanFrameFlag.LinEvent) != 0)
+            if ((type & CanFrameType.LinEvent) != 0)
                 return 8;
             return 0;
         }

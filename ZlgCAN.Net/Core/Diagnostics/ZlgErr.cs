@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Text;
 using ZlgCAN.Net.Core.Abstractions;
-using ZlgCAN.Net.Core.Models;
+using ZlgCAN.Net.Core.Definitions;
 
 namespace ZlgCAN.Net.Core.Diagnostics
 {
@@ -13,19 +13,6 @@ namespace ZlgCAN.Net.Core.Diagnostics
         {
             if (err != 1)
                 throw new Exception();
-        }
-
-
-        public static void ThrowIfNotSupport(this IChannelCapabilities channelCapabilities, CanFrameFlag filterFlag)
-        {
-            if (filterFlag == CanFrameFlag.Invalid)
-                throw new InvalidOperationException();
-
-            if (filterFlag == CanFrameFlag.Any)
-                return;
-
-            if ((channelCapabilities.SupportFlag & filterFlag) != filterFlag)
-                throw new NotSupportedException();
         }
     }
 }

@@ -3,15 +3,16 @@ using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
+using ZlgCAN.Net.Core.Attributes;
 using ZlgCAN.Net.Core.Utils;
 using static ZlgCAN.Net.Native.ZLGCAN;
 
-namespace ZlgCAN.Net.Core.Models
+namespace ZlgCAN.Net.Core.Definitions
 {
     public abstract record CanFrameBase
     {
 
-        public abstract CanFrameFlag FrameKind { get; }
+        public abstract CanFrameType FrameKind { get; }
 
         public virtual ZCANDataObj ToZCANObj(byte channelID)
         {
@@ -23,19 +24,20 @@ namespace ZlgCAN.Net.Core.Models
             return obj;
         }
 
-        internal byte FrameType => ZlgNativeExtension.GetFrameType(FrameKind);
+        internal byte FrameType => ZlgNativeExtension.GetRawFrameType(FrameKind);
 
     }
 
-    public record ClassicCanFrame : CanFrameBase
+    [CanFrame(CanFrameType.CanClassic)]
+    public record CanClassicFrame : CanFrameBase
     {
-        public ClassicCanFrame(uint rawID, byte[] data) 
+        public CanClassicFrame(uint rawID, byte[] data) 
         {
             RawID = rawID;
             _data = data;
         }
 
-        public ClassicCanFrame(uint ID, byte[] data, bool extendedFrame = false,
+        public CanClassicFrame(uint ID, byte[] data, bool extendedFrame = false,
             bool remoteFrame = false,
             bool errorFrame = false) 
         {
@@ -43,7 +45,7 @@ namespace ZlgCAN.Net.Core.Models
             IsExtendedFrame = extendedFrame;
             IsRemoteFrame = remoteFrame;
             IsErrorFrame = errorFrame;
-            _data = data ?? Array.Empty<byte>();
+            _data = data ?? [];
         }
 
         public uint RawID { get; set; }
@@ -54,7 +56,7 @@ namespace ZlgCAN.Net.Core.Models
             set => RawID = (uint)((RawID & ~0x1FFFFFFF) | (value & 0x1FFFFFFF));
         }
 
-        public virtual uint Dlc => (uint)DataLen;
+        public virtual byte Dlc => (byte)DataLen;
 
         public bool IsExtendedFrame
         {
@@ -98,7 +100,7 @@ namespace ZlgCAN.Net.Core.Models
             {
                 if (value == null)
                 {
-                    _data = value;
+                    _data =[];
                     return;
                 }
                 if (value.Length > 8)
@@ -112,7 +114,31 @@ namespace ZlgCAN.Net.Core.Models
             return enc.GetString(Data);
         }
 
-        public unsafe override ZCANDataObj ToZCANObj(byte channelID)
+        public static unsafe CanClassicFrame FromReceiveData(can_frame frame)
+        {
+             var result = new CanClassicFrame(frame.can_id,new byte[frame.can_dlc]);
+             fixed (byte* ptr = result._data)
+             {
+                 Unsafe.CopyBlockUnaligned(frame.data,ptr, (uint)result.DataLen);
+             }
+             return result;
+        }
+        
+        public unsafe ZCAN_Transmit_Data ToTransmitData()
+        {
+            ZCAN_Transmit_Data data = new ZCAN_Transmit_Data();
+            fixed (byte* ptr = _data)
+            {
+                data.frame.can_dlc = (byte)Dlc;
+                data.frame.can_id = RawID;
+                Unsafe.CopyBlockUnaligned(ptr, data.frame.data, (uint)DataLen);
+                data.transmit_type = 0; //TODO: 不清楚功能
+            }
+            return data;
+
+        }
+
+        public override unsafe ZCANDataObj ToZCANObj(byte channelID)
         {
             var obj = base.ToZCANObj(channelID);
             fixed (byte * ptr = _data)
@@ -137,15 +163,17 @@ namespace ZlgCAN.Net.Core.Models
 
         public virtual int DataLen => _data?.Length ?? 0;
 
-        public override CanFrameFlag FrameKind => CanFrameFlag.ClassicCan;
+        public override CanFrameType FrameKind => CanFrameType.CanClassic;
 
 
         protected byte[] _data = null;
     }
 
-    public record FdCanFrame : ClassicCanFrame
+    
+    [CanFrame(CanFrameType.CanFd)]
+    public record CanFdFrame : CanClassicFrame
     {
-        public FdCanFrame(byte flags, uint rawID, byte[] data) : base(rawID, data) 
+        public CanFdFrame(byte flags, uint rawID, byte[] data) : base(rawID, data) 
         {
             BRS = (flags & 0x1) != 0;
             ESI = (flags & 0x2) != 0;
@@ -166,7 +194,7 @@ namespace ZlgCAN.Net.Core.Models
             }
         }
 
-        public override uint Dlc => LenToDlc(DataLen);
+        public override byte Dlc => LenToDlc(DataLen);
 
         public static int DlcToLen(byte dlc)
         {
@@ -213,7 +241,9 @@ namespace ZlgCAN.Net.Core.Models
         public bool ESI { get; set; }
 
 
-        public override CanFrameFlag FrameKind => CanFrameFlag.CanFd;
+        public override CanFrameType FrameKind => CanFrameType.CanFd;
     }
+    
+    
 
 }

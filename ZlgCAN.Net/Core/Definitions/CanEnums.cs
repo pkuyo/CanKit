@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Text;
 
-namespace ZlgCAN.Net.Core.Models
+namespace ZlgCAN.Net.Core.Definitions
 {
     public enum CanWorkMode
     {
@@ -18,10 +18,10 @@ namespace ZlgCAN.Net.Core.Models
    
 
     [Flags]
-    public enum CanFrameFlag : uint
+    public enum CanFrameType : uint
     {
         Invalid = 0,
-        ClassicCan = 1,
+        CanClassic = 1,
         CanFd = 1 << 1,
         Error = 1 << 2,
         Gps = 1 << 3,           // GPS数据
@@ -29,21 +29,23 @@ namespace ZlgCAN.Net.Core.Models
         BusStage = 1 << 5,      // BusUsage数据
         LinError = 1 << 6,      // LIN错误数据
         LinEx = 1 << 7,         // LIN扩展数据
-        LinEvent = 1 << 8,
-        Any = 0x1FF,
+        LinEvent = 1 << 8
     }
 
-    internal enum ReceviceCanFrameKind : byte
+    public enum CanFilterType : uint
     {
-        ClassicOrFd = 1,    // CAN/CANFD数据
-        Error = 2,          // 错误数据
-        Gps = 3,            // GPS数据
-        Lin = 4,            // LIN数据
-        BusStage = 5,       // BusUsage数据
-        LinError = 6,       // LIN错误数据
-        LinEx = 7,          // LIN扩展数据
-        LinEvent = 8,  
+        Can = 0,
+        Fd = 1,
+        Any = 2,
+        Lin = 3,
+    };
+    
+    [Flags]
+    public enum CanValueAccess : uint
+    {
+        Get = 1,
+        Set = 2,
+        GetSet = 3
     }
 
-    
 }

@@ -3,16 +3,13 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using ZlgCAN.Net.Core.Models;
+using ZlgCAN.Net.Core.Definitions;
 
 namespace ZlgCAN.Net.Core.Abstractions
 {
-    public interface IChannelCapabilities
-    {
-        CanFrameFlag SupportFlag { get; }
-    }
+  
 
-    public interface ICanChannel : IDisposable, IChannelCapabilities
+    public interface ICanChannel : IDisposable
     {
 
 
@@ -24,15 +21,15 @@ namespace ZlgCAN.Net.Core.Abstractions
 
         uint Transmit(params CanFrameBase[] frames);
 
-        IEnumerable<CanReceiveData> ReceiveAll(CanFrameFlag filterFlag = CanFrameFlag.Any);
+        IEnumerable<CanReceiveData> ReceiveAll(CanFilterType filterType);
 
-        IEnumerable<CanReceiveData> Receive(uint count = 1, int timeOut = -1, CanFrameFlag filterFlag = CanFrameFlag.Any);
+        IEnumerable<CanReceiveData> Receive(CanFilterType filterType, uint count = 1, int timeOut = -1);
 
-        uint CanReceiveCount(CanFrameFlag filterFlag);
+        uint CanReceiveCount(CanFilterType filterType);
 
         public IntPtr NativePtr { get; }
 
-        public CanChannelConfig Config { get; }
+        public IChannelRuntimeOptions Options { get; }
 
     }
 }

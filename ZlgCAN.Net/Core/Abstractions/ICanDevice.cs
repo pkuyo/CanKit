@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using ZlgCAN.Net.Core.Models;
+using ZlgCAN.Net.Core.Definitions;
 
 namespace ZlgCAN.Net.Core.Abstractions
 {
@@ -13,10 +13,7 @@ namespace ZlgCAN.Net.Core.Abstractions
         bool OpenDevice();
 
         void CloseDevice();
-
-        ICanChannel InitChannel(CanChannelConfig config);
-
-
+        
         CanDeviceInfo DeviceInfo { get; }
 
         IntPtr NativePtr { get; }
