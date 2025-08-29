@@ -1,10 +1,11 @@
 ﻿using System.Collections.Generic;
 using ZlgCAN.Net.Core.Abstractions;
 using ZlgCAN.Net.Core.Definitions;
+using ZlgCAN.Net.Core.Transceivers;
 
-namespace ZlgCAN.Net.Core.Transceivers
+namespace ZlgCAN.Net.Core.Impl.Transceivers
 {
-    public class CanFdTransceiver : ITransceiver
+    public class ZlgCanFdTransceiver : IZlgTransceiver
     {
         public uint Transmit(ICanChannel channel, params CanTransmitData[] frames)
         {
@@ -16,6 +17,7 @@ namespace ZlgCAN.Net.Core.Transceivers
             throw new System.NotImplementedException();
         }
 
-        public CanFilterType FilterType => CanFilterType.Fd;
+
+        public ZlgFrameType FrameType => ZlgFrameType.CanFd;
     }
 }

@@ -24,7 +24,6 @@ namespace ZlgCAN.Net.Core
 
             return reg;
         }
-
-        public static ICanFactory ZLGFactory => Registry.Factory("ZLG");
+        
     }
 }

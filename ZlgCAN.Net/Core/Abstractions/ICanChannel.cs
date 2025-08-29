@@ -11,25 +11,23 @@ namespace ZlgCAN.Net.Core.Abstractions
 
     public interface ICanChannel : IDisposable
     {
-
-
         void Start();
 
         void Reset();
+        
+        void Stop();
 
         void CleanBuffer();
 
         uint Transmit(params CanFrameBase[] frames);
 
-        IEnumerable<CanReceiveData> ReceiveAll(CanFilterType filterType);
+        IEnumerable<CanReceiveData> ReceiveAll(CanFrameType filterType);
 
-        IEnumerable<CanReceiveData> Receive(CanFilterType filterType, uint count = 1, int timeOut = -1);
+        IEnumerable<CanReceiveData> Receive(CanFrameType filterType, uint count = 1, int timeOut = -1);
 
-        uint CanReceiveCount(CanFilterType filterType);
+        uint CanReceiveCount(CanFrameType filterType);
 
-        public IntPtr NativePtr { get; }
-
-        public IChannelRuntimeOptions Options { get; }
+        public ChannelRTOptionsConfigurator Options { get; }
 
     }
 }

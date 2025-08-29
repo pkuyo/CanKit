@@ -21,7 +21,6 @@ namespace ZlgCAN.Net.Core.Registry
             {
                 RegisterFactory(asm);
                 RegisterProvider(asm);
-                RegisterFrame(asm);
             }
         }
 
@@ -54,19 +53,7 @@ namespace ZlgCAN.Net.Core.Registry
                 _factories.Add(attr.FactoryId, factory);
             }
         }
-
-        private void RegisterFrame(Assembly asm)
-        {
-            var types = asm.GetTypes().Where(t =>
-                typeof(CanFrameBase).IsAssignableFrom(t) && !t.IsAbstract);
-
-            foreach (var t in types)
-            {
-                var attr = t.GetCustomAttribute<CanFrameAttribute>();
-                if (attr == null) continue;
-                _frameMap.Add(t, attr.FrameType);
-            }
-        }
+        
 
         public ICanModelProvider Resolve(DeviceType deviceType)
         {
@@ -74,21 +61,11 @@ namespace ZlgCAN.Net.Core.Registry
                 return provider;
             throw new NotSupportedException("Unknown device");
         }
-        
-        public CanFrameType Get(Type frameType)
-        {
-            if(_frameMap.TryGetValue(frameType, out var frame))
-                return frame;
-            throw new NotSupportedException($"CanFrameAttribute not found for type {frameType.FullName}");
-        }
-
         public ICanFactory Factory(string factoryId)
         {
             return _factories[factoryId];
         }
         private readonly Dictionary<DeviceType, ICanModelProvider> _providers = new();
-        
-        private readonly Dictionary<Type, CanFrameType> _frameMap = new ();
         
         private readonly Dictionary<string, ICanFactory> _factories = new ();
     }

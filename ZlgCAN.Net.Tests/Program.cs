@@ -8,23 +8,15 @@ namespace ZlgCAN.Net.Tests
    
         static void Main(string[] args)
         {
+            using var can = Can.Open(ZlgDeviceType.ZCAN_USBCAN2,cfg =>
+                cfg.TxTimeOut(50)
+                    .MergeReceive(true));
 
-            var provider = CanCore.Registry.Resolve(ZlgDeviceType.ZCAN_USBCAN2);
-            using var device = CanCore.ZLGFactory.CreateDevice(provider.CreateDeviceOptions());
+            var channel = can.CreateChannel(0, cfg =>
+                cfg.AccMask(0x0, 0x1FFFFFFF)
+                    .Classic(500000));
             
-            if (!device.OpenDevice())
-                return;
-
-            using var channel = CanCore.ZLGFactory.CreateChannel(device, 
-                provider.CreateChannelInitOptions(0),
-                provider.CreateChannelRuntimeOptions(0));
-            
-            channel.Start();
-
-            channel.Transmit(new CanClassicFrame(0x1034563,[0xAA,0xBB,0xCC,0xDD,0xEE,0xFF]));
-            
-            channel.Reset();
-            
+            channel.Transmit(new CanClassicFrame(0X123456,[0xAA,0xBB,0xCC,0xDD]));
         }
     }
 }

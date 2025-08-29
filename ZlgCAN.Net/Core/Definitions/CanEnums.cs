@@ -4,18 +4,6 @@ using System.Text;
 
 namespace ZlgCAN.Net.Core.Definitions
 {
-    public enum CanWorkMode
-    {
-        Normal = 0,
-        ListenOnly = 1
-    }
-
-    public enum CanType
-    {
-        UsbCan = 0,
-        NetCan
-    }
-   
 
     [Flags]
     public enum CanFrameType : uint
@@ -29,23 +17,37 @@ namespace ZlgCAN.Net.Core.Definitions
         BusStage = 1 << 5,      // BusUsage数据
         LinError = 1 << 6,      // LIN错误数据
         LinEx = 1 << 7,         // LIN扩展数据
-        LinEvent = 1 << 8
+        LinEvent = 1 << 8,
+        Any = int.MaxValue
     }
-
-    public enum CanFilterType : uint
-    {
-        Can = 0,
-        Fd = 1,
-        Any = 2,
-        Lin = 3,
-    };
+    
+    
     
     [Flags]
-    public enum CanValueAccess : uint
+    public enum CanFeature
     {
-        Get = 1,
-        Set = 2,
-        GetSet = 3
+        CanClassic          = 1 << 0,
+        CanFd               = 1 << 1,
+        Ethernet            = 1 << 2,
+        AutoSend            = 1 << 3,
+        QueueSend           = 1 << 4,
+        MergeReceive        = 1 << 5,
+        CustomSerialNumber  = 1 << 6,
+        Filters             = 1 << 7,
+        AccMask             = 1 << 8,
+        BusUsage            = 1 << 9,
+        TxRetryPolicy       = 1 << 10,
+        SendType            = 1 << 11,
+    }
+    
+    public enum EthernetWorkMode
+    {
+        
+    }
+    public enum ChannelWorkMode
+    {
+        Normal = 0,
+        ListenOnly = 1
     }
 
 }

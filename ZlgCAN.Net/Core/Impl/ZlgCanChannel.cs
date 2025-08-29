@@ -1,26 +1,26 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Drawing;
-using System.Runtime.InteropServices;
-using System.Threading;
+using System.Linq;
 using ZlgCAN.Net.Core.Abstractions;
-using ZlgCAN.Net.Core.Diagnostics;
 using ZlgCAN.Net.Core.Definitions;
-using ZlgCAN.Net.Core.Utils;
+using ZlgCAN.Net.Core.Transceivers;
 using ZlgCAN.Net.Native;
 
-namespace ZlgCAN.Net.Core.Channels
+namespace ZlgCAN.Net.Core.Impl
 {
-    public sealed class CanChannel : ICanChannel
+    public sealed class ZlgCanChannel : ICanChannel
     {
 
-        internal CanChannel(IntPtr nativePtr, IChannelRuntimeOptions options, IEnumerable<ITransceiver> transceivers)
+        internal ZlgCanChannel(IntPtr nativePtr, IChannelOptions options, IEnumerable<ITransceiver> transceivers)
         {
             _nativePtr = nativePtr;
-            Options = options;
-            var dic = new Dictionary<CanFilterType, ITransceiver>();
-            foreach(var item in transceivers)
-                dic.Add(item.FilterType, item);
+            Options = new ChannelRTOptionsConfigurator(options);
+            var dic = new Dictionary<ZlgFrameType, IZlgTransceiver>();
+            
+            var zlgTransceivers = transceivers.OfType<IZlgTransceiver>();
+            
+            foreach(var item in zlgTransceivers)
+                dic.Add(item.FrameType, item);
             _transceivers = dic;
         }
 
@@ -44,6 +44,11 @@ namespace ZlgCAN.Net.Core.Channels
             _isOpen = false;
         }
 
+        public void Stop()
+        {
+            throw new NotImplementedException();
+        }
+
         public void CleanBuffer()
         {
             ThrowIfDisposed();
@@ -56,7 +61,7 @@ namespace ZlgCAN.Net.Core.Channels
         {
             throw new NotImplementedException();
         }
-        public IEnumerable<CanReceiveData> ReceiveAll(CanFilterType filterType)
+        public IEnumerable<CanReceiveData> ReceiveAll(CanFrameType filterType)
         {
             ThrowIfDisposed();
 
@@ -64,32 +69,52 @@ namespace ZlgCAN.Net.Core.Channels
 
             if (count == 0)
                 return [];
-
-            if (_transceivers.TryGetValue(filterType, out var transceiver))
+            var zlgFilterType = filterType switch
+            {
+                CanFrameType.Any => ZlgFrameType.Any,
+                CanFrameType.CanFd => ZlgFrameType.CanFd,
+                CanFrameType.CanClassic => ZlgFrameType.CanClassic,
+                CanFrameType.Lin => ZlgFrameType.Lin,
+                _ => throw new NotSupportedException("ZlgCan 仅支持 Can/CanFD/Any/Lin")
+            };
+            if (_transceivers.TryGetValue(zlgFilterType, out var transceiver))
                 return transceiver.Receive(this, count);
             
             throw new NotSupportedException($"{filterType} not supported");
         }
-        public IEnumerable<CanReceiveData> Receive(CanFilterType filterType, uint count = 1, int timeOut = -1)
+        public IEnumerable<CanReceiveData> Receive(CanFrameType filterType, uint count = 1, int timeOut = -1)
         {
             ThrowIfDisposed();
-            
-            if (_transceivers.TryGetValue(filterType, out var transceiver))
+            var zlgFilterType = filterType switch
+            {
+                CanFrameType.Any => ZlgFrameType.Any,
+                CanFrameType.CanFd => ZlgFrameType.CanFd,
+                CanFrameType.CanClassic => ZlgFrameType.CanClassic,
+                CanFrameType.Lin => ZlgFrameType.Lin,
+                _ => throw new NotSupportedException("ZlgCan 仅支持 Can/CanFD/Any/Lin")
+            };
+            if (_transceivers.TryGetValue(zlgFilterType, out var transceiver))
                 return transceiver.Receive(this, count, timeOut);
             throw new NotSupportedException($"{filterType} not supported");
         }
         
         
 
-        public uint CanReceiveCount(CanFilterType filterType)
+        public uint CanReceiveCount(CanFrameType filterType)
         {
             ThrowIfDisposed();
-            
-            if((uint)filterType > 2)
-                throw new NotSupportedException("只有Can/CanFD/Any 可以在ReceiveCount传入");
-            
-            return ZLGCAN.ZCAN_GetReceiveNum(_nativePtr, (byte)filterType);
+
+            var zlgFilterType = filterType switch
+            {
+                CanFrameType.Any => ZlgFrameType.Any,
+                CanFrameType.CanFd => ZlgFrameType.CanFd,
+                CanFrameType.CanClassic => ZlgFrameType.CanClassic,
+                _ => throw new NotSupportedException("ZlgCan ReceiveCount 仅支持 Can/CanFD/Any")
+            };
+            return ZLGCAN.ZCAN_GetReceiveNum(_nativePtr, (byte)zlgFilterType);
         }
+        
+
 
         public void Dispose()
         {
@@ -115,11 +140,11 @@ namespace ZlgCAN.Net.Core.Channels
 
         public IntPtr NativePtr => _nativePtr;
 
-        public IChannelRuntimeOptions Options { get; }
+        public ChannelRTOptionsConfigurator Options { get; }
 
         private readonly IntPtr _nativePtr;
         
-        private readonly IReadOnlyDictionary<CanFilterType, ITransceiver>  _transceivers;
+        private readonly IReadOnlyDictionary<ZlgFrameType, IZlgTransceiver>  _transceivers;
 
         private bool _isDisposed;
 

@@ -8,7 +8,5 @@ namespace ZlgCAN.Net.Core.Abstractions
         uint Transmit(ICanChannel channel ,params CanTransmitData[] frames);
         
         IEnumerable<CanReceiveData> Receive(ICanChannel channel, uint count = 1, int timeOut = -1);
-        
-        CanFilterType FilterType { get; }
     }
 }

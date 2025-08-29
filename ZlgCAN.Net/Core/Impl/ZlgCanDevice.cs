@@ -1,16 +1,13 @@
 ﻿using System;
-using System.Runtime.InteropServices;
 using ZlgCAN.Net.Core.Abstractions;
-using ZlgCAN.Net.Core.Channels;
-using ZlgCAN.Net.Core.Diagnostics;
 using ZlgCAN.Net.Core.Definitions;
+using ZlgCAN.Net.Core.Diagnostics;
 using ZlgCAN.Net.Native;
 
-namespace ZlgCAN.Net.Core.Devices
+namespace ZlgCAN.Net.Core.Impl
 {
-     public abstract class CanDevice(CanDeviceInfo info) : ICanDevice
+     public abstract class ZlgCanDevice(CanDeviceInfo info) : ICanDevice
      { 
-         public abstract ICanChannel InitChannel(CanChannelConfig config);
         public bool OpenDevice()
         {
             ThrowIfDisposed();

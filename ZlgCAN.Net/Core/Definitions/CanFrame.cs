@@ -27,8 +27,7 @@ namespace ZlgCAN.Net.Core.Definitions
         internal byte FrameType => ZlgNativeExtension.GetRawFrameType(FrameKind);
 
     }
-
-    [CanFrame(CanFrameType.CanClassic)]
+    
     public record CanClassicFrame : CanFrameBase
     {
         public CanClassicFrame(uint rawID, byte[] data) 
@@ -170,7 +169,7 @@ namespace ZlgCAN.Net.Core.Definitions
     }
 
     
-    [CanFrame(CanFrameType.CanFd)]
+ 
     public record CanFdFrame : CanClassicFrame
     {
         public CanFdFrame(byte flags, uint rawID, byte[] data) : base(rawID, data) 
