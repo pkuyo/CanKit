@@ -1,0 +1,17 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+		<OutputType>Exe</OutputType>
+	  <TargetFramework>net48</TargetFramework>
+	  <LangVersion>latest</LangVersion>
+	  <Platforms>AnyCPU;x64;x86</Platforms>
+	  <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Pkuyo.CanKit.Net.ZLG\Pkuyo.CanKit.Net.ZLG.csproj" />
+    <ProjectReference Include="..\Pkuyo.CanKit.Net\Pkuyo.CanKit.Net.csproj" />
+    <ProjectReference Include="..\ZlgCAN.Net\Pkuyo.CanKit.Net.csproj" />
+  </ItemGroup>
+
+</Project>
