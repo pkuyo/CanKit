@@ -2,7 +2,7 @@ using Pkuyo.CanKit.Net.Core.Definitions;
 
 namespace Pkuyo.CanKit.Net.Core.Abstractions;
 
-public interface IDeviceRTOptionsConfigurator<out T> where T : IDeviceOptions
+public interface IDeviceRTOptionsConfigurator
 {
     DeviceType DeviceType { get; }
     uint TxTimeOut { get; }
@@ -10,7 +10,7 @@ public interface IDeviceRTOptionsConfigurator<out T> where T : IDeviceOptions
 }
 
 
-public interface IChannelRTOptionsConfigurator<out T> where T : IChannelOptions
+public interface IChannelRTOptionsConfigurator
 {
     int ChannelIndex { get; }
     BitTiming BitTiming { get; }
@@ -21,14 +21,17 @@ public interface IChannelRTOptionsConfigurator<out T> where T : IChannelOptions
     bool InternalResistance { get; } 
 }
 
-public interface IDeviceInitOptionsConfigurator<out T> where T : IDeviceOptions
+public interface IDeviceInitOptionsConfigurator
 {
     DeviceType DeviceType { get; }
     uint TxTimeOutTime { get; }
     bool EnableMergeReceive { get; }
+    
+    IDeviceInitOptionsConfigurator TxTimeOut(uint ms);
+    IDeviceInitOptionsConfigurator MergeReceive(bool enable);
 }
 
-public interface IChannelInitOptionsConfigurator<out T> where T : IChannelOptions
+public interface IChannelInitOptionsConfigurator
 {
     int ChannelIndex { get; }
     BitTiming BitTiming { get; }
@@ -37,30 +40,18 @@ public interface IChannelInitOptionsConfigurator<out T> where T : IChannelOption
     uint BusUsagePeriodTime { get; }
     ChannelWorkMode WorkMode { get; }
     bool InternalResistance { get; }
+    
+    IChannelInitOptionsConfigurator Baud(uint baud);
+    IChannelInitOptionsConfigurator Fd(uint abit, uint dbit);
+    IChannelInitOptionsConfigurator BusUsage(uint periodMs = 1000);
+    IChannelInitOptionsConfigurator SetTxRetryPolicy(TxRetryPolicy retryPolicy);
+    IChannelInitOptionsConfigurator SetWorkMode(ChannelWorkMode mode);
+    IChannelInitOptionsConfigurator InternalRes(bool enabled);
 }
 
-public interface IDeviceInitOptionsMutable<TSelf, T>
-    where TSelf : IDeviceInitOptionsMutable<TSelf, T>
-    where T : class, IDeviceOptions
-{
-    TSelf Init(T options, CanFeature feature);
-    TSelf TxTimeOut(uint ms);
-    TSelf MergeReceive(bool enable);
-}
 
-public interface IChannelInitOptionsMutable<TSelf, T>
-    where TSelf : IChannelInitOptionsMutable<TSelf, T>
-    where T : class, IChannelOptions
-{
-    TSelf Init(T options, CanFeature feature);
-    TSelf Baud(uint baud);
-    TSelf Fd(uint abit, uint dbit);
-    TSelf BusUsage(uint periodMs = 1000);
-    TSelf SetTxRetryPolicy(TxRetryPolicy retryPolicy);
-    TSelf SetWorkMode(ChannelWorkMode mode);
-    // 如需可写的终端电阻设置（仅作示例）
-    TSelf InternalRes(bool enabled);
-}
+
+
 
 public abstract class CallOptionsConfigurator<TOption, TSelf>
     where TOption : class, ICanOptions

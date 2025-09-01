@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Threading;
 using Pkuyo.CanKit.Net.Core.Abstractions;
 using Pkuyo.CanKit.Net.Core.Attributes;
 using Pkuyo.CanKit.Net.Core.Definitions;
@@ -9,7 +10,25 @@ using Pkuyo.CanKit.Net.Core.Definitions;
 namespace Pkuyo.CanKit.Net.Core.Registry
 {
 
-    public class CanRegistry
+    public partial class CanRegistry
+    {
+        private static readonly Lazy<CanRegistry> _Registry =
+            new(BuildRegistry, LazyThreadSafetyMode.ExecutionAndPublication);
+
+        public static CanRegistry Registry => _Registry.Value;
+
+        private static CanRegistry BuildRegistry()
+        {
+            var asms = AppDomain.CurrentDomain.GetAssemblies()
+                .Where(a => !a.IsDynamic)
+                .ToArray();
+
+            var reg = new CanRegistry(asms);
+
+            return reg;
+        }
+    }
+    public partial class CanRegistry
     {
      
 
@@ -32,10 +51,8 @@ namespace Pkuyo.CanKit.Net.Core.Registry
 
             foreach (var t in types)
             {
-                var attr = t.GetCustomAttribute<CanModelAttribute>();
-                if (attr == null) continue;
                 var provider = (ICanModelProvider)Activator.CreateInstance(t)!;
-                _providers.Add(DeviceType.FromId(attr.DeviceType), provider);
+                _providers.Add(provider.DeviceType, provider);
             }
         }
 

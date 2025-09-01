@@ -635,10 +635,9 @@ namespace Pkuyo.CanKit.ZLG.Native
 
 
         [StructLayout(LayoutKind.Sequential, Pack = 1)]
-        public struct UDS_RESPONSE_raw
+        public unsafe struct UDS_RESPONSE_raw
         {
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 8)] // 大小为8
-            public byte[] raw;
+            public fixed byte raw[8];
         }
 
 

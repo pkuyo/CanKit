@@ -10,6 +10,4 @@ public interface ICanFactory
     ICanChannel CreateChannel(ICanDevice device, IChannelOptions options, IEnumerable<ITransceiver> transceivers);
     
     bool Support(DeviceType deviceType);
-    
-    string Name { get; }
 }

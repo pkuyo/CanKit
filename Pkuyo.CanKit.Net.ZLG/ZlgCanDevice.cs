@@ -20,7 +20,7 @@ namespace Pkuyo.CanKit.ZLG
         {
             ThrowIfDisposed();
     
-            var ptr = ZLGCAN.ZCAN_OpenDevice((uint)Options.DeviceType.NativeCode, Options.DeviceIndex, 0);
+            var ptr = ZLGCAN.ZCAN_OpenDevice((uint)(int)Options.DeviceType.Metadata, Options.DeviceIndex, 0);
             _options.Apply(this, true);
             _nativePtr = ptr;
             return IsDeviceOpen;

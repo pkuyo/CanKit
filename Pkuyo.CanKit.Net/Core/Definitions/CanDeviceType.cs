@@ -5,23 +5,25 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
 {
     public abstract record DeviceType
     {
+
+        public static int GlobalNativeId { get; private set; } = 0;
         public string Id { get; }
         public int NativeCode { get; }           
-        public IReadOnlyDictionary<string, string> Metadata => _metadata;
-        private readonly Dictionary<string, string> _metadata;
-
+        public object Metadata => _metadata;
+        
+        private object _metadata;
        
         private static readonly Dictionary<string, DeviceType> _byId = new (StringComparer.OrdinalIgnoreCase);
         private static readonly Dictionary<int, DeviceType> _byCode = new ();
         private static readonly List<DeviceType> _all = new ();
         private static readonly object _gate = new ();
 
-        protected DeviceType(string id, int nativeCode, IDictionary<string, string> metadata = null)
+        protected DeviceType(string id, object metaData)
         {
             if (string.IsNullOrWhiteSpace(id)) throw new ArgumentException("id is required", nameof(id));
             Id = id;
-            NativeCode = nativeCode;
-            _metadata = metadata is null ? new Dictionary<string, string>() : new Dictionary<string, string>(metadata);
+            NativeCode = GlobalNativeId++;
+            _metadata = metaData;
             
             lock (_gate)
             {
@@ -68,13 +70,13 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
         public static readonly DeviceType Unknown = new Generic("unknown", 0);
 
 
-        public static DeviceType Register(string id, int nativeCode, IDictionary<string,string> metadata = null) =>
-            new Generic(id, nativeCode, metadata);
+        public static DeviceType Register(string id, object meta) =>
+            new Generic(id, meta);
         
         private sealed record Generic : DeviceType
         {
-            public Generic(string id, int code, IDictionary<string,string> meta = null)
-                : base(id, code, meta) { }
+            public Generic(string id, object code)
+                : base(id, code) { }
         }
     }
 }

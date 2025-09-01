@@ -2,6 +2,7 @@
 using Pkuyo.CanKit.Net.Core;
 using Pkuyo.CanKit.Net.Core.Abstractions;
 using Pkuyo.CanKit.Net.Core.Definitions;
+using Pkuyo.CanKit.Net.Core.Registry;
 using Pkuyo.CanKit.ZLG.Options;
 using Pkuyo.CanKit.ZLG.Transceivers;
 
@@ -18,9 +19,9 @@ namespace Pkuyo.CanKit.ZLG
         protected virtual bool EnableMerge => false;
         protected virtual bool EnableLin => false;
         
-        public ICanFactory Factory { get; } = CanCore.Registry.Factory("Zlg");
+        public ICanFactory Factory => CanRegistry.Registry.Factory("Zlg");
         
-        public (IDeviceOptions,IDeviceInitOptionsConfigurator<IDeviceOptions>) GetDeviceOptions()
+        public (IDeviceOptions,IDeviceInitOptionsConfigurator) GetDeviceOptions()
         {
             var option = new ZlgDeviceOptions(this);
             var cfg = new ZlgDeviceInitOptionsConfigurator();
@@ -28,7 +29,7 @@ namespace Pkuyo.CanKit.ZLG
             return (option, cfg);
         }
 
-        public  (IChannelOptions,IChannelInitOptionsConfigurator<IChannelOptions>) GetChannelOptions(int channelIndex)
+        public  (IChannelOptions,IChannelInitOptionsConfigurator) GetChannelOptions(int channelIndex)
         {
             var option = new ZlgChannelOptions(this);
             var cfg = new ZlgChannelInitConfigurator();

@@ -1,11 +1,13 @@
 using System;
 using System.Collections.Generic;
 using Pkuyo.CanKit.Net.Core.Abstractions;
+using Pkuyo.CanKit.Net.Core.Attributes;
 using Pkuyo.CanKit.Net.Core.Definitions;
 using Pkuyo.CanKit.ZLG.Native;
 
 namespace Pkuyo.CanKit.ZLG;
 
+[CanFactory("Zlg")]
 public class ZlgCanFactory : ICanFactory
 {
     public ICanDevice CreateDevice(IDeviceOptions options)
@@ -39,6 +41,5 @@ public class ZlgCanFactory : ICanFactory
     {
         return deviceType.Id.StartsWith("ZCAN");
     }
-
-    public string Name => "Zlg";
+    
 }

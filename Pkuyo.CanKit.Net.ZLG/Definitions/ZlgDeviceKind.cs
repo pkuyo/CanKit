@@ -82,7 +82,7 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
     
     public sealed record ZlgDeviceType : DeviceType
     {
-        public ZlgDeviceType(string id, int nativeCode, IDictionary<string, string> metadata = null) : base($"ZLG.{id}", nativeCode, metadata)
+        public ZlgDeviceType(string id, int meta) : base($"ZLG.{id}", meta)
         {
         }
         

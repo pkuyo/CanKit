@@ -3,7 +3,7 @@ using Pkuyo.CanKit.Net.Core.Definitions;
 namespace Pkuyo.CanKit.ZLG.Options;
 
 public sealed class ZlgDeviceInitOptionsConfigurator
-    : DeviceInitOptionsConfigurator<ZlgDeviceOptions>
+    : DeviceInitOptionsConfigurator<ZlgDeviceOptions, ZlgDeviceInitOptionsConfigurator>
 {
     public ZlgDeviceInitOptionsConfigurator DeviceIndex(uint deviceIndex)
     {
@@ -20,7 +20,7 @@ public sealed class ZlgDeviceRTOptionsConfigurator
 }
 
 public sealed class ZlgChannelInitConfigurator 
-    : ChannelInitOptionsConfigurator<ZlgChannelOptions>
+    : ChannelInitOptionsConfigurator<ZlgChannelOptions,ZlgChannelInitConfigurator>
 {
 
 }

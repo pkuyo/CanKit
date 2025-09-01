@@ -27,7 +27,7 @@ namespace Pkuyo.CanKit.Net.Core.Abstractions
     }
 
     public interface ICanChannel<out TConfigurator> : ICanChannel
-        where TConfigurator : IChannelRTOptionsConfigurator<IChannelOptions>
+        where TConfigurator : IChannelRTOptionsConfigurator
     {
         TConfigurator Options { get; }
     }

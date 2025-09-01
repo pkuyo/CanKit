@@ -3,17 +3,17 @@ using System.Collections.Generic;
 using Pkuyo.CanKit.Net.Core;
 using Pkuyo.CanKit.Net.Core.Abstractions;
 using Pkuyo.CanKit.Net.Core.Definitions;
+using Pkuyo.CanKit.Net.Core.Registry;
 
 namespace Pkuyo.CanKit.Net
 {
     public static class Can
     {
-        public static CanSession<ICanDevice,ICanChannel> Open(DeviceType deviceType,
-            Action<DeviceInitOptionsConfigurator<IDeviceOptions>> configure = null)
+        public static CanSession<ICanDevice,ICanChannel> Open(DeviceType deviceType, Action<IDeviceInitOptionsConfigurator> configure = null)
         {
-            return Open<ICanDevice,ICanChannel,IDeviceOptions,DeviceInitOptionsConfigurator<IDeviceOptions>>(deviceType, configure);
+            return Open<ICanDevice,ICanChannel,IDeviceOptions,IDeviceInitOptionsConfigurator>(deviceType, configure);
         }
-
+        
         public static CanSession<TDevice,TChannel> Open<TDevice,TChannel,TDeviceOptions,TOptionCfg>
         (DeviceType deviceType,
             Action<TOptionCfg> configure = null,
@@ -21,17 +21,16 @@ namespace Pkuyo.CanKit.Net
             where TDevice :  class, ICanDevice
             where TChannel : class, ICanChannel
             where TDeviceOptions : class, IDeviceOptions 
-            where TOptionCfg : IDeviceInitOptionsConfigurator<IDeviceOptions>
+            where TOptionCfg : IDeviceInitOptionsConfigurator
         {
-            var provider = CanCore.Registry.Resolve(deviceType);
+            var provider = CanRegistry.Registry.Resolve(deviceType);
             var factory = provider.Factory;
 
             var (options, cfg) = provider.GetDeviceOptions();
-            if (options is not TDeviceOptions specOptions ||
+            if (options is not TDeviceOptions ||
                 cfg is not TOptionCfg specCfg)
                 throw new Exception(); //TODO: 异常处理
-
-
+            
             if (configure != null)
             {
                 configure(specCfg);
@@ -50,12 +49,6 @@ namespace Pkuyo.CanKit.Net
 
     }
     
-    public interface IDeviceProfile
-    {
-        Type DeviceType { get; }
-        Type ChannelType { get; }
-    }
-
 
     public class CanSession<TCanDevice,TCanChannel>(TCanDevice device, ICanModelProvider provider) : IDisposable
     where TCanDevice : class, ICanDevice
@@ -75,24 +68,24 @@ namespace Pkuyo.CanKit.Net
 
         public TCanChannel CreateChannel(int index, uint baudRate)
         {
-            return CreateChannel<IChannelOptions,ChannelInitOptionsConfigurator<IChannelOptions>>(index, 
+            return CreateChannel<IChannelOptions,IChannelInitOptionsConfigurator>(index, 
                 cfg => cfg.Baud(baudRate));
         }
         
-        /*
-        public TCanChannel CreateChannel(int index, Action<ChannelInitOptionsConfigurator> configure = null)
+        
+        public TCanChannel CreateChannel(int index, Action<IChannelInitOptionsConfigurator> configure = null)
         {
-            return CreateChannel<IChannelOptions,ChannelInitOptionsConfigurator>(index, configure);
+            return CreateChannel<IChannelOptions,IChannelInitOptionsConfigurator>(index, configure);
         }
-        */
+        
 
         public TCanChannel CreateChannel<TChannelOptions,TOptionCfg>(int index,
             Action<TOptionCfg> configure = null)
             where TChannelOptions : class, IChannelOptions
-            where TOptionCfg : IChannelInitOptionsConfigurator<IChannelOptions>
+            where TOptionCfg : IChannelInitOptionsConfigurator
         {
             var (options, cfg) = Provider.GetChannelOptions(index);
-            if (options is not TChannelOptions specOptions ||
+            if (options is not TChannelOptions ||
                 cfg is not TOptionCfg specCfg)
                 throw new Exception(); //TODO: 异常处理
             
