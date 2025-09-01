@@ -8,16 +8,14 @@ namespace Pkuyo.CanKit.Net.Core.Abstractions
     public interface ICanApplier
     {
         bool ApplyOne<T>(string name, T value);
+        
+        CanOptionType ApplierStatus { get; }
     }
     
     public interface ICanOptions
     {
         ICanModelProvider Provider { get; }
-
-        bool HasChanges { get; }
-        IEnumerable<string> GetChangedNames();
-        void ClearChanges();
-
+        
         void Apply(ICanApplier applier, bool force = false);
     }
 

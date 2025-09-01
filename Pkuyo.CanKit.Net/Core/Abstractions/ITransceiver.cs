@@ -5,8 +5,8 @@ namespace Pkuyo.CanKit.Net.Core.Abstractions
 {
     public interface ITransceiver
     {
-        uint Transmit(ICanChannel channel ,params CanTransmitData[] frames);
+        uint Transmit(ICanChannel<IChannelRTOptionsConfigurator<IChannelOptions>> channel ,params CanTransmitData[] frames);
         
-        IEnumerable<CanReceiveData> Receive(ICanChannel channel, uint count = 1, int timeOut = -1);
+        IEnumerable<CanReceiveData> Receive(ICanChannel<IChannelRTOptionsConfigurator<IChannelOptions>> channel, uint count = 1, int timeOut = -1);
     }
 }

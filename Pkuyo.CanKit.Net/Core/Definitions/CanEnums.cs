@@ -19,8 +19,6 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
         Any = int.MaxValue
     }
     
-    
-    
     [Flags]
     public enum CanFeature
     {
@@ -38,10 +36,16 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
         BusUsage            = 1 << 8
     }
 
+    public enum CanOptionType
+    {
+        Init = 1,
+        Runtime = 2
+    }
+
     public enum TxRetryPolicy
     {
-        NoRetry = 0,
-        AlwaysRetry = 1,
+        NoRetry = 1,
+        AlwaysRetry = 2,
     }
     
     public enum ChannelWorkMode

@@ -8,16 +8,22 @@ namespace Pkuyo.CanKit.ZLG
 {
     public static class ZlgCan
     {
-        public static ZlgCanSession Open(DeviceType deviceType, Action<DeviceInitOptionsConfigurator<ZlgDeviceOptions>> configure = null)
+        public static CanSession<ZlgCanDevice,ZlgCanChannel> Open(this ZlgDeviceType deviceType,
+            Action<ZlgDeviceInitOptionsConfigurator> configure = null)
         {
-            return (ZlgCanSession)Can.Open(deviceType, configure,((device, provider) => new ZlgCanSession(device, provider)));
+            return Can.Open<ZlgCanDevice,ZlgCanChannel,ZlgDeviceOptions,ZlgDeviceInitOptionsConfigurator>(
+                deviceType, configure,(device, provider) => 
+                    new CanSession<ZlgCanDevice,ZlgCanChannel>(device, provider));
         }
-        
-        public static CanChannel CreateChannel(this ZlgCanSession session, 
-            int channelIndex, 
-            Action<ChannelInitOptionsConfigurator<ZlgChannelOptions>> configure = null)
-            => session.CreateChannel(channelIndex, configure);
+
+        public static ZlgCanChannel CreateChannel(this CanSession<ZlgCanDevice,ZlgCanChannel> session,
+            int channelIndex,
+            Action<ZlgChannelInitConfigurator> configure = null)
+        {
+            return session.CreateChannel<ZlgChannelOptions,ZlgChannelInitConfigurator>(
+                channelIndex, configure);
+        }
     }
 
-    public class ZlgCanSession(ICanDevice device, ICanModelProvider provider) : CanSession(device, provider);
+
 }

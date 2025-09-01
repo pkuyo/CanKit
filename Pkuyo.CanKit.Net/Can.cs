@@ -8,65 +8,60 @@ namespace Pkuyo.CanKit.Net
 {
     public static class Can
     {
-        public static CanSession Open(DeviceType deviceType, Action<DeviceInitOptionsConfigurator> configure = null)
+        public static CanSession<ICanDevice,ICanChannel> Open(DeviceType deviceType,
+            Action<DeviceInitOptionsConfigurator<IDeviceOptions>> configure = null)
         {
-            return Open<IDeviceOptions>(deviceType, configure);
+            return Open<ICanDevice,ICanChannel,IDeviceOptions,DeviceInitOptionsConfigurator<IDeviceOptions>>(deviceType, configure);
         }
 
-        public static CanSession Open<TDeviceOptions>(DeviceType deviceType,
-            Action<DeviceInitOptionsConfigurator<TDeviceOptions>> configure = null,
-            Func<ICanDevice,ICanModelProvider,CanSession> sessionBuilder = null)
-            where TDeviceOptions : class, IDeviceOptions
+        public static CanSession<TDevice,TChannel> Open<TDevice,TChannel,TDeviceOptions,TOptionCfg>
+        (DeviceType deviceType,
+            Action<TOptionCfg> configure = null,
+            Func<TDevice,ICanModelProvider,CanSession<TDevice,TChannel>> sessionBuilder = null)
+            where TDevice :  class, ICanDevice
+            where TChannel : class, ICanChannel
+            where TDeviceOptions : class, IDeviceOptions 
+            where TOptionCfg : IDeviceInitOptionsConfigurator<IDeviceOptions>
         {
             var provider = CanCore.Registry.Resolve(deviceType);
             var factory = provider.Factory;
 
-            var options = provider.GetDeviceOptions();
-            if (options is not TDeviceOptions specOptions)
+            var (options, cfg) = provider.GetDeviceOptions();
+            if (options is not TDeviceOptions specOptions ||
+                cfg is not TOptionCfg specCfg)
                 throw new Exception(); //TODO: 异常处理
+
+
             if (configure != null)
-                configure(new DeviceInitOptionsConfigurator<TDeviceOptions>(specOptions, provider.Features));
+            {
+                configure(specCfg);
+            }
+            
+            if(factory.CreateDevice(options) is not TDevice device)
+                throw new Exception(); //TODO: 异常处理
+
             var session = sessionBuilder == null
-                ? new CanSession(factory.CreateDevice(options), provider)
-                : sessionBuilder(factory.CreateDevice(options), provider);
+                ? new CanSession<TDevice,TChannel>(device, provider)
+                : sessionBuilder(device, provider);
+            
             session.Open();
             return session;
         }
 
     }
-
-    public class CanChannel(ICanChannel channel)
+    
+    public interface IDeviceProfile
     {
-        public void Start()
-            => channel.Start();
-
-        public void Reset()
-            => channel.Reset();
-
-        public void Stop()
-            => channel.Stop();
-
-        public void CleanBuffer()
-            => channel.CleanBuffer();
-
-        public uint Transmit(params CanFrameBase[] frames)
-            => channel.Transmit(frames);
-
-        public IEnumerable<CanReceiveData> ReceiveAll(CanFrameType filterType)
-            => channel.ReceiveAll(filterType);
-
-        public IEnumerable<CanReceiveData> Receive(CanFrameType filterType, uint count = 1, int timeOut = -1)
-            => channel.Receive(filterType, count, timeOut);
-
-        public uint CanReceiveCount(CanFrameType filterType)
-            => channel.CanReceiveCount(filterType);
-
-        public ChannelRTOptionsConfigurator Options => channel.Options;
+        Type DeviceType { get; }
+        Type ChannelType { get; }
     }
 
-    public class CanSession(ICanDevice device, ICanModelProvider provider) : IDisposable
+
+    public class CanSession<TCanDevice,TCanChannel>(TCanDevice device, ICanModelProvider provider) : IDisposable
+    where TCanDevice : class, ICanDevice
+    where TCanChannel : class, ICanChannel
     {
-        public CanChannel this[int index] => channels[index];
+        public TCanChannel this[int index] => innerChannels[index];
 
         public void Open()
         {
@@ -78,37 +73,43 @@ namespace Pkuyo.CanKit.Net
             Device.CloseDevice();
         }
 
-        public CanChannel CreateChannel(int index, uint baudRate)
+        public TCanChannel CreateChannel(int index, uint baudRate)
         {
-            return CreateChannel(index, cfg => cfg.Baud(baudRate));
+            return CreateChannel<IChannelOptions,ChannelInitOptionsConfigurator<IChannelOptions>>(index, 
+                cfg => cfg.Baud(baudRate));
         }
-
-        public CanChannel CreateChannel(int index, Action<ChannelInitOptionsConfigurator> configure = null)
+        
+        /*
+        public TCanChannel CreateChannel(int index, Action<ChannelInitOptionsConfigurator> configure = null)
         {
-            return CreateChannel<IChannelOptions>(index, configure);
+            return CreateChannel<IChannelOptions,ChannelInitOptionsConfigurator>(index, configure);
         }
+        */
 
-        public CanChannel CreateChannel<TChannelOptions>(int index,
-            Action<ChannelInitOptionsConfigurator<TChannelOptions>> configure = null)
+        public TCanChannel CreateChannel<TChannelOptions,TOptionCfg>(int index,
+            Action<TOptionCfg> configure = null)
             where TChannelOptions : class, IChannelOptions
+            where TOptionCfg : IChannelInitOptionsConfigurator<IChannelOptions>
         {
-            var options = Provider.GetChannelOptions(index);
-            if (options is not TChannelOptions specOptions)
+            var (options, cfg) = Provider.GetChannelOptions(index);
+            if (options is not TChannelOptions specOptions ||
+                cfg is not TOptionCfg specCfg)
                 throw new Exception(); //TODO: 异常处理
-            if (configure != null)
-                configure(new ChannelInitOptionsConfigurator<TChannelOptions>(specOptions, provider.Features));
+            
 
+            if (configure != null)
+            {
+                configure(specCfg);
+            }
+            
             var transceivers = Provider.CreateTransceivers();
 
-            var innerChannel = provider.Factory.CreateChannel(Device, options, transceivers);
+            var innerChannel = (TCanChannel)provider.Factory.CreateChannel(Device, options, transceivers);
             if (innerChannel != null)
             {
-                var channel = new CanChannel(innerChannel);
                 innerChannels.Add(index, innerChannel);
-                channels.Add(index, channel);
-                return channel;
+                return innerChannel;
             }
-
             return null;
 
         }
@@ -120,18 +121,18 @@ namespace Pkuyo.CanKit.Net
             {
                 channel.Value.Dispose();
             }
-
-            channels.Clear();
+            
             innerChannels.Clear();
         }
         
         public bool IsDeviceOpen => Device.IsDeviceOpen;
 
-        protected Dictionary<int, ICanChannel> innerChannels = new();
-
-        protected Dictionary<int, CanChannel> channels = new();
-        protected ICanDevice Device { get; } = device;
+        protected Dictionary<int, TCanChannel> innerChannels = new();
+        
+        protected TCanDevice Device { get; } = device;
 
         protected ICanModelProvider Provider { get; } = provider;
     }
+    
+    
 }

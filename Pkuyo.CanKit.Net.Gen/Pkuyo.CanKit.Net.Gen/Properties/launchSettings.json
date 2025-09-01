@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json.schemastore.org/launchsettings.json",
+  "profiles": {
+    "DebugRoslynAnalyzers": {
+      "commandName": "DebugRoslynComponent",
+      "targetProject": "../Pkuyo.CanKit.Net.Gen.Sample/Pkuyo.CanKit.Net.Gen.Sample.csproj"
+    }
+  }
+}

@@ -9,7 +9,7 @@ namespace Pkuyo.CanKit.ZLG.Transceivers
 {
     public class ZlgCanClassicTransceiver : IZlgTransceiver
     {
-        public uint Transmit(ICanChannel channel, params CanTransmitData[] frames)
+        public uint Transmit(ICanChannel<IChannelRTOptionsConfigurator<IChannelOptions>> channel, params CanTransmitData[] frames)
         {
             var zcanTransmitDatas = 
                 frames.Select(i => i.canFrame)
@@ -20,7 +20,7 @@ namespace Pkuyo.CanKit.ZLG.Transceivers
             return ZLGCAN.ZCAN_Transmit(((ZlgCanChannel)channel).NativePtr, zcanTransmitDatas, (uint)zcanTransmitDatas.Length);
         }
 
-        public IEnumerable<CanReceiveData> Receive(ICanChannel channel, uint count = 1, int timeOut = -1)
+        public IEnumerable<CanReceiveData> Receive(ICanChannel<IChannelRTOptionsConfigurator<IChannelOptions>> channel, uint count = 1, int timeOut = -1)
         {
             var data = new ZLGCAN.ZCAN_Receive_Data[count];
 

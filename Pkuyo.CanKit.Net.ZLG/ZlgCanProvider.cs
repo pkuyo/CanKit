@@ -13,19 +13,27 @@ namespace Pkuyo.CanKit.ZLG
         public abstract DeviceType DeviceType { get; }
         public virtual CanFeature Features => CanFeature.CanClassic | CanFeature.Filters;
 
+        public virtual bool IsFd => false;
+        
         protected virtual bool EnableMerge => false;
         protected virtual bool EnableLin => false;
         
-        public ICanFactory Factory { get; } = CanCore.Registry.Factory("ZlgCan");
+        public ICanFactory Factory { get; } = CanCore.Registry.Factory("Zlg");
         
-        public IDeviceOptions GetDeviceOptions()
+        public (IDeviceOptions,IDeviceInitOptionsConfigurator<IDeviceOptions>) GetDeviceOptions()
         {
-            return new ZlgDeviceOptions(this);
+            var option = new ZlgDeviceOptions(this);
+            var cfg = new ZlgDeviceInitOptionsConfigurator();
+            cfg.Init(option, Features);
+            return (option, cfg);
         }
 
-        public IChannelOptions GetChannelOptions(int channelIndex)
+        public  (IChannelOptions,IChannelInitOptionsConfigurator<IChannelOptions>) GetChannelOptions(int channelIndex)
         {
-            return new ZlgChannelOptions(this);
+            var option = new ZlgChannelOptions(this);
+            var cfg = new ZlgChannelInitConfigurator();
+            cfg.Init(option, Features);
+            return (option, cfg);
         }
 
         public IEnumerable<ITransceiver> CreateTransceivers()

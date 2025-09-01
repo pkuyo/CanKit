@@ -12,10 +12,9 @@ namespace Pkuyo.CanKit.Net.Core.Abstractions
 
         ICanFactory Factory { get; }
         
-        IDeviceOptions GetDeviceOptions();
+        (IDeviceOptions,IDeviceInitOptionsConfigurator<IDeviceOptions>) GetDeviceOptions();
         
-        IChannelOptions GetChannelOptions(int channelIndex);
-        
+        (IChannelOptions,IChannelInitOptionsConfigurator<IChannelOptions>) GetChannelOptions(int channelIndex);
         
         IEnumerable<ITransceiver> CreateTransceivers();
         

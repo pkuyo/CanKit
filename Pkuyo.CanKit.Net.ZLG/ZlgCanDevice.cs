@@ -4,16 +4,25 @@ using Pkuyo.CanKit.Net.Core.Definitions;
 using Pkuyo.CanKit.Net.Core.Diagnostics;
 using Pkuyo.CanKit.ZLG.Definitions;
 using Pkuyo.CanKit.ZLG.Native;
+using Pkuyo.CanKit.ZLG.Options;
 
 namespace Pkuyo.CanKit.ZLG
 {
-     public abstract class ZlgCanDevice(CanDeviceInfo info) : ICanDevice
-     { 
+     public class ZlgCanDevice : ICanDevice<ZlgDeviceRTOptionsConfigurator>, ICanApplier
+     {
+         public ZlgCanDevice(IDeviceOptions options)
+         {
+             Options = new ZlgDeviceRTOptionsConfigurator();
+             Options.Init((ZlgDeviceOptions)options, options.Provider.Features);
+             _options = options;
+         }
         public bool OpenDevice()
         {
             ThrowIfDisposed();
-
-            _nativePtr = ZLGCAN.ZCAN_OpenDevice((uint)DeviceInfo.DeviceType, DeviceInfo.DeviceIndex, 0);
+    
+            var ptr = ZLGCAN.ZCAN_OpenDevice((uint)Options.DeviceType.NativeCode, Options.DeviceIndex, 0);
+            _options.Apply(this, true);
+            _nativePtr = ptr;
             return IsDeviceOpen;
         }
 
@@ -22,6 +31,7 @@ namespace Pkuyo.CanKit.ZLG
             ThrowIfDisposed();
 
             ZlgErr.ThrowIfError(ZLGCAN.ZCAN_CloseDevice(_nativePtr));
+            _nativePtr = IntPtr.Zero;
         }
 
 
@@ -50,14 +60,30 @@ namespace Pkuyo.CanKit.ZLG
             }
         }
         
-        public CanDeviceInfo DeviceInfo => info;
 
         public IntPtr NativePtr => _nativePtr;
 
         public bool IsDeviceOpen => _nativePtr != IntPtr.Zero;
+        
+        public ZlgDeviceRTOptionsConfigurator Options { get; }
+
+        private IDeviceOptions _options;
 
         private IntPtr _nativePtr;
 
         private bool _isDisposed;
-    }
+        public bool ApplyOne<T>(string name, T value)
+        {
+            if (name[0] == '/')
+            {
+                ZLGCAN.ZCAN_SetValue(NativePtr,
+                    Options.DeviceIndex.ToString() + name[0], value.ToString());
+                return true;
+            }
+
+            return false;
+        }
+
+        public CanOptionType ApplierStatus => IsDeviceOpen ? CanOptionType.Runtime : CanOptionType.Init;
+     }
 }

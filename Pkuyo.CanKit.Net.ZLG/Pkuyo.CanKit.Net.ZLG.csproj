@@ -8,8 +8,9 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\Pkuyo.CanKit.Net\Pkuyo.CanKit.Net.csproj" />
-      <ProjectReference Include="..\ZlgCAN.Net\Pkuyo.CanKit.Net.csproj" />
+        <ProjectReference Include="..\Pkuyo.CanKit.Net\Pkuyo.CanKit.Net.csproj" />
+        <ProjectReference Include="..\Pkuyo.CanKit.Net.Gen\Pkuyo.CanKit.Net.Gen\Pkuyo.CanKit.Net.Gen.csproj"
+                      OutputItemType="Analyzer" ReferenceOutputAssembly="false"/>
     </ItemGroup>
 
 </Project>

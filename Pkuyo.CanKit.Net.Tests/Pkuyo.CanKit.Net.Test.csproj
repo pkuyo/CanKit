@@ -11,7 +11,6 @@
   <ItemGroup>
     <ProjectReference Include="..\Pkuyo.CanKit.Net.ZLG\Pkuyo.CanKit.Net.ZLG.csproj" />
     <ProjectReference Include="..\Pkuyo.CanKit.Net\Pkuyo.CanKit.Net.csproj" />
-    <ProjectReference Include="..\ZlgCAN.Net\Pkuyo.CanKit.Net.csproj" />
   </ItemGroup>
 
 </Project>

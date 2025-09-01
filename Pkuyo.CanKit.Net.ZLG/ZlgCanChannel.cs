@@ -9,13 +9,14 @@ using Pkuyo.CanKit.ZLG.Transceivers;
 
 namespace Pkuyo.CanKit.ZLG
 {
-    public sealed class ZlgCanChannel : ICanChannel
+    public sealed class ZlgCanChannel : ICanChannel<ZlgChannelRTConfigurator>
     {
 
         internal ZlgCanChannel(IntPtr nativePtr, IChannelOptions options, IEnumerable<ITransceiver> transceivers, CanFeature canFeature)
         {
             _nativePtr = nativePtr;
-            Options = new ChannelRTOptionsConfigurator<ZlgChannelOptions>((ZlgChannelOptions)options, canFeature);
+            Options = new ZlgChannelRTConfigurator();
+            Options.Init((ZlgChannelOptions)options, canFeature);
             var dic = new Dictionary<ZlgFrameType, IZlgTransceiver>();
             
             var zlgTransceivers = transceivers.OfType<IZlgTransceiver>();
@@ -58,9 +59,11 @@ namespace Pkuyo.CanKit.ZLG
             ZLGCAN.ZCAN_ClearBuffer(_nativePtr);
         }
 
-        public uint Transmit(params CanFrameBase[] frames)
+        public uint Transmit(params CanTransmitData[] frames)
         {
-            throw new NotImplementedException();
+            ThrowIfDisposed();
+
+            return _transceivers[ZlgFrameType.CanClassic].Transmit(this, frames);
         }
         public IEnumerable<CanReceiveData> ReceiveAll(CanFrameType filterType)
         {
@@ -141,7 +144,7 @@ namespace Pkuyo.CanKit.ZLG
 
         public IntPtr NativePtr => _nativePtr;
 
-        public ChannelRTOptionsConfigurator Options { get; }
+        public ZlgChannelRTConfigurator Options { get; }
         
 
         private readonly IntPtr _nativePtr;

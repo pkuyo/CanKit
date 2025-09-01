@@ -14,4 +14,10 @@ namespace Pkuyo.CanKit.ZLG.Providers
         public override DeviceType DeviceType => ZlgDeviceType.ZCAN_USBCAN1;
         public override CanFeature Features => base.Features | CanFeature.BusUsage | CanFeature.CyclicTx;
     }
+    
+    public class PCI9820IProvider : ZlgCanProvider
+    {
+        public override DeviceType DeviceType => ZlgDeviceType.ZCAN_PCI9820I;
+        public override CanFeature Features => base.Features | CanFeature.BusUsage | CanFeature.CyclicTx;
+    }
 }
