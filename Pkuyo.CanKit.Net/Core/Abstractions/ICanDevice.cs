@@ -10,8 +10,6 @@ namespace Pkuyo.CanKit.Net.Core.Abstractions
 
         void CloseDevice();
 
-        IntPtr NativePtr { get; }
-
         bool IsDeviceOpen { get; }
     }
 

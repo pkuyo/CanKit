@@ -47,9 +47,10 @@ namespace Pkuyo.CanKit.ZLG
 
             if (EnableLin)
                 yield return new ZlgLinTransceiver();
-
+            
             if (EnableMerge)
                 yield return new ZlgMergeTransceiver();
+            
         }
     }
 }

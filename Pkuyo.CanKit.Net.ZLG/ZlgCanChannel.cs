@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Pkuyo.CanKit.Net.Core.Abstractions;
 using Pkuyo.CanKit.Net.Core.Definitions;
+using Pkuyo.CanKit.ZLG.Definitions;
 using Pkuyo.CanKit.ZLG.Native;
 using Pkuyo.CanKit.ZLG.Options;
 using Pkuyo.CanKit.ZLG.Transceivers;
@@ -12,9 +13,9 @@ namespace Pkuyo.CanKit.ZLG
     public sealed class ZlgCanChannel : ICanChannel<ZlgChannelRTConfigurator>
     {
 
-        internal ZlgCanChannel(IntPtr nativePtr, IChannelOptions options, IEnumerable<ITransceiver> transceivers, CanFeature canFeature)
+        internal ZlgCanChannel(ZlgChannelHandle nativeHandle, IChannelOptions options, IEnumerable<ITransceiver> transceivers, CanFeature canFeature)
         {
-            _nativePtr = nativePtr;
+            _nativeHandle = nativeHandle;
             Options = new ZlgChannelRTConfigurator();
             Options.Init((ZlgChannelOptions)options, canFeature);
             var dic = new Dictionary<ZlgFrameType, IZlgTransceiver>();
@@ -31,7 +32,7 @@ namespace Pkuyo.CanKit.ZLG
             ThrowIfDisposed();
 
             //TODO: 异常处理
-            if (ZLGCAN.ZCAN_StartCAN(_nativePtr) == 0)
+            if (ZLGCAN.ZCAN_StartCAN(_nativeHandle) == 0)
                 throw new Exception();
             _isOpen = true;
         }
@@ -41,7 +42,7 @@ namespace Pkuyo.CanKit.ZLG
             ThrowIfDisposed();
 
             //TODO: 异常处理
-            ZLGCAN.ZCAN_ResetCAN(_nativePtr);
+            ZLGCAN.ZCAN_ResetCAN(_nativeHandle);
 
             _isOpen = false;
         }
@@ -56,7 +57,7 @@ namespace Pkuyo.CanKit.ZLG
             ThrowIfDisposed();
 
             //TODO: 异常处理
-            ZLGCAN.ZCAN_ClearBuffer(_nativePtr);
+            ZLGCAN.ZCAN_ClearBuffer(_nativeHandle);
         }
 
         public uint Transmit(params CanTransmitData[] frames)
@@ -115,7 +116,7 @@ namespace Pkuyo.CanKit.ZLG
                 CanFrameType.CanClassic => ZlgFrameType.CanClassic,
                 _ => throw new NotSupportedException("ZlgCan ReceiveCount 仅支持 Can/CanFD/Any")
             };
-            return ZLGCAN.ZCAN_GetReceiveNum(_nativePtr, (byte)zlgFilterType);
+            return ZLGCAN.ZCAN_GetReceiveNum(_nativeHandle, (byte)zlgFilterType);
         }
         
 
@@ -142,12 +143,12 @@ namespace Pkuyo.CanKit.ZLG
 
         public bool IsOpen => _isOpen;
 
-        public IntPtr NativePtr => _nativePtr;
+        public ZlgChannelHandle NativeHandle => _nativeHandle;
 
         public ZlgChannelRTConfigurator Options { get; }
         
 
-        private readonly IntPtr _nativePtr;
+        private readonly ZlgChannelHandle _nativeHandle;
         
         private readonly IReadOnlyDictionary<ZlgFrameType, IZlgTransceiver>  _transceivers;
 

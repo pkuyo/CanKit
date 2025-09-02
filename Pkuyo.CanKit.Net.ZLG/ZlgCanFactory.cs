@@ -17,6 +17,10 @@ public class ZlgCanFactory : ICanFactory
 
     public ICanChannel CreateChannel(ICanDevice device, IChannelOptions options, IEnumerable<ITransceiver> transceivers)
     {
+        
+        if(device is not ZlgCanDevice zlgCanDevice)
+            throw new Exception(); //TODO: 异常处理
+        
         var zlgProvider = (ZlgCanProvider)options.Provider;
         ZLGCAN.ZCAN_CHANNEL_INIT_CONFIG config = new ZLGCAN.ZCAN_CHANNEL_INIT_CONFIG
         {
@@ -30,11 +34,11 @@ public class ZlgCanFactory : ICanFactory
         {
             
         }
-        var ptr = ZLGCAN.ZCAN_InitCAN(device.NativePtr, (uint)options.ChannelIndex, ref config);
-        if (ptr == IntPtr.Zero)
+        var handle = ZLGCAN.ZCAN_InitCAN(zlgCanDevice.NativeHandler, (uint)options.ChannelIndex, ref config);
+        if (handle.IsInvalid)
             return null;
-
-        return new ZlgCanChannel(ptr, options, transceivers, options.Provider.Features);
+        handle.SetDevice(zlgCanDevice.NativeHandler);
+        return new ZlgCanChannel(handle, options, transceivers, options.Provider.Features);
     }
 
     public bool Support(DeviceType deviceType)

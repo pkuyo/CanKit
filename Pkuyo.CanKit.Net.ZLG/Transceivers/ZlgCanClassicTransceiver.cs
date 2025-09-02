@@ -17,14 +17,14 @@ namespace Pkuyo.CanKit.ZLG.Transceivers
                 .Select(i => i.ToTransmitData())
                 .ToArray();
 
-            return ZLGCAN.ZCAN_Transmit(((ZlgCanChannel)channel).NativePtr, zcanTransmitDatas, (uint)zcanTransmitDatas.Length);
+            return ZLGCAN.ZCAN_Transmit(((ZlgCanChannel)channel).NativeHandle, zcanTransmitDatas, (uint)zcanTransmitDatas.Length);
         }
 
         public IEnumerable<CanReceiveData> Receive(ICanChannel<IChannelRTOptionsConfigurator> channel, uint count = 1, int timeOut = -1)
         {
             var data = new ZLGCAN.ZCAN_Receive_Data[count];
 
-            var recCount = ZLGCAN.ZCAN_Receive(((ZlgCanChannel)channel).NativePtr, data, count, timeOut);
+            var recCount = ZLGCAN.ZCAN_Receive(((ZlgCanChannel)channel).NativeHandle, data, count, timeOut);
 
             return data.Take((int)recCount).Select(i => new CanReceiveData()
             {

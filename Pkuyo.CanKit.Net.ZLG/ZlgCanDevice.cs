@@ -20,18 +20,16 @@ namespace Pkuyo.CanKit.ZLG
         {
             ThrowIfDisposed();
     
-            var ptr = ZLGCAN.ZCAN_OpenDevice((uint)(int)Options.DeviceType.Metadata, Options.DeviceIndex, 0);
+            var handle = ZLGCAN.ZCAN_OpenDevice((uint)(int)Options.DeviceType.Metadata, Options.DeviceIndex, 0);
             _options.Apply(this, true);
-            _nativePtr = ptr;
+            _nativeHandler = handle;
             return IsDeviceOpen;
         }
 
         public void CloseDevice()
         {
             ThrowIfDisposed();
-
-            ZlgErr.ThrowIfError(ZLGCAN.ZCAN_CloseDevice(_nativePtr));
-            _nativePtr = IntPtr.Zero;
+            _nativeHandler.Close();
         }
 
 
@@ -47,36 +45,31 @@ namespace Pkuyo.CanKit.ZLG
             try
             {
                 ThrowIfDisposed();
-                
-                if (_nativePtr != IntPtr.Zero)
-                {
-                    CloseDevice();
-                }
+                _nativeHandler.Dispose();
             }
             finally
             {
-                _nativePtr = IntPtr.Zero;
                 _isDisposed = true;
             }
         }
         
 
-        public IntPtr NativePtr => _nativePtr;
+        public ZlgDeviceHandle NativeHandler => _nativeHandler;
 
-        public bool IsDeviceOpen => _nativePtr != IntPtr.Zero;
+        public bool IsDeviceOpen => !_nativeHandler.IsInvalid && !_nativeHandler.IsClosed;
         
         public ZlgDeviceRTOptionsConfigurator Options { get; }
 
         private IDeviceOptions _options;
 
-        private IntPtr _nativePtr;
+        private ZlgDeviceHandle _nativeHandler;
 
         private bool _isDisposed;
         public bool ApplyOne<T>(string name, T value)
         {
             if (name[0] == '/')
             {
-                ZLGCAN.ZCAN_SetValue(NativePtr,
+                ZLGCAN.ZCAN_SetValue(NativeHandler,
                     Options.DeviceIndex.ToString() + name[0], value.ToString());
                 return true;
             }
