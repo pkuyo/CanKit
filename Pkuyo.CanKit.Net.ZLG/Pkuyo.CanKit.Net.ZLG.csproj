@@ -5,6 +5,8 @@
         <LangVersion>latest</LangVersion>
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
         <RootNamespace>Pkuyo.CanKit.ZLG</RootNamespace>
+        <Platforms>x64;x86</Platforms>
+        <PackageId>Pkuyo.CanKit.ZLG</PackageId>
     </PropertyGroup>
 
     <ItemGroup>
@@ -13,4 +15,17 @@
                       OutputItemType="Analyzer" ReferenceOutputAssembly="false"/>
     </ItemGroup>
 
+
+    <ItemGroup Condition="'$(PlatformTarget)'=='x64'">
+        <None Include="runtimes\win-x64\native\*.dll" Pack="true" 
+              CopyToOutputDirectory="PreserveNewest" Link="%(Filename)%(Extension)" />
+        <None Include="runtimes\win-x64\native\kerneldlls\*.dll" Pack="true"
+              CopyToOutputDirectory="PreserveNewest" Link="kerneldlls\%(Filename)%(Extension)"/>
+    </ItemGroup>
+    <ItemGroup Condition="'$(PlatformTarget)'=='x86'">
+        <None Include="runtimes\win-x86\native\*.dll" Pack="true" 
+              CopyToOutputDirectory="PreserveNewest" Link="%(Filename)%(Extension)" />
+        <None Include="runtimes\win-x86\native\kerneldlls\*.dll" Pack="true" 
+              CopyToOutputDirectory="PreserveNewest" Link="kerneldlls\%(Filename)%(Extension)"/>
+    </ItemGroup>
 </Project>

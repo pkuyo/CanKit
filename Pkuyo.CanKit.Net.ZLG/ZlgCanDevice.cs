@@ -21,9 +21,14 @@ namespace Pkuyo.CanKit.ZLG
             ThrowIfDisposed();
     
             var handle = ZLGCAN.ZCAN_OpenDevice((uint)(int)Options.DeviceType.Metadata, Options.DeviceIndex, 0);
-            _options.Apply(this, true);
-            _nativeHandler = handle;
-            return IsDeviceOpen;
+            if (handle != null)
+            {
+                _options.Apply(this, true);
+                _nativeHandler = handle;
+                return IsDeviceOpen;
+            }
+
+            return false;
         }
 
         public void CloseDevice()
@@ -56,7 +61,7 @@ namespace Pkuyo.CanKit.ZLG
 
         public ZlgDeviceHandle NativeHandler => _nativeHandler;
 
-        public bool IsDeviceOpen => !_nativeHandler.IsInvalid && !_nativeHandler.IsClosed;
+        public bool IsDeviceOpen => _nativeHandler is { IsInvalid: false, IsClosed: false };
         
         public ZlgDeviceRTOptionsConfigurator Options { get; }
 

@@ -93,126 +93,126 @@ namespace Pkuyo.CanKit.ZLG.Native
         #endregion
 
         #region 函数
-        [DllImport(".\\zlgcan.dll", CallingConvention = CallingConvention.StdCall)]
+        [DllImport("zlgcan.dll", CallingConvention = CallingConvention.StdCall)]
         public static extern ZlgDeviceHandle ZCAN_OpenDevice(uint device_type, uint device_index, uint reserved);
 
 
-        [DllImport(".\\zlgcan.dll", CallingConvention = CallingConvention.StdCall)]
+        [DllImport("zlgcan.dll", CallingConvention = CallingConvention.StdCall)]
         public static extern uint ZCAN_CloseDevice(IntPtr device_handle);
 
 
-        [DllImport(".\\zlgcan.dll", CallingConvention = CallingConvention.StdCall)]
+        [DllImport("zlgcan.dll", CallingConvention = CallingConvention.StdCall)]
         public static extern ZlgChannelHandle ZCAN_InitCAN(ZlgDeviceHandle device_handle, uint can_index, ref ZCAN_CHANNEL_INIT_CONFIG pInitConfig);
 
 
-        [DllImport(".\\zlgcan.dll", CallingConvention = CallingConvention.StdCall)]
+        [DllImport("zlgcan.dll", CallingConvention = CallingConvention.StdCall)]
         public static extern uint ZCAN_StartCAN(ZlgChannelHandle chn_handle);
 
 
-        [DllImport(".\\zlgcan.dll", CallingConvention = CallingConvention.StdCall)]
+        [DllImport("zlgcan.dll", CallingConvention = CallingConvention.StdCall)]
         public static extern uint ZCAN_ResetCAN(ZlgChannelHandle chn_handle);
 
 
-        [DllImport(".\\zlgcan.dll", CallingConvention = CallingConvention.StdCall)]
+        [DllImport("zlgcan.dll", CallingConvention = CallingConvention.StdCall)]
         public static extern uint ZCAN_ClearBuffer(ZlgChannelHandle chn_handle);
 
 
-        [DllImport(".\\zlgcan.dll", CallingConvention = CallingConvention.StdCall)]
+        [DllImport("zlgcan.dll", CallingConvention = CallingConvention.StdCall)]
         public static extern uint ZCAN_GetReceiveNum(ZlgChannelHandle channel_handle, byte type);
 
 
-        [DllImport(".\\zlgcan.dll", CallingConvention = CallingConvention.StdCall)]
+        [DllImport("zlgcan.dll", CallingConvention = CallingConvention.StdCall)]
         public static extern uint ZCAN_Transmit(ZlgChannelHandle channel_handle, ZCAN_Transmit_Data[] pTransmit, uint len);
 
 
-        [DllImport(".\\zlgcan.dll", CallingConvention = CallingConvention.StdCall)]
+        [DllImport("zlgcan.dll", CallingConvention = CallingConvention.StdCall)]
         public static extern uint ZCAN_TransmitFD(ZlgChannelHandle channel_handle, ZCAN_TransmitFD_Data[] pTransmit, uint len);
 
 
-        [DllImport(".\\zlgcan.dll", CallingConvention = CallingConvention.StdCall)]
+        [DllImport("zlgcan.dll", CallingConvention = CallingConvention.StdCall)]
         public static extern uint ZCAN_TransmitData(ZlgDeviceHandle device_handle, ZCANDataObj[] pTransmit, uint len);
 
 
-        [DllImport(".\\zlgcan.dll", CallingConvention = CallingConvention.StdCall)]
+        [DllImport("zlgcan.dll", CallingConvention = CallingConvention.StdCall)]
         public static extern uint ZCAN_Receive(ZlgChannelHandle channel_handle,[In, Out] ZCAN_Receive_Data[] pReceive, uint len, int wait_time = -1);
 
 
-        [DllImport(".\\zlgcan.dll", CallingConvention = CallingConvention.StdCall)]
+        [DllImport("zlgcan.dll", CallingConvention = CallingConvention.StdCall)]
         public static extern uint ZCAN_ReceiveFD(ZlgChannelHandle channel_handle, [In, Out] ZCAN_ReceiveFD_Data[] pReceive, uint len, int wait_time = -1);
 
 
-        [DllImport(".\\zlgcan.dll", CallingConvention = CallingConvention.StdCall)]
+        [DllImport("zlgcan.dll", CallingConvention = CallingConvention.StdCall)]
         public static extern uint ZCAN_ReceiveData(ZlgDeviceHandle device_handle, [In, Out] ZCANDataObj[] pReceive, uint len, int wait_time);
 
 
-        [DllImport(".\\zlgcan.dll", CallingConvention = CallingConvention.StdCall)]
+        [DllImport("zlgcan.dll", CallingConvention = CallingConvention.StdCall)]
         public static extern uint ZCAN_SetValue(ZlgDeviceHandle device_handle, string path, string value);
 
 
-        [DllImport(".\\zlgcan.dll", CallingConvention = CallingConvention.StdCall)]
+        [DllImport("zlgcan.dll", CallingConvention = CallingConvention.StdCall)]
         public static extern uint ZCAN_SetValue(ZlgDeviceHandle device_handle, string path, IntPtr value);
 
 
-        [DllImport(".\\zlgcan.dll", CallingConvention = CallingConvention.StdCall)]
+        [DllImport("zlgcan.dll", CallingConvention = CallingConvention.StdCall)]
         public static extern IntPtr ZCAN_GetValue(ZlgDeviceHandle  device_handle, string path);
 
 
 
-        [DllImport(".\\zlgcan.dll", CallingConvention = CallingConvention.StdCall)]
+        [DllImport("zlgcan.dll", CallingConvention = CallingConvention.StdCall)]
         public static extern IntPtr ZCAN_InitLIN(ZlgDeviceHandle device_handle, uint lin_index, IntPtr pLINInitConfig);
 
 
-        [DllImport(".\\zlgcan.dll", CallingConvention = CallingConvention.StdCall)]
+        [DllImport("zlgcan.dll", CallingConvention = CallingConvention.StdCall)]
         public static extern uint ZCAN_StartLIN(ZlgChannelHandle channel_handle);
 
 
-        [DllImport(".\\zlgcan.dll", CallingConvention = CallingConvention.StdCall)]
+        [DllImport("zlgcan.dll", CallingConvention = CallingConvention.StdCall)]
         public static extern uint ZCAN_ResetLIN(ZlgChannelHandle channel_handle);
 
 
-        [DllImport(".\\zlgcan.dll", CallingConvention = CallingConvention.StdCall)]
+        [DllImport("zlgcan.dll", CallingConvention = CallingConvention.StdCall)]
         public static extern uint ZCAN_TransmitLIN(ZlgChannelHandle channel_handle, IntPtr pSend, uint Len);
 
 
-        [DllImport(".\\zlgcan.dll", CallingConvention = CallingConvention.StdCall)]
+        [DllImport("zlgcan.dll", CallingConvention = CallingConvention.StdCall)]
         public static extern uint ZCAN_GetLINReceiveNum(ZlgChannelHandle channel_handle);
 
 
-        [DllImport(".\\zlgcan.dll", CallingConvention = CallingConvention.StdCall)]
+        [DllImport("zlgcan.dll", CallingConvention = CallingConvention.StdCall)]
         public static extern uint ZCAN_ReceiveLIN(ZlgChannelHandle channel_handle, IntPtr pReceive, uint Len, int WaitTime);
 
 
-        [DllImport(".\\zlgcan.dll", CallingConvention = CallingConvention.StdCall)]
+        [DllImport("zlgcan.dll", CallingConvention = CallingConvention.StdCall)]
         public static extern uint ZCAN_SetLINPublish(ZlgChannelHandle channel_handle, IntPtr pSend, uint nPublishCount);
 
 
-        [DllImport(".\\zlgcan.dll", CallingConvention = CallingConvention.StdCall)]
+        [DllImport("zlgcan.dll", CallingConvention = CallingConvention.StdCall)]
         public static extern uint ZCAN_SetLINSubscribe(ZlgChannelHandle channel_handle, IntPtr pSend, uint nSubscribeCount);
 
 
-        [DllImport(".\\zlgcan.dll", CallingConvention = CallingConvention.StdCall)]
+        [DllImport("zlgcan.dll", CallingConvention = CallingConvention.StdCall)]
         public static extern uint ZCAN_WakeUpLIN(ZlgChannelHandle channel_handle);
 
 
-        [DllImport(".\\zlgcan.dll", CallingConvention = CallingConvention.StdCall)]
+        [DllImport("zlgcan.dll", CallingConvention = CallingConvention.StdCall)]
         public static extern uint ZCAN_UDS_Request(ZlgDeviceHandle device_handle, IntPtr req, IntPtr resp, IntPtr dataBuf, uint dataBufSize);
 
 
-        [DllImport(".\\zlgcan.dll", CallingConvention = CallingConvention.StdCall)]
+        [DllImport("zlgcan.dll", CallingConvention = CallingConvention.StdCall)]
         public static extern uint ZCAN_UDS_Control(ZlgDeviceHandle device_handle, IntPtr ctrl, IntPtr resp);
 
 
-        [DllImport(".\\zlgcan.dll", CallingConvention = CallingConvention.StdCall)]
+        [DllImport("zlgcan.dll", CallingConvention = CallingConvention.StdCall)]
         public static extern uint ZCAN_UDS_RequestEX(ZlgDeviceHandle device_handle, IntPtr requestData, IntPtr resp, IntPtr dataBuf, uint dataBufSize);
 
 
-        [DllImport(".\\zlgcan.dll", CallingConvention = CallingConvention.StdCall)]
+        [DllImport("zlgcan.dll", CallingConvention = CallingConvention.StdCall)]
         public static extern uint ZCAN_UDS_ControlEX(ZlgDeviceHandle device_handle, uint dataType, IntPtr ctrl, IntPtr resp);
 
-        [DllImport(".\\zlgcan.dll", CallingConvention = CallingConvention.StdCall)]
+        [DllImport("zlgcan.dll", CallingConvention = CallingConvention.StdCall)]
         public static extern uint ZCAN_IsDeviceOnLine(ZlgDeviceHandle device_handle);
 
-        [DllImport(".\\zlgcan.dll", CallingConvention = CallingConvention.StdCall)]
+        [DllImport("zlgcan.dll", CallingConvention = CallingConvention.StdCall)]
         public static extern uint ZCAN_ReadChannelErrInfo(ZlgChannelHandle channel_handle, IntPtr pErrInfo);
         #endregion
 
