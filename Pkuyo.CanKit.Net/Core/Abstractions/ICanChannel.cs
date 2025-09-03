@@ -22,8 +22,10 @@ namespace Pkuyo.CanKit.Net.Core.Abstractions
         IEnumerable<CanReceiveData> Receive(CanFrameType filterType, uint count = 1, int timeOut = -1);
 
         uint CanReceiveCount(CanFrameType filterType);
+
+        IChannelRTOptionsConfigurator Options { get; }
         
-        
+
     }
 
     public interface ICanChannel<out TConfigurator> : ICanChannel

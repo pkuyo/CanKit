@@ -16,7 +16,5 @@ namespace Pkuyo.CanKit.Net.Core.Abstractions
         
         (IChannelOptions,IChannelInitOptionsConfigurator) GetChannelOptions(int channelIndex);
         
-        IEnumerable<ITransceiver> CreateTransceivers();
-        
     }
 }

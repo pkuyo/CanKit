@@ -2,15 +2,20 @@ using Pkuyo.CanKit.Net.Core.Definitions;
 
 namespace Pkuyo.CanKit.Net.Core.Abstractions;
 
-public interface IDeviceRTOptionsConfigurator
+
+public interface ICanOptionsConfigurator
+{
+    ICanModelProvider Provider { get; }
+}
+
+public interface IDeviceRTOptionsConfigurator : ICanOptionsConfigurator
 {
     DeviceType DeviceType { get; }
     uint TxTimeOut { get; }
-    bool MergeReceive { get; }
 }
 
 
-public interface IChannelRTOptionsConfigurator
+public interface IChannelRTOptionsConfigurator : ICanOptionsConfigurator
 {
     int ChannelIndex { get; }
     BitTiming BitTiming { get; }
@@ -19,19 +24,18 @@ public interface IChannelRTOptionsConfigurator
     uint BusUsagePeriodTime { get; }
     ChannelWorkMode WorkMode { get; }
     bool InternalResistance { get; } 
+    CanProtocolMode ProtocolMode { get; }
 }
 
-public interface IDeviceInitOptionsConfigurator
+public interface IDeviceInitOptionsConfigurator : ICanOptionsConfigurator
 {
     DeviceType DeviceType { get; }
     uint TxTimeOutTime { get; }
-    bool EnableMergeReceive { get; }
     
     IDeviceInitOptionsConfigurator TxTimeOut(uint ms);
-    IDeviceInitOptionsConfigurator MergeReceive(bool enable);
 }
 
-public interface IChannelInitOptionsConfigurator
+public interface IChannelInitOptionsConfigurator : ICanOptionsConfigurator
 {
     int ChannelIndex { get; }
     BitTiming BitTiming { get; }
@@ -40,6 +44,7 @@ public interface IChannelInitOptionsConfigurator
     uint BusUsagePeriodTime { get; }
     ChannelWorkMode WorkMode { get; }
     bool InternalResistance { get; }
+    CanProtocolMode ProtocolMode { get; }
     
     IChannelInitOptionsConfigurator Baud(uint baud);
     IChannelInitOptionsConfigurator Fd(uint abit, uint dbit);
@@ -47,6 +52,7 @@ public interface IChannelInitOptionsConfigurator
     IChannelInitOptionsConfigurator SetTxRetryPolicy(TxRetryPolicy retryPolicy);
     IChannelInitOptionsConfigurator SetWorkMode(ChannelWorkMode mode);
     IChannelInitOptionsConfigurator InternalRes(bool enabled);
+    IChannelInitOptionsConfigurator SetProtocolMode(CanProtocolMode mode);
 }
 
 

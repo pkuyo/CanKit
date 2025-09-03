@@ -18,12 +18,12 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
 
     public record CanTransmitData
     {
-        public CanFrameBase canFrame;
+        public ICanFrame canFrame;
     }
 
     public record CanReceiveData
     {
-        public CanFrameBase canFrame;
+        public ICanFrame canFrame;
         public UInt64 timestamp;
 
         public DateTime Timestamp => DateTimeOffset.FromUnixTimeMilliseconds((long)timestamp).DateTime;

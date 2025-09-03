@@ -3,153 +3,144 @@ using System.Text;
 
 namespace Pkuyo.CanKit.Net.Core.Definitions
 {
-    public abstract record CanFrameBase
+    
+    
+    public interface ICanFrame
     {
-        public abstract CanFrameType FrameKind { get; }
-
+        CanFrameType FrameKind { get; }
+        uint RawID { get; init; }
+        ReadOnlyMemory<byte> Data { get; init; }
+        byte Dlc { get; }
     }
     
-    public record CanClassicFrame : CanFrameBase
+    internal static class CanIdBits
     {
-        public CanClassicFrame(uint rawID, byte[] data) 
-        {
-            RawID = rawID;
-            _data = data;
-        }
+        private const int EXT_BIT = 31;
+        private const int RTR_BIT = 30;
+        private const int ERR_BIT = 29;
+        private const uint ID_MASK = 0x1FFFFFFF;
 
-        public CanClassicFrame(uint ID, byte[] data, bool extendedFrame = false,
-            bool remoteFrame = false,
-            bool errorFrame = false) 
-        {
-            RawID = ID;
-            IsExtendedFrame = extendedFrame;
-            IsRemoteFrame = remoteFrame;
-            IsErrorFrame = errorFrame;
-            _data = data ?? [];
-        }
+        public static uint GetId(uint raw) => raw & ID_MASK;
+        public static uint SetId(uint raw, uint id) => (raw & ~ID_MASK) | (id & ID_MASK);
 
-        public uint RawID { get; set; }
+        public static bool Get(uint raw, int bit) => (raw & (1u << bit)) != 0;
+        public static uint Set(uint raw, int bit, bool v)
+            => v ? (raw | (1u << bit)) : (raw & ~(1u << bit));
+
+        public static bool IsExtended(uint raw) => Get(raw, EXT_BIT);
+        public static uint WithExtended(uint raw, bool v) => Set(raw, EXT_BIT, v);
+        public static bool IsRemote(uint raw) => Get(raw, RTR_BIT);
+        public static uint WithRemote(uint raw, bool v) => Set(raw, RTR_BIT, v);
+        public static bool IsError(uint raw) => Get(raw, ERR_BIT);
+        public static uint WithError(uint raw, bool v) => Set(raw, ERR_BIT, v);
+    }
+    
+    public readonly record struct CanClassicFrame : ICanFrame
+    {
+
+        public CanClassicFrame(uint rawIDInit, ReadOnlyMemory<byte> dataInit = default)
+        {
+            RawID = rawIDInit;
+        }
+        public CanFrameType FrameKind => CanFrameType.CanClassic;
+
+        public uint RawID { get; init; }
 
         public uint ID
         {
-            get => RawID & 0x1FFFFFFF;
-            set => RawID = (uint)((RawID & ~0x1FFFFFFF) | (value & 0x1FFFFFFF));
+            get => CanIdBits.GetId(RawID);
+            init => RawID = CanIdBits.SetId(RawID, value);
         }
-
-        public virtual byte Dlc => (byte)DataLen;
 
         public bool IsExtendedFrame
         {
-            get => (RawID & (1 << 31)) != 0;
-            set
-            {
-                if (value)
-                    RawID |= (1u << 31);
-                else
-                    RawID &= ~(1u << 31);
-            }
+            get => CanIdBits.IsExtended(RawID);
+            init => RawID = CanIdBits.WithExtended(RawID, value);
         }
         public bool IsRemoteFrame
         {
-            get => (RawID & (1 << 30)) != 0;
-            set
-            {
-                if (value)
-                    RawID |= (1u << 30);
-                else
-                    RawID &= ~(1u << 30);
-            }
+            get => CanIdBits.IsRemote(RawID);
+            init => RawID = CanIdBits.WithRemote(RawID, value);
         }
-
         public bool IsErrorFrame
         {
-            get => (RawID & (1 << 29)) != 0;
-            set
-            {
-                if (value)
-                    RawID |= (1u << 29);
-                else
-                    RawID &= ~(1u << 29);
-            }
+            get => CanIdBits.IsError(RawID);
+            init => RawID = CanIdBits.WithError(RawID, value);
         }
 
-        public virtual byte[] Data
+        public  ReadOnlyMemory<byte> Data
         {
             get => _data;
-            set
-            {
-                if (value == null)
-                {
-                    _data =[];
-                    return;
-                }
-                if (value.Length > 8)
-                    throw new ArgumentOutOfRangeException(nameof(value), "Classic CAN frame data length cannot exceed 8 bytes.");
-                _data = value;
-            }
+            init =>  _data = Validate(value);
+            
         }
-        public string GetStringData(string encoding)
+
+        public byte Dlc => (byte)Data.Length;
+
+        private static ReadOnlyMemory<byte> Validate(ReadOnlyMemory<byte> src)
         {
-            Encoding enc = Encoding.GetEncoding(encoding);
-            return enc.GetString(Data);
+            if (src.Length > 8) throw new ArgumentOutOfRangeException(nameof(Data),
+                "Classic CAN frame data length cannot exceed 8 bytes.");
+            return src;
         }
-
-      
         
-   
-
-     
-
-        public virtual int DataLen => _data?.Length ?? 0;
-
-        public override CanFrameType FrameKind => CanFrameType.CanClassic;
-
-
-        protected byte[] _data = null;
+        private readonly ReadOnlyMemory<byte> _data;
     }
+    
 
     
- 
-    public record CanFdFrame : CanClassicFrame
+    public readonly struct CanFdFrame : ICanFrame
     {
-        public CanFdFrame(byte flags, uint rawID, byte[] data) : base(rawID, data) 
+        public CanFdFrame(uint rawIdInit, ReadOnlyMemory<byte> dataInit = default, bool BRS = false, bool ESI = false)
         {
-            BRS = (flags & 0x1) != 0;
-            ESI = (flags & 0x2) != 0;
+            RawID = rawIdInit;
+            _data = Validate(_data);
+            BitRateSwitch = BRS;
+            ErrorStateIndicator = ESI;
+        }
+        public CanFrameType FrameKind => CanFrameType.CanFd;
+
+        public uint RawID { get; init; }
+
+        public uint ID
+        {
+            get => CanIdBits.GetId(RawID);
+            init => RawID = CanIdBits.SetId(RawID, value);
         }
 
-        public override byte[] Data
+        public bool IsExtendedFrame
+        {
+            get => CanIdBits.IsExtended(RawID);
+            init => RawID = CanIdBits.WithExtended(RawID, value);
+        }
+        public bool IsRemoteFrame
+        {
+            get => CanIdBits.IsRemote(RawID);
+            init => RawID = CanIdBits.WithRemote(RawID, value);
+        }
+        public bool IsErrorFrame
+        {
+            get => CanIdBits.IsError(RawID);
+            init => RawID = CanIdBits.WithError(RawID, value);
+        }
+
+        public bool BitRateSwitch { get; init; }
+        public bool ErrorStateIndicator { get; init; }
+
+        public ReadOnlyMemory<byte> Data
         {
             get => _data;
-            set
-            {
-                if (value == null)
-                {
-                    _data = value;
-                    return;
-                }
-                _ = LenToDlc(_data.Length);
-                _data = value;
-            }
+            init => _data = Validate(value);
         }
 
-        public override byte Dlc => LenToDlc(DataLen);
+        public byte Dlc => LenToDlc(Data.Length);
 
         public static int DlcToLen(byte dlc)
-        {
-            if (dlc <= 8) return dlc;
-            return dlc switch
+            => dlc <= 8 ? dlc : dlc switch
             {
-                9 => 12,
-                10 => 16,
-                11 => 20,
-                12 => 24,
-                13 => 32,
-                14 => 48,
-                15 => 64,
+                9 => 12, 10 => 16, 11 => 20, 12 => 24, 13 => 32, 14 => 48, 15 => 64,
                 _ => throw new ArgumentOutOfRangeException(nameof(dlc))
             };
-        }
 
         public static byte LenToDlc(int len)
         {
@@ -157,24 +148,17 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
             if (len <= 8) return (byte)len;
             return len switch
             {
-                <= 12 => 9,
-                <= 16 => 10,
-                <= 20 => 11,
-                <= 24 => 12,
-                <= 32 => 13,
-                <= 48 => 14,
-                _ => 15,
+                <= 12 => 9, <= 16 => 10, <= 20 => 11, <= 24 => 12, <= 32 => 13, <= 48 => 14, _ => 15,
             };
         }
 
-        public byte Flag => (byte)((BRS ? 1 : 0) + (ESI ? 2 : 0));
+        private static ReadOnlyMemory<byte> Validate(ReadOnlyMemory<byte> src)
+        {
+            _ = LenToDlc(src.Length); // 触发范围检查
+            return src;
+        }
 
-        public bool BRS { get; set; } 
-
-        public bool ESI { get; set; }
-
-
-        public override CanFrameType FrameKind => CanFrameType.CanFd;
+        private readonly ReadOnlyMemory<byte> _data;
     }
     
     

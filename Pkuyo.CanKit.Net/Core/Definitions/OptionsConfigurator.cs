@@ -12,9 +12,9 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
             IDeviceRTOptionsConfigurator
         where TDeviceOptions : class, IDeviceOptions
     {
+        public ICanModelProvider Provider => _options.Provider;
         public DeviceType DeviceType   => _options.DeviceType;
         public uint       TxTimeOut    => _options.TxTimeOut;
-        public bool       MergeReceive => _options.MergeReceive;
         
     }
 
@@ -25,7 +25,7 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
           IChannelRTOptionsConfigurator
         where TChannelOptions : class, IChannelOptions
     {
-        
+        public ICanModelProvider Provider => _options.Provider;
         public int            ChannelIndex        => _options.ChannelIndex;
         public BitTiming      BitTiming           => _options.BitTiming;
         public TxRetryPolicy  TxRetryPolicy       => _options.TxRetryPolicy;
@@ -33,6 +33,7 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
         public uint           BusUsagePeriodTime  => _options.BusUsagePeriodTime;
         public ChannelWorkMode WorkMode           => _options.WorkMode;
         public bool           InternalResistance  => _options.InternalResistance;
+        public CanProtocolMode ProtocolMode       => _options.ProtocolMode;
 
 
         public ChannelRTOptionsConfigurator<TChannelOptions> SetInternalResistance(bool enabled)
@@ -48,10 +49,9 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
         where TDeviceOptions : class, IDeviceOptions
         where TSelf : DeviceInitOptionsConfigurator<TDeviceOptions, TSelf>
     {
-        // 协变只读
+        public ICanModelProvider Provider => _options.Provider;
         public DeviceType DeviceType => _options.DeviceType;
         public uint TxTimeOutTime => _options.TxTimeOut;
-        public bool EnableMergeReceive => _options.MergeReceive;
 
         public TSelf TxTimeOut(uint ms)
         {
@@ -59,14 +59,7 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
             return (TSelf)this;
         }
 
-        public TSelf MergeReceive(bool enable)
-        {
-            _options.MergeReceive = enable;
-            return (TSelf)this;
-        }
-
-        IDeviceInitOptionsConfigurator IDeviceInitOptionsConfigurator.MergeReceive(bool enable)
-            => MergeReceive(enable);
+        
         
         IDeviceInitOptionsConfigurator IDeviceInitOptionsConfigurator.TxTimeOut(uint ms)
             => TxTimeOut(ms);
@@ -80,6 +73,7 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
     where TSelf : ChannelInitOptionsConfigurator<TChannelOptions, TSelf>
     {
  
+        public ICanModelProvider Provider => _options.Provider;
         public int ChannelIndex => _options.ChannelIndex;
         public BitTiming BitTiming => _options.BitTiming;
         public TxRetryPolicy TxRetryPolicy => _options.TxRetryPolicy;
@@ -87,7 +81,8 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
         public uint BusUsagePeriodTime => _options.BusUsagePeriodTime;
         public ChannelWorkMode WorkMode => _options.WorkMode;
         public bool InternalResistance => _options.InternalResistance;
-        
+        public CanProtocolMode ProtocolMode { get; }
+
 
         public TSelf Baud(uint baud)
         {
@@ -128,7 +123,13 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
             _options.InternalResistance = enabled;
             return (TSelf)this;
         }
-        
+
+        public TSelf SetProtocolMode(CanProtocolMode mode)
+        {
+            _options.WorkMode = WorkMode;
+            return (TSelf)this;
+        }
+
         IChannelInitOptionsConfigurator IChannelInitOptionsConfigurator.Baud(uint baud) 
             => Baud(baud);
 
@@ -146,6 +147,9 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
 
         IChannelInitOptionsConfigurator IChannelInitOptionsConfigurator.InternalRes(bool enabled) 
             => InternalRes(enabled);
+
+        IChannelInitOptionsConfigurator IChannelInitOptionsConfigurator.SetProtocolMode(CanProtocolMode mode)
+            => SetProtocolMode(mode);
     }
 
 }

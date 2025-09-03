@@ -26,8 +26,6 @@ namespace Pkuyo.CanKit.Net.Core.Abstractions
         DeviceType DeviceType { get; }
 
         uint TxTimeOut { get; set; }
-
-        bool MergeReceive { get; set; }
     }
 
     public interface IChannelOptions : ICanOptions
@@ -46,5 +44,7 @@ namespace Pkuyo.CanKit.Net.Core.Abstractions
         ChannelWorkMode WorkMode { get; set; }
         
         TxRetryPolicy TxRetryPolicy { get; set; }
+        
+        CanProtocolMode ProtocolMode { get; set; }
     }
 }

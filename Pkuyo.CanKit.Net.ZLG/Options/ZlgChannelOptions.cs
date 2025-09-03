@@ -35,5 +35,8 @@ namespace Pkuyo.CanKit.ZLG.Options
         [CanOptionItem("/set_tx_retry_policy", CanOptionType.Init,
             "Pkuyo.CanKit.Net.Core.Definitions.TxRetryPolicy.NoRetry")]
         public partial TxRetryPolicy TxRetryPolicy { get; set; }
+
+        public CanProtocolMode ProtocolMode { get; set; }
+        
     }
 }

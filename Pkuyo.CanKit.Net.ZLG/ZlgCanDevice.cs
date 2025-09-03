@@ -83,5 +83,7 @@ namespace Pkuyo.CanKit.ZLG
         }
 
         public CanOptionType ApplierStatus => IsDeviceOpen ? CanOptionType.Runtime : CanOptionType.Init;
+        
+        IDeviceRTOptionsConfigurator ICanDevice.Options => Options;
      }
 }

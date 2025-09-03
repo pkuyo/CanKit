@@ -95,7 +95,7 @@ namespace Pkuyo.CanKit.Net
                 configure(specCfg);
             }
             
-            var transceivers = Provider.CreateTransceivers();
+            var transceivers = Provider.Factory.CreateTransceivers(Device.Options, specCfg);
 
             var innerChannel = (TCanChannel)provider.Factory.CreateChannel(Device, options, transceivers);
             if (innerChannel != null)

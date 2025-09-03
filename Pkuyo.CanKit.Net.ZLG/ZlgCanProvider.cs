@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using Pkuyo.CanKit.Net.Core;
 using Pkuyo.CanKit.Net.Core.Abstractions;
 using Pkuyo.CanKit.Net.Core.Definitions;
@@ -16,8 +17,7 @@ namespace Pkuyo.CanKit.ZLG
 
         public virtual bool IsFd => false;
         
-        protected virtual bool EnableMerge => false;
-        protected virtual bool EnableLin => false;
+        public virtual bool EnableMerge => false;
         
         public ICanFactory Factory => CanRegistry.Registry.Factory("Zlg");
         
@@ -35,22 +35,6 @@ namespace Pkuyo.CanKit.ZLG
             var cfg = new ZlgChannelInitConfigurator();
             cfg.Init(option, Features);
             return (option, cfg);
-        }
-
-        public IEnumerable<ITransceiver> CreateTransceivers()
-        {
-            if ((uint)(Features & CanFeature.CanClassic) == 1U)
-                yield return new ZlgCanClassicTransceiver();
-            
-            if ((uint)(Features & CanFeature.CanFd) == 1U)
-                yield return new ZlgCanFdTransceiver();
-
-            if (EnableLin)
-                yield return new ZlgLinTransceiver();
-            
-            if (EnableMerge)
-                yield return new ZlgMergeTransceiver();
-            
         }
     }
 }

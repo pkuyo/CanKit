@@ -29,7 +29,10 @@ namespace Pkuyo.CanKit.ZLG.Utils
                             receiveData = new CanReceiveData()
                             {
                                 timestamp = data.timeStamp,
-                                canFrame = new CanFdFrame(data.frame.flags,data.frame.can_id, ToArray(data.frame.data, data.frame.len))
+                                canFrame = new CanFdFrame(data.frame.can_id, ToArray(data.frame.data, data.frame.len))
+                                {
+                                    //TODO: flag
+                                }
                             };
                         }
                         else
@@ -79,18 +82,6 @@ namespace Pkuyo.CanKit.ZLG.Utils
                 return 1;
             if ((type & CanFrameType.Error) != 0)
                 return 2;
-            if ((type & CanFrameType.Gps) != 0)
-                return 3;
-            if ((type & CanFrameType.Lin) != 0)
-                return 4;
-            if ((type & CanFrameType.BusStage) != 0)
-                return 5;
-            if ((type & CanFrameType.LinError) != 0)
-                return 6;
-            if ((type & CanFrameType.LinEx) != 0)
-                return 7;
-            if ((type & CanFrameType.LinEvent) != 0)
-                return 8;
             return 0;
         }
 
@@ -113,9 +104,9 @@ namespace Pkuyo.CanKit.ZLG.Utils
                internal static unsafe CanClassicFrame FromReceiveData(this ZLGCAN.can_frame frame)
         {
             var result = new CanClassicFrame(frame.can_id,new byte[frame.can_dlc]);
-            fixed (byte* ptr = result.Data)
+            fixed (byte* ptr = result.Data.Span)
             {
-                Unsafe.CopyBlockUnaligned(frame.data,ptr, (uint)result.DataLen);
+                Unsafe.CopyBlockUnaligned(frame.data,ptr, (uint)result.Data.Length);
             }
             return result;
         }
@@ -123,17 +114,17 @@ namespace Pkuyo.CanKit.ZLG.Utils
         internal static unsafe ZLGCAN.ZCAN_Transmit_Data ToTransmitData(this CanClassicFrame frame)
         {
             ZLGCAN.ZCAN_Transmit_Data data = new ZLGCAN.ZCAN_Transmit_Data();
-            fixed (byte* ptr = frame.Data)
+            fixed (byte* ptr = frame.Data.Span)
             {
                 data.frame.can_dlc = frame.Dlc;
                 data.frame.can_id = frame.RawID;
-                Unsafe.CopyBlockUnaligned(ptr, data.frame.data, (uint)frame.DataLen);
+                Unsafe.CopyBlockUnaligned(ptr, data.frame.data, (uint)frame.Data.Length);
                 data.transmit_type = 0; //TODO: 不清楚功能
             }
             return data;
         }
 
-        internal static ZLGCAN.ZCANDataObj ToZCANObj(this CanFrameBase frame, byte channelID)
+        internal static ZLGCAN.ZCANDataObj ToZCANObj(this ICanFrame frame, byte channelID)
         {
             if (frame is CanClassicFrame classicFrame)
                 return classicFrame.ToZCANObj(channelID);
@@ -143,31 +134,28 @@ namespace Pkuyo.CanKit.ZLG.Utils
         {
             ZLGCAN.ZCANDataObj obj = new ZLGCAN.ZCANDataObj
             {
-                dataType = frame.FrameType(),
+                dataType = GetRawFrameType(CanFrameType.CanClassic),
                 chnl = channelID
             };
           
-            fixed (byte * ptr = frame.Data)
+            fixed (byte * ptr = frame.Data.Span)
             {
-                var data = new ZCANCANFDData()
+                var data = new ZCANCANFDData
                 {
                     frameType = 0,
                     timeStamp = 0,
-                    frame = new ZLGCAN.canfd_frame()
+                    frame = new canfd_frame
                     {
                         can_id = frame.RawID,
-                        len = (byte)frame.DataLen,
+                        len = (byte)frame.Data.Length,
                     }
                 };
-                if (frame is CanFdFrame frame2)
-                    data.frame.flags = frame2.Flag; //TODO: 检查是不是格式理解错了
-                Unsafe.CopyBlockUnaligned(ptr, data.frame.data, (uint)frame.DataLen);
+                Unsafe.CopyBlockUnaligned(ptr, data.frame.data, (uint)frame.Data.Length);
                 StructCopyToBuffer(data, obj.data, 92);
 
             }
             return obj;
         }
         
-        internal static byte FrameType(this CanFrameBase frame) => ZlgNativeExtension.GetRawFrameType(frame.FrameKind);
     }
 }

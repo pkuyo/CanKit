@@ -13,18 +13,16 @@ namespace Pkuyo.CanKit.ZLG
     public sealed class ZlgCanChannel : ICanChannel<ZlgChannelRTConfigurator>
     {
 
-        internal ZlgCanChannel(ZlgChannelHandle nativeHandle, IChannelOptions options, IEnumerable<ITransceiver> transceivers, CanFeature canFeature)
+        internal ZlgCanChannel(ZlgChannelHandle nativeHandle, IChannelOptions options, ITransceiver transceiver, CanFeature canFeature)
         {
             _nativeHandle = nativeHandle;
             Options = new ZlgChannelRTConfigurator();
             Options.Init((ZlgChannelOptions)options, canFeature);
-            var dic = new Dictionary<ZlgFrameType, IZlgTransceiver>();
+
+            if (transceiver is not IZlgTransceiver zlg)
+                throw new Exception(); //TODO:异常处理
             
-            var zlgTransceivers = transceivers.OfType<IZlgTransceiver>();
-            
-            foreach(var item in zlgTransceivers)
-                dic.Add(item.FrameType, item);
-            _transceivers = dic;
+            _transceiver = zlg;
         }
 
         public void Start()
@@ -64,7 +62,7 @@ namespace Pkuyo.CanKit.ZLG
         {
             ThrowIfDisposed();
 
-            return _transceivers[ZlgFrameType.CanClassic].Transmit(this, frames);
+            return _transceiver.Transmit(this, frames);
         }
         public IEnumerable<CanReceiveData> ReceiveAll(CanFrameType filterType)
         {
@@ -74,33 +72,13 @@ namespace Pkuyo.CanKit.ZLG
 
             if (count == 0)
                 return [];
-            var zlgFilterType = filterType switch
-            {
-                CanFrameType.Any => ZlgFrameType.Any,
-                CanFrameType.CanFd => ZlgFrameType.CanFd,
-                CanFrameType.CanClassic => ZlgFrameType.CanClassic,
-                CanFrameType.Lin => ZlgFrameType.Lin,
-                _ => throw new NotSupportedException("ZlgCan 仅支持 Can/CanFD/Any/Lin")
-            };
-            if (_transceivers.TryGetValue(zlgFilterType, out var transceiver))
-                return transceiver.Receive(this, count);
-            
-            throw new NotSupportedException($"{filterType} not supported");
+      
+            return _transceiver.Receive(this, count);
         }
         public IEnumerable<CanReceiveData> Receive(CanFrameType filterType, uint count = 1, int timeOut = -1)
         {
             ThrowIfDisposed();
-            var zlgFilterType = filterType switch
-            {
-                CanFrameType.Any => ZlgFrameType.Any,
-                CanFrameType.CanFd => ZlgFrameType.CanFd,
-                CanFrameType.CanClassic => ZlgFrameType.CanClassic,
-                CanFrameType.Lin => ZlgFrameType.Lin,
-                _ => throw new NotSupportedException("ZlgCan 仅支持 Can/CanFD/Any/Lin")
-            };
-            if (_transceivers.TryGetValue(zlgFilterType, out var transceiver))
-                return transceiver.Receive(this, count, timeOut);
-            throw new NotSupportedException($"{filterType} not supported");
+            return _transceiver.Receive(this, count, timeOut);
         }
         
         
@@ -118,9 +96,8 @@ namespace Pkuyo.CanKit.ZLG
             };
             return ZLGCAN.ZCAN_GetReceiveNum(_nativeHandle, (byte)zlgFilterType);
         }
+
         
-
-
         public void Dispose()
         {
             try
@@ -147,10 +124,12 @@ namespace Pkuyo.CanKit.ZLG
 
         public ZlgChannelRTConfigurator Options { get; }
         
+        IChannelRTOptionsConfigurator ICanChannel.Options => Options;
+        
 
         private readonly ZlgChannelHandle _nativeHandle;
         
-        private readonly IReadOnlyDictionary<ZlgFrameType, IZlgTransceiver>  _transceivers;
+        private readonly IZlgTransceiver  _transceiver;
 
         private bool _isDisposed;
 

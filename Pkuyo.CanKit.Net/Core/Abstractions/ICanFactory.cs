@@ -7,7 +7,10 @@ public interface ICanFactory
 {
     ICanDevice CreateDevice(IDeviceOptions options);
     
-    ICanChannel CreateChannel(ICanDevice device, IChannelOptions options, IEnumerable<ITransceiver> transceivers);
+    ICanChannel CreateChannel(ICanDevice device, IChannelOptions options, ITransceiver transceiver);
+    
+    ITransceiver CreateTransceivers(IDeviceRTOptionsConfigurator deviceOptions,
+        IChannelInitOptionsConfigurator channelOptions);
     
     bool Support(DeviceType deviceType);
 }

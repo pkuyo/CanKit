@@ -11,6 +11,8 @@ namespace Pkuyo.CanKit.Net.Core.Abstractions
         void CloseDevice();
 
         bool IsDeviceOpen { get; }
+        
+        IDeviceRTOptionsConfigurator Options { get; }
     }
 
     public interface ICanDevice<out TConfigurator> : ICanDevice
