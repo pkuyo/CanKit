@@ -22,24 +22,7 @@ public class ZlgCanFactory : ICanFactory
         if(device is not ZlgCanDevice zlgCanDevice)
             throw new Exception(); //TODO: 异常处理
         
-        var zlgProvider = (ZlgCanProvider)options.Provider;
-        ZLGCAN.ZCAN_CHANNEL_INIT_CONFIG config = new ZLGCAN.ZCAN_CHANNEL_INIT_CONFIG
-        {
-            can_type = zlgProvider.IsFd ? 1U : 0U
-        };
-        if (zlgProvider.IsFd)
-        {
-            
-        }
-        else
-        {
-            
-        }
-        var handle = ZLGCAN.ZCAN_InitCAN(zlgCanDevice.NativeHandler, (uint)options.ChannelIndex, ref config);
-        if (handle.IsInvalid)
-            return null;
-        handle.SetDevice(zlgCanDevice.NativeHandler);
-        return new ZlgCanChannel(handle, options, transceiver, options.Provider.Features);
+        return new ZlgCanChannel(zlgCanDevice, options, transceiver);
     }
 
     public bool Support(DeviceType deviceType)

@@ -11,6 +11,7 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
         uint RawID { get; init; }
         ReadOnlyMemory<byte> Data { get; init; }
         byte Dlc { get; }
+        uint ID { get; init; }
     }
     
     internal static class CanIdBits
@@ -37,10 +38,24 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
     
     public readonly record struct CanClassicFrame : ICanFrame
     {
-
+        public static implicit operator CanTransmitData(CanClassicFrame value)
+        {
+            return new CanTransmitData()
+            {
+                canFrame = value
+            };
+        }
         public CanClassicFrame(uint rawIDInit, ReadOnlyMemory<byte> dataInit = default)
         {
             RawID = rawIDInit;
+            _data = dataInit;
+        }
+        
+        public CanClassicFrame(uint Id, ReadOnlyMemory<byte> dataInit = default, bool isExtendedFrame = false)
+        {
+            ID = Id;
+            IsExtendedFrame = isExtendedFrame;
+            _data = dataInit;
         }
         public CanFrameType FrameKind => CanFrameType.CanClassic;
 

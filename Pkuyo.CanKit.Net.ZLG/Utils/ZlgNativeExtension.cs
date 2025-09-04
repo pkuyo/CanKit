@@ -28,7 +28,7 @@ namespace Pkuyo.CanKit.ZLG.Utils
                         {
                             receiveData = new CanReceiveData()
                             {
-                                timestamp = data.timeStamp,
+                                recvTimestamp = data.timeStamp,
                                 canFrame = new CanFdFrame(data.frame.can_id, ToArray(data.frame.data, data.frame.len))
                                 {
                                     //TODO: flag
@@ -39,7 +39,7 @@ namespace Pkuyo.CanKit.ZLG.Utils
                         {
                             receiveData = new CanReceiveData()
                             {
-                                timestamp = data.timeStamp,
+                                recvTimestamp = data.timeStamp,
                                 canFrame = new CanClassicFrame(data.frame.can_id, ToArray(data.frame.data, data.frame.len))
                             };
                         }
@@ -101,24 +101,24 @@ namespace Pkuyo.CanKit.ZLG.Utils
             Unsafe.CopyBlockUnaligned(&src, dst, 92);
         }
 
-               internal static unsafe CanClassicFrame FromReceiveData(this ZLGCAN.can_frame frame)
+        internal static unsafe CanClassicFrame FromReceiveData(this ZLGCAN.can_frame frame)
         {
             var result = new CanClassicFrame(frame.can_id,new byte[frame.can_dlc]);
             fixed (byte* ptr = result.Data.Span)
             {
-                Unsafe.CopyBlockUnaligned(frame.data,ptr, (uint)result.Data.Length);
+                Unsafe.CopyBlockUnaligned(ptr, frame.data, (uint)result.Data.Length);
             }
             return result;
         }
         
-        internal static unsafe ZLGCAN.ZCAN_Transmit_Data ToTransmitData(this CanClassicFrame frame)
+        internal static unsafe ZCAN_Transmit_Data ToTransmitData(this CanClassicFrame frame)
         {
             ZLGCAN.ZCAN_Transmit_Data data = new ZLGCAN.ZCAN_Transmit_Data();
             fixed (byte* ptr = frame.Data.Span)
             {
                 data.frame.can_dlc = frame.Dlc;
                 data.frame.can_id = frame.RawID;
-                Unsafe.CopyBlockUnaligned(ptr, data.frame.data, (uint)frame.Data.Length);
+                Unsafe.CopyBlockUnaligned(data.frame.data, ptr, (uint)frame.Data.Length);
                 data.transmit_type = 0; //TODO: 不清楚功能
             }
             return data;
@@ -150,7 +150,7 @@ namespace Pkuyo.CanKit.ZLG.Utils
                         len = (byte)frame.Data.Length,
                     }
                 };
-                Unsafe.CopyBlockUnaligned(ptr, data.frame.data, (uint)frame.Data.Length);
+                Unsafe.CopyBlockUnaligned(data.frame.data,ptr, (uint)frame.Data.Length);
                 StructCopyToBuffer(data, obj.data, 92);
 
             }

@@ -25,15 +25,18 @@ namespace Pkuyo.CanKit.ZLG
         {
             var option = new ZlgDeviceOptions(this);
             var cfg = new ZlgDeviceInitOptionsConfigurator();
-            cfg.Init(option, Features);
+            cfg.Init(option);
             return (option, cfg);
         }
 
         public  (IChannelOptions,IChannelInitOptionsConfigurator) GetChannelOptions(int channelIndex)
         {
-            var option = new ZlgChannelOptions(this);
+            var option = new ZlgChannelOptions(this)
+            {
+                ChannelIndex = channelIndex
+            };
             var cfg = new ZlgChannelInitConfigurator();
-            cfg.Init(option, Features);
+            cfg.Init(option);
             return (option, cfg);
         }
     }

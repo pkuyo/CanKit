@@ -9,6 +9,22 @@
         <PackageId>Pkuyo.CanKit.ZLG</PackageId>
     </PropertyGroup>
 
+    <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|x64' ">
+      <Prefer32bit>true</Prefer32bit>
+    </PropertyGroup>
+
+    <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|x86' ">
+      <Prefer32bit>true</Prefer32bit>
+    </PropertyGroup>
+
+    <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|x64' ">
+      <Prefer32bit>true</Prefer32bit>
+    </PropertyGroup>
+
+    <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|x86' ">
+      <Prefer32bit>true</Prefer32bit>
+    </PropertyGroup>
+
     <ItemGroup>
         <ProjectReference Include="..\Pkuyo.CanKit.Net\Pkuyo.CanKit.Net.csproj" />
         <ProjectReference Include="..\Pkuyo.CanKit.Net.Gen\Pkuyo.CanKit.Net.Gen\Pkuyo.CanKit.Net.Gen.csproj"

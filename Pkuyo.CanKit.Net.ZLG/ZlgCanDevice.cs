@@ -13,18 +13,19 @@ namespace Pkuyo.CanKit.ZLG
          public ZlgCanDevice(IDeviceOptions options)
          {
              Options = new ZlgDeviceRTOptionsConfigurator();
-             Options.Init((ZlgDeviceOptions)options, options.Provider.Features);
+             Options.Init((ZlgDeviceOptions)options);
              _options = options;
          }
         public bool OpenDevice()
         {
             ThrowIfDisposed();
-    
-            var handle = ZLGCAN.ZCAN_OpenDevice((uint)(int)Options.DeviceType.Metadata, Options.DeviceIndex, 0);
-            if (handle != null)
+            var ptr = ZLGCAN.ZCAN_OpenDevice(ZLGCAN.ZCAN_USBCAN2,0, 0);
+            var handle = new ZlgDeviceHandle(ptr);
+            if (handle is { IsInvalid: false })
             {
-                _options.Apply(this, true);
                 _nativeHandler = handle;
+                _options.Apply(this, true);
+                isDeviceOpen = true;
                 return IsDeviceOpen;
             }
 
@@ -34,6 +35,7 @@ namespace Pkuyo.CanKit.ZLG
         public void CloseDevice()
         {
             ThrowIfDisposed();
+            isDeviceOpen = false;
             _nativeHandler.Close();
         }
 
@@ -49,11 +51,13 @@ namespace Pkuyo.CanKit.ZLG
         {
             try
             {
+            
                 ThrowIfDisposed();
-                _nativeHandler.Dispose();
+                _nativeHandler?.Dispose();
             }
             finally
             {
+                isDeviceOpen = false;
                 _isDisposed = true;
             }
         }
@@ -61,9 +65,11 @@ namespace Pkuyo.CanKit.ZLG
 
         public ZlgDeviceHandle NativeHandler => _nativeHandler;
 
-        public bool IsDeviceOpen => _nativeHandler is { IsInvalid: false, IsClosed: false };
+        public bool IsDeviceOpen => isDeviceOpen;
         
         public ZlgDeviceRTOptionsConfigurator Options { get; }
+
+        private bool isDeviceOpen = false;
 
         private IDeviceOptions _options;
 

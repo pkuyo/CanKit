@@ -8,6 +8,22 @@
 	  <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|x64' ">
+    <Prefer32bit>true</Prefer32bit>
+  </PropertyGroup>
+
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|x86' ">
+    <Prefer32bit>true</Prefer32bit>
+  </PropertyGroup>
+
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|x64' ">
+    <Prefer32bit>true</Prefer32bit>
+  </PropertyGroup>
+
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|x86' ">
+    <Prefer32bit>true</Prefer32bit>
+  </PropertyGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\Pkuyo.CanKit.Net.ZLG\Pkuyo.CanKit.Net.ZLG.csproj" />
     <ProjectReference Include="..\Pkuyo.CanKit.Net\Pkuyo.CanKit.Net.csproj" />

@@ -4,8 +4,16 @@ using Pkuyo.CanKit.ZLG.Native;
 
 namespace Pkuyo.CanKit.ZLG.Definitions;
 
-public class ZlgDeviceHandle() : SafeHandle(IntPtr.Zero, true)
+public class ZlgDeviceHandle : SafeHandle
 {
+    public ZlgDeviceHandle() : base(IntPtr.Zero, true)
+    {
+        
+    }
+    public ZlgDeviceHandle(IntPtr ptr) : base(ptr, true)
+    {
+        
+    }
     protected override bool ReleaseHandle()
     {
         var result = ZLGCAN.ZCAN_CloseDevice(handle) != 0;
@@ -17,14 +25,14 @@ public class ZlgDeviceHandle() : SafeHandle(IntPtr.Zero, true)
 
 public class ZlgChannelHandle() : SafeHandle(IntPtr.Zero, false)
 {
-    public void SetDevice(ZlgDeviceHandle deviceHandle)
+    public void SetDevice(IntPtr deviceHandle)
     {
         DeviceHandle = deviceHandle;
     }
     
-    public ZlgDeviceHandle DeviceHandle { get; private set; }
+    public IntPtr DeviceHandle { get; private set; }
     
     protected override bool ReleaseHandle() => true;
 
-    public override bool IsInvalid => handle == IntPtr.Zero || DeviceHandle.IsInvalid;
+    public override bool IsInvalid => handle == IntPtr.Zero || DeviceHandle == IntPtr.Zero;
 }

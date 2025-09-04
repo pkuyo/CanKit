@@ -56,9 +56,9 @@ namespace Pkuyo.CanKit.Net
     {
         public TCanChannel this[int index] => innerChannels[index];
 
-        public void Open()
+        public bool Open()
         {
-            Device.OpenDevice();
+            return Device.OpenDevice();
         }
 
         public void Close()
@@ -84,6 +84,9 @@ namespace Pkuyo.CanKit.Net
             where TChannelOptions : class, IChannelOptions
             where TOptionCfg : IChannelInitOptionsConfigurator
         {
+            if (!IsDeviceOpen)
+                throw new Exception(); //TODO: 异常处理
+            
             var (options, cfg) = Provider.GetChannelOptions(index);
             if (options is not TChannelOptions ||
                 cfg is not TOptionCfg specCfg)

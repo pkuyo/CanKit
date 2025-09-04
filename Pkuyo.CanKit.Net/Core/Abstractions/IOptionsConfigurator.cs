@@ -66,10 +66,10 @@ public abstract class CallOptionsConfigurator<TOption, TSelf>
     protected TOption  _options;
     protected CanFeature _feature;
 
-    public virtual TSelf Init(TOption options, CanFeature feature)
+    public virtual TSelf Init(TOption options)
     {
         _options = options;
-        _feature = feature;
+        _feature = options.Provider.Features;
         return (TSelf)this;
     }
 

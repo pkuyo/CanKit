@@ -24,8 +24,8 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
     public record CanReceiveData
     {
         public ICanFrame canFrame;
-        public UInt64 timestamp;
-
-        public DateTime Timestamp => DateTimeOffset.FromUnixTimeMilliseconds((long)timestamp).DateTime;
+        
+        public UInt64 recvTimestamp;
+        public DateTime SystemTimestamp { get;  } = DateTime.Now;
     }
 }

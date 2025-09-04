@@ -11,6 +11,7 @@ namespace Pkuyo.CanKit.ZLG.Transceivers
     {
         public uint Transmit(ICanChannel<IChannelRTOptionsConfigurator> channel, params CanTransmitData[] frames)
         {
+        
             var zcanTransmitDatas = 
                 frames.Select(i => i.canFrame)
                 .OfType<CanClassicFrame>()
@@ -28,7 +29,7 @@ namespace Pkuyo.CanKit.ZLG.Transceivers
 
             return data.Take((int)recCount).Select(i => new CanReceiveData()
             {
-                timestamp = i.timestamp,
+                recvTimestamp = i.timestamp,
                 canFrame = i.frame.FromReceiveData()
             });
         }
