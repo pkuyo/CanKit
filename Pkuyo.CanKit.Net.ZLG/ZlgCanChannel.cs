@@ -1,6 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
+using System.Threading;
 using Pkuyo.CanKit.Net.Core.Abstractions;
 using Pkuyo.CanKit.Net.Core.Definitions;
 using Pkuyo.CanKit.ZLG.Definitions;
@@ -12,12 +12,13 @@ namespace Pkuyo.CanKit.ZLG
 {
     public sealed class ZlgCanChannel : ICanChannel<ZlgChannelRTConfigurator>, ICanApplier
     {
-
+        
         internal ZlgCanChannel(ZlgCanDevice device ,IChannelOptions options, ITransceiver transceiver)
         {
+            _devicePtr = device.NativeHandler.DangerousGetHandle();
+            
             Options = new ZlgChannelRTConfigurator();
             Options.Init((ZlgChannelOptions)options);
-            _devicePtr = device.NativeHandler.DangerousGetHandle();
             options.Apply(this, true);
             
             ZLGCAN.ZCAN_CHANNEL_INIT_CONFIG config = new ZLGCAN.ZCAN_CHANNEL_INIT_CONFIG
@@ -28,20 +29,19 @@ namespace Pkuyo.CanKit.ZLG
             config.config.can.acc_mask = 0x1FFFFFFF;
             var handle = ZLGCAN.ZCAN_InitCAN(device.NativeHandler, (uint)Options.ChannelIndex, ref config);
             handle.SetDevice(device.NativeHandler.DangerousGetHandle());
+            
             if (handle.IsInvalid)
                 throw new Exception(); //TODO:异常处理
-            
-   
             _nativeHandle = handle;
             
             if (transceiver is not IZlgTransceiver zlg)
                 throw new Exception(); //TODO:异常处理
-            
             _transceiver = zlg;
+            
         }
 
   
-        public void Start()
+        public void Open()
         {
             ThrowIfDisposed();
 
@@ -61,9 +61,9 @@ namespace Pkuyo.CanKit.ZLG
             _isOpen = false;
         }
 
-        public void Stop()
+        public void Close()
         {
-            throw new NotImplementedException();
+            Reset();
         }
 
         public void CleanBuffer()
@@ -77,21 +77,9 @@ namespace Pkuyo.CanKit.ZLG
         public uint Transmit(params CanTransmitData[] frames)
         {
             ThrowIfDisposed();
-
             return _transceiver.Transmit(this, frames);
         }
-        public IEnumerable<CanReceiveData> ReceiveAll(CanFrameType filterType)
-        {
-            ThrowIfDisposed();
-
-            var count = CanReceiveCount(filterType);
-
-            if (count == 0)
-                return [];
-      
-            return _transceiver.Receive(this, count);
-        }
-        public IEnumerable<CanReceiveData> Receive(CanFrameType filterType, uint count = 1, int timeOut = -1)
+        public IEnumerable<CanReceiveData> Receive(uint count = 1, int timeOut = -1)
         {
             ThrowIfDisposed();
             return _transceiver.Receive(this, count, timeOut);
@@ -99,17 +87,17 @@ namespace Pkuyo.CanKit.ZLG
         
         
 
-        public uint CanReceiveCount(CanFrameType filterType)
+        public uint GetReceiveCount()
         {
             ThrowIfDisposed();
 
-            var zlgFilterType = filterType switch
+            var zlgFilterType = Options.ProtocolMode switch
             {
-                CanFrameType.Any => ZlgFrameType.Any,
-                CanFrameType.CanFd => ZlgFrameType.CanFd,
-                CanFrameType.CanClassic => ZlgFrameType.CanClassic,
-                _ => throw new NotSupportedException("ZlgCan ReceiveCount 仅支持 Can/CanFD/Any")
+                CanProtocolMode.Merged => ZlgFrameType.Any,
+                CanProtocolMode.CanFd => ZlgFrameType.CanFd,
+                _ => ZlgFrameType.CanClassic
             };
+       
             return ZLGCAN.ZCAN_GetReceiveNum(_nativeHandle, (byte)zlgFilterType);
         }
 
@@ -133,34 +121,16 @@ namespace Pkuyo.CanKit.ZLG
             if (_isDisposed)
                 throw new InvalidOperationException();
         }
-
-        public bool IsOpen => _isOpen;
-
-        public ZlgChannelHandle NativeHandle => _nativeHandle;
-
-        public ZlgChannelRTConfigurator Options { get; }
         
-        IChannelRTOptionsConfigurator ICanChannel.Options => Options;
-        
-
-        private ZlgChannelHandle _nativeHandle;
-
-        private IntPtr _devicePtr;
-        
-        private readonly IZlgTransceiver  _transceiver;
-
-        private bool _isDisposed;
-
-        private bool _isOpen;
         public bool ApplyOne<T>(string name, T value)
         {
-            /*
+            
             if (name[0] == '/')
             {
                 return ZLGCAN.ZCAN_SetValue(_devicePtr,Options.ChannelIndex.ToString() +
                                                       name[0], value.ToString()) != 0;
             }
-            */
+            
             if (value is BitTiming bitTiming)
             {
                 var result = 1U;
@@ -185,8 +155,153 @@ namespace Pkuyo.CanKit.ZLG
             return false;
         }
 
+        private void StartPollingIfNeeded()
+        {
+            if (_pollTask is { IsCompleted: false }) return;
+
+            _pollCts = new CancellationTokenSource();
+            var token = _pollCts.Token;
+            
+            _pollTask = System.Threading.Tasks.Task.Factory.StartNew(
+                () => PollLoop(token),
+                token,
+                System.Threading.Tasks.TaskCreationOptions.LongRunning,
+                System.Threading.Tasks.TaskScheduler.Default
+            );
+        }
+
+        private void StopPolling()
+        {
+            try
+            {
+                _pollCts?.Cancel();
+                _pollTask?.Wait(500); 
+            }
+            catch { /* ignore on shutdown */ }
+            finally
+            {
+                _pollTask = null;
+                _pollCts?.Dispose();
+                _pollCts = null;
+            }
+        }
+
+        private void PollLoop(CancellationToken token)
+        {
+            while (!token.IsCancellationRequested)
+            {
+                // 未 Start，睡眠等待
+                if (!_isOpen)
+                {
+                    Thread.Sleep(20);
+                    continue;
+                }
+
+                // 防御性：无订阅者时退出（正常由 StopPolling 触发，双保险）
+                if (Volatile.Read(ref _subscriberCount) <= 0)
+                {
+                    break;
+                }
+
+                try
+                {
+                    const uint batch = 256;
+                    var count = GetReceiveCount();
+                    if (count > 0)
+                    {
+                        var frames = Receive(Math.Min(count, batch), 0);
+                        foreach (var frame in frames)
+                        {
+                            try
+                            {
+                                _frameReceived?.Invoke(this, frame);
+                            }
+                            catch (Exception ex)
+                            {
+                                // TODO: 异常处理
+                                System.Diagnostics.Debug.WriteLine($"FrameReceived handler error: {ex}");
+                            }
+                        }
+                    }
+                    else
+                    {
+                        Thread.Sleep(20);
+                    }
+                }
+                catch (ObjectDisposedException)
+                {
+                    // 通道或底层已释放，退出
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    // 其他异常：短暂休眠并继续，避免热循环
+                    //TODO: 异常处理
+                    System.Diagnostics.Debug.WriteLine($"PollLoop error: {ex}");
+                    Thread.Sleep(20);
+                }
+            }
+        }
+
+   
+        
+        public bool IsOpen => _isOpen;
+
+        public ZlgChannelHandle NativeHandle => _nativeHandle;
+
+        public ZlgChannelRTConfigurator Options { get; }
+        
+        IChannelRTOptionsConfigurator ICanChannel.Options => Options;
+        
         public CanOptionType ApplierStatus => _nativeHandle is { IsInvalid: false, IsClosed: false } ?
             CanOptionType.Runtime : 
             CanOptionType.Init;
+        
+        public event EventHandler<CanReceiveData> FrameReceived
+        {
+            add
+            {
+                lock (_evtGate)
+                {
+                    _frameReceived += value;
+                    _subscriberCount++;
+                    if (_subscriberCount == 1)
+                    {
+                        StartPollingIfNeeded();
+                    }
+                }
+            }
+            remove
+            {
+                lock (_evtGate)
+                {
+                    _frameReceived -= value;
+                    _subscriberCount = Math.Max(0, _subscriberCount - 1);
+                    if (_subscriberCount == 0)
+                    {
+                        StopPolling();
+                    }
+                }
+            }
+        }
+        private readonly ZlgChannelHandle _nativeHandle;
+
+        private readonly IntPtr _devicePtr;
+        
+        private readonly IZlgTransceiver  _transceiver;
+
+        private bool _isDisposed;
+
+        private bool _isOpen;
+        
+        private readonly object _evtGate = new ();
+        
+        private EventHandler<CanReceiveData> _frameReceived; 
+        
+        private int _subscriberCount;                       
+
+        private CancellationTokenSource _pollCts;
+        
+        private System.Threading.Tasks.Task _pollTask;
     }
 }

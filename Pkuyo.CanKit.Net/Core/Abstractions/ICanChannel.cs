@@ -7,30 +7,30 @@ namespace Pkuyo.CanKit.Net.Core.Abstractions
     
     public interface ICanChannel : IDisposable
     {
-        void Start();
+        void Open();
+        
+        void Close();
 
         void Reset();
-        
-        void Stop();
 
         void CleanBuffer();
 
         uint Transmit(params CanTransmitData[] frames);
+        
+        IEnumerable<CanReceiveData> Receive(uint count = 1, int timeOut = -1);
 
-        IEnumerable<CanReceiveData> ReceiveAll(CanFrameType filterType);
-
-        IEnumerable<CanReceiveData> Receive(CanFrameType filterType, uint count = 1, int timeOut = -1);
-
-        uint CanReceiveCount(CanFrameType filterType);
+        uint GetReceiveCount();
 
         IChannelRTOptionsConfigurator Options { get; }
-        
 
+        event EventHandler<CanReceiveData> FrameReceived;
     }
+    
 
     public interface ICanChannel<out TConfigurator> : ICanChannel
         where TConfigurator : IChannelRTOptionsConfigurator
     {
         TConfigurator Options { get; }
     }
+    
 }

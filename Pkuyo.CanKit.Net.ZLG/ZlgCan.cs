@@ -1,5 +1,6 @@
 ﻿using System;
 using Pkuyo.CanKit.Net;
+using Pkuyo.CanKit.Net.Core;
 using Pkuyo.CanKit.Net.Core.Abstractions;
 using Pkuyo.CanKit.Net.Core.Definitions;
 using Pkuyo.CanKit.ZLG.Options;

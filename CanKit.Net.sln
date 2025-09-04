@@ -5,7 +5,7 @@ VisualStudioVersion = 17.13.35931.197
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Pkuyo.CanKit.Net", "Pkuyo.CanKit.Net\Pkuyo.CanKit.Net.csproj", "{FAEC4575-7237-465F-9858-B38135176125}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Pkuyo.CanKit.Net.Test", "Pkuyo.CanKit.Net.Tests\Pkuyo.CanKit.Net.Test.csproj", "{EDBDE271-BC06-4B74-89FC-4220FA742317}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Pkuyo.CanKit.Net.Sample", "Pkuyo.CanKit.Net.Sample\Pkuyo.CanKit.Net.Sample.csproj", "{EDBDE271-BC06-4B74-89FC-4220FA742317}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Pkuyo.CanKit.Net.ZLG", "Pkuyo.CanKit.Net.ZLG\Pkuyo.CanKit.Net.ZLG.csproj", "{446B2183-A4B0-4E78-BF4B-F077ED6B9B55}"
 EndProject
