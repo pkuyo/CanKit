@@ -301,6 +301,8 @@ namespace Pkuyo.CanKit.Net.Gen
                 sb.AppendLine($" && applier.ApplyOne<{p.TypeDisplay}>(\"{p.OptionName}\",{backing}))");
                 sb.AppendLine($"            _hasChanged[{i}] = false;");
             }
+
+            sb.AppendLine($"        applier.Apply(this);");
             sb.AppendLine("    }");
             // 关闭嵌套
             while (stack.Count > 0)

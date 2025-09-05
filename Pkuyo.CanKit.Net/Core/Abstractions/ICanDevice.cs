@@ -18,6 +18,6 @@ namespace Pkuyo.CanKit.Net.Core.Abstractions
     public interface ICanDevice<out TConfigurator> : ICanDevice
         where TConfigurator : IDeviceRTOptionsConfigurator
     {
-        TConfigurator Options { get; }
+        new TConfigurator Options { get; }
     }
 }

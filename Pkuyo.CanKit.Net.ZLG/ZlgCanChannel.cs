@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using Pkuyo.CanKit.Net.Core.Abstractions;
 using Pkuyo.CanKit.Net.Core.Definitions;
@@ -23,10 +24,31 @@ namespace Pkuyo.CanKit.ZLG
             
             ZLGCAN.ZCAN_CHANNEL_INIT_CONFIG config = new ZLGCAN.ZCAN_CHANNEL_INIT_CONFIG
             {
-                can_type = options.ProtocolMode == CanProtocolMode.Can20 ? 0U : 1U
+                can_type = options.ProtocolMode == CanProtocolMode.Can20 ? 0U : 1U,
             };
-            config.config.can.acc_code = 0;
-            config.config.can.acc_mask = 0x1FFFFFFF;
+            if (options.ProtocolMode == CanProtocolMode.Can20)
+            {
+                config.config.can.mode = (byte)options.WorkMode;
+                if (options.Filter != null && 
+                    options.Filter.filterRules.Count > 0 && 
+                    options.Filter.filterRules[0] is FilterRule.Mask mask)
+                {
+                    config.config.can.acc_code = mask.AccCode;
+                    config.config.can.acc_mask = mask.AccMask;
+                    config.config.can.filter = (byte)Options.MaskFilterType;
+                    //TODO:多与一项时的警告
+                }
+                else
+                {
+                    config.config.can.acc_code = 0;
+                    config.config.can.acc_mask = 0xffffffff;
+                }
+            }
+            else
+            {
+                
+            }
+
             var handle = ZLGCAN.ZCAN_InitCAN(device.NativeHandler, (uint)Options.ChannelIndex, ref config);
             handle.SetDevice(device.NativeHandler.DangerousGetHandle());
             
@@ -124,35 +146,68 @@ namespace Pkuyo.CanKit.ZLG
         
         public bool ApplyOne<T>(string name, T value)
         {
-            
-            if (name[0] == '/')
-            {
-                return ZLGCAN.ZCAN_SetValue(_devicePtr,Options.ChannelIndex.ToString() +
-                                                      name[0], value.ToString()) != 0;
-            }
-            
-            if (value is BitTiming bitTiming)
-            {
-                var result = 1U;
-                if (bitTiming.ArbitrationBitRate != null)
-                {
-                 
-                    result &= ZLGCAN.ZCAN_SetValue(_devicePtr,Options.ChannelIndex +
-                                                              "/canfd_abit_baud_rate", 
-                        bitTiming.ArbitrationBitRate.ToString());
-                    result &= ZLGCAN.ZCAN_SetValue(_devicePtr,Options.ChannelIndex +
-                                                               "/canfd_dbit_baud_rate", 
-                        bitTiming.DataBitRate.ToString());
-                }
-                else if (bitTiming.BaudRate != null)
-                {
-                    result &= ZLGCAN.ZCAN_SetValue(_devicePtr,Options.ChannelIndex +
-                                                                "/baud_rate", bitTiming.BaudRate.ToString());
-                }
+            return ZLGCAN.ZCAN_SetValue(_devicePtr,
+                Options.ChannelIndex.ToString() + name[0], value.ToString()) != 0;
+        }
 
-                return result != 0;
+        public void Apply(ICanOptions options)
+        {
+            var zlgOption = (ZlgChannelOptions)options;
+            
+            //TODO:异常处理
+            
+            //BitTiming
+            if (zlgOption.BitTiming.ArbitrationBitRate != null)
+            {
+
+                ZLGCAN.ZCAN_SetValue(_devicePtr, 
+                    Options.ChannelIndex + "/canfd_abit_baud_rate",
+                    zlgOption.BitTiming.ArbitrationBitRate.ToString());
+                ZLGCAN.ZCAN_SetValue(_devicePtr, 
+                    Options.ChannelIndex + "/canfd_dbit_baud_rate",
+                    zlgOption.BitTiming.DataBitRate.ToString());
             }
-            return false;
+            else if (zlgOption.BitTiming.BaudRate != null)
+            {
+                ZLGCAN.ZCAN_SetValue(_devicePtr, 
+                    Options.ChannelIndex + "/baud_rate", zlgOption.BitTiming.BaudRate.ToString());
+            }
+            
+            
+            //WorkMode
+            ZLGCAN.ZCAN_SetValue(_devicePtr, 
+                Options.ChannelIndex + "/work_mode", ((int)Options.WorkMode).ToString());
+
+            //Filter
+            if (zlgOption.Filter != null && zlgOption.Filter.filterRules.Count > 0)
+            {
+                if (zlgOption.Filter.filterRules[0] is FilterRule.Mask mask)
+                {
+                    if (zlgOption.Filter.filterRules.Count > 1)
+                        throw new NotSupportedException(); //TODO:异常处理
+                    
+                    ZLGCAN.ZCAN_SetValue(_devicePtr, 
+                        Options.ChannelIndex + "/acc_code", mask.AccCode.ToString());
+                    ZLGCAN.ZCAN_SetValue(_devicePtr, 
+                        Options.ChannelIndex + "/acc_mask", mask.AccMask.ToString());
+                    
+                }
+                else
+                {
+                    foreach (var range in zlgOption.Filter.filterRules.OfType<FilterRule.Range>())
+                    {
+                        ZLGCAN.ZCAN_SetValue(_devicePtr, 
+                            Options.ChannelIndex + "/filter_mode",((int)range.IdIdType).ToString());
+                        ZLGCAN.ZCAN_SetValue(_devicePtr, 
+                            Options.ChannelIndex + "/filter_start",range.From.ToString());
+                        ZLGCAN.ZCAN_SetValue(_devicePtr, 
+                            Options.ChannelIndex + "/filter_end",range.To.ToString());
+                    }
+
+                    ZLGCAN.ZCAN_SetValue(_devicePtr,
+                        Options.ChannelIndex + "/filter_ack", "1");
+                }
+            }
         }
 
         private void StartPollingIfNeeded()
@@ -227,6 +282,13 @@ namespace Pkuyo.CanKit.ZLG
                     {
                         Thread.Sleep(20);
                     }
+
+                    if (_errorOccurred != null)
+                    {
+                        var errInfo = new ZLGCAN.ZCAN_CHANNEL_ERROR_INFO();
+                        ZLGCAN.ZCAN_ReadChannelErrInfo(_nativeHandle, ref errInfo);
+                        _errorOccurred?.Invoke(this,new CanErrorFrame());
+                    }
                 }
                 catch (ObjectDisposedException)
                 {
@@ -243,7 +305,23 @@ namespace Pkuyo.CanKit.ZLG
             }
         }
 
-   
+        private void CheckSubscribers(bool isIncrease)
+        {
+            if (isIncrease)
+            {
+                if (_subscriberCount == 1)
+                {
+                    StartPollingIfNeeded();
+                }
+            }
+            else
+            {
+                if (_subscriberCount == 0)
+                {
+                    StopPolling();
+                }
+            }
+        }
         
         public bool IsOpen => _isOpen;
 
@@ -265,10 +343,7 @@ namespace Pkuyo.CanKit.ZLG
                 {
                     _frameReceived += value;
                     _subscriberCount++;
-                    if (_subscriberCount == 1)
-                    {
-                        StartPollingIfNeeded();
-                    }
+                    CheckSubscribers(true);
                 }
             }
             remove
@@ -277,10 +352,30 @@ namespace Pkuyo.CanKit.ZLG
                 {
                     _frameReceived -= value;
                     _subscriberCount = Math.Max(0, _subscriberCount - 1);
-                    if (_subscriberCount == 0)
-                    {
-                        StopPolling();
-                    }
+                    CheckSubscribers(false);
+                }
+            }
+        }
+
+        public event EventHandler<CanErrorFrame> ErrorOccurred
+        {
+            add
+            {   
+                lock (_evtGate)
+                {
+                    _errorOccurred += value;
+                    _subscriberCount++;
+                    CheckSubscribers(true);
+                }
+      
+            }
+            remove
+            {
+                lock (_evtGate)
+                {
+                    _errorOccurred -= value;
+                    _subscriberCount--;
+                    CheckSubscribers(false);
                 }
             }
         }
@@ -298,8 +393,10 @@ namespace Pkuyo.CanKit.ZLG
         
         private EventHandler<CanReceiveData> _frameReceived; 
         
-        private int _subscriberCount;                       
-
+        private EventHandler<CanErrorFrame> _errorOccurred; 
+        
+        private int _subscriberCount;
+        
         private CancellationTokenSource _pollCts;
         
         private System.Threading.Tasks.Task _pollTask;

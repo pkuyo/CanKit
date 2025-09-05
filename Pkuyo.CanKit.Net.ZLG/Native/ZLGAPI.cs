@@ -220,7 +220,7 @@ namespace Pkuyo.CanKit.ZLG.Native
         public static extern uint ZCAN_IsDeviceOnLine(ZlgDeviceHandle device_handle);
 
         [DllImport("zlgcan.dll", CallingConvention = CallingConvention.StdCall)]
-        public static extern uint ZCAN_ReadChannelErrInfo(ZlgChannelHandle channel_handle, IntPtr pErrInfo);
+        public static extern uint ZCAN_ReadChannelErrInfo(ZlgChannelHandle channel_handle,ref ZCAN_CHANNEL_ERROR_INFO pErrInfo);
         #endregion
 
         #region 结构体
@@ -266,7 +266,8 @@ namespace Pkuyo.CanKit.ZLG.Native
             public ushort pad;
             public uint reserved;
         }
-
+        
+     
 
         [StructLayout(LayoutKind.Sequential, Pack = 1)]
         public struct ZCAN_Transmit_Data
@@ -560,10 +561,11 @@ namespace Pkuyo.CanKit.ZLG.Native
 
 
         [StructLayout(LayoutKind.Sequential, Pack = 1)]
-        public unsafe struct ZCAN_CHANNEL_ERROR_INFO
+        public struct ZCAN_CHANNEL_ERROR_INFO
         {
             public uint error_code;
-            public fixed byte passive_ErrData[3];
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 3)]
+            public byte[] passive_ErrData;
             public byte arLost_ErrData;
          }
 

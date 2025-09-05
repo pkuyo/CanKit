@@ -22,11 +22,18 @@ public sealed class ZlgDeviceRTOptionsConfigurator
 public sealed class ZlgChannelInitConfigurator 
     : ChannelInitOptionsConfigurator<ZlgChannelOptions,ZlgChannelInitConfigurator>
 {
+    public ZlgChannelOptions.MaskFilterType MaskFilterType => Options.FilterType;
 
+    public ZlgChannelInitConfigurator SetMaskFilterType(ZlgChannelOptions.MaskFilterType maskFilterType)
+    {
+        Options.FilterType = maskFilterType;
+        return this;
+    }
 }
 
 public sealed class ZlgChannelRTConfigurator 
     : ChannelRTOptionsConfigurator<ZlgChannelOptions>
 {
-
+    public ZlgChannelOptions.MaskFilterType MaskFilterType => Options.FilterType;
+    
 }

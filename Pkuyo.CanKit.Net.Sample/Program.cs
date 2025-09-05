@@ -2,6 +2,7 @@
 using System.Threading;
 using Pkuyo.CanKit.Net.Core.Definitions;
 using Pkuyo.CanKit.ZLG;
+using Pkuyo.CanKit.ZLG.Options;
 
 namespace Pkuyo.CanKit.Net.Sample
 {
@@ -27,6 +28,9 @@ namespace Pkuyo.CanKit.Net.Sample
 
             var listenChannel = can.CreateChannel(1, cfg =>
                 cfg.Baud(500_000)
+                    .AccMask(0X78,0xFFFFFF87)
+                    .SetWorkMode(ChannelWorkMode.ListenOnly)
+                    .SetMaskFilterType(ZlgChannelOptions.MaskFilterType.Single)
                     .SetProtocolMode(CanProtocolMode.Can20));
             
           
@@ -37,13 +41,19 @@ namespace Pkuyo.CanKit.Net.Sample
                     Console.Write($" {by:X2}");
                 Console.WriteLine();
             };
+
+            listenChannel.ErrorOccurred += (sender, frame) =>
+            {
+                Console.WriteLine("Error Occurred!");
+            };
+            
             sendChannel.Open();
             listenChannel.Open();
             
             for (int i = 0; i < 500; i++)
             {
                 sendChannel.Transmit(
-                    new CanClassicFrame(0x18240801, new ReadOnlyMemory<byte>([0xAA, 0xBB, 0xCC, 0xDD]), true),
+                    new CanClassicFrame(0x1824080F, new ReadOnlyMemory<byte>([0xAA, 0xBB, 0xCC, 0xDD]), true),
                     new CanClassicFrame(0x18240801, new ReadOnlyMemory<byte>([0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF]),
                         true)
                 );

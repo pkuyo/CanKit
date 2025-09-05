@@ -8,16 +8,27 @@ namespace Pkuyo.CanKit.ZLG.Options
     [CanOption]
     public partial class ZlgChannelOptions(ICanModelProvider provider) : IChannelOptions
     {
+        public enum MaskFilterType : byte
+        {
+            Single = 0,
+            Double = 1
+        }
+        
         public ICanModelProvider Provider => provider;
 
         public partial void Apply(ICanApplier applier, bool force = false);
+        
+        public int ChannelIndex { get; set; }
+        
+        public BitTiming BitTiming { get; set; }
 
-        [CanOptionItem("channel_index", CanOptionType.Init, "0")]
-        public partial int ChannelIndex { get; set; }
-
-        [CanOptionItem("bit_timing", CanOptionType.Init, 
-            "new Pkuyo.CanKit.Net.Core.Definitions.BitTiming()")]
-        public partial BitTiming BitTiming { get; set; }
+        public ChannelWorkMode WorkMode { get; set; }
+        
+        public CanProtocolMode ProtocolMode { get; set; }
+        
+        public CanFilter Filter { get; set; }
+        
+        public MaskFilterType FilterType { get; set; }
 
         [CanOptionItem("/initenal_resistance", CanOptionType.Init, "true")]
         public partial bool InternalResistance { get; set; }
@@ -27,16 +38,11 @@ namespace Pkuyo.CanKit.ZLG.Options
 
         [CanOptionItem("/set_bus_usage_period", CanOptionType.Init, "200U")]
         public partial uint BusUsagePeriodTime { get; set; }
-
-        [CanOptionItem("work_mode", CanOptionType.Init,
-            "Pkuyo.CanKit.Net.Core.Definitions.ChannelWorkMode.Normal")]
-        public ChannelWorkMode WorkMode { get; set; }
+        
 
         [CanOptionItem("/set_tx_retry_policy", CanOptionType.Init,
             "Pkuyo.CanKit.Net.Core.Definitions.TxRetryPolicy.NoRetry")]
         public partial TxRetryPolicy TxRetryPolicy { get; set; }
-
-        public CanProtocolMode ProtocolMode { get; set; }
         
     }
 }

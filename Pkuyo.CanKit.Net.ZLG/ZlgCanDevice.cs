@@ -1,7 +1,6 @@
 ﻿using System;
 using Pkuyo.CanKit.Net.Core.Abstractions;
 using Pkuyo.CanKit.Net.Core.Definitions;
-using Pkuyo.CanKit.Net.Core.Diagnostics;
 using Pkuyo.CanKit.ZLG.Definitions;
 using Pkuyo.CanKit.ZLG.Native;
 using Pkuyo.CanKit.ZLG.Options;
@@ -16,6 +15,7 @@ namespace Pkuyo.CanKit.ZLG
              Options.Init((ZlgDeviceOptions)options);
              _options = options;
          }
+         
         public bool OpenDevice()
         {
             ThrowIfDisposed();
@@ -78,14 +78,13 @@ namespace Pkuyo.CanKit.ZLG
         private bool _isDisposed;
         public bool ApplyOne<T>(string name, T value)
         {
-            if (name[0] == '/')
-            {
-                ZLGCAN.ZCAN_SetValue(NativeHandler,
-                    Options.DeviceIndex.ToString() + name[0], value.ToString());
-                return true;
-            }
+            return ZLGCAN.ZCAN_SetValue(NativeHandler,
+                Options.DeviceIndex.ToString() + name[0], value.ToString()) != 0;
+        }
 
-            return false;
+        public void Apply(ICanOptions options)
+        {
+           
         }
 
         public CanOptionType ApplierStatus => IsDeviceOpen ? CanOptionType.Runtime : CanOptionType.Init;

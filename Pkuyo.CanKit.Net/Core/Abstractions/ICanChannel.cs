@@ -4,7 +4,7 @@ using Pkuyo.CanKit.Net.Core.Definitions;
 
 namespace Pkuyo.CanKit.Net.Core.Abstractions
 {
-    
+
     public interface ICanChannel : IDisposable
     {
         void Open();
@@ -24,13 +24,15 @@ namespace Pkuyo.CanKit.Net.Core.Abstractions
         IChannelRTOptionsConfigurator Options { get; }
 
         event EventHandler<CanReceiveData> FrameReceived;
+        
+        event EventHandler<CanErrorFrame> ErrorOccurred;
     }
     
 
     public interface ICanChannel<out TConfigurator> : ICanChannel
         where TConfigurator : IChannelRTOptionsConfigurator
-    {
-        TConfigurator Options { get; }
+    { 
+        new TConfigurator Options { get; }
     }
     
 }

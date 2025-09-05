@@ -175,7 +175,23 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
 
         private readonly ReadOnlyMemory<byte> _data;
     }
-    
-    
+
+    public readonly struct CanErrorFrame
+    {
+        public CanErrorCode ErrorCode { get; init; }
+        public bool IsTransmit { get; init; }
+        public DateTime Timestamp { get; init; }
+        
+        public ReadOnlyMemory<byte> RawData { get; init; }
+        public int Channel { get; init; }
+
+        public override string ToString()
+        {
+            return $"[{Timestamp:HH:mm:ss.fff}] " +
+                   $"Channel={Channel}, " +
+                   $"Direction={(IsTransmit ? "Tx" : "Rx")}, " +
+                   $"Error={ErrorCode}";
+        }
+    }
 
 }

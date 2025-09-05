@@ -1,5 +1,6 @@
 ﻿using System;
 using System.ComponentModel;
+using System.Linq;
 using Pkuyo.CanKit.Net.Core.Abstractions;
 using Pkuyo.CanKit.Net.Core.Utils;
 
@@ -26,16 +27,16 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
         where TChannelOptions : class, IChannelOptions
     {
         public ICanModelProvider Provider => _options.Provider;
-        public int            ChannelIndex        => _options.ChannelIndex;
-        public BitTiming      BitTiming           => _options.BitTiming;
-        public TxRetryPolicy  TxRetryPolicy       => _options.TxRetryPolicy;
-        public bool           BusUsageEnabled     => _options.BusUsageEnabled;
-        public uint           BusUsagePeriodTime  => _options.BusUsagePeriodTime;
-        public ChannelWorkMode WorkMode           => _options.WorkMode;
-        public bool           InternalResistance  => _options.InternalResistance;
-        public CanProtocolMode ProtocolMode       => _options.ProtocolMode;
-
-
+        public int ChannelIndex => _options.ChannelIndex;
+        public BitTiming BitTiming => _options.BitTiming;
+        public TxRetryPolicy TxRetryPolicy => _options.TxRetryPolicy;
+        public bool BusUsageEnabled => _options.BusUsageEnabled;
+        public uint  BusUsagePeriodTime => _options.BusUsagePeriodTime;
+        public ChannelWorkMode WorkMode  => _options.WorkMode;
+        public bool InternalResistance => _options.InternalResistance;
+        public CanProtocolMode ProtocolMode => _options.ProtocolMode;
+        public ICanFilter Filter => _options.Filter;
+        
         public ChannelRTOptionsConfigurator<TChannelOptions> SetInternalResistance(bool enabled)
         {
             _options.InternalResistance = enabled;
@@ -81,7 +82,9 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
         public uint BusUsagePeriodTime => _options.BusUsagePeriodTime;
         public ChannelWorkMode WorkMode => _options.WorkMode;
         public bool InternalResistance => _options.InternalResistance;
-        public CanProtocolMode ProtocolMode { get; }
+        public CanProtocolMode ProtocolMode => _options.ProtocolMode;
+        
+        public ICanFilter Filter => _options.Filter;
 
 
         public TSelf Baud(uint baud)
@@ -130,6 +133,42 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
             return (TSelf)this;
         }
 
+        public TSelf SetFilter(CanFilter filter)
+        {
+            _feature.CheckFeature(CanFeature.Filters);
+            
+            _options.Filter = filter;
+            return (TSelf)this;
+        }
+
+        public TSelf RangeFilter(uint min, uint max, FilterIDType idType = FilterIDType.Standard)
+        {
+            _feature.CheckFeature(CanFeature.Filters);
+            
+            _options.Filter ??= new CanFilter();
+            
+            if(_options.Filter.filterRules.Count > 0 && _options.Filter.filterRules
+                   .All(x => x is FilterRule.Range))
+                throw new Exception("Filter types are different");
+            
+            _options.Filter.filterRules.Add(new FilterRule.Range(min, max, idType));
+            return (TSelf)this;
+            
+        }
+
+        public TSelf AccMask(uint accCode, uint accMask, FilterIDType idType = FilterIDType.Standard)
+        {
+            _feature.CheckFeature(CanFeature.Filters);
+            
+            _options.Filter ??= new CanFilter();
+            if(_options.Filter.filterRules.Count > 0 && _options.Filter.filterRules
+                   .All(x => x is FilterRule.Mask))
+                throw new Exception("Filter types are different");
+            
+            _options.Filter.filterRules.Add(new FilterRule.Mask(accCode, accMask, idType));
+            return (TSelf)this;
+        }
+
         IChannelInitOptionsConfigurator IChannelInitOptionsConfigurator.Baud(uint baud) 
             => Baud(baud);
 
@@ -150,6 +189,15 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
 
         IChannelInitOptionsConfigurator IChannelInitOptionsConfigurator.SetProtocolMode(CanProtocolMode mode)
             => SetProtocolMode(mode);
+
+        IChannelInitOptionsConfigurator IChannelInitOptionsConfigurator.SetFilter(CanFilter filter)
+            => SetFilter(filter);
+        
+        IChannelInitOptionsConfigurator IChannelInitOptionsConfigurator.RangeFilter(uint min, uint max, FilterIDType idType)
+            => RangeFilter(min, max, idType);
+        
+        IChannelInitOptionsConfigurator IChannelInitOptionsConfigurator.AccMask(uint accCode, uint accMask, FilterIDType idType)
+            => AccMask(accCode, accMask, idType);
     }
 
 }

@@ -8,6 +8,8 @@ namespace Pkuyo.CanKit.Net.Core.Abstractions
     public interface ICanApplier
     {
         bool ApplyOne<T>(string name, T value);
+
+        void Apply(ICanOptions options);
         
         CanOptionType ApplierStatus { get; }
     }
@@ -46,5 +48,7 @@ namespace Pkuyo.CanKit.Net.Core.Abstractions
         TxRetryPolicy TxRetryPolicy { get; set; }
         
         CanProtocolMode ProtocolMode { get; set; }
+        
+        CanFilter Filter { get; set; }
     }
 }
