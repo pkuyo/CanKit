@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Pkuyo.CanKit.Net.Core.Abstractions;
+using Pkuyo.CanKit.Net.Core.Exceptions;
 
 namespace Pkuyo.CanKit.Net.Core;
 
@@ -39,31 +40,56 @@ public class CanSession<TCanDevice,TCanChannel>(TCanDevice device, ICanModelProv
             where TOptionCfg : IChannelInitOptionsConfigurator
         {
             if (!IsDeviceOpen)
-                throw new Exception(); //TODO: 异常处理
+                throw new CanDeviceNotOpenException();
 
             if (InnerChannels.TryGetValue(index, out var channel) && channel != null)
                 return channel;
-            
+
             var (options, cfg) = Provider.GetChannelOptions(index);
-            if (options is not TChannelOptions ||
-                cfg is not TOptionCfg specCfg)
-                throw new Exception(); //TODO: 异常处理
-            
-
-            if (configure != null)
+            if (options is not TChannelOptions typedOptions)
             {
-                configure(specCfg);
+                throw new CanOptionTypeMismatchException(
+                    CanKitErrorCode.ChannelOptionTypeMismatch,
+                    typeof(TChannelOptions),
+                    options?.GetType() ?? typeof(IChannelOptions),
+                    $"channel {index}");
             }
-            
+
+            if (cfg is not TOptionCfg specCfg)
+            {
+                throw new CanOptionTypeMismatchException(
+                    CanKitErrorCode.ChannelOptionTypeMismatch,
+                    typeof(TOptionCfg),
+                    cfg?.GetType() ?? typeof(IChannelInitOptionsConfigurator),
+                    $"channel {index} configurator");
+            }
+
+
+            configure?.Invoke(specCfg);
+
             var transceivers = Provider.Factory.CreateTransceivers(Device.Options, specCfg);
-
-            var innerChannel = (TCanChannel)Provider.Factory.CreateChannel(Device, options, transceivers);
-            if (innerChannel != null)
+            if (transceivers == null)
             {
-                InnerChannels.Add(index, innerChannel);
-                return innerChannel;
+                throw new CanFactoryException(
+                    CanKitErrorCode.TransceiverMismatch,
+                    $"Factory '{Provider.Factory.GetType().FullName}' returned null when creating a transceiver for channel {index}.");
             }
-            return null;
+
+            var createdChannel = Provider.Factory.CreateChannel(Device, typedOptions, transceivers);
+            if (createdChannel == null)
+            {
+                throw new CanChannelCreationException(
+                    $"Factory '{Provider.Factory.GetType().FullName}' returned null when creating channel {index}.");
+            }
+
+            if (createdChannel is not TCanChannel innerChannel)
+            {
+                throw new CanChannelCreationException(
+                    $"Factory produced channel type '{createdChannel.GetType().FullName}' which cannot be assigned to '{typeof(TCanChannel).FullName}'.");
+            }
+
+            InnerChannels.Add(index, innerChannel);
+            return innerChannel;
 
         }
 

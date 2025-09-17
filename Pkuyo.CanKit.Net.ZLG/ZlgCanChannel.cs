@@ -4,7 +4,10 @@ using System.Linq;
 using System.Threading;
 using Pkuyo.CanKit.Net.Core.Abstractions;
 using Pkuyo.CanKit.Net.Core.Definitions;
+using Pkuyo.CanKit.Net.Core.Diagnostics;
+using Pkuyo.CanKit.Net.Core.Exceptions;
 using Pkuyo.CanKit.ZLG.Definitions;
+using Pkuyo.CanKit.ZLG.Diagnostics;
 using Pkuyo.CanKit.ZLG.Native;
 using Pkuyo.CanKit.ZLG.Options;
 using Pkuyo.CanKit.ZLG.Transceivers;
@@ -51,13 +54,12 @@ namespace Pkuyo.CanKit.ZLG
 
             var handle = ZLGCAN.ZCAN_InitCAN(device.NativeHandler, (uint)Options.ChannelIndex, ref config);
             handle.SetDevice(device.NativeHandler.DangerousGetHandle());
-            
-            if (handle.IsInvalid)
-                throw new Exception(); //TODO:异常处理
+
+            ZlgErr.ThrowIfInvalid(handle, nameof(ZLGCAN.ZCAN_InitCAN));
             _nativeHandle = handle;
-            
+
             if (transceiver is not IZlgTransceiver zlg)
-                throw new Exception(); //TODO:异常处理
+                throw new CanTransceiverMismatchException(typeof(IZlgTransceiver), transceiver?.GetType() ?? typeof(ITransceiver));
             _transceiver = zlg;
             
         }
@@ -67,9 +69,7 @@ namespace Pkuyo.CanKit.ZLG
         {
             ThrowIfDisposed();
 
-            //TODO: 异常处理
-            if (ZLGCAN.ZCAN_StartCAN(_nativeHandle) == 0)
-                throw new Exception();
+            ZlgErr.ThrowIfError(ZLGCAN.ZCAN_StartCAN(_nativeHandle), nameof(ZLGCAN.ZCAN_StartCAN), _nativeHandle);
             _isOpen = true;
         }
 
@@ -77,8 +77,7 @@ namespace Pkuyo.CanKit.ZLG
         {
             ThrowIfDisposed();
 
-            //TODO: 异常处理
-            ZLGCAN.ZCAN_ResetCAN(_nativeHandle);
+            ZlgErr.ThrowIfError(ZLGCAN.ZCAN_ResetCAN(_nativeHandle), nameof(ZLGCAN.ZCAN_ResetCAN), _nativeHandle);
 
             _isOpen = false;
         }
@@ -92,8 +91,7 @@ namespace Pkuyo.CanKit.ZLG
         {
             ThrowIfDisposed();
 
-            //TODO: 异常处理
-            ZLGCAN.ZCAN_ClearBuffer(_nativeHandle);
+            ZlgErr.ThrowIfError(ZLGCAN.ZCAN_ClearBuffer(_nativeHandle), nameof(ZLGCAN.ZCAN_ClearBuffer), _nativeHandle);
         }
 
         public uint Transmit(params CanTransmitData[] frames)
@@ -126,22 +124,36 @@ namespace Pkuyo.CanKit.ZLG
         
         public void Dispose()
         {
+            if (_isDisposed)
+            {
+                return;
+            }
+
             try
             {
-                ThrowIfDisposed();
-                Reset();
+                if (_isOpen)
+                {
+                    try
+                    {
+                        Reset();
+                    }
+                    catch (CanKitException ex)
+                    {
+                        CanKitLogger.LogWarning("Failed to reset CAN channel during dispose.", ex);
+                    }
+                }
             }
             finally
             {
                 _isDisposed = true;
             }
-      
+
         }
 
         private void ThrowIfDisposed()
         {
             if (_isDisposed)
-                throw new InvalidOperationException();
+                throw new CanChannelDisposedException();
         }
         
         public bool ApplyOne<T>(string name, T value)
@@ -152,60 +164,99 @@ namespace Pkuyo.CanKit.ZLG
 
         public void Apply(ICanOptions options)
         {
-            var zlgOption = (ZlgChannelOptions)options;
-            
-            //TODO:异常处理
-            
-            //BitTiming
+            if (options is not ZlgChannelOptions zlgOption)
+            {
+                throw new CanOptionTypeMismatchException(
+                    CanKitErrorCode.ChannelOptionTypeMismatch,
+                    typeof(ZlgChannelOptions),
+                    options?.GetType() ?? typeof(IChannelOptions),
+                    $"channel {Options.ChannelIndex}");
+            }
+
             if (zlgOption.BitTiming.ArbitrationBitRate != null)
             {
-
-                ZLGCAN.ZCAN_SetValue(_devicePtr, 
-                    Options.ChannelIndex + "/canfd_abit_baud_rate",
-                    zlgOption.BitTiming.ArbitrationBitRate.ToString());
-                ZLGCAN.ZCAN_SetValue(_devicePtr, 
-                    Options.ChannelIndex + "/canfd_dbit_baud_rate",
-                    zlgOption.BitTiming.DataBitRate.ToString());
+                ZlgErr.ThrowIfError(
+                    ZLGCAN.ZCAN_SetValue(
+                        _devicePtr,
+                        Options.ChannelIndex + "/canfd_abit_baud_rate",
+                        zlgOption.BitTiming.ArbitrationBitRate.ToString()),
+                    "ZCAN_SetValue(canfd_abit_baud_rate)");
+                var dataRate = zlgOption.BitTiming.DataBitRate
+                    ?? throw new CanChannelConfigurationException("Data bit rate must be specified when configuring CAN FD timing.");
+                ZlgErr.ThrowIfError(
+                    ZLGCAN.ZCAN_SetValue(
+                        _devicePtr,
+                        Options.ChannelIndex + "/canfd_dbit_baud_rate",
+                        dataRate.ToString()),
+                    "ZCAN_SetValue(canfd_dbit_baud_rate)");
             }
             else if (zlgOption.BitTiming.BaudRate != null)
             {
-                ZLGCAN.ZCAN_SetValue(_devicePtr, 
-                    Options.ChannelIndex + "/baud_rate", zlgOption.BitTiming.BaudRate.ToString());
+                ZlgErr.ThrowIfError(
+                    ZLGCAN.ZCAN_SetValue(
+                        _devicePtr,
+                        Options.ChannelIndex + "/baud_rate",
+                        zlgOption.BitTiming.BaudRate.ToString()),
+                    "ZCAN_SetValue(baud_rate)");
             }
-            
-            
-            //WorkMode
-            ZLGCAN.ZCAN_SetValue(_devicePtr, 
-                Options.ChannelIndex + "/work_mode", ((int)Options.WorkMode).ToString());
 
-            //Filter
+            ZlgErr.ThrowIfError(
+                ZLGCAN.ZCAN_SetValue(
+                    _devicePtr,
+                    Options.ChannelIndex + "/work_mode",
+                    ((int)zlgOption.WorkMode).ToString()),
+                "ZCAN_SetValue(work_mode)");
+
             if (zlgOption.Filter != null && zlgOption.Filter.filterRules.Count > 0)
             {
                 if (zlgOption.Filter.filterRules[0] is FilterRule.Mask mask)
                 {
                     if (zlgOption.Filter.filterRules.Count > 1)
-                        throw new NotSupportedException(); //TODO:异常处理
-                    
-                    ZLGCAN.ZCAN_SetValue(_devicePtr, 
-                        Options.ChannelIndex + "/acc_code", mask.AccCode.ToString());
-                    ZLGCAN.ZCAN_SetValue(_devicePtr, 
-                        Options.ChannelIndex + "/acc_mask", mask.AccMask.ToString());
-                    
+                        throw new CanFilterConfigurationException("ZLG channels only support a single mask filter rule.");
+
+                    ZlgErr.ThrowIfError(
+                        ZLGCAN.ZCAN_SetValue(
+                            _devicePtr,
+                            Options.ChannelIndex + "/acc_code",
+                            mask.AccCode.ToString()),
+                        "ZCAN_SetValue(acc_code)");
+                    ZlgErr.ThrowIfError(
+                        ZLGCAN.ZCAN_SetValue(
+                            _devicePtr,
+                            Options.ChannelIndex + "/acc_mask",
+                            mask.AccMask.ToString()),
+                        "ZCAN_SetValue(acc_mask)");
                 }
                 else
                 {
                     foreach (var range in zlgOption.Filter.filterRules.OfType<FilterRule.Range>())
                     {
-                        ZLGCAN.ZCAN_SetValue(_devicePtr, 
-                            Options.ChannelIndex + "/filter_mode",((int)range.IdIdType).ToString());
-                        ZLGCAN.ZCAN_SetValue(_devicePtr, 
-                            Options.ChannelIndex + "/filter_start",range.From.ToString());
-                        ZLGCAN.ZCAN_SetValue(_devicePtr, 
-                            Options.ChannelIndex + "/filter_end",range.To.ToString());
+                        ZlgErr.ThrowIfError(
+                            ZLGCAN.ZCAN_SetValue(
+                                _devicePtr,
+                                Options.ChannelIndex + "/filter_mode",
+                                ((int)range.IdIdType).ToString()),
+                            "ZCAN_SetValue(filter_mode)");
+                        ZlgErr.ThrowIfError(
+                            ZLGCAN.ZCAN_SetValue(
+                                _devicePtr,
+                                Options.ChannelIndex + "/filter_start",
+                                range.From.ToString()),
+                            "ZCAN_SetValue(filter_start)");
+                        ZlgErr.ThrowIfError(
+                            ZLGCAN.ZCAN_SetValue(
+                                _devicePtr,
+                                Options.ChannelIndex + "/filter_end",
+                                range.To.ToString()),
+                            "ZCAN_SetValue(filter_end)");
                     }
 
-                    ZLGCAN.ZCAN_SetValue(_devicePtr,
-                        Options.ChannelIndex + "/filter_ack", "1");
+                    ZlgErr.ThrowIfError(
+                        ZLGCAN.ZCAN_SetValue(
+                            _devicePtr,
+                            Options.ChannelIndex + "/filter_ack",
+                            "1"),
+                        "ZCAN_SetValue(filter_ack)");
                 }
             }
         }
@@ -273,8 +324,7 @@ namespace Pkuyo.CanKit.ZLG
                             }
                             catch (Exception ex)
                             {
-                                // TODO: 异常处理
-                                System.Diagnostics.Debug.WriteLine($"FrameReceived handler error: {ex}");
+                                CanKitLogger.LogWarning("FrameReceived handler threw an exception.", ex);
                             }
                         }
                     }
@@ -298,8 +348,7 @@ namespace Pkuyo.CanKit.ZLG
                 catch (Exception ex)
                 {
                     // 其他异常：短暂休眠并继续，避免热循环
-                    //TODO: 异常处理
-                    System.Diagnostics.Debug.WriteLine($"PollLoop error: {ex}");
+                    CanKitLogger.LogWarning("Error occurred while polling ZLG CAN channel.", ex);
                     Thread.Sleep(20);
                 }
             }

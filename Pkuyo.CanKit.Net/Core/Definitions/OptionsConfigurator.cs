@@ -2,6 +2,7 @@
 using System.ComponentModel;
 using System.Linq;
 using Pkuyo.CanKit.Net.Core.Abstractions;
+using Pkuyo.CanKit.Net.Core.Exceptions;
 using Pkuyo.CanKit.Net.Core.Utils;
 
 namespace Pkuyo.CanKit.Net.Core.Definitions
@@ -148,8 +149,8 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
             _options.Filter ??= new CanFilter();
             
             if(_options.Filter.filterRules.Count > 0 && _options.Filter.filterRules
-                   .All(x => x is FilterRule.Range))
-                throw new Exception("Filter types are different");
+                   .Any(x => x is not FilterRule.Range))
+                throw new CanFilterConfigurationException("Mixed filter rule types are not supported for range filters.");
             
             _options.Filter.filterRules.Add(new FilterRule.Range(min, max, idType));
             return (TSelf)this;
@@ -162,8 +163,8 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
             
             _options.Filter ??= new CanFilter();
             if(_options.Filter.filterRules.Count > 0 && _options.Filter.filterRules
-                   .All(x => x is FilterRule.Mask))
-                throw new Exception("Filter types are different");
+                   .Any(x => x is not FilterRule.Mask))
+                throw new CanFilterConfigurationException("Mixed filter rule types are not supported for mask filters.");
             
             _options.Filter.filterRules.Add(new FilterRule.Mask(accCode, accMask, idType));
             return (TSelf)this;
