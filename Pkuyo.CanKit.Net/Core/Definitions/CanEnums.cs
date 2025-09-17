@@ -2,7 +2,9 @@
 
 namespace Pkuyo.CanKit.Net.Core.Definitions
 {
-
+    /// <summary>
+    /// 表示 CAN 帧在传输过程中可能发生的错误类型。
+    /// </summary>
     public enum FrameErrorKind
     {
         None        = 0,         // 没有错误
@@ -16,13 +18,19 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
         Unknown     = 65535
     }
 
+    /// <summary>
+    /// 表示数据帧的方向，是发送帧还是接收帧。
+    /// </summary>
     public enum FrameDirection
     {
         Unknown = 0,
         Tx,
         Rx
     }
-    
+
+    /// <summary>
+    /// 表示 CAN 通道当前的错误状态。
+    /// </summary>
     public enum ChannelErrorState
     {
         None        = 0,         // 没有错误
@@ -32,6 +40,9 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
         BusRestart  = 4,         // 总线重启
     }
     
+    /// <summary>
+    /// 用于标识 CAN 帧类型的标志位，可组合使用。
+    /// </summary>
     [Flags]
     public enum CanFrameType : uint
     {
@@ -41,15 +52,20 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
         Error      = 1 << 2,
         Any        = int.MaxValue
     }
-    
+
+    /// <summary>
+    /// 描述硬件支持的 CAN 协议模式。
+    /// </summary>
     public enum CanProtocolMode
     {
-        Can20 = 0,   
-        CanFd = 1,   
-        Merged = 2   
+        Can20 = 0,
+        CanFd = 1,
+        Merged = 2
     }
 
-    
+    /// <summary>
+    /// 描述适配器所支持的能力集，可组合使用。
+    /// </summary>
     [Flags]
     public enum CanFeature
     {
@@ -67,25 +83,37 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
         BusUsage            = 1 << 8
     }
 
+    /// <summary>
+    /// 控制配置选项所属的阶段。
+    /// </summary>
     public enum CanOptionType
     {
         Init = 1,
         Runtime = 2
     }
 
+    /// <summary>
+    /// 发送失败后 CAN 控制器的重试策略。
+    /// </summary>
     public enum TxRetryPolicy : byte
     {
         NoRetry = 1,
         AlwaysRetry = 2,
     }
-    
+
+    /// <summary>
+    /// 表示 CAN 通道的工作模式，例如正常模式或只听模式。
+    /// </summary>
     public enum ChannelWorkMode : byte
     {
         Normal = 0,
         ListenOnly = 1,
         Echo = 2,
     }
-    
+
+    /// <summary>
+    /// 指示过滤规则使用标准帧 ID 还是扩展帧 ID。
+    /// </summary>
     public enum CanFilterIDType
     {
         Standard,

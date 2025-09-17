@@ -238,7 +238,7 @@ namespace Pkuyo.CanKit.ZLG
                             ZLGCAN.ZCAN_SetValue(
                                 _devicePtr,
                                 Options.ChannelIndex + "/filter_mode",
-                                ((int)range.IdIdType).ToString()),
+                                ((int)range.FilterIdType).ToString()),
                             "ZCAN_SetValue(filter_mode)");
                         ZlgErr.ThrowIfError(
                             ZLGCAN.ZCAN_SetValue(

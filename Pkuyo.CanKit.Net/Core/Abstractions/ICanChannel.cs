@@ -65,7 +65,7 @@ namespace Pkuyo.CanKit.Net.Core.Abstractions
         event EventHandler<CanReceiveData> FrameReceived;
 
         /// <summary>
-        ///     当通道运行时出现错误帧时触发。
+        ///     当通道运行时出现错误时触发。
         /// </summary>
         event EventHandler<ICanErrorInfo> ErrorOccurred;
     }
