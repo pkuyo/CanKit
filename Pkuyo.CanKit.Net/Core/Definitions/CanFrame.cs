@@ -13,6 +13,17 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
         byte Dlc { get; }
         uint ID { get; init; }
     }
+
+    public interface ICanErrorInfo
+    {
+        FrameErrorKind Kind { get; init; }
+        
+        DateTime SystemTimestamp { get; init; }
+        uint RawErrorCode { get; init; }
+        ulong? TimeOffset { get; init; }
+        FrameDirection Direction { get; init; }
+        ICanFrame Frame { get; init; }
+    }
     
     internal static class CanIdBits
     {
@@ -175,23 +186,15 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
 
         private readonly ReadOnlyMemory<byte> _data;
     }
-
-    public readonly struct CanErrorFrame
+    
+    public record DefaultCanErrorInfo(
+        FrameErrorKind Kind,
+        DateTime SystemTimestamp,
+        uint RawErrorCode,
+        ulong? TimeOffset,
+        FrameDirection Direction,
+        ICanFrame Frame) : ICanErrorInfo
     {
-        public CanErrorCode ErrorCode { get; init; }
-        public bool IsTransmit { get; init; }
-        public DateTime Timestamp { get; init; }
         
-        public ReadOnlyMemory<byte> RawData { get; init; }
-        public int Channel { get; init; }
-
-        public override string ToString()
-        {
-            return $"[{Timestamp:HH:mm:ss.fff}] " +
-                   $"Channel={Channel}, " +
-                   $"Direction={(IsTransmit ? "Tx" : "Rx")}, " +
-                   $"Error={ErrorCode}";
-        }
     }
-
 }

@@ -14,6 +14,9 @@ using Pkuyo.CanKit.ZLG.Transceivers;
 
 namespace Pkuyo.CanKit.ZLG
 {
+    
+ 
+
     public sealed class ZlgCanChannel : ICanChannel<ZlgChannelRTConfigurator>, ICanApplier
     {
         
@@ -336,7 +339,41 @@ namespace Pkuyo.CanKit.ZLG
                     {
                         var errInfo = new ZLGCAN.ZCAN_CHANNEL_ERROR_INFO();
                         ZLGCAN.ZCAN_ReadChannelErrInfo(_nativeHandle, ref errInfo);
-                        _errorOccurred?.Invoke(this,new CanErrorFrame());
+
+                        var rawEcc = errInfo.passive_ErrData[0];
+                        byte eccType   = (byte)((rawEcc >> 6) & 0x03);  // 0=Bit,1=Form,2=Stuff,3=Other
+                        byte eccDirBit = (byte)((rawEcc >> 5) & 0x01);  // 0=Tx, 1=Rx
+                        byte eccLoc    = (byte)(rawEcc & 0x1F);
+                        
+                        var kind = eccType switch
+                        {
+                            0 => FrameErrorKind.BitError,
+                            1 => FrameErrorKind.FormError,
+                            2 => FrameErrorKind.StuffError,
+                            3 => InferOtherKindByLocation(eccLoc),      // 细分 CRC/ACK/Controller
+                            _ => FrameErrorKind.Unknown
+                        };
+
+
+                        var dir = eccDirBit switch
+                        {
+                            0 => FrameDirection.Tx,
+                            1 => FrameDirection.Rx,
+                            _ => FrameDirection.Unknown
+                        };
+                        _errorOccurred?.Invoke(this, new ZlgErrorInfo(errInfo.error_code)
+                        {
+                            Kind = kind,
+                            Direction = dir,
+                            SystemTimestamp = DateTime.Now
+                        });
+                        
+                        FrameErrorKind InferOtherKindByLocation(byte loc) => loc switch
+                        {
+                            0x08 or 0x09 => FrameErrorKind.CrcError,
+                            0x19 or 0x1A => FrameErrorKind.AckError,
+                            _            => FrameErrorKind.Controller
+                        };
                     }
                 }
                 catch (ObjectDisposedException)
@@ -405,7 +442,7 @@ namespace Pkuyo.CanKit.ZLG
             }
         }
 
-        public event EventHandler<CanErrorFrame> ErrorOccurred
+        public event EventHandler<ICanErrorInfo> ErrorOccurred
         {
             add
             {   
@@ -441,7 +478,7 @@ namespace Pkuyo.CanKit.ZLG
         
         private EventHandler<CanReceiveData> _frameReceived; 
         
-        private EventHandler<CanErrorFrame> _errorOccurred; 
+        private EventHandler<ICanErrorInfo> _errorOccurred; 
         
         private int _subscriberCount;
         

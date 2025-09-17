@@ -142,7 +142,7 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
             return (TSelf)this;
         }
 
-        public TSelf RangeFilter(uint min, uint max, FilterIDType idType = FilterIDType.Standard)
+        public TSelf RangeFilter(uint min, uint max, CanFilterIDType idType = CanFilterIDType.Standard)
         {
             _feature.CheckFeature(CanFeature.Filters);
             
@@ -157,7 +157,7 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
             
         }
 
-        public TSelf AccMask(uint accCode, uint accMask, FilterIDType idType = FilterIDType.Standard)
+        public TSelf AccMask(uint accCode, uint accMask, CanFilterIDType idType = CanFilterIDType.Standard)
         {
             _feature.CheckFeature(CanFeature.Filters);
             
@@ -194,10 +194,10 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
         IChannelInitOptionsConfigurator IChannelInitOptionsConfigurator.SetFilter(CanFilter filter)
             => SetFilter(filter);
         
-        IChannelInitOptionsConfigurator IChannelInitOptionsConfigurator.RangeFilter(uint min, uint max, FilterIDType idType)
+        IChannelInitOptionsConfigurator IChannelInitOptionsConfigurator.RangeFilter(uint min, uint max, CanFilterIDType idType)
             => RangeFilter(min, max, idType);
         
-        IChannelInitOptionsConfigurator IChannelInitOptionsConfigurator.AccMask(uint accCode, uint accMask, FilterIDType idType)
+        IChannelInitOptionsConfigurator IChannelInitOptionsConfigurator.AccMask(uint accCode, uint accMask, CanFilterIDType idType)
             => AccMask(accCode, accMask, idType);
     }
 

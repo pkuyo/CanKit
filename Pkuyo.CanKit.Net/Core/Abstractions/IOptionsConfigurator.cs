@@ -221,7 +221,7 @@ public interface IChannelInitOptionsConfigurator : ICanOptionsConfigurator
     /// <param name="max">最大 ID。</param>
     /// <param name="idType">过滤器的 ID 类型。</param>
     /// <returns>当前配置器实例。</returns>
-    IChannelInitOptionsConfigurator RangeFilter(uint min, uint max, FilterIDType idType);
+    IChannelInitOptionsConfigurator RangeFilter(uint min, uint max, CanFilterIDType idType);
 
     /// <summary>
     ///     通过验收码与掩码配置过滤器。
@@ -230,7 +230,7 @@ public interface IChannelInitOptionsConfigurator : ICanOptionsConfigurator
     /// <param name="accMask">验收掩码。</param>
     /// <param name="idType">过滤器的 ID 类型。</param>
     /// <returns>当前配置器实例。</returns>
-    IChannelInitOptionsConfigurator AccMask(uint accCode, uint accMask, FilterIDType idType);
+    IChannelInitOptionsConfigurator AccMask(uint accCode, uint accMask, CanFilterIDType idType);
 }
 
 

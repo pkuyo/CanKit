@@ -6,7 +6,7 @@ using Pkuyo.CanKit.ZLG.Options;
 
 namespace Pkuyo.CanKit.Net.Sample
 {
-    class Program
+    internal class Program
     {
 
         static void Main(string[] args)
@@ -44,7 +44,7 @@ namespace Pkuyo.CanKit.Net.Sample
 
             listenChannel.ErrorOccurred += (sender, frame) =>
             {
-                Console.WriteLine("Error Occurred!");
+                Console.WriteLine($"[{frame.SystemTimestamp}] Error Code: {frame.RawErrorCode}, Error Kind: {frame.Kind}");
             };
             
             sendChannel.Open();
@@ -54,8 +54,7 @@ namespace Pkuyo.CanKit.Net.Sample
             {
                 sendChannel.Transmit(
                     new CanClassicFrame(0x1824080F, new ReadOnlyMemory<byte>([0xAA, 0xBB, 0xCC, 0xDD]), true),
-                    new CanClassicFrame(0x18240801, new ReadOnlyMemory<byte>([0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF]),
-                        true)
+                    new CanClassicFrame(0x18240801, new ReadOnlyMemory<byte>([0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF]), true)
                 );
                 Thread.Sleep(400);
 

@@ -2,19 +2,19 @@
 
 namespace Pkuyo.CanKit.Net.Core.Definitions
 {
-    public abstract record FilterRule(FilterIDType IdIdType)
+    public abstract record FilterRule(CanFilterIDType IdIdType)
     {
-        public sealed record Range(uint From, uint To) : FilterRule(FilterIDType.Standard)
+        public sealed record Range(uint From, uint To) : FilterRule(CanFilterIDType.Standard)
         {
-            public Range(uint From, uint To, FilterIDType idType) : this(From, To)
+            public Range(uint From, uint To, CanFilterIDType idType) : this(From, To)
             {
                 IdIdType = idType;
             }
         }
 
-        public sealed record Mask(uint AccCode, uint AccMask) : FilterRule(FilterIDType.Standard)
+        public sealed record Mask(uint AccCode, uint AccMask) : FilterRule(CanFilterIDType.Standard)
         {
-            public Mask(uint AccCode, uint AccMask, FilterIDType idType) : this(AccCode, AccMask)
+            public Mask(uint AccCode, uint AccMask, CanFilterIDType idType) : this(AccCode, AccMask)
             {
                 IdIdType = idType;
             }

@@ -1,4 +1,5 @@
-﻿using Pkuyo.CanKit.Net.Core.Definitions;
+﻿using System;
+using Pkuyo.CanKit.Net.Core.Definitions;
 
 namespace System.Runtime.CompilerServices
 {
@@ -7,5 +8,22 @@ namespace System.Runtime.CompilerServices
 
 namespace Pkuyo.CanKit.ZLG.Definitions
 {
-    public readonly record struct CanDeviceInfo(ZlgDeviceKind DeviceType, uint DeviceIndex);
+
+    
+    public record ZlgErrorInfo : ICanErrorInfo
+    {
+        public ZlgErrorInfo(uint rawErrorCode)
+        {
+            RawErrorCode = rawErrorCode;
+        }
+        public FrameErrorKind Kind { get; init; }
+        public DateTime SystemTimestamp { get; init; }
+        public uint RawErrorCode { get; init; }
+
+        public ZlgErrorFlag ErrorCode => (ZlgErrorFlag)RawErrorCode;
+        
+        public ulong? TimeOffset { get; init; }
+        public FrameDirection Direction { get; init; }
+        public ICanFrame Frame { get; init; }
+    }
 }

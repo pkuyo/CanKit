@@ -67,7 +67,7 @@ namespace Pkuyo.CanKit.Net.Core.Abstractions
         /// <summary>
         ///     当通道运行时出现错误帧时触发。
         /// </summary>
-        event EventHandler<CanErrorFrame> ErrorOccurred;
+        event EventHandler<ICanErrorInfo> ErrorOccurred;
     }
 
 
