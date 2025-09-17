@@ -41,7 +41,7 @@ namespace Pkuyo.CanKit.Net.Core.Exceptions
         {
         }
 
-        public CanKitException(CanKitErrorCode errorCode, string message, uint? nativeErrorCode = null, Exception? innerException = null)
+        public CanKitException(CanKitErrorCode errorCode, string message, uint? nativeErrorCode = null, Exception innerException = null)
             : base(message, innerException)
         {
             ErrorCode = errorCode;
@@ -111,7 +111,7 @@ namespace Pkuyo.CanKit.Net.Core.Exceptions
 
     public class CanDeviceException : CanKitException
     {
-        public CanDeviceException(CanKitErrorCode errorCode, string message, Exception? innerException = null)
+        public CanDeviceException(CanKitErrorCode errorCode, string message, Exception innerException = null)
             : base(errorCode, message, null, innerException)
         {
         }
@@ -143,7 +143,7 @@ namespace Pkuyo.CanKit.Net.Core.Exceptions
 
     public class CanChannelException : CanKitException
     {
-        public CanChannelException(CanKitErrorCode errorCode, string message, uint? nativeErrorCode = null, Exception? innerException = null)
+        public CanChannelException(CanKitErrorCode errorCode, string message, uint? nativeErrorCode = null, Exception innerException = null)
             : base(errorCode, message, nativeErrorCode, innerException)
         {
         }
@@ -199,7 +199,7 @@ namespace Pkuyo.CanKit.Net.Core.Exceptions
 
     public class CanChannelPollingException : CanChannelException
     {
-        public CanChannelPollingException(string message, Exception? innerException = null)
+        public CanChannelPollingException(string message, Exception innerException = null)
             : base(CanKitErrorCode.ChannelPollingFailed, message, null, innerException)
         {
         }
@@ -267,7 +267,7 @@ namespace Pkuyo.CanKit.Net.Core.Exceptions
 
     public class CanNativeCallException : CanChannelException
     {
-        public CanNativeCallException(string operation, string message, uint? nativeErrorCode = null, Exception? innerException = null)
+        public CanNativeCallException(string operation, string message, uint? nativeErrorCode = null, Exception innerException = null)
             : base(CanKitErrorCode.NativeCallFailed, $"{message} (Operation: {operation})", nativeErrorCode, innerException)
         {
             Operation = operation;

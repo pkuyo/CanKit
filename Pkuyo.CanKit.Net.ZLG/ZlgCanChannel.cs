@@ -159,7 +159,7 @@ namespace Pkuyo.CanKit.ZLG
         public bool ApplyOne<T>(string name, T value)
         {
             return ZLGCAN.ZCAN_SetValue(_devicePtr,
-                Options.ChannelIndex.ToString() + name[0], value.ToString()) != 0;
+                Options.ChannelIndex.ToString() + name, value.ToString()) != 0;
         }
 
         public void Apply(ICanOptions options)
@@ -302,8 +302,7 @@ namespace Pkuyo.CanKit.ZLG
                     Thread.Sleep(20);
                     continue;
                 }
-
-                // 防御性：无订阅者时退出（正常由 StopPolling 触发，双保险）
+                
                 if (Volatile.Read(ref _subscriberCount) <= 0)
                 {
                     break;

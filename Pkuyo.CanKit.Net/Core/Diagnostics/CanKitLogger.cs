@@ -15,7 +15,7 @@ namespace Pkuyo.CanKit.Net.Core.Diagnostics
         DateTime Timestamp,
         CanKitLogLevel Level,
         string Message,
-        Exception? Exception)
+        Exception Exception)
     {
         public override string ToString()
         {
@@ -30,14 +30,14 @@ namespace Pkuyo.CanKit.Net.Core.Diagnostics
 
     public static class CanKitLogger
     {
-        private static Action<CanKitLogEntry>? _logHandler = DefaultLogHandler;
+        private static Action<CanKitLogEntry> _logHandler = DefaultLogHandler;
 
         public static void Configure(Action<CanKitLogEntry> handler)
         {
             _logHandler = handler ?? throw new ArgumentNullException(nameof(handler));
         }
 
-        public static void Log(CanKitLogLevel level, string message, Exception? exception = null)
+        public static void Log(CanKitLogLevel level, string message, Exception exception = null)
         {
             if (message == null) throw new ArgumentNullException(nameof(message));
 
@@ -46,25 +46,25 @@ namespace Pkuyo.CanKit.Net.Core.Diagnostics
             handler?.Invoke(entry);
         }
 
-        public static void LogException(Exception exception, string? message = null)
+        public static void LogException(Exception exception, string message = null)
         {
             if (exception == null) throw new ArgumentNullException(nameof(exception));
             Log(CanKitLogLevel.Error, message ?? exception.Message, exception);
         }
 
-        public static void LogWarning(string message, Exception? exception = null)
+        public static void LogWarning(string message, Exception exception = null)
         {
             Log(CanKitLogLevel.Warning, message, exception);
         }
 
         public static void LogInformation(string message)
         {
-            Log(CanKitLogLevel.Information, message, null);
+            Log(CanKitLogLevel.Information, message);
         }
 
         public static void LogDebug(string message)
         {
-            Log(CanKitLogLevel.Debug, message, null);
+            Log(CanKitLogLevel.Debug, message);
         }
 
         private static void DefaultLogHandler(CanKitLogEntry entry)

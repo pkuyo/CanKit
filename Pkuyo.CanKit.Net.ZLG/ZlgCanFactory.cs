@@ -25,7 +25,7 @@ public class ZlgCanFactory : ICanFactory
 
     public bool Support(DeviceType deviceType)
     {
-        return deviceType.Id.StartsWith("ZCAN");
+        return deviceType.Id.StartsWith("ZLG.");
     }
     
     public ITransceiver CreateTransceivers(IDeviceRTOptionsConfigurator configurator,
@@ -50,7 +50,7 @@ public class ZlgCanFactory : ICanFactory
             CanProtocolMode.Can20 => CanFeature.CanClassic,
             CanProtocolMode.CanFd => CanFeature.CanFd,
             CanProtocolMode.Merged => CanFeature.MergeReceive,
-            _ => 0
+            _ => default
         };
 
         if (requiredFeature == 0)

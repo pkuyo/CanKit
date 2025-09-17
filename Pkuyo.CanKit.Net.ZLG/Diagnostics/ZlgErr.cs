@@ -1,5 +1,6 @@
-using System;
+﻿using System;
 using Pkuyo.CanKit.Net.Core.Diagnostics;
+using Pkuyo.CanKit.ZLG.Definitions;
 using Pkuyo.CanKit.ZLG.Exceptions;
 using Pkuyo.CanKit.ZLG.Native;
 
@@ -9,7 +10,7 @@ namespace Pkuyo.CanKit.ZLG.Diagnostics
     {
         public const uint StatusOk = 1;
 
-        public static void ThrowIfError(uint status, string operation, ZlgChannelHandle? channelHandle = null, string? message = null)
+        public static void ThrowIfError(uint status, string operation, ZlgChannelHandle channelHandle = null, string message = null)
         {
             if (status == StatusOk)
             {

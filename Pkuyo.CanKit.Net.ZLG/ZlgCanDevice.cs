@@ -21,7 +21,7 @@ namespace Pkuyo.CanKit.ZLG
         public bool OpenDevice()
         {
             ThrowIfDisposed();
-            var ptr = ZLGCAN.ZCAN_OpenDevice(ZLGCAN.ZCAN_USBCAN2,0, 0);
+            var ptr = ZLGCAN.ZCAN_OpenDevice(Options.DeviceIndex,0, 0);
             var handle = new ZlgDeviceHandle(ptr);
             if (handle is { IsInvalid: false })
             {
@@ -82,7 +82,7 @@ namespace Pkuyo.CanKit.ZLG
         public bool ApplyOne<T>(string name, T value)
         {
             return ZLGCAN.ZCAN_SetValue(NativeHandler,
-                Options.DeviceIndex.ToString() + name[0], value.ToString()) != 0;
+                Options.DeviceIndex.ToString() + name, value.ToString()) != 0;
         }
 
         public void Apply(ICanOptions options)

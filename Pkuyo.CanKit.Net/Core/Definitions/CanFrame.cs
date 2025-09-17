@@ -109,7 +109,7 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
         public CanFdFrame(uint rawIdInit, ReadOnlyMemory<byte> dataInit = default, bool BRS = false, bool ESI = false)
         {
             RawID = rawIdInit;
-            _data = Validate(_data);
+            _data = Validate(dataInit);
             BitRateSwitch = BRS;
             ErrorStateIndicator = ESI;
         }
