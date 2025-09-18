@@ -13,7 +13,7 @@ namespace Pkuyo.CanKit.Net.Core.Abstractions
         ///     打开设备资源并做好进行通道操作的准备。
         /// </summary>
         /// <returns>打开设备是否成功。</returns>
-        bool OpenDevice();
+        void OpenDevice();
 
         /// <summary>
         ///     关闭设备连接并释放相关资源。

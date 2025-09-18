@@ -22,7 +22,8 @@ namespace Pkuyo.CanKit.Net.Core.Exceptions
         ChannelPollingFailed = 2007,
         ChannelDisposed = 2008,
         ChannelConfigurationInvalid = 2009,
-
+        ChannelNotOpen = 2010,
+        
         TransceiverMismatch = 3001,
         ProviderMismatch = 3002,
         FactoryDeviceMismatch = 3003,
@@ -31,7 +32,8 @@ namespace Pkuyo.CanKit.Net.Core.Exceptions
 
         FeatureNotSupported = 5001,
 
-        NativeCallFailed = 9000
+        NativeCallFailed = 9000,
+    
     }
 
     public class CanKitException : Exception
@@ -164,46 +166,15 @@ namespace Pkuyo.CanKit.Net.Core.Exceptions
         {
         }
     }
-
-    public class CanChannelInitializationException : CanChannelException
+    
+    public class CanChannelNotOpenException : CanDeviceException
     {
-        public CanChannelInitializationException(string message, uint? nativeErrorCode = null)
-            : base(CanKitErrorCode.ChannelInitializationFailed, message, nativeErrorCode)
+        public CanChannelNotOpenException()
+            : base(CanKitErrorCode.ChannelNotOpen, "The CAN channel must be opened before this operation can be performed.")
         {
         }
     }
-
-    public class CanChannelStartException : CanChannelException
-    {
-        public CanChannelStartException(string message, uint? nativeErrorCode = null)
-            : base(CanKitErrorCode.ChannelStartFailed, message, nativeErrorCode)
-        {
-        }
-    }
-
-    public class CanChannelResetException : CanChannelException
-    {
-        public CanChannelResetException(string message, uint? nativeErrorCode = null)
-            : base(CanKitErrorCode.ChannelResetFailed, message, nativeErrorCode)
-        {
-        }
-    }
-
-    public class CanChannelCleanBufferException : CanChannelException
-    {
-        public CanChannelCleanBufferException(string message, uint? nativeErrorCode = null)
-            : base(CanKitErrorCode.ChannelCleanBufferFailed, message, nativeErrorCode)
-        {
-        }
-    }
-
-    public class CanChannelPollingException : CanChannelException
-    {
-        public CanChannelPollingException(string message, Exception innerException = null)
-            : base(CanKitErrorCode.ChannelPollingFailed, message, null, innerException)
-        {
-        }
-    }
+    
 
     public class CanTransceiverMismatchException : CanKitException
     {

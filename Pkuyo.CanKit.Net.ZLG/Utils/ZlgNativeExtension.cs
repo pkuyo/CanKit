@@ -21,7 +21,7 @@ namespace Pkuyo.CanKit.ZLG.Utils
                 
                 unsafe
                 {
-                    if ((typeFlag & CanFrameType.CanClassic) != 0 || (typeFlag & CanFrameType.CanFd) != 0)
+                    if ((typeFlag & CanFrameType.Can20) != 0 || (typeFlag & CanFrameType.CanFd) != 0)
                     {
                         var data = ByteArrayToStruct<ZCANCANFDData>(recData.data);
                         if (data.frameType == 1)
@@ -76,7 +76,7 @@ namespace Pkuyo.CanKit.ZLG.Utils
 
         internal static byte GetRawFrameType(CanFrameType type)
         {
-            if ((type & CanFrameType.CanClassic) != 0)
+            if ((type & CanFrameType.Can20) != 0)
                 return 1;
             if ((type & CanFrameType.CanFd) != 0)
                 return 1;
@@ -98,7 +98,7 @@ namespace Pkuyo.CanKit.ZLG.Utils
         }
         internal static unsafe void StructCopyToBuffer<T>(T src, byte* dst, uint count) where T : unmanaged
         {
-            Unsafe.CopyBlockUnaligned(&src, dst, 92);
+            Unsafe.CopyBlockUnaligned(&src, dst, count);
         }
 
         internal static unsafe CanClassicFrame FromReceiveData(this ZLGCAN.can_frame frame)
@@ -157,7 +157,7 @@ namespace Pkuyo.CanKit.ZLG.Utils
         {
             ZLGCAN.ZCANDataObj obj = new ZLGCAN.ZCANDataObj
             {
-                dataType = GetRawFrameType(CanFrameType.CanClassic),
+                dataType = GetRawFrameType(CanFrameType.Can20),
                 chnl = channelID
             };
           

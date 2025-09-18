@@ -73,3 +73,11 @@ public enum ZlgErrorFlag
     /// </summary>
     OutOfMemory           = 0x8000
 }
+
+[Flags]
+public enum ZlgFeature
+{
+    None         = 0x0,
+    RangeFilter  = 0x1,
+    MaskFilter   = 0x2,
+}

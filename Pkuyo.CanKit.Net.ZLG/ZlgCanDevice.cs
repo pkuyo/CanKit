@@ -4,6 +4,8 @@ using Pkuyo.CanKit.Net.Core.Definitions;
 using Pkuyo.CanKit.Net.Core.Diagnostics;
 using Pkuyo.CanKit.Net.Core.Exceptions;
 using Pkuyo.CanKit.ZLG.Definitions;
+using Pkuyo.CanKit.ZLG.Diagnostics;
+using Pkuyo.CanKit.ZLG.Exceptions;
 using Pkuyo.CanKit.ZLG.Native;
 using Pkuyo.CanKit.ZLG.Options;
 
@@ -18,7 +20,7 @@ namespace Pkuyo.CanKit.ZLG
              _options = options;
          }
          
-        public bool OpenDevice()
+        public void OpenDevice()
         {
             ThrowIfDisposed();
             var ptr = ZLGCAN.ZCAN_OpenDevice(Options.DeviceIndex,0, 0);
@@ -28,11 +30,10 @@ namespace Pkuyo.CanKit.ZLG
                 _nativeHandler = handle;
                 _options.Apply(this, true);
                 _isDeviceOpen = true;
-                return IsDeviceOpen;
+                return;
             }
 
-            CanKitLogger.LogWarning($"Failed to open ZLG device '{Options.DeviceType.Id}' at index {Options.DeviceIndex}.");
-            return false;
+            ZlgErr.ThrowIfInvalid(handle, nameof(ZLGCAN.ZCAN_OpenDevice));
         }
 
         public void CloseDevice()

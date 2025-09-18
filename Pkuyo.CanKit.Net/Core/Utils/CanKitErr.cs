@@ -3,9 +3,9 @@ using Pkuyo.CanKit.Net.Core.Exceptions;
 
 namespace Pkuyo.CanKit.Net.Core.Utils
 {
-    public static class CanExtension
+    public static class CanKitErr
     {
-        public static void CheckFeature(this CanFeature deviceFeatures, CanFeature checkFeature)
+        public static void ThrowIfNotSupport(CanFeature deviceFeatures, CanFeature checkFeature)
         {
             if ((deviceFeatures & checkFeature) == checkFeature)
             {

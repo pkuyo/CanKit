@@ -31,7 +31,7 @@ namespace Pkuyo.CanKit.Net.Core.Abstractions
         /// <summary>
         ///     清空通道内部缓存的数据，例如接收缓存和发送队列。
         /// </summary>
-        void CleanBuffer();
+        void ClearBuffer();
 
         /// <summary>
         ///     向总线上发送一个或多个 CAN 帧。
@@ -41,12 +41,33 @@ namespace Pkuyo.CanKit.Net.Core.Abstractions
         uint Transmit(params CanTransmitData[] frames);
 
         /// <summary>
+        ///     尝试获取总线利用率
+        /// </summary>
+        /// <returns>获取到的总线利用率</returns>
+        float BusUsage();
+
+
+        /// <summary>
+        ///    获取通道的错误计数值（TEC, REC）
+        /// </summary>
+        /// <returns></returns>
+        CanErrorCounters ErrorCounters();
+
+        /// <summary>
         ///     从通道中读取 CAN 帧。
         /// </summary>
         /// <param name="count">希望读取的最大帧数。</param>
         /// <param name="timeOut">等待数据的超时时间，单位为毫秒，-1 表示无限等待。</param>
         /// <returns>读取到的 CAN 帧序列。</returns>
         IEnumerable<CanReceiveData> Receive(uint count = 1, int timeOut = -1);
+
+
+        /// <summary>
+        ///     尝试获取通道错误信息
+        /// </summary>
+        /// <param name="errorInfo">获取到的错误信息（可为null）</param>
+        /// <returns>是否存在错误信息</returns>
+        bool ReadChannelErrorInfo(out ICanErrorInfo errorInfo);
 
         /// <summary>
         ///     获取当前接收缓冲区中可读取的帧数量。

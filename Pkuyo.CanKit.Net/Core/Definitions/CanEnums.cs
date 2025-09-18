@@ -47,7 +47,7 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
     public enum CanFrameType : uint
     {
         Invalid    = 0,
-        CanClassic = 1 << 0,
+        Can20      = 1 << 0,
         CanFd      = 1 << 1,
         Error      = 1 << 2,
         Any        = int.MaxValue
@@ -64,23 +64,20 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
     }
 
     /// <summary>
-    /// 描述适配器所支持的能力集，可组合使用。
+    /// 描述监听器所支持的能力集，可组合使用。
     /// </summary>
     [Flags]
     public enum CanFeature
     {
         CanClassic          = 1 << 0,
         CanFd               = 1 << 1,
-        Ethernet            = 1 << 2,
+        MergeReceive        = 1 << 2,
         
-        CyclicTx            = 1 << 3,
-        BatchingTx          = 1 << 4,
+        Filters             = 1 << 3,
         
-        MergeReceive        = 1 << 5,
+        CyclicTx            = 1 << 4,
+        BusUsage            = 1 << 5,
         ErrorCounters       = 1 << 6,
-        
-        Filters             = 1 << 7,
-        BusUsage            = 1 << 8
     }
 
     /// <summary>

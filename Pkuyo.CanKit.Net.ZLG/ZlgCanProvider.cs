@@ -4,6 +4,7 @@ using Pkuyo.CanKit.Net.Core;
 using Pkuyo.CanKit.Net.Core.Abstractions;
 using Pkuyo.CanKit.Net.Core.Definitions;
 using Pkuyo.CanKit.Net.Core.Registry;
+using Pkuyo.CanKit.ZLG.Definitions;
 using Pkuyo.CanKit.ZLG.Options;
 using Pkuyo.CanKit.ZLG.Transceivers;
 
@@ -13,11 +14,10 @@ namespace Pkuyo.CanKit.ZLG
     public abstract class ZlgCanProvider : ICanModelProvider
     {
         public abstract DeviceType DeviceType { get; }
-        public virtual CanFeature Features => CanFeature.CanClassic | CanFeature.Filters;
-
-        public virtual bool IsFd => false;
         
-        public virtual bool EnableMerge => false;
+        public virtual CanFeature Features => CanFeature.CanClassic | CanFeature.Filters | CanFeature.ErrorCounters;
+
+        public virtual ZlgFeature ZlgFeature => ZlgFeature.None;
         
         public ICanFactory Factory => CanRegistry.Registry.Factory("Zlg");
         

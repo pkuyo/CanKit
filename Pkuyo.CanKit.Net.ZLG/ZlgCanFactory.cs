@@ -34,7 +34,8 @@ public class ZlgCanFactory : ICanFactory
         if (configurator.Provider is not ZlgCanProvider provider)
             throw new CanProviderMismatchException(typeof(ZlgCanProvider), configurator.Provider?.GetType() ?? typeof(ICanModelProvider));
 
-        if (channelOptions.ProtocolMode == CanProtocolMode.Merged && provider.EnableMerge)
+        if (channelOptions.ProtocolMode == CanProtocolMode.Merged && 
+            (provider.Features & CanFeature.MergeReceive) != 0U)
             return new ZlgMergeTransceiver();
 
         if (channelOptions.ProtocolMode == CanProtocolMode.Can20

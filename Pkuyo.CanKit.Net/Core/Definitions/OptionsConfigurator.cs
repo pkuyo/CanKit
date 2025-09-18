@@ -90,21 +90,21 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
 
         public TSelf Baud(uint baud)
         {
-            _feature.CheckFeature(CanFeature.CanClassic);
+            CanKitErr.ThrowIfNotSupport(_feature, CanFeature.CanClassic);
             _options.BitTiming = new BitTiming(BaudRate: baud);
             return (TSelf)this;
         }
 
         public TSelf Fd(uint abit, uint dbit)
         {
-            _feature.CheckFeature(CanFeature.CanFd);
+            CanKitErr.ThrowIfNotSupport(_feature, CanFeature.CanFd);
             _options.BitTiming = new BitTiming(ArbitrationBitRate: abit, DataBitRate: dbit);
             return (TSelf)this;
         }
 
         public TSelf BusUsage(uint periodMs = 1000)
         {
-            _feature.CheckFeature(CanFeature.BusUsage);
+            CanKitErr.ThrowIfNotSupport(_feature, CanFeature.BusUsage);
             _options.BusUsageEnabled = true;
             _options.BusUsagePeriodTime = periodMs;
             return (TSelf)this;
@@ -130,13 +130,18 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
 
         public TSelf SetProtocolMode(CanProtocolMode mode)
         {
-            _options.WorkMode = WorkMode;
+            _options.ProtocolMode = mode;
+            _options.BitTiming = mode switch
+            {
+                CanProtocolMode.Can20 => new BitTiming(),
+                _ => new BitTiming(null, 500_000, 500_000)
+            };
             return (TSelf)this;
         }
 
         public TSelf SetFilter(CanFilter filter)
         {
-            _feature.CheckFeature(CanFeature.Filters);
+            CanKitErr.ThrowIfNotSupport(_feature, CanFeature.Filters);
             
             _options.Filter = filter;
             return (TSelf)this;
@@ -144,14 +149,9 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
 
         public TSelf RangeFilter(uint min, uint max, CanFilterIDType idType = CanFilterIDType.Standard)
         {
-            _feature.CheckFeature(CanFeature.Filters);
+            CanKitErr.ThrowIfNotSupport(_feature, CanFeature.Filters);
             
             _options.Filter ??= new CanFilter();
-            
-            if(_options.Filter.filterRules.Count > 0 && _options.Filter.filterRules
-                   .Any(x => x is not FilterRule.Range))
-                throw new CanFilterConfigurationException("Mixed filter rule types are not supported for range filters.");
-            
             _options.Filter.filterRules.Add(new FilterRule.Range(min, max, idType));
             return (TSelf)this;
             
@@ -159,13 +159,9 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
 
         public TSelf AccMask(uint accCode, uint accMask, CanFilterIDType idType = CanFilterIDType.Standard)
         {
-            _feature.CheckFeature(CanFeature.Filters);
+            CanKitErr.ThrowIfNotSupport(_feature, CanFeature.Filters);
             
             _options.Filter ??= new CanFilter();
-            if(_options.Filter.filterRules.Count > 0 && _options.Filter.filterRules
-                   .Any(x => x is not FilterRule.Mask))
-                throw new CanFilterConfigurationException("Mixed filter rule types are not supported for mask filters.");
-            
             _options.Filter.filterRules.Add(new FilterRule.Mask(accCode, accMask, idType));
             return (TSelf)this;
         }

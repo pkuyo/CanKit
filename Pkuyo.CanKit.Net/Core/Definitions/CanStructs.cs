@@ -18,7 +18,7 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
     /// <param name="ArbitrationBitRate">仲裁段的比特率。</param>
     /// <param name="DataBitRate">数据段的比特率。</param>
     public readonly record struct BitTiming(
-        uint? BaudRate = null,
+        uint? BaudRate = 500_000,
         uint? ArbitrationBitRate = null,
         uint? DataBitRate = null);
 
@@ -51,5 +51,28 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
         /// 记录接收时刻对应的系统时间。
         /// </summary>
         public DateTime SystemTimestamp { get;  } = DateTime.Now;
+    }
+
+    /// <summary>
+    /// 表示CAN总线错误计数
+    /// </summary>
+    public record CanErrorCounters
+    {
+
+        /// <summary>
+        /// 发送错误计数（TEC）
+        /// </summary>
+        public int TransmitErrorCounter { get; init; }
+        
+        /// <summary>
+        /// 接收错误计数（REC）
+        /// </summary>
+        public int ReceiveErrorCounter { get; init; }
+
+        public void Deconstruct(out int TransmitErrorCounter, out int ReceiveErrorCounter)
+        {
+            TransmitErrorCounter = this.TransmitErrorCounter;
+            ReceiveErrorCounter = this.ReceiveErrorCounter;
+        }
     }
 }

@@ -131,7 +131,7 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
             IsExtendedFrame = isExtendedFrame;
             _data = dataInit;
         }
-        public CanFrameType FrameKind => CanFrameType.CanClassic;
+        public CanFrameType FrameKind => CanFrameType.Can20;
 
         public uint RawID { get; init; }
 

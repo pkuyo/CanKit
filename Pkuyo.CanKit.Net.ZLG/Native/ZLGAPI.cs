@@ -158,13 +158,16 @@ namespace Pkuyo.CanKit.ZLG.Native
         
         [DllImport("zlgcan.dll", CallingConvention = CallingConvention.StdCall)]
         public static extern uint ZCAN_SetValue(ZlgDeviceHandle device_handle, string path, IntPtr value);
-
-
+        
+        
+        [DllImport("zlgcan.dll", CallingConvention = CallingConvention.StdCall)]
+        public static extern IntPtr ZCAN_GetValue(IntPtr device_handle, string path);
+        
+        
         [DllImport("zlgcan.dll", CallingConvention = CallingConvention.StdCall)]
         public static extern IntPtr ZCAN_GetValue(ZlgDeviceHandle device_handle, string path);
-
-
-
+        
+        
         [DllImport("zlgcan.dll", CallingConvention = CallingConvention.StdCall)]
         public static extern IntPtr ZCAN_InitLIN(ZlgDeviceHandle device_handle, uint lin_index, IntPtr pLINInitConfig);
 
@@ -702,6 +705,17 @@ namespace Pkuyo.CanKit.ZLG.Native
             [MarshalAs(UnmanagedType.ByValArray, SizeConst = 64)]
             public char[] value;
         }
+        
+        [StructLayout(LayoutKind.Sequential, Pack = 1)]
+        public struct BusUsage {
+            public UInt64 nTimeStampBegin;     // 测量起始时间戳，单位us
+            public UInt64 nTimeStampEnd;       // 测量结束时间戳，单位us
+            public byte   nChnl;               // 通道
+            public byte   nReserved;           // 保留
+            public ushort
+                nBusUsage;              // 总线利用率(%)，总线利用率*100展示。取值0~10000，如8050表示80.50%
+            public uint nFrameCount;           // 帧数量
+        } ;
         #endregion
     }
 

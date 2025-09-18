@@ -2,6 +2,8 @@
 using System.Threading;
 using Pkuyo.CanKit.Net.Core.Definitions;
 using Pkuyo.CanKit.ZLG;
+using Pkuyo.CanKit.ZLG.Definitions;
+using Pkuyo.CanKit.ZLG.Exceptions;
 using Pkuyo.CanKit.ZLG.Options;
 
 namespace Pkuyo.CanKit.Net.Sample
@@ -44,7 +46,8 @@ namespace Pkuyo.CanKit.Net.Sample
 
             listenChannel.ErrorOccurred += (sender, frame) =>
             {
-                Console.WriteLine($"[{frame.SystemTimestamp}] Error Code: {frame.RawErrorCode}, Error Kind: {frame.Kind}");
+                Console.WriteLine(
+                    $"[{frame.SystemTimestamp}] Error Code: {((ZlgErrorInfo)frame).ErrorCode}, Error Kind: {frame.Kind}, Direction:{frame.Direction}");
             };
             
             sendChannel.Open();

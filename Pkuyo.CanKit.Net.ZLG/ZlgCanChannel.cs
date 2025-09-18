@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading;
 using Pkuyo.CanKit.Net.Core.Abstractions;
 using Pkuyo.CanKit.Net.Core.Definitions;
@@ -15,8 +16,6 @@ using Pkuyo.CanKit.ZLG.Transceivers;
 namespace Pkuyo.CanKit.ZLG
 {
     
- 
-
     public sealed class ZlgCanChannel : ICanChannel<ZlgChannelRTConfigurator>, ICanApplier
     {
         
@@ -28,6 +27,8 @@ namespace Pkuyo.CanKit.ZLG
             Options.Init((ZlgChannelOptions)options);
             options.Apply(this, true);
             
+            var provider = Options.Provider as ZlgCanProvider;
+            
             ZLGCAN.ZCAN_CHANNEL_INIT_CONFIG config = new ZLGCAN.ZCAN_CHANNEL_INIT_CONFIG
             {
                 can_type = options.ProtocolMode == CanProtocolMode.Can20 ? 0U : 1U,
@@ -35,24 +36,48 @@ namespace Pkuyo.CanKit.ZLG
             if (options.ProtocolMode == CanProtocolMode.Can20)
             {
                 config.config.can.mode = (byte)options.WorkMode;
-                if (options.Filter != null && 
-                    options.Filter.filterRules.Count > 0 && 
-                    options.Filter.filterRules[0] is FilterRule.Mask mask)
-                {
-                    config.config.can.acc_code = mask.AccCode;
-                    config.config.can.acc_mask = mask.AccMask;
-                    config.config.can.filter = (byte)Options.MaskFilterType;
-                    //TODO:多与一项时的警告
-                }
-                else
-                {
-                    config.config.can.acc_code = 0;
-                    config.config.can.acc_mask = 0xffffffff;
-                }
+                
+          
             }
             else
             {
-                
+                var arbitrationRate = options.BitTiming.ArbitrationBitRate
+                                      ?? throw new CanChannelConfigurationException("ArbitRation bit rate must be specified when configuring CAN FD timing.");
+                var dataRate = options.BitTiming.DataBitRate
+                               ?? throw new CanChannelConfigurationException("Data bit rate must be specified when configuring CAN FD timing.");
+                config.config.canfd.abit_timing = arbitrationRate;
+                config.config.canfd.dbit_timing = dataRate;
+            }
+
+            if (options.Filter != null &&
+                options.Filter.filterRules.Count > 0)
+            {
+                if (options.Filter.filterRules[0] is FilterRule.Mask mask)
+                {
+                    if (provider is not null)
+                        ZlgErr.ThrowIfNotSupport(provider.ZlgFeature, ZlgFeature.MaskFilter);
+
+                    config.config.can.acc_code = mask.AccCode;
+                    config.config.can.acc_mask = mask.AccMask;
+                    config.config.can.filter = (byte)Options.MaskFilterType;
+
+                    if (options.Filter.filterRules.Count > 1)
+                    {
+                        throw new CanFilterConfigurationException(
+                            "ZLG channels only support a single mask filter rule.");
+                    }
+                }
+                else 
+                {
+                    if (options.Filter.filterRules.Any(i => i is not FilterRule.Range))
+                    {
+                        throw new CanFilterConfigurationException(
+                            "ZLG channels only supports the same type of filter rule.");
+                    }
+                    config.config.can.acc_code = 0;
+                    config.config.can.acc_mask = 0xffffffff;
+                }
+            
             }
 
             var handle = ZLGCAN.ZCAN_InitCAN(device.NativeHandler, (uint)Options.ChannelIndex, ref config);
@@ -61,6 +86,8 @@ namespace Pkuyo.CanKit.ZLG
             ZlgErr.ThrowIfInvalid(handle, nameof(ZLGCAN.ZCAN_InitCAN));
             _nativeHandle = handle;
 
+            Reset();
+            
             if (transceiver is not IZlgTransceiver zlg)
                 throw new CanTransceiverMismatchException(typeof(IZlgTransceiver), transceiver?.GetType() ?? typeof(ITransceiver));
             _transceiver = zlg;
@@ -90,7 +117,7 @@ namespace Pkuyo.CanKit.ZLG
             Reset();
         }
 
-        public void CleanBuffer()
+        public void ClearBuffer()
         {
             ThrowIfDisposed();
 
@@ -102,13 +129,50 @@ namespace Pkuyo.CanKit.ZLG
             ThrowIfDisposed();
             return _transceiver.Transmit(this, frames);
         }
+
+        public float BusUsage()
+        {
+            if ((Options.Provider.Features & CanFeature.BusUsage) == 0U)
+                throw new CanFeatureNotSupportedException(CanFeature.BusUsage, Options.Provider.Features);
+            var ret = ZLGCAN.ZCAN_GetValue(NativeHandle.DeviceHandle, $"{Options.ChannelIndex}/get_bus_usage/1");
+            var busUsage = Marshal.PtrToStructure<ZLGCAN.BusUsage>(ret);
+            return busUsage.nBusUsage / 10000f;
+        }
+
+        public CanErrorCounters ErrorCounters()
+        {
+            if ((Options.Provider.Features & CanFeature.ErrorCounters) == 0U)
+                throw new CanFeatureNotSupportedException(CanFeature.ErrorCounters, Options.Provider.Features);
+            
+            var errInfo = new ZLGCAN.ZCAN_CHANNEL_ERROR_INFO();
+            ZLGCAN.ZCAN_ReadChannelErrInfo(_nativeHandle, ref errInfo);
+            return new CanErrorCounters()
+            {
+                TransmitErrorCounter = errInfo.passive_ErrData[1],
+                ReceiveErrorCounter = errInfo.passive_ErrData[2]
+            };
+        }
+
         public IEnumerable<CanReceiveData> Receive(uint count = 1, int timeOut = -1)
         {
             ThrowIfDisposed();
             return _transceiver.Receive(this, count, timeOut);
         }
-        
-        
+
+        public bool ReadChannelErrorInfo(out ICanErrorInfo errorInfo)
+        {
+            errorInfo = null;
+            
+            var errInfo = new ZLGCAN.ZCAN_CHANNEL_ERROR_INFO();
+            if (ZLGCAN.ZCAN_ReadChannelErrInfo(_nativeHandle, ref errInfo) != ZlgErr.StatusOk ||
+                errInfo.error_code == 0)
+                return false;
+
+            errorInfo = ZlgErr.ToErrorInfo(errInfo);
+            return true;
+            
+        }
+
 
         public uint GetReceiveCount()
         {
@@ -162,7 +226,7 @@ namespace Pkuyo.CanKit.ZLG
         public bool ApplyOne<T>(string name, T value)
         {
             return ZLGCAN.ZCAN_SetValue(_devicePtr,
-                Options.ChannelIndex.ToString() + name, value.ToString()) != 0;
+                Options.ChannelIndex + name, value.ToString()) != 0;
         }
 
         public void Apply(ICanOptions options)
@@ -176,16 +240,19 @@ namespace Pkuyo.CanKit.ZLG
                     $"channel {Options.ChannelIndex}");
             }
 
-            if (zlgOption.BitTiming.ArbitrationBitRate != null)
+            if (zlgOption.ProtocolMode != CanProtocolMode.Can20)
             {
+                var arbitrationRate = zlgOption.BitTiming.ArbitrationBitRate
+                                  ?? throw new CanChannelConfigurationException("ArbitRation bit rate must be specified when configuring CAN FD timing.");
+                var dataRate = zlgOption.BitTiming.DataBitRate
+                               ?? throw new CanChannelConfigurationException("Data bit rate must be specified when configuring CAN FD timing.");
                 ZlgErr.ThrowIfError(
                     ZLGCAN.ZCAN_SetValue(
                         _devicePtr,
                         Options.ChannelIndex + "/canfd_abit_baud_rate",
-                        zlgOption.BitTiming.ArbitrationBitRate.ToString()),
+                        arbitrationRate.ToString()),
                     "ZCAN_SetValue(canfd_abit_baud_rate)");
-                var dataRate = zlgOption.BitTiming.DataBitRate
-                    ?? throw new CanChannelConfigurationException("Data bit rate must be specified when configuring CAN FD timing.");
+
                 ZlgErr.ThrowIfError(
                     ZLGCAN.ZCAN_SetValue(
                         _devicePtr,
@@ -193,13 +260,14 @@ namespace Pkuyo.CanKit.ZLG
                         dataRate.ToString()),
                     "ZCAN_SetValue(canfd_dbit_baud_rate)");
             }
-            else if (zlgOption.BitTiming.BaudRate != null)
+            else
             {
+                var bitRate = zlgOption.BitTiming.BaudRate
+                                      ?? throw new CanChannelConfigurationException("Bit rate must be specified when configuring CAN FD timing.");
                 ZlgErr.ThrowIfError(
                     ZLGCAN.ZCAN_SetValue(
                         _devicePtr,
-                        Options.ChannelIndex + "/baud_rate",
-                        zlgOption.BitTiming.BaudRate.ToString()),
+                        Options.ChannelIndex + "/baud_rate", bitRate.ToString()),
                     "ZCAN_SetValue(baud_rate)");
             }
 
@@ -215,7 +283,8 @@ namespace Pkuyo.CanKit.ZLG
                 if (zlgOption.Filter.filterRules[0] is FilterRule.Mask mask)
                 {
                     if (zlgOption.Filter.filterRules.Count > 1)
-                        throw new CanFilterConfigurationException("ZLG channels only support a single mask filter rule.");
+                        throw new CanFilterConfigurationException(
+                            "ZLG channels only support a single mask filter rule.");
 
                     ZlgErr.ThrowIfError(
                         ZLGCAN.ZCAN_SetValue(
@@ -232,8 +301,12 @@ namespace Pkuyo.CanKit.ZLG
                 }
                 else
                 {
-                    foreach (var range in zlgOption.Filter.filterRules.OfType<FilterRule.Range>())
+                    foreach (var rule in zlgOption.Filter.filterRules)
                     {
+                        if(rule is not FilterRule.Range range)
+                            throw new CanFilterConfigurationException(
+                                "ZLG channels only supports the same type of filter rule.");
+                        
                         ZlgErr.ThrowIfError(
                             ZLGCAN.ZCAN_SetValue(
                                 _devicePtr,
@@ -335,45 +408,9 @@ namespace Pkuyo.CanKit.ZLG
                         Thread.Sleep(20);
                     }
 
-                    if (_errorOccurred != null)
+                    if (_errorOccurred != null && ReadChannelErrorInfo(out var errInfo))
                     {
-                        var errInfo = new ZLGCAN.ZCAN_CHANNEL_ERROR_INFO();
-                        ZLGCAN.ZCAN_ReadChannelErrInfo(_nativeHandle, ref errInfo);
-
-                        var rawEcc = errInfo.passive_ErrData[0];
-                        byte eccType   = (byte)((rawEcc >> 6) & 0x03);  // 0=Bit,1=Form,2=Stuff,3=Other
-                        byte eccDirBit = (byte)((rawEcc >> 5) & 0x01);  // 0=Tx, 1=Rx
-                        byte eccLoc    = (byte)(rawEcc & 0x1F);
-                        
-                        var kind = eccType switch
-                        {
-                            0 => FrameErrorKind.BitError,
-                            1 => FrameErrorKind.FormError,
-                            2 => FrameErrorKind.StuffError,
-                            3 => InferOtherKindByLocation(eccLoc),      // 细分 CRC/ACK/Controller
-                            _ => FrameErrorKind.Unknown
-                        };
-
-
-                        var dir = eccDirBit switch
-                        {
-                            0 => FrameDirection.Tx,
-                            1 => FrameDirection.Rx,
-                            _ => FrameDirection.Unknown
-                        };
-                        _errorOccurred?.Invoke(this, new ZlgErrorInfo(errInfo.error_code)
-                        {
-                            Kind = kind,
-                            Direction = dir,
-                            SystemTimestamp = DateTime.Now
-                        });
-                        
-                        FrameErrorKind InferOtherKindByLocation(byte loc) => loc switch
-                        {
-                            0x08 or 0x09 => FrameErrorKind.CrcError,
-                            0x19 or 0x1A => FrameErrorKind.AckError,
-                            _            => FrameErrorKind.Controller
-                        };
+                        _errorOccurred.Invoke(this, errInfo);
                     }
                 }
                 catch (ObjectDisposedException)
