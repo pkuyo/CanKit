@@ -122,6 +122,63 @@ namespace Pkuyo.CanKit.Net.Core.Registry
                     _providers.Add(provider.DeviceType, provider);
                 }
             }
+
+            // Scan group providers and expand to concrete providers per device type
+            // ZH: 扫描分组 Provider，并按设备类型逐一创建并注册具体 Provider。
+            var groupTypes = asm.GetTypes().Where(t =>
+                typeof(ICanModelProviderGroup).IsAssignableFrom(t) && !t.IsAbstract &&
+                t.GetConstructor(Type.EmptyTypes) != null);
+
+            foreach (var t in groupTypes)
+            {
+                ICanModelProviderGroup group;
+                try
+                {
+                    group = (ICanModelProviderGroup)Activator.CreateInstance(t)!;
+                }
+                catch (Exception ex)
+                {
+                    CanKitLogger.LogWarning($"Failed to create provider group '{t.FullName}'.", ex);
+                    continue;
+                }
+
+                IEnumerable<DeviceType> deviceTypes;
+                try
+                {
+                    deviceTypes = group.SupportedDeviceTypes ?? Array.Empty<DeviceType>();
+                }
+                catch (Exception ex)
+                {
+                    CanKitLogger.LogWarning($"Failed to query SupportedDeviceTypes from group '{t.FullName}'.", ex);
+                    continue;
+                }
+
+                foreach (var dt in deviceTypes)
+                {
+                    try
+                    {
+                        var provider = group.Create(dt);
+                        if (provider == null)
+                        {
+                            CanKitLogger.LogError($"Provider group '{t.FullName}' returned null for DeviceType '{dt}'.");
+                            continue;
+                        }
+
+                        if (_providers.ContainsKey(dt))
+                        {
+                            CanKitLogger.LogError($"A provider with the DeviceType '{dt}' is already registered.");
+                        }
+                        else
+                        {
+                            _providers.Add(dt, provider);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        CanKitLogger.LogWarning($"Failed to create provider for DeviceType '{dt}' from group '{t.FullName}'.", ex);
+                    }
+                }
+            }
         }
 
         private void RegisterFactory(Assembly asm)

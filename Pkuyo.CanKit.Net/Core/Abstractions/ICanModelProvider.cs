@@ -3,7 +3,7 @@ using Pkuyo.CanKit.Net.Core.Definitions;
 
 namespace Pkuyo.CanKit.Net.Core.Abstractions
 {
-    
+
     /// <summary>
     /// Provides model metadata and factories for a specific device family (为特定设备族提供模型与工厂)。
     /// </summary>
@@ -28,15 +28,35 @@ namespace Pkuyo.CanKit.Net.Core.Abstractions
         /// Get default device options and initializer (获取默认设备选项与初始化器)。
         /// </summary>
         /// <returns>Tuple of options and configurator (选项与配置器)。</returns>
-        (IDeviceOptions,IDeviceInitOptionsConfigurator) GetDeviceOptions();
+        (IDeviceOptions, IDeviceInitOptionsConfigurator) GetDeviceOptions();
 
         /// <summary>
         /// Get channel options and initializer for index (为指定通道索引获取选项与初始化器)。
         /// </summary>
         /// <param name="channelIndex">Channel index (通道索引)。</param>
         /// <returns>Tuple of options and configurator (选项与配置器)。</returns>
-        (IChannelOptions,IChannelInitOptionsConfigurator) GetChannelOptions(int channelIndex);
+        (IChannelOptions, IChannelInitOptionsConfigurator) GetChannelOptions(int channelIndex);
 
     }
-}
 
+    /// <summary>
+    /// Group provider that can supply model providers for multiple device types.
+    /// ZH: 分组提供者接口：为多个设备类型按需创建具体的模型提供者。
+    /// </summary>
+    public interface ICanModelProviderGroup
+    {
+        /// <summary>
+        /// Device types supported by this group.
+        /// ZH: 本分组支持的设备类型集合。
+        /// </summary>
+        IEnumerable<DeviceType> SupportedDeviceTypes { get; }
+
+        /// <summary>
+        /// Create a concrete provider for the specified device type.
+        /// ZH: 根据指定设备类型创建对应的模型提供者。
+        /// </summary>
+        /// <param name="deviceType">Target device type. ZH: 目标设备类型。</param>
+        /// <returns>Concrete provider. ZH: 具体的模型提供者。</returns>
+        ICanModelProvider Create(DeviceType deviceType);
+    }
+}

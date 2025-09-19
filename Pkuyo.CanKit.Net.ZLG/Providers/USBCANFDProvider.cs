@@ -1,12 +1,13 @@
-﻿
-
+﻿using System.Collections.Generic;
+using Pkuyo.CanKit.Net.Core.Abstractions;
 using Pkuyo.CanKit.Net.Core.Definitions;
-using Pkuyo.CanKit.ZLG;
 using Pkuyo.CanKit.ZLG.Definitions;
 
-public class USBCANFD100UProvider : ZlgCanProvider
+namespace Pkuyo.CanKit.ZLG.Providers;
+
+public class USBCANFDProvider(DeviceType deviceType) : ZlgCanProvider
 {
-    public override DeviceType DeviceType => ZlgDeviceType.ZCAN_USBCANFD_100U;
+    public override DeviceType DeviceType => deviceType;
     
     public override CanFeature Features => base.Features | CanFeature.BusUsage | CanFeature.CyclicTx | 
                                            CanFeature.CanFd | CanFeature.MergeReceive;
@@ -14,42 +15,19 @@ public class USBCANFD100UProvider : ZlgCanProvider
     public override ZlgFeature ZlgFeature => ZlgFeature.RangeFilter;
 }
 
-public class USBCANFD200UProvider : ZlgCanProvider
+public class USBCANFDProviderGroup : ICanModelProviderGroup
 {
-    public override DeviceType DeviceType => ZlgDeviceType.ZCAN_USBCANFD_200U;
+    public IEnumerable<DeviceType> SupportedDeviceTypes =>
+    [
+        ZlgDeviceType.ZCAN_USBCANFD_100U,
+        ZlgDeviceType.ZCAN_USBCANFD_200U,
+        ZlgDeviceType.ZCAN_USBCANFD_400U,
+        ZlgDeviceType.ZCAN_USBCANFD_800U,
+        ZlgDeviceType.ZCAN_USBCANFD_MINI
+    ];
     
-    public override CanFeature Features => base.Features | CanFeature.BusUsage | CanFeature.CyclicTx | 
-                                           CanFeature.CanFd | CanFeature.MergeReceive;
-    
-    public override ZlgFeature ZlgFeature => ZlgFeature.RangeFilter;
-}
-
-public class USBCANFD400UProvider : ZlgCanProvider
-{
-    public override DeviceType DeviceType => ZlgDeviceType.ZCAN_USBCANFD_400U;
-    
-    public override CanFeature Features => base.Features | CanFeature.BusUsage | CanFeature.CyclicTx | 
-                                           CanFeature.CanFd | CanFeature.MergeReceive;
-    
-    public override ZlgFeature ZlgFeature => ZlgFeature.RangeFilter;
-}
-
-public class USBCANFD800UProvider : ZlgCanProvider
-{
-    public override DeviceType DeviceType => ZlgDeviceType.ZCAN_USBCANFD_800U;
-    
-    public override CanFeature Features => base.Features | CanFeature.BusUsage | CanFeature.CyclicTx | 
-                                           CanFeature.CanFd | CanFeature.MergeReceive;
-    
-    public override ZlgFeature ZlgFeature => ZlgFeature.RangeFilter;
-}
-
-public class USBCANFDMINIProvider : ZlgCanProvider
-{
-    public override DeviceType DeviceType => ZlgDeviceType.ZCAN_USBCANFD_MINI;
-    
-    public override CanFeature Features => base.Features | CanFeature.BusUsage | CanFeature.CyclicTx | 
-                                           CanFeature.CanFd | CanFeature.MergeReceive;
-    
-    public override ZlgFeature ZlgFeature => ZlgFeature.RangeFilter;
+    public ICanModelProvider Create(DeviceType deviceType)
+    {
+        return new USBCANFDProvider(deviceType);
+    }
 }

@@ -1,27 +1,28 @@
-﻿using Pkuyo.CanKit.Net.Core.Definitions;
+﻿using System.Collections.Generic;
+using Pkuyo.CanKit.Net.Core.Abstractions;
+using Pkuyo.CanKit.Net.Core.Definitions;
 using Pkuyo.CanKit.ZLG.Definitions;
 
-namespace Pkuyo.CanKit.ZLG.Providers
+namespace Pkuyo.CanKit.ZLG.Providers;
+public class USBCANProvider(DeviceType deviceType) : ZlgCanProvider
 {
-
-    public class USBCANIIProvider : ZlgCanProvider
-    {
-        public override DeviceType DeviceType => ZlgDeviceType.ZCAN_USBCAN2;
-        
-        public override ZlgFeature ZlgFeature => ZlgFeature.MaskFilter;
-    }
+    public override DeviceType DeviceType => deviceType;
     
-    public class USBCANIProvider : ZlgCanProvider
-    {
-        public override DeviceType DeviceType => ZlgDeviceType.ZCAN_USBCAN1;
+    public override ZlgFeature ZlgFeature => ZlgFeature.MaskFilter;
+}
 
-        public override ZlgFeature ZlgFeature => ZlgFeature.MaskFilter;
-    }
+public class USBCANProviderGroup : ICanModelProviderGroup
+{
+    public IEnumerable<DeviceType> SupportedDeviceTypes =>
+    [
+        ZlgDeviceType.ZCAN_USBCAN1,
+        ZlgDeviceType.ZCAN_USBCAN2,
+        ZlgDeviceType.ZCAN_PCI9820,
+        ZlgDeviceType.ZCAN_PCI9820I
+    ];
     
-    public class PCI9820IProvider : ZlgCanProvider
+    public ICanModelProvider Create(DeviceType deviceType)
     {
-        public override DeviceType DeviceType => ZlgDeviceType.ZCAN_PCI9820I;
-        
-        public override ZlgFeature ZlgFeature => ZlgFeature.MaskFilter;
+        return new USBCANProvider(deviceType);
     }
 }
