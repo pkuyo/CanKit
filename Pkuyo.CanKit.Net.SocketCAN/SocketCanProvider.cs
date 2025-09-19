@@ -1,0 +1,39 @@
+using Pkuyo.CanKit.Net.Core.Abstractions;
+using Pkuyo.CanKit.Net.Core.Definitions;
+using Pkuyo.CanKit.Net.Core.Registry;
+using Pkuyo.CanKit.SocketCAN.Definitions;
+
+namespace Pkuyo.CanKit.SocketCAN;
+
+public sealed class SocketCanProvider : ICanModelProvider
+{
+    public DeviceType DeviceType => LinuxDeviceType.SocketCAN;
+
+    public CanFeature Features => CanFeature.CanClassic | CanFeature.CanFd | CanFeature.Filters;
+
+    public ICanFactory Factory => CanRegistry.Registry.Factory("SocketCAN");
+
+    public (IDeviceOptions, IDeviceInitOptionsConfigurator) GetDeviceOptions()
+    {
+        var options = new SocketCanDeviceOptions(this);
+        var cfg = new SocketCanDeviceInitOptionsConfigurator();
+        cfg.Init(options);
+        return (options, cfg);
+    }
+
+    public (IChannelOptions, IChannelInitOptionsConfigurator) GetChannelOptions(int channelIndex)
+    {
+        var options = new SocketCanChannelOptions(this)
+        {
+            ChannelIndex = channelIndex,
+            BitTiming = new BitTiming(500_000, null, null),
+            ProtocolMode = CanProtocolMode.Can20,
+            WorkMode = ChannelWorkMode.Normal,
+            InterfaceName = $"can{channelIndex}"
+        };
+        var cfg = new SocketCanChannelInitConfigurator();
+        cfg.Init(options);
+        return (options, cfg);
+    }
+}
+

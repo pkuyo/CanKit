@@ -15,6 +15,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Pkuyo.CanKit.Net.Gen.Sample
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Pkuyo.CanKit.Net.Tests", "Pkuyo.CanKit.Net.Tests\Pkuyo.CanKit.Net.Tests.csproj", "{ED6A08E7-CA4E-4ED1-A531-0845EF6C08F8}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Pkuyo.CanKit.Net.SocketCAN", "Pkuyo.CanKit.Net.SocketCAN\Pkuyo.CanKit.Net.SocketCAN.csproj", "{B7B6D8C2-4E33-4E1E-AC1D-1B1A3B9A6E42}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -97,6 +99,18 @@ Global
 		{ED6A08E7-CA4E-4ED1-A531-0845EF6C08F8}.Release|x64.Build.0 = Release|Any CPU
 		{ED6A08E7-CA4E-4ED1-A531-0845EF6C08F8}.Release|x86.ActiveCfg = Release|Any CPU
 		{ED6A08E7-CA4E-4ED1-A531-0845EF6C08F8}.Release|x86.Build.0 = Release|Any CPU
+		{B7B6D8C2-4E33-4E1E-AC1D-1B1A3B9A6E42}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B7B6D8C2-4E33-4E1E-AC1D-1B1A3B9A6E42}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B7B6D8C2-4E33-4E1E-AC1D-1B1A3B9A6E42}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{B7B6D8C2-4E33-4E1E-AC1D-1B1A3B9A6E42}.Debug|x64.Build.0 = Debug|Any CPU
+		{B7B6D8C2-4E33-4E1E-AC1D-1B1A3B9A6E42}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{B7B6D8C2-4E33-4E1E-AC1D-1B1A3B9A6E42}.Debug|x86.Build.0 = Debug|Any CPU
+		{B7B6D8C2-4E33-4E1E-AC1D-1B1A3B9A6E42}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B7B6D8C2-4E33-4E1E-AC1D-1B1A3B9A6E42}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B7B6D8C2-4E33-4E1E-AC1D-1B1A3B9A6E42}.Release|x64.ActiveCfg = Release|Any CPU
+		{B7B6D8C2-4E33-4E1E-AC1D-1B1A3B9A6E42}.Release|x64.Build.0 = Release|Any CPU
+		{B7B6D8C2-4E33-4E1E-AC1D-1B1A3B9A6E42}.Release|x86.ActiveCfg = Release|Any CPU
+		{B7B6D8C2-4E33-4E1E-AC1D-1B1A3B9A6E42}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
