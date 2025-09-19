@@ -38,7 +38,7 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
         public CanProtocolMode ProtocolMode => Options.ProtocolMode;
         public ICanFilter Filter => Options.Filter;
         
-        public ChannelRTOptionsConfigurator<TChannelOptions> SetInternalResistance(bool enabled)
+        public virtual ChannelRTOptionsConfigurator<TChannelOptions> SetInternalResistance(bool enabled)
         {
             Options.InternalResistance = enabled;
             return Self;
@@ -55,7 +55,7 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
         public DeviceType DeviceType => Options.DeviceType;
         public uint TxTimeOutTime => Options.TxTimeOut;
 
-        public TSelf TxTimeOut(uint ms)
+        public virtual TSelf TxTimeOut(uint ms)
         {
             Options.TxTimeOut = ms;
             return (TSelf)this;
@@ -88,21 +88,21 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
         public ICanFilter Filter => Options.Filter;
 
 
-        public TSelf Baud(uint baud)
+        public virtual TSelf Baud(uint baud)
         {
             CanKitErr.ThrowIfNotSupport(_feature, CanFeature.CanClassic);
             Options.BitTiming = new BitTiming(BaudRate: baud);
             return (TSelf)this;
         }
 
-        public TSelf Fd(uint abit, uint dbit)
+        public virtual TSelf Fd(uint abit, uint dbit)
         {
             CanKitErr.ThrowIfNotSupport(_feature, CanFeature.CanFd);
             Options.BitTiming = new BitTiming(ArbitrationBitRate: abit, DataBitRate: dbit);
             return (TSelf)this;
         }
 
-        public TSelf BusUsage(uint periodMs = 1000)
+        public virtual TSelf BusUsage(uint periodMs = 1000)
         {
             CanKitErr.ThrowIfNotSupport(_feature, CanFeature.BusUsage);
             Options.BusUsageEnabled = true;
@@ -110,25 +110,25 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
             return (TSelf)this;
         }
 
-        public TSelf SetTxRetryPolicy(TxRetryPolicy retryPolicy)
+        public virtual TSelf SetTxRetryPolicy(TxRetryPolicy retryPolicy)
         {
             Options.TxRetryPolicy = retryPolicy;
             return (TSelf)this;
         }
 
-        public TSelf SetWorkMode(ChannelWorkMode mode)
+        public virtual TSelf SetWorkMode(ChannelWorkMode mode)
         {
             Options.WorkMode = mode;
             return (TSelf)this;
         }
 
-        public TSelf InternalRes(bool enabled)
+        public virtual TSelf InternalRes(bool enabled)
         {
             Options.InternalResistance = enabled;
             return (TSelf)this;
         }
 
-        public TSelf SetProtocolMode(CanProtocolMode mode)
+        public virtual TSelf SetProtocolMode(CanProtocolMode mode)
         {
             Options.ProtocolMode = mode;
             Options.BitTiming = mode switch
@@ -139,7 +139,7 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
             return (TSelf)this;
         }
 
-        public TSelf SetFilter(CanFilter filter)
+        public virtual TSelf SetFilter(CanFilter filter)
         {
             CanKitErr.ThrowIfNotSupport(_feature, CanFeature.Filters);
             
@@ -147,7 +147,7 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
             return (TSelf)this;
         }
 
-        public TSelf RangeFilter(uint min, uint max, CanFilterIDType idType = CanFilterIDType.Standard)
+        public virtual TSelf RangeFilter(uint min, uint max, CanFilterIDType idType = CanFilterIDType.Standard)
         {
             CanKitErr.ThrowIfNotSupport(_feature, CanFeature.Filters);
             if (min > max)
@@ -155,17 +155,14 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
                 throw new ArgumentException($"Invalid range: min ({min}) must be less than or equal to max ({max}).",
                     nameof(max));
             }
-            Options.Filter ??= new CanFilter();
             Options.Filter.filterRules.Add(new FilterRule.Range(min, max, idType));
             return (TSelf)this;
             
         }
 
-        public TSelf AccMask(uint accCode, uint accMask, CanFilterIDType idType = CanFilterIDType.Standard)
+        public virtual TSelf AccMask(uint accCode, uint accMask, CanFilterIDType idType = CanFilterIDType.Standard)
         {
             CanKitErr.ThrowIfNotSupport(_feature, CanFeature.Filters);
-            
-            Options.Filter ??= new CanFilter();
             Options.Filter.filterRules.Add(new FilterRule.Mask(accCode, accMask, idType));
             return (TSelf)this;
         }

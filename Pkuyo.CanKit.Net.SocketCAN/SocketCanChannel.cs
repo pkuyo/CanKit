@@ -178,13 +178,6 @@ public sealed class SocketCanChannel : ICanChannel<SocketCanChannelRTConfigurato
         if (_isDisposed) throw new CanChannelDisposedException();
     }
 
-    public bool ApplyOne<T>(string name, T value)
-    {
-        // SocketCAN uses runtime socket options mostly per-channel; accept known items and store.
-        // Names follow ZLG-like convention where applicable; most are ignored safely.
-        return true;
-    }
-
     public void Apply(ICanOptions options)
     {
         if (options is not SocketCanChannelOptions sc)
@@ -197,7 +190,7 @@ public sealed class SocketCanChannel : ICanChannel<SocketCanChannelRTConfigurato
         // Protocol: enable FD if needed (already set at creation). No further action.
 
         // Filters: only mask filters are supported directly
-        if (sc.Filter != null && sc.Filter.filterRules.Count > 0)
+        if (sc.Filter.filterRules.Count > 0)
         {
             if (sc.Filter.filterRules[0] is FilterRule.Mask mask)
             {
@@ -359,10 +352,10 @@ public sealed class SocketCanChannel : ICanChannel<SocketCanChannelRTConfigurato
         if (_pollTask is { IsCompleted: false }) return;
         _pollCts = new CancellationTokenSource();
         var token = _pollCts.Token;
-        _pollTask = System.Threading.Tasks.Task.Factory.StartNew(
+        _pollTask = Task.Factory.StartNew(
             () => PollLoop(token), token,
-            System.Threading.Tasks.TaskCreationOptions.LongRunning,
-            System.Threading.Tasks.TaskScheduler.Default);
+            TaskCreationOptions.LongRunning,
+            TaskScheduler.Default);
     }
 
     private void StopPolling()
@@ -372,7 +365,10 @@ public sealed class SocketCanChannel : ICanChannel<SocketCanChannelRTConfigurato
             _pollCts?.Cancel();
             _pollTask?.Wait(200);
         }
-        catch { }
+        catch
+        {
+            // ignored
+        }
         finally
         {
             _pollTask = null;
@@ -391,27 +387,8 @@ public sealed class SocketCanChannel : ICanChannel<SocketCanChannelRTConfigurato
                 continue;
             }
             if (Volatile.Read(ref _subscriberCount) <= 0) break;
-
-            try
-            {
-                var count = GetReceiveCount();
-                if (count > 0)
-                {
-                    foreach (var f in Receive(Math.Min(count, 256), 0))
-                    {
-                        try { _frameReceived?.Invoke(this, f); }
-                        catch { }
-                    }
-                }
-                else
-                {
-                    Thread.Sleep(20);
-                }
-            }
-            catch
-            {
-                Thread.Sleep(20);
-            }
+            
+            //TODO:epoll
         }
     }
 
@@ -478,5 +455,5 @@ public sealed class SocketCanChannel : ICanChannel<SocketCanChannelRTConfigurato
     private EventHandler<ICanErrorInfo>? _errorOccurred;
     private int _subscriberCount;
     private CancellationTokenSource? _pollCts;
-    private System.Threading.Tasks.Task? _pollTask;
+    private Task? _pollTask;
 }

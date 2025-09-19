@@ -11,7 +11,7 @@ using Pkuyo.CanKit.ZLG.Options;
 
 namespace Pkuyo.CanKit.ZLG
 {
-     public class ZlgCanDevice : ICanDevice<ZlgDeviceRTOptionsConfigurator>, ICanApplier
+     public class ZlgCanDevice : ICanDevice<ZlgDeviceRTOptionsConfigurator>, INamedCanApplier
      {
          public ZlgCanDevice(IDeviceOptions options)
          {

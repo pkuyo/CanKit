@@ -16,7 +16,7 @@ using Pkuyo.CanKit.ZLG.Transceivers;
 namespace Pkuyo.CanKit.ZLG
 {
     
-    public sealed class ZlgCanChannel : ICanChannel<ZlgChannelRTConfigurator>, ICanApplier
+    public sealed class ZlgCanChannel : ICanChannel<ZlgChannelRTConfigurator>, INamedCanApplier
     {
         
         internal ZlgCanChannel(ZlgCanDevice device ,IChannelOptions options, ITransceiver transceiver)

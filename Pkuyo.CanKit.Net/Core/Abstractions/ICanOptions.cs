@@ -9,14 +9,7 @@ namespace Pkuyo.CanKit.Net.Core.Abstractions
     /// </summary>
     public interface ICanApplier
     {
-        /// <summary>
-        /// Apply a single option value (应用单个选项)。
-        /// </summary>
-        /// <typeparam name="T">Value type (值类型)。</typeparam>
-        /// <param name="name">Option name (选项名)。</param>
-        /// <param name="value">Option value (选项值)。</param>
-        /// <returns>True if applied (应用成功返回 true)。</returns>
-        bool ApplyOne<T>(string name, T value);
+     
 
         /// <summary>
         /// Apply a batch of options (批量应用选项)。
@@ -28,6 +21,22 @@ namespace Pkuyo.CanKit.Net.Core.Abstractions
         /// Applier capability/type (应用器当前状态/类型)。
         /// </summary>
         CanOptionType ApplierStatus { get; }
+    }
+
+    
+    /// <summary>
+    /// Named applier that supports applying options by name (支持按名称应用选项的应用器)。
+    /// </summary>
+    public interface INamedCanApplier : ICanApplier
+    {
+        /// <summary>
+        /// Apply a single option value (应用单个选项)。
+        /// </summary>
+        /// <typeparam name="T">Value type (值类型)。</typeparam>
+        /// <param name="name">Option name (选项名)。</param>
+        /// <param name="value">Option value (选项值)。</param>
+        /// <returns>True if applied (应用成功返回 true)。</returns>
+        bool ApplyOne<T>(string name, T value);
     }
 
     /// <summary>

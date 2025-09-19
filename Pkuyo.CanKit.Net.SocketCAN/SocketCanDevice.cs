@@ -33,23 +33,11 @@ public sealed class SocketCanDevice : ICanDevice<SocketCanDeviceRTOptionsConfigu
     {
         _isOpen = false;
     }
-
-    public bool ApplyOne<T>(string name, T value)
-    {
-        // SocketCAN device-level has minimal runtime options; accept Tx timeout.
-        if (string.Equals(name, "device_index", StringComparison.OrdinalIgnoreCase))
-            return true; // ignored
-        if (string.Equals(name, "/tx_timeout", StringComparison.OrdinalIgnoreCase))
-        {
-            _initOptions.TxTimeOut = Convert.ToUInt32(value);
-            return true;
-        }
-        return true; // ignore unknown device-level options
-    }
+    
 
     public void Apply(ICanOptions options)
     {
-        // No batch-op needed at device level.
+        // TODO
     }
 
     public CanOptionType ApplierStatus => IsDeviceOpen ? CanOptionType.Runtime : CanOptionType.Init;

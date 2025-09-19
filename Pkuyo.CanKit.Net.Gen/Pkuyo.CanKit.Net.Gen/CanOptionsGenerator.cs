@@ -292,16 +292,18 @@ namespace Pkuyo.CanKit.Net.Gen
             sb.AppendLine();
             sb.AppendLine("    public partial void Apply(Pkuyo.CanKit.Net.Core.Abstractions.ICanApplier applier, bool force)"); 
             sb.AppendLine("    {");
+            sb.AppendLine("         if(applier is Pkuyo.CanKit.Net.Core.Abstractions.INamedCanApplier namedApplier)");
+            sb.AppendLine("         {");
             for (int i = 0; i < avaiableProerties.Count; i++)
             {
                 var p = avaiableProerties[i];
                 var backing = MakeBackingName(p.Name);
-                sb.Append($"        if((_hasChanged[{i}] || force)");
-                sb.Append($" && applier.ApplierStatus == Pkuyo.CanKit.Net.Core.Definitions.CanOptionType.{p.OptionType}");
-                sb.AppendLine($" && applier.ApplyOne<{p.TypeDisplay}>(\"{p.OptionName}\",{backing}))");
-                sb.AppendLine($"            _hasChanged[{i}] = false;");
+                sb.Append($"            if((_hasChanged[{i}] || force)");
+                sb.Append($" && namedApplier.ApplierStatus == Pkuyo.CanKit.Net.Core.Definitions.CanOptionType.{p.OptionType}");
+                sb.AppendLine($" && namedApplier.ApplyOne<{p.TypeDisplay}>(\"{p.OptionName}\",{backing}))");
+                sb.AppendLine($"                _hasChanged[{i}] = false;");
             }
-
+            sb.AppendLine("         }");
             sb.AppendLine($"        applier.Apply(this);");
             sb.AppendLine("    }");
             // 关闭嵌套
