@@ -6,7 +6,7 @@ namespace Pkuyo.CanKit.SocketCAN;
 public sealed class SocketCanDeviceOptions(ICanModelProvider provider) : IDeviceOptions
 {
     public ICanModelProvider Provider { get; } = provider;
-    public DeviceType DeviceType => provider.DeviceType;
+    public DeviceType DeviceType => Provider.DeviceType;
     public uint TxTimeOut { get; set; } = 100U;
     public void Apply(ICanApplier applier, bool force = false) => applier.Apply(this);
 }
@@ -23,7 +23,7 @@ public sealed class SocketCanChannelOptions(ICanModelProvider provider) : IChann
     public ChannelWorkMode WorkMode { get; set; } = ChannelWorkMode.Normal;
     public TxRetryPolicy TxRetryPolicy { get; set; } = TxRetryPolicy.NoRetry;
     public CanProtocolMode ProtocolMode { get; set; } = CanProtocolMode.Can20;
-    public CanFilter Filter { get; set; }
+    public CanFilter Filter { get; set; } = new ();
 
     // SocketCAN specific: interface name, e.g. "can0", "vcan0" etc.
     public string InterfaceName { get; set; } = "can0";

@@ -14,7 +14,7 @@ namespace Pkuyo.CanKit.ZLG.Transceivers
         {
         
             var zcanTransmitDatas = 
-                frames.Select(i => i.canFrame)
+                frames.Select(i => i.CanFrame)
                 .OfType<CanClassicFrame>()
                 .Select(i => i.ToTransmitData())
                 .ToArray();
@@ -28,10 +28,9 @@ namespace Pkuyo.CanKit.ZLG.Transceivers
 
             var recCount = ZLGCAN.ZCAN_Receive(((ZlgCanChannel)channel).NativeHandle, data, count, timeOut);
 
-            return data.Take((int)recCount).Select(i => new CanReceiveData()
+            return data.Take((int)recCount).Select(i => new CanReceiveData(i.frame.FromReceiveData())
             {
-                recvTimestamp = i.timestamp,
-                canFrame = i.frame.FromReceiveData()
+                recvTimestamp = i.timestamp
             });
         }
 

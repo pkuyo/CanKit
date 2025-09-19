@@ -60,7 +60,7 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
         /// <summary>
         /// 获取相关的原始帧。
         /// </summary>
-        ICanFrame Frame { get; init; }
+        ICanFrame? Frame { get; init; }
     }
 
     /// <summary>
@@ -104,10 +104,7 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
         /// </summary>
         public static implicit operator CanTransmitData(CanClassicFrame value)
         {
-            return new CanTransmitData()
-            {
-                canFrame = value
-            };
+            return new CanTransmitData(value);
         }
 
         /// <summary>
@@ -286,7 +283,7 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
         uint RawErrorCode,
         ulong? TimeOffset,
         FrameDirection Direction,
-        ICanFrame Frame) : ICanErrorInfo
+        ICanFrame? Frame) : ICanErrorInfo
     {
 
     }

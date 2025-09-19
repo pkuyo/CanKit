@@ -25,7 +25,7 @@ namespace Pkuyo.CanKit.Net.Core.Diagnostics
         DateTime Timestamp,
         CanKitLogLevel Level,
         string Message,
-        Exception Exception)
+        Exception? Exception)
     {
         /// <summary>
         /// Format entry for console/debug output (格式化输出)。
@@ -63,7 +63,7 @@ namespace Pkuyo.CanKit.Net.Core.Diagnostics
         /// <param name="level">Log level (日志级别)。</param>
         /// <param name="message">Message (日志内容)。</param>
         /// <param name="exception">Optional exception (可选异常)。</param>
-        public static void Log(CanKitLogLevel level, string message, Exception exception = null)
+        public static void Log(CanKitLogLevel level, string message, Exception? exception = null)
         {
             if (message == null) throw new ArgumentNullException(nameof(message));
 
@@ -77,7 +77,7 @@ namespace Pkuyo.CanKit.Net.Core.Diagnostics
         /// </summary>
         /// <param name="exception">Exception (异常)。</param>
         /// <param name="message">Optional message, defaults to exception.Message (可选消息)。</param>
-        public static void LogException(Exception exception, string message = null)
+        public static void LogException(Exception exception, string? message = null)
         {
             if (exception == null) throw new ArgumentNullException(nameof(exception));
             Log(CanKitLogLevel.Error, message ?? exception.Message, exception);
@@ -88,7 +88,7 @@ namespace Pkuyo.CanKit.Net.Core.Diagnostics
         /// </summary>
         /// <param name="message">Optional message, defaults to exception.Message (消息)。</param>
         /// <param name="exception">Optional Exception (可选异常)。</param>
-        public static void LogError(string message, Exception exception = null)
+        public static void LogError(string message, Exception? exception = null)
         {
             if (message == null) throw new ArgumentNullException(nameof(message));
             Log(CanKitLogLevel.Error, message , exception);
@@ -97,7 +97,7 @@ namespace Pkuyo.CanKit.Net.Core.Diagnostics
         /// <summary>
         /// Log a warning (记录警告)。
         /// </summary>
-        public static void LogWarning(string message, Exception exception = null)
+        public static void LogWarning(string message, Exception? exception = null)
         {
             Log(CanKitLogLevel.Warning, message, exception);
         }

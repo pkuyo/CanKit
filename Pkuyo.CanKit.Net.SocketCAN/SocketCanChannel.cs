@@ -131,11 +131,11 @@ public sealed class SocketCanChannel : ICanChannel<SocketCanChannelRTConfigurato
         {
             SocketCanClassicTransceiver => ReadClassic(count, timeOut),
             SocketCanFdTransceiver => ReadFd(count, timeOut),
-            _ => Array.Empty<CanReceiveData>()
+            _ => []
         };
     }
 
-    public bool ReadChannelErrorInfo(out ICanErrorInfo errorInfo)
+    public bool ReadChannelErrorInfo(out ICanErrorInfo? errorInfo)
     {
         // SocketCAN via raw socket does not expose detailed error info here
         errorInfo = null;
@@ -240,7 +240,7 @@ public sealed class SocketCanChannel : ICanChannel<SocketCanChannelRTConfigurato
         uint ok = 0;
         foreach (var f in frames)
         {
-            if (f.canFrame is not CanClassicFrame cf) continue;
+            if (f.CanFrame is not CanClassicFrame cf) continue;
             var frame = new Libc.can_frame
             {
                 can_id = cf.RawID,
@@ -284,10 +284,9 @@ public sealed class SocketCanChannel : ICanChannel<SocketCanChannelRTConfigurato
                 var frame = Marshal.PtrToStructure<Libc.can_frame>(buf);
                 var data = new byte[frame.can_dlc];
                 Array.Copy(frame.data ?? Array.Empty<byte>(), data, Math.Min(data.Length, 8));
-                result.Add(new CanReceiveData
+                result.Add(new CanReceiveData(new CanClassicFrame(frame.can_id, data))
                 {
-                    recvTimestamp = 0,
-                    canFrame = new CanClassicFrame(frame.can_id, data)
+                    recvTimestamp = 0
                 });
             }
             finally { Marshal.FreeHGlobal(buf); }
@@ -301,7 +300,7 @@ public sealed class SocketCanChannel : ICanChannel<SocketCanChannelRTConfigurato
         uint ok = 0;
         foreach (var f in frames)
         {
-            if (f.canFrame is not CanFdFrame ff) continue;
+            if (f.CanFrame is not CanFdFrame ff) continue;
             var frame = new Libc.canfd_frame
             {
                 can_id = ff.RawID,
@@ -344,11 +343,10 @@ public sealed class SocketCanChannel : ICanChannel<SocketCanChannelRTConfigurato
                 if (n != unit) break;
                 var frame = Marshal.PtrToStructure<Libc.canfd_frame>(buf);
                 var data = new byte[frame.len];
-                Array.Copy(frame.data ?? Array.Empty<byte>(), data, Math.Min(data.Length, 64));
-                result.Add(new CanReceiveData
+                Array.Copy(frame.data, data, Math.Min(data.Length, 64));
+                result.Add(new CanReceiveData(new CanFdFrame(frame.can_id, data))
                 {
-                    recvTimestamp = 0,
-                    canFrame = new CanFdFrame(frame.can_id, data)
+                    recvTimestamp = 0
                 });
             }
             finally { Marshal.FreeHGlobal(buf); }

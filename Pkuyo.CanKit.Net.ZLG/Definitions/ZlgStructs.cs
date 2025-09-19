@@ -38,7 +38,7 @@ namespace Pkuyo.CanKit.ZLG.Definitions
         /// <inheritdoc />
         public FrameDirection Direction { get; init; }
         /// <inheritdoc />
-        public ICanFrame Frame { get; init; }
+        public ICanFrame? Frame { get; init; }
     }
 }
 

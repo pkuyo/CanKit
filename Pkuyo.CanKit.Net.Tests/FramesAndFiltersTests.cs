@@ -166,8 +166,8 @@ public class FramesAndFiltersTests
     {
         var f = new CanClassicFrame(0x123, new byte[] { 1, 2 });
         CanTransmitData tx = f;
-        Assert.IsType<CanClassicFrame>(tx.canFrame);
-        var back = (CanClassicFrame)tx.canFrame;
+        Assert.IsType<CanClassicFrame>(tx.CanFrame);
+        var back = (CanClassicFrame)tx.CanFrame;
         Assert.Equal(f, back);
     }
 

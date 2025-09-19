@@ -1,3 +1,4 @@
+using System;
 using Pkuyo.CanKit.Net.Core.Definitions;
 
 namespace Pkuyo.CanKit.Net.Core.Abstractions;
@@ -241,7 +242,7 @@ public abstract class CallOptionsConfigurator<TOption, TSelf>
     where TOption : class, ICanOptions
     where TSelf   : CallOptionsConfigurator<TOption, TSelf>
 {
-    protected TOption  _options;
+    protected TOption?  _options;
     protected CanFeature _feature;
 
     public virtual TSelf Init(TOption options)
@@ -251,8 +252,8 @@ public abstract class CallOptionsConfigurator<TOption, TSelf>
         return (TSelf)this;
     }
 
-    protected TOption Options  => _options;
-    
+    protected TOption Options => _options ?? throw new InvalidOperationException("Options have not been initialized.");
+
     protected CanFeature Feature => _feature;
     
     protected TSelf Self => (TSelf)this;

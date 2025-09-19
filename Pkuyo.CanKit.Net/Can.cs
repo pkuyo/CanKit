@@ -17,7 +17,7 @@ namespace Pkuyo.CanKit.Net
         /// </summary>
         /// <param name="deviceType">Target device type (目标设备类型)。</param>
         /// <param name="configure">Initializer for device options, optional (设备初始化配置委托，可选)。</param>
-        public static CanSession<ICanDevice, ICanChannel> Open(DeviceType deviceType, Action<IDeviceInitOptionsConfigurator> configure = null)
+        public static CanSession<ICanDevice, ICanChannel> Open(DeviceType deviceType, Action<IDeviceInitOptionsConfigurator>? configure = null)
         {
             return Open<ICanDevice, ICanChannel, IDeviceOptions, IDeviceInitOptionsConfigurator>(deviceType, configure);
         }
@@ -35,8 +35,8 @@ namespace Pkuyo.CanKit.Net
         /// <returns>Opened CAN session (已打开的 CAN 会话)。</returns>
         public static CanSession<TDevice, TChannel> Open<TDevice, TChannel, TDeviceOptions, TOptionCfg>(
             DeviceType deviceType,
-            Action<TOptionCfg> configure = null,
-            Func<TDevice, ICanModelProvider, CanSession<TDevice, TChannel>> sessionBuilder = null)
+            Action<TOptionCfg>? configure = null,
+            Func<TDevice, ICanModelProvider, CanSession<TDevice, TChannel>>? sessionBuilder = null)
             where TDevice : class, ICanDevice
             where TChannel : class, ICanChannel
             where TDeviceOptions : class, IDeviceOptions

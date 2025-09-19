@@ -159,7 +159,7 @@ namespace Pkuyo.CanKit.ZLG
             return _transceiver.Receive(this, count, timeOut);
         }
 
-        public bool ReadChannelErrorInfo(out ICanErrorInfo errorInfo)
+        public bool ReadChannelErrorInfo(out ICanErrorInfo? errorInfo)
         {
             errorInfo = null;
             
@@ -226,7 +226,7 @@ namespace Pkuyo.CanKit.ZLG
         public bool ApplyOne<T>(string name, T value)
         {
             return ZLGCAN.ZCAN_SetValue(_devicePtr,
-                Options.ChannelIndex + name, value.ToString()) != 0;
+                Options.ChannelIndex + name, value!.ToString()) != 0; //Only ValueType
         }
 
         public void Apply(ICanOptions options)
@@ -410,7 +410,7 @@ namespace Pkuyo.CanKit.ZLG
 
                     if (_errorOccurred != null && ReadChannelErrorInfo(out var errInfo))
                     {
-                        _errorOccurred.Invoke(this, errInfo);
+                        _errorOccurred.Invoke(this, errInfo!);
                     }
                 }
                 catch (ObjectDisposedException)
@@ -513,14 +513,14 @@ namespace Pkuyo.CanKit.ZLG
         
         private readonly object _evtGate = new ();
         
-        private EventHandler<CanReceiveData> _frameReceived; 
+        private EventHandler<CanReceiveData>? _frameReceived; 
         
-        private EventHandler<ICanErrorInfo> _errorOccurred; 
+        private EventHandler<ICanErrorInfo>? _errorOccurred; 
         
         private int _subscriberCount;
         
-        private CancellationTokenSource _pollCts;
+        private CancellationTokenSource? _pollCts;
         
-        private System.Threading.Tasks.Task _pollTask;
+        private System.Threading.Tasks.Task? _pollTask;
     }
 }

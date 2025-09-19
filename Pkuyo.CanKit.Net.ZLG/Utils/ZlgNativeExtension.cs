@@ -15,7 +15,7 @@ namespace Pkuyo.CanKit.ZLG.Utils
        
             for (int i = 0; i < receiveCount; i++)
             {
-                CanReceiveData receiveData = null;
+                CanReceiveData? receiveData = null;
                 var recData = recvData[i];
                 var typeFlag = GetFrameType(recData.dataType);
                 
@@ -26,21 +26,22 @@ namespace Pkuyo.CanKit.ZLG.Utils
                         var data = ByteArrayToStruct<ZCANCANFDData>(recData.data);
                         if (data.frameType == 1)
                         {
-                            receiveData = new CanReceiveData()
-                            {
-                                recvTimestamp = data.timeStamp,
-                                canFrame = new CanFdFrame(data.frame.can_id, ToArray(data.frame.data, data.frame.len))
+                            receiveData = new CanReceiveData( 
+                                new CanFdFrame(data.frame.can_id, ToArray(data.frame.data, data.frame.len))
                                 {
                                     //TODO: flag
-                                }
+                                })
+                            {
+                                recvTimestamp = data.timeStamp,
                             };
                         }
                         else
                         {
-                            receiveData = new CanReceiveData()
+                            receiveData = new CanReceiveData(
+                                new CanClassicFrame(data.frame.can_id, ToArray(data.frame.data, data.frame.len)))
                             {
                                 recvTimestamp = data.timeStamp,
-                                canFrame = new CanClassicFrame(data.frame.can_id, ToArray(data.frame.data, data.frame.len))
+                                
                             };
                         }
                     }
@@ -55,7 +56,7 @@ namespace Pkuyo.CanKit.ZLG.Utils
             ZCANDataObj[] transmitData = new ZCANDataObj[canFrames.Length];
             for(int i = 0; i< canFrames.Length;i++)
             {
-                transmitData[i] = canFrames[i].canFrame.ToZCANObj(channelId);
+                transmitData[i] = canFrames[i].CanFrame.ToZCANObj(channelId);
             }
             return transmitData;
         }

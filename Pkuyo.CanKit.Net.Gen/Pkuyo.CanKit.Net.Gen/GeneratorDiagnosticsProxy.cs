@@ -4,6 +4,7 @@ using Microsoft.CodeAnalysis.Diagnostics;
 
 namespace Pkuyo.CanKit.Net.Gen
 {
+    
     internal static class GeneratorDiagnosticsCatalog
     {
         // Match IDs and categories documented in AnalyzerReleases.Shipped.md
@@ -35,8 +36,8 @@ namespace Pkuyo.CanKit.Net.Gen
 
         public override void Initialize(AnalysisContext context)
         {
-            // No analysis. This analyzer exists only to declare supported diagnostics
-            // so release tracking (RS2003/RS2002) can validate shipped IDs.
+            context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None);
+            context.EnableConcurrentExecution();
         }
     }
 }

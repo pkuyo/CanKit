@@ -72,8 +72,8 @@ public class ChannelLifecycleTests
         ch.FrameReceived += (_, __) => receivedCount++;
 
         var exp = provider.ExposedFactory.Transceiver;
-        exp.ToReceive.Add(new CanReceiveData { canFrame = new CanClassicFrame(rawIDInit: 0x201) });
-        exp.ToReceive.Add(new CanReceiveData { canFrame = new CanClassicFrame(rawIDInit: 0x202) });
+        exp.ToReceive.Add(new CanReceiveData(new CanClassicFrame(rawIDInit: 0x201)));
+        exp.ToReceive.Add(new CanReceiveData(new CanClassicFrame(rawIDInit: 0x202)));
 
         var rx = ch.Receive(10).ToArray();
         Assert.Equal(2, rx.Length);

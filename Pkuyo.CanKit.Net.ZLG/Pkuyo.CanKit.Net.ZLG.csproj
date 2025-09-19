@@ -3,6 +3,7 @@
     <PropertyGroup>
         <TargetFramework>netstandard2.0</TargetFramework>
         <LangVersion>latest</LangVersion>
+        <Nullable>enable</Nullable>
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
         <RootNamespace>Pkuyo.CanKit.ZLG</RootNamespace>
         <Platforms>x64;x86</Platforms>

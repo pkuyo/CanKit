@@ -19,7 +19,7 @@ namespace Pkuyo.CanKit.ZLG
         /// <param name="configure">Device init configurator, optional (设备初始化配置委托，可选)。</param>
         /// <returns>Opened <see cref="ZlgCanSession"/> (已打开的 ZLG 会话)。</returns>
         public static ZlgCanSession Open(this ZlgDeviceType deviceType,
-            Action<ZlgDeviceInitOptionsConfigurator> configure = null)
+            Action<ZlgDeviceInitOptionsConfigurator>? configure = null)
         {
             // 复用通用 Can.Open 逻辑，并指定具体设备与参数类型
             return (ZlgCanSession)Can.Open<ZlgCanDevice, ZlgCanChannel, ZlgDeviceOptions, ZlgDeviceInitOptionsConfigurator>(
@@ -40,7 +40,7 @@ namespace Pkuyo.CanKit.ZLG
         /// <param name="index">Channel index (通道索引)。</param>
         /// <param name="configure">Init configurator, optional (初始化配置委托，可选)。</param>
         /// <returns>ZLG channel (ZLG 通道)。</returns>
-        public ZlgCanChannel CreateChannel(int index, Action<ZlgChannelInitConfigurator> configure = null)
+        public ZlgCanChannel CreateChannel(int index, Action<ZlgChannelInitConfigurator>? configure = null)
         {
             // 用户向的封装，复用通用 CAN 对应的类型与参数
             return CreateChannel<ZlgChannelOptions, ZlgChannelInitConfigurator>(index, configure);

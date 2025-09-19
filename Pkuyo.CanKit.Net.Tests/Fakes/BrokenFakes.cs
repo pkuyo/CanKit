@@ -151,8 +151,17 @@ public sealed class OtherChannel : ICanChannel
     public bool ReadChannelErrorInfo(out ICanErrorInfo errorInfo) { errorInfo = null; throw new NotImplementedException(); }
     public uint GetReceiveCount() => throw new NotImplementedException();
     public IChannelRTOptionsConfigurator Options => throw new NotImplementedException();
-    public event EventHandler<CanReceiveData> FrameReceived;
-    public event EventHandler<ICanErrorInfo> ErrorOccurred;
+    public event EventHandler<CanReceiveData> FrameReceived
+    {
+        add { /* no-op for fake */ }
+        remove { /* no-op for fake */ }
+    }
+
+    public event EventHandler<ICanErrorInfo> ErrorOccurred
+    {
+        add { /* no-op for fake */ }
+        remove { /* no-op for fake */ }
+    }
     public void Dispose() => throw new NotImplementedException();
 }
 

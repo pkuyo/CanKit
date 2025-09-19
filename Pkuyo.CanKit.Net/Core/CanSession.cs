@@ -57,7 +57,7 @@ public class CanSession<TCanDevice, TCanChannel>(TCanDevice device, ICanModelPro
     /// <param name="index">Channel index (通道索引)。</param>
     /// <param name="configure">Initializer for channel options, optional (通道初始化配置委托，可选)。</param>
     /// <returns>Channel instance (通道实例)。</returns>
-    public TCanChannel CreateChannel(int index, Action<IChannelInitOptionsConfigurator> configure = null)
+    public TCanChannel CreateChannel(int index, Action<IChannelInitOptionsConfigurator>? configure = null)
     {
         return CreateChannel<IChannelOptions, IChannelInitOptionsConfigurator>(index, configure);
     }
@@ -75,7 +75,7 @@ public class CanSession<TCanDevice, TCanChannel>(TCanDevice device, ICanModelPro
     /// <exception cref="CanFactoryException">Thrown if transceiver cannot be created (无法创建收发器)。</exception>
     /// <exception cref="CanChannelCreationException">Thrown if channel is null or type mismatched (通道创建失败或类型不匹配)。</exception>
     protected TCanChannel CreateChannel<TChannelOptions, TOptionCfg>(int index,
-        Action<TOptionCfg> configure = null)
+        Action<TOptionCfg>? configure = null)
         where TChannelOptions : class, IChannelOptions
         where TOptionCfg : IChannelInitOptionsConfigurator
     {

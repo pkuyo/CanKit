@@ -41,8 +41,8 @@ namespace Pkuyo.CanKit.Net.Sample
             // 4. 订阅通道事件：收到帧时打印基本信息。
             listenChannel.FrameReceived += (sender, data) =>
             {
-                Console.Write($"[{data.SystemTimestamp}] [{data.recvTimestamp / 1000f}ms] 0x{data.canFrame.ID:X}, {data.canFrame.Dlc}");
-                foreach (var by in data.canFrame.Data.Span)
+                Console.Write($"[{data.SystemTimestamp}] [{data.recvTimestamp / 1000f}ms] 0x{data.CanFrame.ID:X}, {data.CanFrame.Dlc}");
+                foreach (var by in data.CanFrame.Data.Span)
                     Console.Write($" {by:X2}");
                 Console.WriteLine();
             };

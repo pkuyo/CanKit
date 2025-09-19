@@ -25,28 +25,23 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
     /// <summary>
     /// Parameters for sending CAN data (发送 CAN 数据的参数)。
     /// </summary>
-    public record CanTransmitData
-    {
-        /// <summary>
-        /// Frame to transmit (待发送的帧)。
-        /// </summary>
-        public ICanFrame canFrame;
-    }
+    public record CanTransmitData(ICanFrame CanFrame);
 
     /// <summary>
     /// Represents a received CAN data event (接收的 CAN 数据事件)。
     /// </summary>
-    public record CanReceiveData
+    public record CanReceiveData(ICanFrame CanFrame)
     {
         /// <summary>
         /// Received frame (接收到的帧)。
         /// </summary>
-        public ICanFrame canFrame;
+        public ICanFrame CanFrame = CanFrame;
 
         /// <summary>
         /// Device-provided timestamp, usually from hardware (设备提供的时间戳，通常来自硬件)。
         /// </summary>
         public UInt64 recvTimestamp;
+
         /// <summary>
         /// System time corresponding to the record (对应的系统时间)。
         /// </summary>

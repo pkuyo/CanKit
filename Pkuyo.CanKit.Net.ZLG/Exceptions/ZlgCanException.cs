@@ -17,7 +17,7 @@ namespace Pkuyo.CanKit.ZLG.Exceptions
         /// <param name="statusCode">ZLG status code (ZLG 状态码)。</param>
         /// <param name="channelErrorInfo">Optional channel error info (可选通道错误信息)。</param>
         public ZlgCanException(string operation, string message, uint statusCode,
-            ZlgErrorInfo channelErrorInfo = null)
+            ZlgErrorInfo? channelErrorInfo = null)
             : base(operation, message, statusCode)
         {
             StatusCode = statusCode;
@@ -32,7 +32,7 @@ namespace Pkuyo.CanKit.ZLG.Exceptions
         /// <summary>
         /// Channel error info for diagnostics (通道错误详情)。
         /// </summary>
-        public ZlgErrorInfo ChannelErrorInfo { get; }
+        public ZlgErrorInfo? ChannelErrorInfo { get; }
     }
 
     /// <summary>

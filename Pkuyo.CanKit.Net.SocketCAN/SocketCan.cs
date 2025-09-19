@@ -9,7 +9,7 @@ namespace Pkuyo.CanKit.SocketCAN;
 
 public static class SocketCan
 {
-    public static SocketCanSession Open(Action<SocketCanDeviceInitOptionsConfigurator> configure = null)
+    public static SocketCanSession Open(Action<SocketCanDeviceInitOptionsConfigurator>? configure = null)
     {
         return (SocketCanSession)Can.Open<SocketCanDevice, SocketCanChannel, SocketCanDeviceOptions, SocketCanDeviceInitOptionsConfigurator>(
             LinuxDeviceType.SocketCAN,
@@ -21,12 +21,12 @@ public static class SocketCan
 public sealed class SocketCanSession(SocketCanDevice device, ICanModelProvider provider)
     : CanSession<SocketCanDevice, SocketCanChannel>(device, provider)
 {
-    public SocketCanChannel CreateChannel(int index, Action<SocketCanChannelInitConfigurator> configure = null)
+    public SocketCanChannel CreateChannel(int index, Action<SocketCanChannelInitConfigurator>? configure = null)
     {
         return CreateChannel<SocketCanChannelOptions, SocketCanChannelInitConfigurator>(index, configure);
     }
 
-    public SocketCanChannel CreateChannel(string interfaceName, Action<SocketCanChannelInitConfigurator> configure = null)
+    public SocketCanChannel CreateChannel(string interfaceName, Action<SocketCanChannelInitConfigurator>? configure = null)
     {
         return CreateChannel<SocketCanChannelOptions, SocketCanChannelInitConfigurator>(
             0,

@@ -14,9 +14,9 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
             IDeviceRTOptionsConfigurator
         where TDeviceOptions : class, IDeviceOptions
     {
-        public ICanModelProvider Provider => _options.Provider;
-        public DeviceType DeviceType   => _options.DeviceType;
-        public uint       TxTimeOut    => _options.TxTimeOut;
+        public ICanModelProvider Provider => Options.Provider;
+        public DeviceType DeviceType   => Options.DeviceType;
+        public uint       TxTimeOut    => Options.TxTimeOut;
         
     }
 
@@ -27,20 +27,20 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
           IChannelRTOptionsConfigurator
         where TChannelOptions : class, IChannelOptions
     {
-        public ICanModelProvider Provider => _options.Provider;
-        public int ChannelIndex => _options.ChannelIndex;
-        public BitTiming BitTiming => _options.BitTiming;
-        public TxRetryPolicy TxRetryPolicy => _options.TxRetryPolicy;
-        public bool BusUsageEnabled => _options.BusUsageEnabled;
-        public uint  BusUsagePeriodTime => _options.BusUsagePeriodTime;
-        public ChannelWorkMode WorkMode  => _options.WorkMode;
-        public bool InternalResistance => _options.InternalResistance;
-        public CanProtocolMode ProtocolMode => _options.ProtocolMode;
-        public ICanFilter Filter => _options.Filter;
+        public ICanModelProvider Provider => Options.Provider;
+        public int ChannelIndex => Options.ChannelIndex;
+        public BitTiming BitTiming => Options.BitTiming;
+        public TxRetryPolicy TxRetryPolicy => Options.TxRetryPolicy;
+        public bool BusUsageEnabled => Options.BusUsageEnabled;
+        public uint  BusUsagePeriodTime => Options.BusUsagePeriodTime;
+        public ChannelWorkMode WorkMode  => Options.WorkMode;
+        public bool InternalResistance => Options.InternalResistance;
+        public CanProtocolMode ProtocolMode => Options.ProtocolMode;
+        public ICanFilter Filter => Options.Filter;
         
         public ChannelRTOptionsConfigurator<TChannelOptions> SetInternalResistance(bool enabled)
         {
-            _options.InternalResistance = enabled;
+            Options.InternalResistance = enabled;
             return Self;
         }
     }
@@ -51,13 +51,13 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
         where TDeviceOptions : class, IDeviceOptions
         where TSelf : DeviceInitOptionsConfigurator<TDeviceOptions, TSelf>
     {
-        public ICanModelProvider Provider => _options.Provider;
-        public DeviceType DeviceType => _options.DeviceType;
-        public uint TxTimeOutTime => _options.TxTimeOut;
+        public ICanModelProvider Provider => Options.Provider;
+        public DeviceType DeviceType => Options.DeviceType;
+        public uint TxTimeOutTime => Options.TxTimeOut;
 
         public TSelf TxTimeOut(uint ms)
         {
-            _options.TxTimeOut = ms;
+            Options.TxTimeOut = ms;
             return (TSelf)this;
         }
 
@@ -75,63 +75,63 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
     where TSelf : ChannelInitOptionsConfigurator<TChannelOptions, TSelf>
     {
  
-        public ICanModelProvider Provider => _options.Provider;
-        public int ChannelIndex => _options.ChannelIndex;
-        public BitTiming BitTiming => _options.BitTiming;
-        public TxRetryPolicy TxRetryPolicy => _options.TxRetryPolicy;
-        public bool BusUsageEnabled => _options.BusUsageEnabled;
-        public uint BusUsagePeriodTime => _options.BusUsagePeriodTime;
-        public ChannelWorkMode WorkMode => _options.WorkMode;
-        public bool InternalResistance => _options.InternalResistance;
-        public CanProtocolMode ProtocolMode => _options.ProtocolMode;
+        public ICanModelProvider Provider => Options.Provider;
+        public int ChannelIndex => Options.ChannelIndex;
+        public BitTiming BitTiming => Options.BitTiming;
+        public TxRetryPolicy TxRetryPolicy => Options.TxRetryPolicy;
+        public bool BusUsageEnabled => Options.BusUsageEnabled;
+        public uint BusUsagePeriodTime => Options.BusUsagePeriodTime;
+        public ChannelWorkMode WorkMode => Options.WorkMode;
+        public bool InternalResistance => Options.InternalResistance;
+        public CanProtocolMode ProtocolMode => Options.ProtocolMode;
         
-        public ICanFilter Filter => _options.Filter;
+        public ICanFilter Filter => Options.Filter;
 
 
         public TSelf Baud(uint baud)
         {
             CanKitErr.ThrowIfNotSupport(_feature, CanFeature.CanClassic);
-            _options.BitTiming = new BitTiming(BaudRate: baud);
+            Options.BitTiming = new BitTiming(BaudRate: baud);
             return (TSelf)this;
         }
 
         public TSelf Fd(uint abit, uint dbit)
         {
             CanKitErr.ThrowIfNotSupport(_feature, CanFeature.CanFd);
-            _options.BitTiming = new BitTiming(ArbitrationBitRate: abit, DataBitRate: dbit);
+            Options.BitTiming = new BitTiming(ArbitrationBitRate: abit, DataBitRate: dbit);
             return (TSelf)this;
         }
 
         public TSelf BusUsage(uint periodMs = 1000)
         {
             CanKitErr.ThrowIfNotSupport(_feature, CanFeature.BusUsage);
-            _options.BusUsageEnabled = true;
-            _options.BusUsagePeriodTime = periodMs;
+            Options.BusUsageEnabled = true;
+            Options.BusUsagePeriodTime = periodMs;
             return (TSelf)this;
         }
 
         public TSelf SetTxRetryPolicy(TxRetryPolicy retryPolicy)
         {
-            _options.TxRetryPolicy = retryPolicy;
+            Options.TxRetryPolicy = retryPolicy;
             return (TSelf)this;
         }
 
         public TSelf SetWorkMode(ChannelWorkMode mode)
         {
-            _options.WorkMode = mode;
+            Options.WorkMode = mode;
             return (TSelf)this;
         }
 
         public TSelf InternalRes(bool enabled)
         {
-            _options.InternalResistance = enabled;
+            Options.InternalResistance = enabled;
             return (TSelf)this;
         }
 
         public TSelf SetProtocolMode(CanProtocolMode mode)
         {
-            _options.ProtocolMode = mode;
-            _options.BitTiming = mode switch
+            Options.ProtocolMode = mode;
+            Options.BitTiming = mode switch
             {
                 CanProtocolMode.Can20 => new BitTiming(),
                 _ => new BitTiming(null, 500_000, 500_000)
@@ -143,7 +143,7 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
         {
             CanKitErr.ThrowIfNotSupport(_feature, CanFeature.Filters);
             
-            _options.Filter = filter;
+            Options.Filter = filter;
             return (TSelf)this;
         }
 
@@ -155,8 +155,8 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
                 throw new ArgumentException($"Invalid range: min ({min}) must be less than or equal to max ({max}).",
                     nameof(max));
             }
-            _options.Filter ??= new CanFilter();
-            _options.Filter.filterRules.Add(new FilterRule.Range(min, max, idType));
+            Options.Filter ??= new CanFilter();
+            Options.Filter.filterRules.Add(new FilterRule.Range(min, max, idType));
             return (TSelf)this;
             
         }
@@ -165,8 +165,8 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
         {
             CanKitErr.ThrowIfNotSupport(_feature, CanFeature.Filters);
             
-            _options.Filter ??= new CanFilter();
-            _options.Filter.filterRules.Add(new FilterRule.Mask(accCode, accMask, idType));
+            Options.Filter ??= new CanFilter();
+            Options.Filter.filterRules.Add(new FilterRule.Mask(accCode, accMask, idType));
             return (TSelf)this;
         }
 

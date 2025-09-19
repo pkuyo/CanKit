@@ -1,5 +1,5 @@
 ﻿// update time 2025/7/16
-
+#nullable disable
 using System;
 using System.Runtime.InteropServices;
 using Pkuyo.CanKit.ZLG.Definitions;

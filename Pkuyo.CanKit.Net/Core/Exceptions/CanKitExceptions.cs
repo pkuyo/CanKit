@@ -117,7 +117,7 @@ namespace Pkuyo.CanKit.Net.Core.Exceptions
         /// <summary>
         /// Create with code, message, optional native code and inner exception (使用错误码/消息/可选原生码/内部异常创建)。
         /// </summary>
-        public CanKitException(CanKitErrorCode errorCode, string message, uint? nativeErrorCode = null, Exception innerException = null)
+        public CanKitException(CanKitErrorCode errorCode, string message, uint? nativeErrorCode = null, Exception? innerException = null)
             : base(message, innerException)
         {
             ErrorCode = errorCode;
@@ -224,7 +224,7 @@ namespace Pkuyo.CanKit.Net.Core.Exceptions
     /// </summary>
     public class CanDeviceException : CanKitException
     {
-        public CanDeviceException(CanKitErrorCode errorCode, string message, Exception innerException = null)
+        public CanDeviceException(CanKitErrorCode errorCode, string message, Exception? innerException = null)
             : base(errorCode, message, null, innerException)
         {
         }
@@ -268,7 +268,7 @@ namespace Pkuyo.CanKit.Net.Core.Exceptions
     /// </summary>
     public class CanChannelException : CanKitException
     {
-        public CanChannelException(CanKitErrorCode errorCode, string message, uint? nativeErrorCode = null, Exception innerException = null)
+        public CanChannelException(CanKitErrorCode errorCode, string message, uint? nativeErrorCode = null, Exception? innerException = null)
             : base(errorCode, message, nativeErrorCode, innerException)
         {
         }
@@ -408,7 +408,7 @@ namespace Pkuyo.CanKit.Net.Core.Exceptions
     /// </summary>
     public class CanNativeCallException : CanChannelException
     {
-        public CanNativeCallException(string operation, string message, uint? nativeErrorCode = null, Exception innerException = null)
+        public CanNativeCallException(string operation, string message, uint? nativeErrorCode = null, Exception? innerException = null)
             : base(CanKitErrorCode.NativeCallFailed, $"{message} (Operation: {operation})", nativeErrorCode, innerException)
         {
             Operation = operation;

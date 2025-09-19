@@ -162,14 +162,19 @@ public sealed class TestChannel : ICanChannel<IChannelRTOptionsConfigurator>
     {
         if (!_opened) throw new CanChannelNotOpenException();
         var items = _transceiver.Receive(this, count, timeOut);
-        foreach (var it in items) FrameReceived?.Invoke(this, it);
+        foreach (var it in items) 
+            FrameReceived?.Invoke(this, it); //一种简化调用，非正规实现
         return items;
     }
     public bool ReadChannelErrorInfo(out ICanErrorInfo errorInfo) { errorInfo = null; return false; }
     public uint GetReceiveCount() => 0;
     public IChannelRTOptionsConfigurator Options => _rtCfg;
     public event EventHandler<CanReceiveData> FrameReceived;
-    public event EventHandler<ICanErrorInfo> ErrorOccurred;
+    public event EventHandler<ICanErrorInfo> ErrorOccurred
+    {
+        add { /* no-op for fake */ }
+        remove { /* no-op for fake */ }
+    }
     public void Dispose() => Close();
 }
 

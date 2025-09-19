@@ -25,8 +25,8 @@ namespace Pkuyo.CanKit.ZLG.Options
         public ChannelWorkMode WorkMode { get; set; }
         
         public CanProtocolMode ProtocolMode { get; set; }
-        
-        public CanFilter Filter { get; set; }
+
+        public CanFilter Filter { get; set; } = new ();
         
         public MaskFilterType FilterType { get; set; }
 
