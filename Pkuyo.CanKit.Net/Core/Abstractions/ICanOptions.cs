@@ -1,120 +1,121 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using Pkuyo.CanKit.Net.Core.Definitions;
 
 namespace Pkuyo.CanKit.Net.Core.Abstractions
 {
     
     /// <summary>
-    ///     定义将配置项应用到目标对象的行为。
+    /// Applies options to a target (用于将选项应用到目标的接口)。
     /// </summary>
     public interface ICanApplier
     {
         /// <summary>
-        ///     尝试将单个配置项应用到目标对象。
+        /// Apply a single option value (应用单个选项)。
         /// </summary>
-        /// <typeparam name="T">配置值的类型。</typeparam>
-        /// <param name="name">配置项名称。</param>
-        /// <param name="value">配置项的目标值。</param>
-        /// <returns>应用是否成功。</returns>
+        /// <typeparam name="T">Value type (值类型)。</typeparam>
+        /// <param name="name">Option name (选项名)。</param>
+        /// <param name="value">Option value (选项值)。</param>
+        /// <returns>True if applied (应用成功返回 true)。</returns>
         bool ApplyOne<T>(string name, T value);
 
         /// <summary>
-        ///     批量应用另一份配置对象中的内容。
+        /// Apply a batch of options (批量应用选项)。
         /// </summary>
-        /// <param name="options">需要被应用的配置对象。</param>
+        /// <param name="options">Options to apply (要应用的选项对象)。</param>
         void Apply(ICanOptions options);
 
         /// <summary>
-        ///     获取当前应用器的状态，用于指示配置项是否完全生效。
+        /// Applier capability/type (应用器当前状态/类型)。
         /// </summary>
         CanOptionType ApplierStatus { get; }
     }
 
     /// <summary>
-    ///     表示具有统一应用能力的配置对象。
+    /// Unified options to be applied by an applier (统一的可应用选项对象)。
     /// </summary>
     public interface ICanOptions
     {
         /// <summary>
-        ///     获取创建当前配置的模型提供程序。
+        /// Model provider owning these options (选项对应的模型提供者)。
         /// </summary>
         ICanModelProvider Provider { get; }
 
         /// <summary>
-        ///     使用给定的应用器对配置执行应用操作。
+        /// Apply via the specified applier (通过给定应用器应用)。
         /// </summary>
-        /// <param name="applier">用于解释并写入配置项的应用器。</param>
-        /// <param name="force">是否强制应用，即使目标应用器状态不完全匹配。</param>
+        /// <param name="applier">Applier to read/commit options (用于读写选项的应用器)。</param>
+        /// <param name="force">Force apply even if type not fully matched (是否强制应用)。</param>
         void Apply(ICanApplier applier, bool force = false);
     }
 
 
 
     /// <summary>
-    ///     定义与 CAN 设备相关的配置。
+    /// Options related to CAN device (与 CAN 设备相关的选项)。
     /// </summary>
     public interface IDeviceOptions : ICanOptions
     {
         /// <summary>
-        ///     获取设备的类型。
+        /// Device type (设备类型)。
         /// </summary>
         DeviceType DeviceType { get; }
 
         /// <summary>
-        ///     获取或设置发送超时时间，单位为毫秒。
+        /// TX timeout in milliseconds (发送超时时间，毫秒)。
         /// </summary>
         uint TxTimeOut { get; set; }
     }
 
     /// <summary>
-    ///     定义与 CAN 通道相关的配置。
+    /// Options related to CAN channel (与 CAN 通道相关的选项)。
     /// </summary>
     public interface IChannelOptions : ICanOptions
     {
 
         /// <summary>
-        ///     获取或设置通道索引。
+        /// Channel index (通道索引)。
         /// </summary>
         int ChannelIndex { get; set; }
 
         /// <summary>
-        ///     获取或设置通道使用的位时序参数。
+        /// Bit timing (位时序)。
         /// </summary>
         BitTiming BitTiming { get; set; }
 
         /// <summary>
-        ///     获取或设置是否启用内部终端电阻。
+        /// Whether internal termination is enabled (是否启用内部终端电阻)。
         /// </summary>
         bool InternalResistance { get; set; }
 
         /// <summary>
-        ///     获取或设置是否启用总线负载监控。
+        /// Whether bus usage measurement is enabled (是否启用总线占用率统计)。
         /// </summary>
         bool BusUsageEnabled { get; set; }
 
         /// <summary>
-        ///     获取或设置总线负载监控的周期，单位为毫秒。
+        /// Bus usage measurement period in ms (占用率统计周期，毫秒)。
         /// </summary>
         uint BusUsagePeriodTime { get; set; }
 
         /// <summary>
-        ///     获取或设置通道的工作模式。
+        /// Channel work mode (通道工作模式)。
         /// </summary>
         ChannelWorkMode WorkMode { get; set; }
 
         /// <summary>
-        ///     获取或设置发送重试策略。
+        /// TX retry policy (发送重试策略)。
         /// </summary>
         TxRetryPolicy TxRetryPolicy { get; set; }
 
         /// <summary>
-        ///     获取或设置 CAN 协议模式（例如标准、FD 等）。
+        /// CAN protocol mode (CAN 协议模式)。
         /// </summary>
         CanProtocolMode ProtocolMode { get; set; }
 
         /// <summary>
-        ///     获取或设置接收过滤器参数。
+        /// ID/data filter (过滤器)。
         /// </summary>
         CanFilter Filter { get; set; }
     }
 }
+

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using Pkuyo.CanKit.Net.Core.Definitions;
 
@@ -6,103 +6,103 @@ namespace Pkuyo.CanKit.Net.Core.Abstractions
 {
 
     /// <summary>
-    ///     表示 CAN 通道在运行时暴露的最小功能集合。
+    /// Represents a CAN channel (表示一个 CAN 通道)，公开最常用的收发与管理能力。
     /// </summary>
     /// <remarks>
-    ///     通道负责协调底层设备的打开、关闭以及报文的收发等生命周期操作。
+    /// EN: A channel abstracts open/close, buffer control and frame TX/RX.
+    /// ZH: 通道抽象了打开/关闭、缓冲控制与帧的收发。
     /// </remarks>
     public interface ICanChannel : IDisposable
     {
         /// <summary>
-        ///     打开当前通道并使其进入可通信的工作状态。
+        /// Open the channel (打开通道)。
         /// </summary>
         void Open();
 
         /// <summary>
-        ///     关闭当前通道并释放与之相关的临时资源。
+        /// Close the channel and release resources (关闭通道并释放资源)。
         /// </summary>
         void Close();
 
         /// <summary>
-        ///     将通道恢复到初始状态，通常用于错误恢复或重新初始化。
+        /// Reset the channel to initial state (复位通道到初始状态)。
         /// </summary>
         void Reset();
 
         /// <summary>
-        ///     清空通道内部缓存的数据，例如接收缓存和发送队列。
+        /// Clear internal buffers (清空内部缓冲)。
         /// </summary>
         void ClearBuffer();
 
         /// <summary>
-        ///     向总线上发送一个或多个 CAN 帧。
+        /// Transmit one or more CAN frames (发送一个或多个 CAN 帧)。
         /// </summary>
-        /// <param name="frames">需要发送的帧集合。</param>
-        /// <returns>成功写入底层硬件缓冲区的帧数量。</returns>
+        /// <param name="frames">Frames to transmit (待发送帧集合)。</param>
+        /// <returns>Number of frames accepted by driver (被底层接受的帧数)。</returns>
         uint Transmit(params CanTransmitData[] frames);
 
         /// <summary>
-        ///     尝试获取总线利用率
+        /// Get bus usage ratio (获取总线利用率)。
         /// </summary>
-        /// <returns>获取到的总线利用率</returns>
+        /// <returns>Usage ratio in percent [0..100] (利用率百分比)。</returns>
         float BusUsage();
 
-
         /// <summary>
-        ///    获取通道的错误计数值（TEC, REC）
+        /// Get error counters (获取错误计数器，TEC/REC)。
         /// </summary>
-        /// <returns></returns>
+        /// <returns>Error counters (错误计数)。</returns>
         CanErrorCounters ErrorCounters();
 
         /// <summary>
-        ///     从通道中读取 CAN 帧。
+        /// Receive CAN frames (读取 CAN 帧)。
         /// </summary>
-        /// <param name="count">希望读取的最大帧数。</param>
-        /// <param name="timeOut">等待数据的超时时间，单位为毫秒，-1 表示无限等待。</param>
-        /// <returns>读取到的 CAN 帧序列。</returns>
+        /// <param name="count">Expected frame count (期望读取的帧数)。</param>
+        /// <param name="timeOut">Timeout in ms, -1 for infinite (超时毫秒，-1 表示无限等待)。</param>
+        /// <returns>Received frames (收到的帧集合)。</returns>
         IEnumerable<CanReceiveData> Receive(uint count = 1, int timeOut = -1);
 
-
         /// <summary>
-        ///     尝试获取通道错误信息
+        /// Try read channel error info (获取通道错误信息)。
         /// </summary>
-        /// <param name="errorInfo">获取到的错误信息（可为null）</param>
-        /// <returns>是否存在错误信息</returns>
+        /// <param name="errorInfo">Error info if present, otherwise null (错误信息或 null)。</param>
+        /// <returns>True if error exists (存在错误返回 true)。</returns>
         bool ReadChannelErrorInfo(out ICanErrorInfo errorInfo);
 
         /// <summary>
-        ///     获取当前接收缓冲区中可读取的帧数量。
+        /// Get readable frame count in RX buffer (获取接收缓冲可读帧数)。
         /// </summary>
-        /// <returns>接收缓冲区中帧的数量。</returns>
+        /// <returns>Readable frame count (可读帧数)。</returns>
         uint GetReceiveCount();
 
         /// <summary>
-        ///     获取用于访问运行时参数的配置器。
+        /// Real-time options configurator (运行时通道选项配置器)。
         /// </summary>
         IChannelRTOptionsConfigurator Options { get; }
 
         /// <summary>
-        ///     当收到新的 CAN 帧时触发。
+        /// Raised when a new CAN frame is received (接收到新 CAN 帧时触发)。
         /// </summary>
         event EventHandler<CanReceiveData> FrameReceived;
 
         /// <summary>
-        ///     当通道运行时出现错误时触发。
+        /// Raised when a channel error occurs (通道发生错误时触发)。
         /// </summary>
         event EventHandler<ICanErrorInfo> ErrorOccurred;
     }
 
 
     /// <summary>
-    ///     带有强类型配置器的 CAN 通道接口。
+    /// Strongly-typed ICanChannel with specific RT configurator (带强类型运行时配置器的通道接口)。
     /// </summary>
-    /// <typeparam name="TConfigurator">通道运行时配置器的具体类型。</typeparam>
+    /// <typeparam name="TConfigurator">Configurator type (配置器类型)。</typeparam>
     public interface ICanChannel<out TConfigurator> : ICanChannel
         where TConfigurator : IChannelRTOptionsConfigurator
     {
         /// <summary>
-        ///     获取强类型的运行时配置访问器。
+        /// Strong-typed RT options (强类型运行时选项)。
         /// </summary>
         new TConfigurator Options { get; }
     }
 
 }
+

@@ -1,25 +1,25 @@
-﻿using System;
+using System;
 
 namespace Pkuyo.CanKit.Net.Core.Definitions
 {
     /// <summary>
-    /// 表示 CAN 帧在传输过程中可能发生的错误类型。
+    /// Frame error kinds that may occur (帧可能发生的错误类型)。
     /// </summary>
     public enum FrameErrorKind
     {
-        None        = 0,         // 没有错误
-        BitError    = 1,         // 位错误（Bit Error）
-        StuffError  = 2,         // 填充位错误（Stuff Error）
-        CrcError    = 3,         // CRC 校验错误
-        FormError   = 4,         // 帧格式错误（Form Error）
-        AckError    = 5,         // 没收到 ACK
+        None        = 0,         // no error / 无错误
+        BitError    = 1,         // bit error / 位错误
+        StuffError  = 2,         // stuff error / 填充位错误
+        CrcError    = 3,         // crc error / CRC 校验错误
+        FormError   = 4,         // form error / 帧格式错误
+        AckError    = 5,         // missing ACK / 未收到 ACK
         Controller  = 6,
         
         Unknown     = 65535
     }
 
     /// <summary>
-    /// 表示数据帧的方向，是发送帧还是接收帧。
+    /// Frame direction: Tx or Rx (帧方向：发送或接收)。
     /// </summary>
     public enum FrameDirection
     {
@@ -29,19 +29,19 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
     }
 
     /// <summary>
-    /// 表示 CAN 通道当前的错误状态。
+    /// Channel error state (通道错误状态)。
     /// </summary>
     public enum ChannelErrorState
     {
-        None        = 0,         // 没有错误
-        AlarmErr    = 1,         // 控制器到达警告阈值
-        PassiveErr  = 2,         // 进入被动错误
-        BusOff      = 3,         // 总线关闭
-        BusRestart  = 4,         // 总线重启
+        None        = 0,
+        AlarmErr    = 1,
+        PassiveErr  = 2,
+        BusOff      = 3,
+        BusRestart  = 4,
     }
     
     /// <summary>
-    /// 用于标识 CAN 帧类型的标志位，可组合使用。
+    /// Frame type flags used to identify frame kind (帧类型标志)。
     /// </summary>
     [Flags]
     public enum CanFrameType : uint
@@ -54,7 +54,7 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
     }
 
     /// <summary>
-    /// 描述硬件支持的 CAN 协议模式。
+    /// Supported CAN protocol modes (支持的协议模式)。
     /// </summary>
     public enum CanProtocolMode
     {
@@ -64,7 +64,7 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
     }
 
     /// <summary>
-    /// 描述监听器所支持的能力集，可组合使用。
+    /// Device capability flags (设备功能标志)。
     /// </summary>
     [Flags]
     public enum CanFeature
@@ -81,7 +81,7 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
     }
 
     /// <summary>
-    /// 控制配置选项所属的阶段。
+    /// Options application phase (选项应用阶段)。
     /// </summary>
     public enum CanOptionType
     {
@@ -90,7 +90,7 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
     }
 
     /// <summary>
-    /// 发送失败后 CAN 控制器的重试策略。
+    /// TX retry policies (发送重试策略)。
     /// </summary>
     public enum TxRetryPolicy : byte
     {
@@ -99,7 +99,7 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
     }
 
     /// <summary>
-    /// 表示 CAN 通道的工作模式，例如正常模式或只听模式。
+    /// Channel work mode (通道工作模式)。
     /// </summary>
     public enum ChannelWorkMode : byte
     {
@@ -109,7 +109,7 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
     }
 
     /// <summary>
-    /// 指示过滤规则使用标准帧 ID 还是扩展帧 ID。
+    /// Filter ID type: standard or extended (过滤 ID 类型：标准/扩展)。
     /// </summary>
     public enum CanFilterIDType
     {
@@ -118,3 +118,4 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
     }
 
 }
+

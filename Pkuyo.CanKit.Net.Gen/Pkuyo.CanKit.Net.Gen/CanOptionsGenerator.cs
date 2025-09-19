@@ -100,8 +100,8 @@ namespace Pkuyo.CanKit.Net.Gen
                             m.IsKind(SyntaxKind.ProtectedKeyword) ||
                             m.IsKind(SyntaxKind.InternalKeyword)),
                     UseInit: isInit,
-                    OptionName: (string)attr.ConstructorArguments[0].Value,
-                    OptionType: (CanOptionType)((int)attr.ConstructorArguments[1].Value),
+                    OptionName: (string)attr.ConstructorArguments[0].Value!,
+                    OptionType: (CanOptionType)((int)attr.ConstructorArguments[1].Value!),
                     DefaultValue:attr.ConstructorArguments[2].Value as string
                 ));
             }
@@ -185,7 +185,7 @@ namespace Pkuyo.CanKit.Net.Gen
                 if (!p.HasGet || !p.HasSet)
                 {
                     var descriptor = new DiagnosticDescriptor(
-                        id: "CANOPTGEN001",                     
+                        id: "CANG001",                     
                         title: "属性缺少partial get/set",        
                         messageFormat: "{0}.{1}缺少{2}",         
                         category: "SourceGenerator",           
@@ -207,7 +207,7 @@ namespace Pkuyo.CanKit.Net.Gen
                 if (p.Accessibility == Accessibility.NotApplicable && p.HasModifers)
                 {
                     var descriptor = new DiagnosticDescriptor(
-                        id: "CANOPTGEN002",                     
+                        id: "CANG002",                     
                         title: "属性访问权限错误",        
                         messageFormat: "{0}.{1}访问权限描述符错误",         
                         category: "SourceGenerator",           

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 
 
 
@@ -12,60 +12,60 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
   
 
     /// <summary>
-    /// 表示 CAN 总线的位时序配置，用于初始化设备参数。
+    /// CAN bus bit timing for initialization (CAN 总线位时序，用于初始化)。
     /// </summary>
-    /// <param name="BaudRate">经典 CAN 的波特率。</param>
-    /// <param name="ArbitrationBitRate">仲裁段的比特率。</param>
-    /// <param name="DataBitRate">数据段的比特率。</param>
+    /// <param name="BaudRate">Classic CAN bitrate (经典 CAN 波特率)。</param>
+    /// <param name="ArbitrationBitRate">FD arbitration bitrate (FD 仲裁位率)。</param>
+    /// <param name="DataBitRate">FD data bitrate (FD 数据位率)。</param>
     public readonly record struct BitTiming(
         uint? BaudRate = 500_000,
         uint? ArbitrationBitRate = null,
         uint? DataBitRate = null);
 
     /// <summary>
-    /// 封装一次 CAN 数据发送所需的参数。
+    /// Parameters for sending CAN data (发送 CAN 数据的参数)。
     /// </summary>
     public record CanTransmitData
     {
         /// <summary>
-        /// 待发送的帧内容。
+        /// Frame to transmit (待发送的帧)。
         /// </summary>
         public ICanFrame canFrame;
     }
 
     /// <summary>
-    /// 表示一次 CAN 数据接收事件。
+    /// Represents a received CAN data event (接收的 CAN 数据事件)。
     /// </summary>
     public record CanReceiveData
     {
         /// <summary>
-        /// 接收到的帧内容。
+        /// Received frame (接收到的帧)。
         /// </summary>
         public ICanFrame canFrame;
 
         /// <summary>
-        /// 设备提供的时间戳，通常为硬件计数值。
+        /// Device-provided timestamp, usually from hardware (设备提供的时间戳，通常来自硬件)。
         /// </summary>
         public UInt64 recvTimestamp;
         /// <summary>
-        /// 记录接收时刻对应的系统时间。
+        /// System time corresponding to the record (对应的系统时间)。
         /// </summary>
         public DateTime SystemTimestamp { get;  } = DateTime.Now;
     }
 
     /// <summary>
-    /// 表示CAN总线错误计数
+    /// CAN bus error counters (CAN 总线错误计数器)。
     /// </summary>
     public record CanErrorCounters
     {
 
         /// <summary>
-        /// 发送错误计数（TEC）
+        /// Transmit error counter (发送错误计数 TEC)。
         /// </summary>
         public int TransmitErrorCounter { get; init; }
         
         /// <summary>
-        /// 接收错误计数（REC）
+        /// Receive error counter (接收错误计数 REC)。
         /// </summary>
         public int ReceiveErrorCounter { get; init; }
 
@@ -76,3 +76,4 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
         }
     }
 }
+

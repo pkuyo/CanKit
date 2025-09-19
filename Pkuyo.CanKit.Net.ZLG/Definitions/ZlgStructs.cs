@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Pkuyo.CanKit.Net.Core.Definitions;
 
 namespace System.Runtime.CompilerServices
@@ -10,12 +10,12 @@ namespace Pkuyo.CanKit.ZLG.Definitions
 {
 
     /// <summary>
-    /// 周立功 CAN 监听器错误信息的默认实现。
+    /// Default implementation of CAN error info for ZLG (ZLG 的 CAN 错误信息默认实现)。
     /// </summary>
     public record ZlgErrorInfo : ICanErrorInfo
     {
         /// <summary>
-        /// 初始化错误信息并指定原始错误码。
+        /// Initialize with raw error code (使用原始错误码初始化)。
         /// </summary>
         public ZlgErrorInfo(uint rawErrorCode)
         {
@@ -29,7 +29,7 @@ namespace Pkuyo.CanKit.ZLG.Definitions
         public uint RawErrorCode { get; init; }
 
         /// <summary>
-        /// 将原始错误码转换为中联定义的标志位枚举。
+        /// Convert raw code to ZLG error flags (将原始错误码转为 ZLG 错误标志)。
         /// </summary>
         public ZlgErrorFlag ErrorCode => (ZlgErrorFlag)RawErrorCode;
 
@@ -41,3 +41,4 @@ namespace Pkuyo.CanKit.ZLG.Definitions
         public ICanFrame Frame { get; init; }
     }
 }
+

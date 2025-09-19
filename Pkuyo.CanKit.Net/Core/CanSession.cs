@@ -6,25 +6,25 @@ using Pkuyo.CanKit.Net.Core.Exceptions;
 namespace Pkuyo.CanKit.Net.Core;
 
 /// <summary>
-/// 表示一个 CAN 会话，用于管理底层设备的打开/关闭以及通道的创建、销毁和缓存。
+/// Represents a CAN session (表示一个 CAN 会话)，管理设备打开/关闭及通道的创建与缓存。
 /// </summary>
-/// <typeparam name="TCanDevice">具体的 CAN 设备实现类型，必须实现 <see cref="ICanDevice"/> 接口。</typeparam>
-/// <typeparam name="TCanChannel">具体的 CAN 通道实现类型，必须实现 <see cref="ICanChannel"/> 接口。</typeparam>
-/// <param name="device">与会话关联的设备实例。</param>
-/// <param name="provider">提供 CAN 模型配置与工厂的提供者。</param>
+/// <typeparam name="TCanDevice">Concrete CAN device type (设备类型)。</typeparam>
+/// <typeparam name="TCanChannel">Concrete CAN channel type (通道类型)。</typeparam>
+/// <param name="device">Device instance bound to this session (与会话绑定的设备实例)。</param>
+/// <param name="provider">Model provider for options and factory (提供模型与工厂的提供者)。</param>
 public class CanSession<TCanDevice, TCanChannel>(TCanDevice device, ICanModelProvider provider) : IDisposable
     where TCanDevice : class, ICanDevice
     where TCanChannel : class, ICanChannel
 {
     /// <summary>
-    /// 根据索引获取已经创建的通道。
+    /// Get channel by index (按索引获取已创建的通道)。
     /// </summary>
-    /// <param name="index">通道索引。</param>
-    /// <returns>与索引对应的通道实例。</returns>
+    /// <param name="index">Channel index (通道索引)。</param>
+    /// <returns>Channel instance (通道实例)。</returns>
     public TCanChannel this[int index] => InnerChannels[index];
 
     /// <summary>
-    /// 打开底层 CAN 设备。
+    /// Open the underlying CAN device (打开底层 CAN 设备)。
     /// </summary>
     public void Open()
     {
@@ -32,7 +32,7 @@ public class CanSession<TCanDevice, TCanChannel>(TCanDevice device, ICanModelPro
     }
 
     /// <summary>
-    /// 关闭底层 CAN 设备。
+    /// Close the underlying CAN device (关闭底层 CAN 设备)。
     /// </summary>
     public void Close()
     {
@@ -40,11 +40,11 @@ public class CanSession<TCanDevice, TCanChannel>(TCanDevice device, ICanModelPro
     }
 
     /// <summary>
-    /// 使用指定波特率创建或返回缓存的通道。
+    /// Create or return cached channel with baud rate (使用波特率创建或返回通道)。
     /// </summary>
-    /// <param name="index">通道索引。</param>
-    /// <param name="baudRate">期望的总线波特率。</param>
-    /// <returns>创建或获取的 CAN 通道实例。</returns>
+    /// <param name="index">Channel index (通道索引)。</param>
+    /// <param name="baudRate">Bus bitrate (总线波特率)。</param>
+    /// <returns>Channel instance (通道实例)。</returns>
     public TCanChannel CreateChannel(int index, uint baudRate)
     {
         return CreateChannel<IChannelOptions, IChannelInitOptionsConfigurator>(index,
@@ -52,28 +52,28 @@ public class CanSession<TCanDevice, TCanChannel>(TCanDevice device, ICanModelPro
     }
 
     /// <summary>
-    /// 使用自定义配置创建或返回缓存的通道。
+    /// Create or return cached channel with custom config (使用自定义配置创建/返回通道)。
     /// </summary>
-    /// <param name="index">通道索引。</param>
-    /// <param name="configure">通道初始化选项的配置委托，可选。</param>
-    /// <returns>创建或获取的 CAN 通道实例。</returns>
+    /// <param name="index">Channel index (通道索引)。</param>
+    /// <param name="configure">Initializer for channel options, optional (通道初始化配置委托，可选)。</param>
+    /// <returns>Channel instance (通道实例)。</returns>
     public TCanChannel CreateChannel(int index, Action<IChannelInitOptionsConfigurator> configure = null)
     {
         return CreateChannel<IChannelOptions, IChannelInitOptionsConfigurator>(index, configure);
     }
 
     /// <summary>
-    /// 使用指定的选项类型与配置器类型创建或返回缓存的通道。（不推荐直接使用）
+    /// Create or return cached channel with specific option/configurator types (不建议直接使用)。
     /// </summary>
-    /// <typeparam name="TChannelOptions">通道选项的具体类型。</typeparam>
-    /// <typeparam name="TOptionCfg">初始化配置器的具体类型。</typeparam>
-    /// <param name="index">通道索引。</param>
-    /// <param name="configure">对配置器进行个性化设置的委托，可选。</param>
-    /// <returns>创建或获取的 CAN 通道实例。</returns>
-    /// <exception cref="CanDeviceNotOpenException">设备尚未打开时抛出。</exception>
-    /// <exception cref="CanOptionTypeMismatchException">提供的选项或配置器类型与工厂需求不匹配时抛出。</exception>
-    /// <exception cref="CanFactoryException">工厂无法生成收发器时抛出。</exception>
-    /// <exception cref="CanChannelCreationException">工厂返回空或类型不匹配的通道实例时抛出。</exception>
+    /// <typeparam name="TChannelOptions">Channel option type (通道选项类型)。</typeparam>
+    /// <typeparam name="TOptionCfg">Initializer type (初始化配置器类型)。</typeparam>
+    /// <param name="index">Channel index (通道索引)。</param>
+    /// <param name="configure">Configurator callback, optional (配置器回调，可选)。</param>
+    /// <returns>Channel instance (通道实例)。</returns>
+    /// <exception cref="CanDeviceNotOpenException">Thrown if device is not open (设备未打开)。</exception>
+    /// <exception cref="CanOptionTypeMismatchException">Thrown if option/configurator type mismatches (类型不匹配)。</exception>
+    /// <exception cref="CanFactoryException">Thrown if transceiver cannot be created (无法创建收发器)。</exception>
+    /// <exception cref="CanChannelCreationException">Thrown if channel is null or type mismatched (通道创建失败或类型不匹配)。</exception>
     protected TCanChannel CreateChannel<TChannelOptions, TOptionCfg>(int index,
         Action<TOptionCfg> configure = null)
         where TChannelOptions : class, IChannelOptions
@@ -133,10 +133,10 @@ public class CanSession<TCanDevice, TCanChannel>(TCanDevice device, ICanModelPro
     }
 
     /// <summary>
-    /// 销毁指定索引的通道并释放资源。
+    /// Destroy channel by index and release resources (销毁指定索引的通道并释放资源)。
     /// </summary>
-    /// <param name="channelIndex">要销毁的通道索引。</param>
-    /// <exception cref="CanChannelNotOpenException">指定索引没有打开的通道时抛出。</exception>
+    /// <param name="channelIndex">Channel index (通道索引)。</param>
+    /// <exception cref="CanChannelNotOpenException">Thrown if channel not open (通道未打开)。</exception>
     public void DestroyChannel(int channelIndex)
     {
         if (!InnerChannels.TryGetValue(channelIndex, out var channel))
@@ -147,7 +147,7 @@ public class CanSession<TCanDevice, TCanChannel>(TCanDevice device, ICanModelPro
     }
 
     /// <summary>
-    /// 释放会话及其所有通道所占用的资源。
+    /// Dispose session and all channels (释放会话及其所有通道的资源)。
     /// </summary>
     public void Dispose()
     {
@@ -161,22 +161,23 @@ public class CanSession<TCanDevice, TCanChannel>(TCanDevice device, ICanModelPro
     }
 
     /// <summary>
-    /// 获取设备是否已经打开。
+    /// Whether device is open (设备是否已打开)。
     /// </summary>
     public bool IsDeviceOpen => Device.IsDeviceOpen;
 
     /// <summary>
-    /// 缓存已创建的通道实例，键为通道索引。
+    /// Cache of created channels keyed by index (已创建通道的缓存)。
     /// </summary>
     protected readonly Dictionary<int, TCanChannel> InnerChannels = new();
 
     /// <summary>
-    /// 底层设备实例。
+    /// Underlying device instance (底层设备实例)。
     /// </summary>
     protected TCanDevice Device { get; } = device;
 
     /// <summary>
-    /// 提供通道选项和工厂的模型提供者。
+    /// Model provider for channel options and factory (提供通道选项与工厂的模型提供者)。
     /// </summary>
     protected ICanModelProvider Provider { get; } = provider;
 }
+

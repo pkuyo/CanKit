@@ -8,7 +8,7 @@ using static Pkuyo.CanKit.ZLG.Native.ZLGCAN;
 
 namespace Pkuyo.CanKit.ZLG.Utils
 {
-    public static class ZlgNativeExtension
+    internal static class ZlgNativeExtension
     {
         internal static IEnumerable<CanReceiveData> RecvCanFrames(ZCANDataObj[] recvData, int receiveCount)
         {
