@@ -82,7 +82,18 @@ namespace Pkuyo.CanKit.Net.Core.Diagnostics
             if (exception == null) throw new ArgumentNullException(nameof(exception));
             Log(CanKitLogLevel.Error, message ?? exception.Message, exception);
         }
-
+        
+        /// <summary>
+        /// Log an error, with optional custom exception (记录错误)。
+        /// </summary>
+        /// <param name="message">Optional message, defaults to exception.Message (消息)。</param>
+        /// <param name="exception">Optional Exception (可选异常)。</param>
+        public static void LogError(string message, Exception exception = null)
+        {
+            if (message == null) throw new ArgumentNullException(nameof(message));
+            Log(CanKitLogLevel.Error, message , exception);
+        }
+        
         /// <summary>
         /// Log a warning (记录警告)。
         /// </summary>

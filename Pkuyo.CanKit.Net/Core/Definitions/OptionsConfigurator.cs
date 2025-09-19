@@ -150,7 +150,11 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
         public TSelf RangeFilter(uint min, uint max, CanFilterIDType idType = CanFilterIDType.Standard)
         {
             CanKitErr.ThrowIfNotSupport(_feature, CanFeature.Filters);
-            
+            if (min > max)
+            {
+                throw new ArgumentException($"Invalid range: min ({min}) must be less than or equal to max ({max}).",
+                    nameof(max));
+            }
             _options.Filter ??= new CanFilter();
             _options.Filter.filterRules.Add(new FilterRule.Range(min, max, idType));
             return (TSelf)this;

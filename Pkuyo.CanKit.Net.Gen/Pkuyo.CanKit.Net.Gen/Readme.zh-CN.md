@@ -44,8 +44,8 @@ public partial class MyChannelOptions
 示例参考：`Pkuyo.CanKit.Net.Gen.Sample/Pkuyo.CanKit.Net.Gen.Sample.csproj`。
 
 ## 诊断（Diagnostics）
-- CANOPTGEN001（错误）：属性必须是带 partial 的自动属性，且包含 get/set 或 get/init。
-- CANOPTGEN002（错误）：存在访问修饰符但无法确定访问级别。
+- CANG001（错误）：属性必须是带 partial 的自动属性，且包含 get/set 或 get/init。
+- CANG002（错误）：存在访问修饰符但无法确定访问级别。
 
 发布跟踪文件见：`AnalyzerReleases.Shipped.md` 与 `AnalyzerReleases.Unshipped.md`。
 

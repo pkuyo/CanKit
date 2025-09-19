@@ -386,7 +386,7 @@ namespace Pkuyo.CanKit.Net.Core.Exceptions
     {
         public CanFeatureNotSupportedException(CanFeature requestedFeature, CanFeature availableFeatures)
             : base(CanKitErrorCode.FeatureNotSupported,
-                $"Feature '{requestedFeature}' is not supported by the current device. Available features: {availableFeatures}.")
+                $"Feature '{requestedFeature}' is not supported by the current device. Available features: {availableFeatures}|{(int)availableFeatures}.")
         {
             RequestedFeature = requestedFeature;
             AvailableFeatures = availableFeatures;

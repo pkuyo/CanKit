@@ -44,8 +44,8 @@ Reference the generator project as an Analyzer (not as a normal reference):
 See sample: `Pkuyo.CanKit.Net.Gen.Sample/Pkuyo.CanKit.Net.Gen.Sample.csproj`.
 
 ## Diagnostics
-- CANOPTGEN001 (Error): Property must be a partial auto-property with both accessors (get/set or get/init).
-- CANOPTGEN002 (Error): Invalid accessibility when modifiers are present.
+- CANG001 (Error): Property must be a partial auto-property with both accessors (get/set or get/init).
+- CANG002 (Error): Invalid accessibility when modifiers are present.
 
 Release tracking files: see `AnalyzerReleases.Shipped.md` and `AnalyzerReleases.Unshipped.md`.
 
