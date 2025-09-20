@@ -60,20 +60,10 @@ namespace Pkuyo.CanKit.ZLG
                     config.config.can.acc_code = mask.AccCode;
                     config.config.can.acc_mask = mask.AccMask;
                     config.config.can.filter = (byte)Options.MaskFilterType;
-
-                    if (options.Filter.filterRules.Count > 1)
-                    {
-                        throw new CanFilterConfigurationException(
-                            "ZLG channels only support a single mask filter rule.");
-                    }
+                    
                 }
                 else 
                 {
-                    if (options.Filter.filterRules.Any(i => i is not FilterRule.Range))
-                    {
-                        throw new CanFilterConfigurationException(
-                            "ZLG channels only supports the same type of filter rule.");
-                    }
                     config.config.can.acc_code = 0;
                     config.config.can.acc_mask = 0xffffffff;
                 }
@@ -124,7 +114,7 @@ namespace Pkuyo.CanKit.ZLG
             ZlgErr.ThrowIfError(ZLGCAN.ZCAN_ClearBuffer(_nativeHandle), nameof(ZLGCAN.ZCAN_ClearBuffer), _nativeHandle);
         }
 
-        public uint Transmit(params CanTransmitData[] frames)
+        public uint Transmit(params IEnumerable<CanTransmitData> frames)
         {
             ThrowIfDisposed();
             return _transceiver.Transmit(this, frames);
@@ -278,14 +268,10 @@ namespace Pkuyo.CanKit.ZLG
                     ((int)zlgOption.WorkMode).ToString()),
                 "ZCAN_SetValue(work_mode)");
 
-            if (zlgOption.Filter != null && zlgOption.Filter.filterRules.Count > 0)
+            if (zlgOption.Filter.filterRules.Count > 0)
             {
                 if (zlgOption.Filter.filterRules[0] is FilterRule.Mask mask)
                 {
-                    if (zlgOption.Filter.filterRules.Count > 1)
-                        throw new CanFilterConfigurationException(
-                            "ZLG channels only support a single mask filter rule.");
-
                     ZlgErr.ThrowIfError(
                         ZLGCAN.ZCAN_SetValue(
                             _devicePtr,

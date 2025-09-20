@@ -151,7 +151,7 @@ public sealed class TestChannel : ICanChannel<IChannelRTOptionsConfigurator>
     public void Close() { _opened = false; }
     public void Reset() { }
     public void ClearBuffer() { }
-    public uint Transmit(params CanTransmitData[] frames)
+    public uint Transmit(IEnumerable<CanTransmitData> frames)
     {
         if (!_opened) throw new CanChannelNotOpenException();
         return _transceiver.Transmit(this, frames);
@@ -184,10 +184,11 @@ public sealed class FakeTransceiver : ITransceiver
     public List<CanTransmitData> Sent { get; } = new();
     public List<CanReceiveData> ToReceive { get; } = new();
 
-    public uint Transmit(ICanChannel<IChannelRTOptionsConfigurator> channel, params CanTransmitData[] frames)
+    public uint Transmit(ICanChannel<IChannelRTOptionsConfigurator> channel, IEnumerable<CanTransmitData> frames)
     {
+        var last = Sent.Count;
         Sent.AddRange(frames);
-        return (uint)frames.Length;
+        return (uint)(Sent.Count - last);
     }
 
     public IEnumerable<CanReceiveData> Receive(ICanChannel<IChannelRTOptionsConfigurator> channel, uint count = 1, int timeOut = -1)

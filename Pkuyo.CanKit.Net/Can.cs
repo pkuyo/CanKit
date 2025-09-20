@@ -94,6 +94,18 @@ namespace Pkuyo.CanKit.Net
             session.Open();
             return session;
         }
+
+        
+        /// <summary>
+        /// Extension method for transmitting CAN frames through a channel (通过通道发送 CAN 帧的扩展方法)。
+        /// </summary>
+        /// <param name="channel">Target CAN channel (目标 CAN 通道)。</param>
+        /// <param name="frames">Frames to transmit (待发送帧集合)。</param>
+        /// <returns>Number of frames accepted by driver (被底层接受的帧数)。</returns>
+        public static uint Transmit(this ICanChannel channel, params CanTransmitData[] frames)
+        {
+            return channel.Transmit(frames);
+        }
     }
 }
 

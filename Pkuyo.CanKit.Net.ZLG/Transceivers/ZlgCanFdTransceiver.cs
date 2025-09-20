@@ -7,17 +7,18 @@ using Pkuyo.CanKit.ZLG.Utils;
 
 namespace Pkuyo.CanKit.ZLG.Transceivers
 {
-    public class ZlgCanFdTransceiver : IZlgTransceiver
+    public sealed class ZlgCanFdTransceiver : IZlgTransceiver
     {
-        public uint Transmit(ICanChannel<IChannelRTOptionsConfigurator> channel, params CanTransmitData[] frames)
+        public uint Transmit(ICanChannel<IChannelRTOptionsConfigurator> channel,
+            params IEnumerable<CanTransmitData> frames)
         {
-            var zcanTransmitDatas = 
+            var zcanTransmitData = 
                 frames.Select(i => i.CanFrame)
                     .OfType<CanFdFrame>()
                     .Select(i => i.ToTransmitData())
                     .ToArray();
 
-            return ZLGCAN.ZCAN_TransmitFD(((ZlgCanChannel)channel).NativeHandle, zcanTransmitDatas, (uint)zcanTransmitDatas.Length);
+            return ZLGCAN.ZCAN_TransmitFD(((ZlgCanChannel)channel).NativeHandle, zcanTransmitData, (uint)zcanTransmitData.Length);
         }
 
         public IEnumerable<CanReceiveData> Receive(ICanChannel<IChannelRTOptionsConfigurator> channel, uint count = 1, int timeOut = -1)

@@ -24,6 +24,10 @@ internal static class Libc
 
     // poll
     public const short POLLIN = 0x0001;
+    
+    // epoll
+    public const int EPOLLIN = 0x001;
+    public const int EPOLL_CTL_ADD = 1;
 
     [StructLayout(LayoutKind.Sequential)]
     public struct sockaddr_can
@@ -72,6 +76,13 @@ internal static class Libc
         public short events;
         public short revents;
     }
+    
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct epoll_event
+    {
+        public uint events;
+        public IntPtr data; // fd
+    }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
     public struct ifreq
@@ -110,8 +121,24 @@ internal static class Libc
 
     [DllImport("libc", SetLastError = true)]
     public static extern int poll(ref pollfd fds, uint nfds, int timeout);
+    
+    [DllImport("libc", SetLastError = true)]
+    public static extern int epoll_create1(int flags);
+
+    [DllImport("libc", SetLastError = true)]
+    public static extern int epoll_ctl(int epfd, int op, int fd, ref epoll_event ev);
+
+    [DllImport("libc", SetLastError = true)]
+    public static extern int epoll_wait(int epfd, [In, Out] epoll_event[] events, int maxevents, int timeout);
+    
 
     [DllImport("libc", SetLastError = true, CharSet = CharSet.Ansi)]
     public static extern uint if_nametoindex(string ifname);
+    
+    public static void ThrowErrno(string where)
+    {
+        int err = Marshal.GetLastWin32Error();
+        throw new InvalidOperationException($"{where} failed, errno={err}");
+    }
 }
 

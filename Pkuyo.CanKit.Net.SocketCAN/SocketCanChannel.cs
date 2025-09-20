@@ -104,7 +104,7 @@ public sealed class SocketCanChannel : ICanChannel<SocketCanChannelRTConfigurato
         }
     }
 
-    public uint Transmit(params CanTransmitData[] frames)
+    public uint Transmit(params IEnumerable<CanTransmitData> frames)
     {
         ThrowIfDisposed();
         if (!_isOpen) throw new CanChannelNotOpenException();
@@ -161,9 +161,7 @@ public sealed class SocketCanChannel : ICanChannel<SocketCanChannelRTConfigurato
         {
             StopPolling();
             if (_fd >= 0)
-            {
-                try { Libc.close(_fd); } catch { /* ignore */ }
-            }
+                 Libc.close(_fd); 
         }
         finally
         {
@@ -276,7 +274,7 @@ public sealed class SocketCanChannel : ICanChannel<SocketCanChannelRTConfigurato
                 if (n != unit) break;
                 var frame = Marshal.PtrToStructure<Libc.can_frame>(buf);
                 var data = new byte[frame.can_dlc];
-                Array.Copy(frame.data ?? Array.Empty<byte>(), data, Math.Min(data.Length, 8));
+                Array.Copy(frame.data, data, Math.Min(data.Length, 8));
                 result.Add(new CanReceiveData(new CanClassicFrame(frame.can_id, data))
                 {
                     recvTimestamp = 0
@@ -349,11 +347,20 @@ public sealed class SocketCanChannel : ICanChannel<SocketCanChannelRTConfigurato
 
     private void StartPollingIfNeeded()
     {
-        if (_pollTask is { IsCompleted: false }) return;
-        _pollCts = new CancellationTokenSource();
-        var token = _pollCts.Token;
-        _pollTask = Task.Factory.StartNew(
-            () => PollLoop(token), token,
+        if (_epollTask is { IsCompleted: false }) return;
+        
+        _epfd = Libc.epoll_create1(0);
+        if (_epfd < 0) 
+            Libc.ThrowErrno("epoll_create1");
+        var ev = new Libc.epoll_event { events = Libc.EPOLLIN, data = (IntPtr)_fd };
+        
+        if (Libc.epoll_ctl(_epfd, Libc.EPOLL_CTL_ADD, _fd, ref ev) < 0)
+            Libc.ThrowErrno("epoll_ctl ADD sock");
+        
+        _epollCts = new CancellationTokenSource();
+        var token = _epollCts.Token;
+        _epollTask = Task.Factory.StartNew(
+            () => EPollLoop(token), token,
             TaskCreationOptions.LongRunning,
             TaskScheduler.Default);
     }
@@ -362,8 +369,8 @@ public sealed class SocketCanChannel : ICanChannel<SocketCanChannelRTConfigurato
     {
         try
         {
-            _pollCts?.Cancel();
-            _pollTask?.Wait(200);
+            _epollCts?.Cancel();
+            _epollTask?.Wait(200);
         }
         catch
         {
@@ -371,13 +378,16 @@ public sealed class SocketCanChannel : ICanChannel<SocketCanChannelRTConfigurato
         }
         finally
         {
-            _pollTask = null;
-            _pollCts?.Dispose();
-            _pollCts = null;
+            if (_epfd >= 0) 
+                Libc.close(_epfd);
+            
+            _epollTask = null;
+            _epollCts?.Dispose();
+            _epollCts = null;
         }
     }
 
-    private void PollLoop(CancellationToken token)
+    private void EPollLoop(CancellationToken token)
     {
         while (!token.IsCancellationRequested)
         {
@@ -388,7 +398,19 @@ public sealed class SocketCanChannel : ICanChannel<SocketCanChannelRTConfigurato
             }
             if (Volatile.Read(ref _subscriberCount) <= 0) break;
             
-            //TODO:epoll
+            int n = Libc.epoll_wait(_epfd, _events, _events.Length, 500);
+            if (n < 0) { continue; }
+
+            for (int i = 0; i < n; i++)
+            {
+                if ((_events[i].events & Libc.EPOLLIN) != 0)
+                {
+                    while (true)
+                    {
+                        //TODO:实际接收
+                    }
+                }
+            }
         }
     }
 
@@ -448,12 +470,15 @@ public sealed class SocketCanChannel : ICanChannel<SocketCanChannelRTConfigurato
     private readonly ITransceiver _transceiver;
     private bool _isDisposed;
     private bool _isOpen;
-    private int _fd = -1;
+    private int _fd;
+
 
     private readonly object _evtGate = new();
     private EventHandler<CanReceiveData>? _frameReceived;
     private EventHandler<ICanErrorInfo>? _errorOccurred;
     private int _subscriberCount;
-    private CancellationTokenSource? _pollCts;
-    private Task? _pollTask;
+    private CancellationTokenSource? _epollCts;
+    private Task? _epollTask;
+    private int _epfd = -1;
+    private Libc.epoll_event[] _events = new Libc.epoll_event[8];
 }

@@ -8,9 +8,10 @@ using Pkuyo.CanKit.ZLG.Utils;
 
 namespace Pkuyo.CanKit.ZLG.Transceivers
 {
-    public class ZlgCanClassicTransceiver : IZlgTransceiver
+    public sealed class ZlgCanClassicTransceiver : IZlgTransceiver
     {
-        public uint Transmit(ICanChannel<IChannelRTOptionsConfigurator> channel, params CanTransmitData[] frames)
+        public uint Transmit(ICanChannel<IChannelRTOptionsConfigurator> channel,
+            params IEnumerable<CanTransmitData> frames)
         {
         
             var zcanTransmitDatas = 

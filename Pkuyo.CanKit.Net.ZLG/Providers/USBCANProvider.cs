@@ -4,14 +4,14 @@ using Pkuyo.CanKit.Net.Core.Definitions;
 using Pkuyo.CanKit.ZLG.Definitions;
 
 namespace Pkuyo.CanKit.ZLG.Providers;
-public class USBCANProvider(DeviceType deviceType) : ZlgCanProvider
+public sealed class USBCANProvider(DeviceType deviceType) : ZlgCanProvider
 {
     public override DeviceType DeviceType => deviceType;
     
     public override ZlgFeature ZlgFeature => ZlgFeature.MaskFilter;
 }
 
-public class USBCANProviderGroup : ICanModelProviderGroup
+public sealed class USBCANProviderGroup : ICanModelProviderGroup
 {
     public IEnumerable<DeviceType> SupportedDeviceTypes =>
     [

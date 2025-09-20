@@ -4,7 +4,7 @@ using Pkuyo.CanKit.ZLG.Native;
 
 namespace Pkuyo.CanKit.ZLG.Definitions;
 
-public class ZlgDeviceHandle : SafeHandle
+public sealed class ZlgDeviceHandle : SafeHandle
 {
     public ZlgDeviceHandle() : base(IntPtr.Zero, true)
     {
@@ -23,7 +23,7 @@ public class ZlgDeviceHandle : SafeHandle
     public override bool IsInvalid => handle == IntPtr.Zero;
 }
 
-public class ZlgChannelHandle() : SafeHandle(IntPtr.Zero, false)
+public sealed class ZlgChannelHandle() : SafeHandle(IntPtr.Zero, false)
 {
     public void SetDevice(IntPtr deviceHandle)
     {

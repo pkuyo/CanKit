@@ -7,7 +7,7 @@ using Pkuyo.CanKit.ZLG.Transceivers;
 namespace Pkuyo.CanKit.ZLG;
 
 [CanFactory("Zlg")]
-public class ZlgCanFactory : ICanFactory
+public sealed class ZlgCanFactory : ICanFactory
 {
     public ICanDevice CreateDevice(IDeviceOptions options)
     {

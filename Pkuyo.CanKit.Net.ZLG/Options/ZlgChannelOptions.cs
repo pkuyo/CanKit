@@ -6,7 +6,7 @@ using Pkuyo.CanKit.Net.Core.Definitions;
 namespace Pkuyo.CanKit.ZLG.Options
 {
     [CanOption]
-    public partial class ZlgChannelOptions(ICanModelProvider provider) : IChannelOptions
+    public sealed partial class ZlgChannelOptions(ICanModelProvider provider) : IChannelOptions
     {
         public enum MaskFilterType : byte
         {

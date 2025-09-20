@@ -6,7 +6,7 @@ using Pkuyo.CanKit.Net.Core.Definitions;
 namespace Pkuyo.CanKit.ZLG.Options
 {
     [CanOption]
-    public partial class ZlgDeviceOptions (ICanModelProvider provider): IDeviceOptions
+    public sealed partial class ZlgDeviceOptions (ICanModelProvider provider): IDeviceOptions
     {
         public ICanModelProvider Provider => provider;
         

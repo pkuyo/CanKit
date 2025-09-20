@@ -1,4 +1,5 @@
 ﻿using System.Collections.Generic;
+using System.Linq;
 using Pkuyo.CanKit.Net.Core.Abstractions;
 using Pkuyo.CanKit.Net.Core.Definitions;
 using Pkuyo.CanKit.ZLG.Native;
@@ -8,14 +9,15 @@ using Pkuyo.CanKit.ZLG.Utils;
 namespace Pkuyo.CanKit.ZLG.Transceivers
 {
     
-    public class ZlgMergeTransceiver : IZlgTransceiver
+    public sealed class ZlgMergeTransceiver : IZlgTransceiver
     {
-        public uint Transmit(ICanChannel<IChannelRTOptionsConfigurator> channel, params CanTransmitData[] frames)
+        public uint Transmit(ICanChannel<IChannelRTOptionsConfigurator> channel,
+            params IEnumerable<CanTransmitData> frames)
         {
             var transmitDataObj = ZlgNativeExtension.TransmitCanFrames(frames, (byte)channel.Options.ChannelIndex);
             return ZLGCAN.ZCAN_TransmitData(((ZlgCanChannel)channel).NativeHandle.DeviceHandle,
                 transmitDataObj,
-                (uint)frames.Length);
+                (uint)transmitDataObj.Length);
         }
 
         public IEnumerable<CanReceiveData> Receive(ICanChannel<IChannelRTOptionsConfigurator> channel, uint count = 1, int timeOut = -1)

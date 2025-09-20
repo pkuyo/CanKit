@@ -15,7 +15,7 @@ namespace Pkuyo.CanKit.Net.Core.Abstractions
         /// <param name="channel">执行发送操作的通道。</param>
         /// <param name="frames">需要发送的帧集合。</param>
         /// <returns>成功写入硬件的帧数量。</returns>
-        uint Transmit(ICanChannel<IChannelRTOptionsConfigurator> channel, params CanTransmitData[] frames);
+        uint Transmit(ICanChannel<IChannelRTOptionsConfigurator> channel, params IEnumerable<CanTransmitData> frames);
 
         /// <summary>
         ///     通过指定通道接收 CAN 帧。

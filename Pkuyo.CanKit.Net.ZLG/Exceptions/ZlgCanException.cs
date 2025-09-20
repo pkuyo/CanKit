@@ -7,7 +7,7 @@ namespace Pkuyo.CanKit.ZLG.Exceptions
     /// <summary>
     /// Exception for ZLG native call failures (ZLG 原生调用失败异常)。
     /// </summary>
-    public class ZlgCanException : CanNativeCallException
+    public sealed class ZlgCanException : CanNativeCallException
     {
         /// <summary>
         /// Create ZLG exception with operation, message and status (构造包含操作、消息与状态码的异常)。
@@ -38,7 +38,7 @@ namespace Pkuyo.CanKit.ZLG.Exceptions
     /// <summary>
     /// Thrown when a requested ZLG feature is not supported (请求的 ZLG 功能不被支持时抛出)。
     /// </summary>
-    public class ZlgFeatureNotSupportedException : CanKitException
+    public sealed class ZlgFeatureNotSupportedException : CanKitException
     {
         /// <summary>
         /// Create exception with requested/available features (构造包含请求/可用功能集的异常)。

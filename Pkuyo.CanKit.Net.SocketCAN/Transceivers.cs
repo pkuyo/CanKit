@@ -6,27 +6,27 @@ namespace Pkuyo.CanKit.SocketCAN;
 
 public sealed class SocketCanClassicTransceiver : ITransceiver
 {
-    public uint Transmit(ICanChannel<IChannelRTOptionsConfigurator> channel, params CanTransmitData[] frames)
+    public uint Transmit(ICanChannel<IChannelRTOptionsConfigurator> channel, IEnumerable<CanTransmitData> frames)
     {
-        return ((SocketCanChannel)channel).WriteClassic(frames);
+        throw new NotImplementedException();
     }
 
-    public IEnumerable<CanReceiveData> Receive(ICanChannel<IChannelRTOptionsConfigurator> channel, uint count = 1, int timeOut = -1)
+    public IEnumerable<CanReceiveData> Receive(ICanChannel<IChannelRTOptionsConfigurator> channel, uint count = 1, int _ = -1)
     {
-        return ((SocketCanChannel)channel).ReadClassic(count, timeOut);
+        throw new NotImplementedException();
     }
 }
 
 public sealed class SocketCanFdTransceiver : ITransceiver
 {
-    public uint Transmit(ICanChannel<IChannelRTOptionsConfigurator> channel, params CanTransmitData[] frames)
+    public uint Transmit(ICanChannel<IChannelRTOptionsConfigurator> channel, IEnumerable<CanTransmitData> frames)
     {
-        return ((SocketCanChannel)channel).WriteFd(frames);
+        throw new NotImplementedException();
     }
 
-    public IEnumerable<CanReceiveData> Receive(ICanChannel<IChannelRTOptionsConfigurator> channel, uint count = 1, int timeOut = -1)
+    public IEnumerable<CanReceiveData> Receive(ICanChannel<IChannelRTOptionsConfigurator> channel, uint count = 1, int _ = -1)
     {
-        return ((SocketCanChannel)channel).ReadFd(count, timeOut);
+        throw new NotImplementedException();
     }
 }
 

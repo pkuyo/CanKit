@@ -11,7 +11,7 @@ using Pkuyo.CanKit.ZLG.Options;
 
 namespace Pkuyo.CanKit.ZLG
 {
-     public class ZlgCanDevice : ICanDevice<ZlgDeviceRTOptionsConfigurator>, INamedCanApplier
+     public sealed class ZlgCanDevice : ICanDevice<ZlgDeviceRTOptionsConfigurator>, INamedCanApplier
      {
          public ZlgCanDevice(IDeviceOptions options)
          {
@@ -51,7 +51,7 @@ namespace Pkuyo.CanKit.ZLG
         }
         
         
-        public virtual void Dispose()
+        public void Dispose()
         {
             try
             {

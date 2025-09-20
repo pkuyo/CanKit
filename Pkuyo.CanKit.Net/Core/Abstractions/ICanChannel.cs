@@ -39,7 +39,7 @@ namespace Pkuyo.CanKit.Net.Core.Abstractions
         /// </summary>
         /// <param name="frames">Frames to transmit (待发送帧集合)。</param>
         /// <returns>Number of frames accepted by driver (被底层接受的帧数)。</returns>
-        uint Transmit(params CanTransmitData[] frames);
+        uint Transmit(IEnumerable<CanTransmitData> frames);
 
         /// <summary>
         /// Get bus usage ratio (获取总线利用率)。

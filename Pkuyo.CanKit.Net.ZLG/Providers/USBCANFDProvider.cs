@@ -5,7 +5,7 @@ using Pkuyo.CanKit.ZLG.Definitions;
 
 namespace Pkuyo.CanKit.ZLG.Providers;
 
-public class USBCANFDProvider(DeviceType deviceType) : ZlgCanProvider
+public sealed class USBCANFDProvider(DeviceType deviceType) : ZlgCanProvider
 {
     public override DeviceType DeviceType => deviceType;
     
@@ -15,7 +15,7 @@ public class USBCANFDProvider(DeviceType deviceType) : ZlgCanProvider
     public override ZlgFeature ZlgFeature => ZlgFeature.RangeFilter;
 }
 
-public class USBCANFDProviderGroup : ICanModelProviderGroup
+public sealed class USBCANFDProviderGroup : ICanModelProviderGroup
 {
     public IEnumerable<DeviceType> SupportedDeviceTypes =>
     [

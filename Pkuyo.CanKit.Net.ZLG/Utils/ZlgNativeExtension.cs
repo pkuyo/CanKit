@@ -51,14 +51,16 @@ namespace Pkuyo.CanKit.ZLG.Utils
             }
         }
 
-        internal static ZCANDataObj[] TransmitCanFrames(CanTransmitData[] canFrames, byte channelId)
+        internal static ZCANDataObj[] TransmitCanFrames(IEnumerable<CanTransmitData> canFrames, byte channelId)
         {
-            ZCANDataObj[] transmitData = new ZCANDataObj[canFrames.Length];
-            for(int i = 0; i< canFrames.Length;i++)
+            List<ZCANDataObj> transmitData = new List<ZCANDataObj>();
+            int i = 0;
+            foreach(var frame in canFrames)
             {
-                transmitData[i] = canFrames[i].CanFrame.ToZCANObj(channelId);
+                transmitData.Add(frame.CanFrame.ToZCANObj(channelId));
+                i++;
             }
-            return transmitData;
+            return transmitData.ToArray();
         }
         
   
