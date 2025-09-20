@@ -136,8 +136,8 @@ namespace Pkuyo.CanKit.ZLG
 
         public float BusUsage()
         {
-            if ((Options.Provider.Features & CanFeature.BusUsage) == 0U)
-                throw new CanFeatureNotSupportedException(CanFeature.BusUsage, Options.Provider.Features);
+            if ((Options.Features & CanFeature.BusUsage) == 0U)
+                throw new CanFeatureNotSupportedException(CanFeature.BusUsage, Options.Features);
             var ret = ZLGCAN.ZCAN_GetValue(NativeHandle.DeviceHandle, $"{Options.ChannelIndex}/get_bus_usage/1");
             var busUsage = Marshal.PtrToStructure<ZLGCAN.BusUsage>(ret);
             return busUsage.nBusUsage / 10000f;
@@ -145,8 +145,8 @@ namespace Pkuyo.CanKit.ZLG
 
         public CanErrorCounters ErrorCounters()
         {
-            if ((Options.Provider.Features & CanFeature.ErrorCounters) == 0U)
-                throw new CanFeatureNotSupportedException(CanFeature.ErrorCounters, Options.Provider.Features);
+            if ((Options.Features & CanFeature.ErrorCounters) == 0U)
+                throw new CanFeatureNotSupportedException(CanFeature.ErrorCounters, Options.Features);
             
             var errInfo = new ZLGCAN.ZCAN_CHANNEL_ERROR_INFO();
             ZLGCAN.ZCAN_ReadChannelErrInfo(_nativeHandle, ref errInfo);

@@ -15,6 +15,7 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
         where TDeviceOptions : class, IDeviceOptions
     {
         public ICanModelProvider Provider => Options.Provider;
+        public CanFeature Features => _feature;
         public DeviceType DeviceType   => Options.DeviceType;
         public uint       TxTimeOut    => Options.TxTimeOut;
         
@@ -28,6 +29,7 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
         where TChannelOptions : class, IChannelOptions
     {
         public ICanModelProvider Provider => Options.Provider;
+        public CanFeature Features => _feature;
         public int ChannelIndex => Options.ChannelIndex;
         public BitTiming BitTiming => Options.BitTiming;
         public TxRetryPolicy TxRetryPolicy => Options.TxRetryPolicy;
@@ -52,6 +54,7 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
         where TSelf : DeviceInitOptionsConfigurator<TDeviceOptions, TSelf>
     {
         public ICanModelProvider Provider => Options.Provider;
+        public CanFeature Features => _feature;
         public DeviceType DeviceType => Options.DeviceType;
         public uint TxTimeOutTime => Options.TxTimeOut;
 
@@ -76,6 +79,7 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
     {
  
         public ICanModelProvider Provider => Options.Provider;
+        public CanFeature Features => _feature;
         public int ChannelIndex => Options.ChannelIndex;
         public BitTiming BitTiming => Options.BitTiming;
         public TxRetryPolicy TxRetryPolicy => Options.TxRetryPolicy;

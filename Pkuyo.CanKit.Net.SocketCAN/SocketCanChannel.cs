@@ -211,12 +211,12 @@ public sealed class SocketCanChannel : ICanBus<SocketCanChannelRTConfigurator>, 
     }
     public float BusUsage()
     {
-        throw new CanFeatureNotSupportedException(CanFeature.BusUsage, Options.Provider.Features);
+        throw new CanFeatureNotSupportedException(CanFeature.BusUsage, Options.Features);
     }
 
     public CanErrorCounters ErrorCounters()
     {
-        throw new CanFeatureNotSupportedException(CanFeature.ErrorCounters, Options.Provider.Features);
+        throw new CanFeatureNotSupportedException(CanFeature.ErrorCounters, Options.Features);
     }
     
     public bool ReadChannelErrorInfo(out ICanErrorInfo? errorInfo)

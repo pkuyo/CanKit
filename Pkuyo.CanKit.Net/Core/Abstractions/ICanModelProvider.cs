@@ -17,7 +17,7 @@ namespace Pkuyo.CanKit.Net.Core.Abstractions
         /// <summary>
         /// Supported features (支持的功能集合)。
         /// </summary>
-        CanFeature Features { get; }
+        CanFeature StaticFeatures { get; }
 
         /// <summary>
         /// Factory for device/channel/transceiver (创建设备/通道/收发器的工厂)。

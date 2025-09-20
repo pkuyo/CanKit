@@ -25,7 +25,7 @@ public sealed class ZlgCanFactory : ICanFactory
 
     public bool Support(DeviceType deviceType)
     {
-        return deviceType.Id.StartsWith("ZLG.");
+        return deviceType is ZlgDeviceType;
     }
     
     public ITransceiver CreateTransceivers(IDeviceRTOptionsConfigurator configurator,
@@ -35,15 +35,15 @@ public sealed class ZlgCanFactory : ICanFactory
             throw new CanProviderMismatchException(typeof(ZlgCanProvider), configurator.Provider?.GetType() ?? typeof(ICanModelProvider));
 
         if (channelOptions.ProtocolMode == CanProtocolMode.Merged && 
-            (provider.Features & CanFeature.MergeReceive) != 0U)
+            (configurator.Features & CanFeature.MergeReceive) != 0U)
             return new ZlgMergeTransceiver();
 
         if (channelOptions.ProtocolMode == CanProtocolMode.Can20
-            && (uint)(provider.Features & CanFeature.CanClassic) != 0U)
+            && (uint)(configurator.Features & CanFeature.CanClassic) != 0U)
             return new ZlgCanClassicTransceiver();
 
         if (channelOptions.ProtocolMode == CanProtocolMode.CanFd
-            && (uint)(provider.Features & CanFeature.CanFd) != 0U)
+            && (uint)(configurator.Features & CanFeature.CanFd) != 0U)
             return new ZlgCanFdTransceiver();
 
         var requiredFeature = channelOptions.ProtocolMode switch
@@ -61,7 +61,7 @@ public sealed class ZlgCanFactory : ICanFactory
                 $"Protocol mode '{channelOptions.ProtocolMode}' is not supported by provider '{provider.DeviceType.Id}'.");
         }
 
-        throw new CanFeatureNotSupportedException(requiredFeature, provider.Features);
+        throw new CanFeatureNotSupportedException(requiredFeature, configurator.Features);
     }
 
 }

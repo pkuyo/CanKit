@@ -59,7 +59,7 @@ public sealed class TestModelProvider : ICanModelProvider
     }
 
     public DeviceType DeviceType => TestDeviceTypes.Test;
-    public CanFeature Features => _featuresOverride ?? FeaturesForTests;
+    public CanFeature StaticFeatures => _featuresOverride ?? FeaturesForTests;
     public ICanFactory Factory { get; } = new TestFactory();
 
     private CanFeature? _featuresOverride;

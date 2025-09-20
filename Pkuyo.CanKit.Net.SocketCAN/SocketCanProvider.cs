@@ -9,7 +9,7 @@ public sealed class SocketCanProvider : ICanModelProvider
 {
     public DeviceType DeviceType => LinuxDeviceType.SocketCAN;
 
-    public CanFeature Features => CanFeature.CanClassic | CanFeature.CanFd | CanFeature.Filters;
+    public CanFeature StaticFeatures => CanFeature.CanClassic | CanFeature.CanFd | CanFeature.Filters;
 
     public ICanFactory Factory => CanRegistry.Registry.Factory("SocketCAN");
 

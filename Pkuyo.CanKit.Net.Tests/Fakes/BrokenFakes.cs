@@ -54,7 +54,7 @@ public sealed class ExposedTransceiverFactory : ICanFactory
 public sealed class NullDeviceProvider : ICanModelProvider
 {
     public DeviceType DeviceType => BrokenDeviceTypes.NullDeviceFactory;
-    public CanFeature Features => TestModelProvider.FeaturesForTests;
+    public CanFeature StaticFeatures => TestModelProvider.FeaturesForTests;
     public ICanFactory Factory { get; } = new NullDeviceFactory();
     public (IDeviceOptions, IDeviceInitOptionsConfigurator) GetDeviceOptions()
     {
@@ -73,7 +73,7 @@ public sealed class NullDeviceProvider : ICanModelProvider
 public sealed class NullTransceiverProvider : ICanModelProvider
 {
     public DeviceType DeviceType => BrokenDeviceTypes.NullTransceiverFactory;
-    public CanFeature Features => TestModelProvider.FeaturesForTests;
+    public CanFeature StaticFeatures => TestModelProvider.FeaturesForTests;
     public ICanFactory Factory { get; } = new NullTransceiverFactory();
     public (IDeviceOptions, IDeviceInitOptionsConfigurator) GetDeviceOptions()
     {
@@ -92,7 +92,7 @@ public sealed class NullTransceiverProvider : ICanModelProvider
 public sealed class MismatchChannelProvider : ICanModelProvider
 {
     public DeviceType DeviceType => BrokenDeviceTypes.MismatchChannelFactory;
-    public CanFeature Features => TestModelProvider.FeaturesForTests;
+    public CanFeature StaticFeatures => TestModelProvider.FeaturesForTests;
     public ICanFactory Factory { get; } = new MismatchChannelFactory();
     public (IDeviceOptions, IDeviceInitOptionsConfigurator) GetDeviceOptions()
     {
@@ -111,7 +111,7 @@ public sealed class MismatchChannelProvider : ICanModelProvider
 public sealed class ExposedTransceiverProvider : ICanModelProvider
 {
     public DeviceType DeviceType => BrokenDeviceTypes.ExposedTransceiverFactory;
-    public CanFeature Features => TestModelProvider.FeaturesForTests;
+    public CanFeature StaticFeatures => TestModelProvider.FeaturesForTests;
     public ExposedTransceiverFactory ExposedFactory { get; } = new();
     public ICanFactory Factory => ExposedFactory;
     public (IDeviceOptions, IDeviceInitOptionsConfigurator) GetDeviceOptions()
@@ -191,4 +191,3 @@ public sealed class AttributedFactoryFake : ICanFactory
     public ITransceiver CreateTransceivers(IDeviceRTOptionsConfigurator deviceOptions, IChannelInitOptionsConfigurator channelOptions) => null;
     public bool Support(DeviceType deviceType) => false;
 }
-

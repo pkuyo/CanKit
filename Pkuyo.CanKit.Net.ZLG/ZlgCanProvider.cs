@@ -15,7 +15,7 @@ namespace Pkuyo.CanKit.ZLG
     {
         public abstract DeviceType DeviceType { get; }
         
-        public virtual CanFeature Features => CanFeature.CanClassic | CanFeature.Filters | CanFeature.ErrorCounters;
+        public virtual CanFeature StaticFeatures => CanFeature.CanClassic | CanFeature.Filters | CanFeature.ErrorCounters;
 
         public virtual ZlgFeature ZlgFeature => ZlgFeature.None;
         

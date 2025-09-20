@@ -10,9 +10,15 @@ namespace Pkuyo.CanKit.Net.Core.Abstractions;
 public interface ICanOptionsConfigurator
 { 
     /// <summary>
-    /// Model provider for current options (当前选项所属的模型提供者)。
+    /// Model provider for current options (当前设备/通道所属的模型提供者)。
     /// </summary>
     ICanModelProvider Provider { get; }
+    
+    
+    /// <summary>
+    /// Features supported by current options (当前设备/通道选项支持的功能)。
+    /// </summary>
+    CanFeature Features { get; }
 }
 
 /// <summary>
@@ -250,14 +256,23 @@ public abstract class CallOptionsConfigurator<TOption, TSelf>
     public virtual TSelf Init(TOption options)
     {
         _options = options;
-        _feature = options.Provider.Features;
+        // Initialize with static features; dynamic features can be merged later.
+        _feature = options.Provider.StaticFeatures;
         return (TSelf)this;
     }
 
     protected TOption Options => _options ?? throw new InvalidOperationException("Options have not been initialized.");
-
-    protected CanFeature Feature => _feature;
+    
+    
+    /// <summary>
+    /// Merge dynamic features discovered at runtime into current capability set.
+    /// ZH: 合并运行期发现的动态功能到当前能力集合。
+    /// </summary>
+    public TSelf UpdateDynamicFeatures(CanFeature dynamic)
+    {
+        _feature |= dynamic;
+        return (TSelf)this;
+    }
     
     protected TSelf Self => (TSelf)this;
 }
-
