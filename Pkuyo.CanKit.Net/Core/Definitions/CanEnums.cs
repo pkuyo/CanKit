@@ -3,23 +3,39 @@ using System;
 namespace Pkuyo.CanKit.Net.Core.Definitions
 {
     /// <summary>
-    /// Frame error kinds that may occur (帧可能发生的错误类型)。
+    /// Frame error kinds that may occur (帧可能发生的错误类型)
     /// </summary>
-    public enum FrameErrorKind
+    [Flags]
+    public enum FrameErrorKind : uint
     {
-        None        = 0,         // no error / 无错误
-        BitError    = 1,         // bit error / 位错误
-        StuffError  = 2,         // stuff error / 填充位错误
-        CrcError    = 3,         // crc error / CRC 校验错误
-        FormError   = 4,         // form error / 帧格式错误
-        AckError    = 5,         // missing ACK / 未收到 ACK
-        Controller  = 6,
-        
-        Unknown     = 65535
-    }
+        None            = 0,            // no error / 无错误
+        BitError        = 1,            // bit error / 位错误
+        StuffError      = 1 << 1,       // stuff error / 填充位错误
+        CrcError        = 1 << 2,       // crc error / CRC 校验错误
+        FormError       = 1 << 3,       // form error / 帧格式错误
+        AckError        = 1 << 4,       // missing ACK / 未收到 ACK
+        Controller      = 1 << 5,       // generic controller error / 控制器通用错误
+        Warning         = 1 << 6,       // error warning state / 错误报警
+        Passive         = 1 << 7,       // error passive state / 错误被动
+        Overload        = 1 << 8,       // bus overload / 总线过载
+        RxOverflow      = 1 << 9,       // receive overflow / 接收溢出
+        TxOverflow      = 1 << 10,      // transmit overflow / 发送溢出
+        ArbitrationLost = 1 << 11,      // arbitration lost / 仲裁丢失
+        BusError        = 1 << 12,      // bus error / 总线错误
+        BusOff          = 1 << 13,      // bus off / 总线关闭
+        TxTimeout       = 1 << 14,      // transmit timeout / 发送超时
+        Restarted       = 1 << 15,      // controller restarted / 控制器重启
+        TransceiverError= 1 << 16,      // transceiver error / 收发器错误
+        DeviceError     = 1 << 17,      // device error / 设备错误
+        DriverError     = 1 << 18,      // driver error / 驱动错误
+        ResourceError   = 1 << 19,      // resource exhausted / 资源不足
+        CommandFailed   = 1 << 20,      // command failed / 命令失败
 
+        Unknown         = 1<<30
+    
+}
     /// <summary>
-    /// Frame direction: Tx or Rx (帧方向：发送或接收)。
+    /// Frame direction: Tx or Rx (帧方向：发送或接收)
     /// </summary>
     public enum FrameDirection
     {
@@ -29,7 +45,7 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
     }
 
     /// <summary>
-    /// Channel error state (通道错误状态)。
+    /// Channel error state (通道错误状态)
     /// </summary>
     public enum ChannelErrorState
     {
@@ -41,7 +57,7 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
     }
     
     /// <summary>
-    /// Frame type flags used to identify frame kind (帧类型标志)。
+    /// Frame type flags used to identify frame kind (帧类型标志)
     /// </summary>
     [Flags]
     public enum CanFrameType : uint
@@ -54,7 +70,7 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
     }
 
     /// <summary>
-    /// Supported CAN protocol modes (支持的协议模式)。
+    /// Supported CAN protocol modes (支持的协议模式)
     /// </summary>
     public enum CanProtocolMode
     {
@@ -64,7 +80,7 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
     }
 
     /// <summary>
-    /// Device capability flags (设备功能标志)。
+    /// Device capability flags (设备功能标志)
     /// </summary>
     [Flags]
     public enum CanFeature
@@ -81,7 +97,7 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
     }
 
     /// <summary>
-    /// Options application phase (选项应用阶段)。
+    /// Options application phase (选项应用阶段)
     /// </summary>
     public enum CanOptionType
     {
@@ -90,7 +106,7 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
     }
 
     /// <summary>
-    /// TX retry policies (发送重试策略)。
+    /// TX retry policies (发送重试策略)
     /// </summary>
     public enum TxRetryPolicy : byte
     {
@@ -99,7 +115,7 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
     }
 
     /// <summary>
-    /// Channel work mode (通道工作模式)。
+    /// Channel work mode (通道工作模式)
     /// </summary>
     public enum ChannelWorkMode : byte
     {
@@ -109,7 +125,7 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
     }
 
     /// <summary>
-    /// Filter ID type: standard or extended (过滤 ID 类型：标准/扩展)。
+    /// Filter ID type: standard or extended (过滤 ID 类型：标/扩展)
     /// </summary>
     public enum CanFilterIDType
     {
@@ -118,4 +134,5 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
     }
 
 }
+
 

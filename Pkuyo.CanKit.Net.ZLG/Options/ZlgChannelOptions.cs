@@ -28,6 +28,8 @@ namespace Pkuyo.CanKit.ZLG.Options
 
         public CanFilter Filter { get; set; } = new ();
         
+        public int PollingInterval { get; set; }
+
         public MaskFilterType FilterType { get; set; }
 
         [CanOptionItem("/initenal_resistance", CanOptionType.Init, "true")]

@@ -49,8 +49,7 @@ namespace Pkuyo.CanKit.ZLG
                 config.config.canfd.dbit_timing = dataRate;
             }
 
-            if (options.Filter != null &&
-                options.Filter.filterRules.Count > 0)
+            if (options.Filter.filterRules.Count > 0)
             {
                 if (options.Filter.filterRules[0] is FilterRule.Mask mask)
                 {
@@ -114,10 +113,25 @@ namespace Pkuyo.CanKit.ZLG
             ZlgErr.ThrowIfError(ZLGCAN.ZCAN_ClearBuffer(_nativeHandle), nameof(ZLGCAN.ZCAN_ClearBuffer), _nativeHandle);
         }
 
-        public uint Transmit(params IEnumerable<CanTransmitData> frames)
+        public uint Transmit(IEnumerable<CanTransmitData> frames, int timeOut = 0)
         {
             ThrowIfDisposed();
-            return _transceiver.Transmit(this, frames);
+            
+            var list = frames.ToList();
+            bool isFirst = true;
+            uint result = 0;
+            var lastTime = DateTime.Now;
+            do
+            {
+                if (isFirst)
+                    isFirst = false;
+                else
+                    Thread.Sleep(Math.Min((DateTime.Now - lastTime).Milliseconds, Options.PollingInterval));
+                
+                result += _transceiver.Transmit(this, list);
+            } while (result < list.Count && DateTime.Now - lastTime <= TimeSpan.FromMilliseconds(timeOut));
+
+            return result;
         }
 
         public float BusUsage()
@@ -143,7 +157,7 @@ namespace Pkuyo.CanKit.ZLG
             };
         }
 
-        public IEnumerable<CanReceiveData> Receive(uint count = 1, int timeOut = -1)
+        public IEnumerable<CanReceiveData> Receive(uint count = 1, int timeOut = 0)
         {
             ThrowIfDisposed();
             return _transceiver.Receive(this, count, timeOut);
@@ -361,7 +375,7 @@ namespace Pkuyo.CanKit.ZLG
                 // 未 Start，睡眠等待
                 if (!_isOpen)
                 {
-                    Thread.Sleep(20);
+                    Thread.Sleep(Options.PollingInterval);
                     continue;
                 }
                 
@@ -391,7 +405,7 @@ namespace Pkuyo.CanKit.ZLG
                     }
                     else
                     {
-                        Thread.Sleep(20);
+                        Thread.Sleep(Options.PollingInterval);
                     }
 
                     if (_errorOccurred != null && ReadChannelErrorInfo(out var errInfo))
@@ -408,7 +422,7 @@ namespace Pkuyo.CanKit.ZLG
                 {
                     // 其他异常：短暂休眠并继续，避免热循环
                     CanKitLogger.LogWarning("Error occurred while polling ZLG CAN channel.", ex);
-                    Thread.Sleep(20);
+                    Thread.Sleep(Options.PollingInterval);
                 }
             }
         }

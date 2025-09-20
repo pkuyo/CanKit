@@ -144,10 +144,10 @@ public sealed class OtherChannel : ICanChannel
     public void Close() => throw new NotImplementedException();
     public void Reset() => throw new NotImplementedException();
     public void ClearBuffer() => throw new NotImplementedException();
-    public uint Transmit(IEnumerable<CanTransmitData> frames) => throw new NotImplementedException();
+    public uint Transmit(IEnumerable<CanTransmitData> frames, int timeOut = 0) => throw new NotImplementedException();
     public float BusUsage() => throw new NotImplementedException();
     public CanErrorCounters ErrorCounters() => throw new NotImplementedException();
-    public IEnumerable<CanReceiveData> Receive(uint count = 1, int timeOut = -1) => throw new NotImplementedException();
+    public IEnumerable<CanReceiveData> Receive(uint count = 1, int timeOut = 0) => throw new NotImplementedException();
     public bool ReadChannelErrorInfo(out ICanErrorInfo errorInfo) { errorInfo = null; throw new NotImplementedException(); }
     public uint GetReceiveCount() => throw new NotImplementedException();
     public IChannelRTOptionsConfigurator Options => throw new NotImplementedException();

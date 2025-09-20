@@ -12,7 +12,7 @@ namespace Pkuyo.CanKit.ZLG.Transceivers
     public sealed class ZlgMergeTransceiver : IZlgTransceiver
     {
         public uint Transmit(ICanChannel<IChannelRTOptionsConfigurator> channel,
-            params IEnumerable<CanTransmitData> frames)
+            IEnumerable<CanTransmitData> frames, int _ = 0)
         {
             var transmitDataObj = ZlgNativeExtension.TransmitCanFrames(frames, (byte)channel.Options.ChannelIndex);
             return ZLGCAN.ZCAN_TransmitData(((ZlgCanChannel)channel).NativeHandle.DeviceHandle,
@@ -20,7 +20,7 @@ namespace Pkuyo.CanKit.ZLG.Transceivers
                 (uint)transmitDataObj.Length);
         }
 
-        public IEnumerable<CanReceiveData> Receive(ICanChannel<IChannelRTOptionsConfigurator> channel, uint count = 1, int timeOut = -1)
+        public IEnumerable<CanReceiveData> Receive(ICanChannel<IChannelRTOptionsConfigurator> channel, uint count = 1, int timeOut = 0)
         {
             ZLGCAN.ZCANDataObj[] zcanReceiveDataPtr = new ZLGCAN.ZCANDataObj[count];
             var recCount = ZLGCAN.ZCAN_ReceiveData(((ZlgCanChannel)channel).NativeHandle.DeviceHandle, zcanReceiveDataPtr, count, timeOut);

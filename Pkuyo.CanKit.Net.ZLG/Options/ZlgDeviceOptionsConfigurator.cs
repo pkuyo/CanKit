@@ -29,6 +29,22 @@ public sealed class ZlgChannelInitConfigurator
     : ChannelInitOptionsConfigurator<ZlgChannelOptions,ZlgChannelInitConfigurator>
 {
     public ZlgChannelOptions.MaskFilterType MaskFilterType => Options.FilterType;
+    
+    /// <summary>
+    /// Polling interval in ms (轮询间隔，毫秒)。
+    /// </summary>
+    public int PollingInterval => Options.PollingInterval;
+
+    /// <summary>
+    /// Set polling interval (设置轮询间隔)。
+    /// </summary>
+    /// <param name="newPollingInterval">Interval in ms (间隔毫秒)。</param>
+    /// <returns>Configurator (配置器本身)。</returns>
+    public ZlgChannelInitConfigurator SetPollingInterval(int newPollingInterval)
+    {
+        Options.PollingInterval = newPollingInterval;
+        return this;
+    }
 
     public ZlgChannelInitConfigurator SetMaskFilterType(ZlgChannelOptions.MaskFilterType maskFilterType)
     {
@@ -70,5 +86,21 @@ public sealed class ZlgChannelRTConfigurator
     : ChannelRTOptionsConfigurator<ZlgChannelOptions>
 {
     public ZlgChannelOptions.MaskFilterType MaskFilterType => Options.FilterType;
+    
+    /// <summary>
+    /// Polling interval in ms (轮询间隔，毫秒)。
+    /// </summary>
+    public int PollingInterval => Options.PollingInterval;
+
+    /// <summary>
+    /// Set polling interval (设置轮询间隔)。
+    /// </summary>
+    /// <param name="newPollingInterval">Interval in ms (间隔毫秒)。</param>
+    /// <returns>Configurator (配置器本身)。</returns>
+    public ZlgChannelRTConfigurator SetPollingInterval(int newPollingInterval)
+    {
+        Options.PollingInterval = newPollingInterval;
+        return this;
+    }
     
 }

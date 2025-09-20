@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Runtime.InteropServices;
 using Pkuyo.CanKit.Net.Core.Definitions;
 using Pkuyo.CanKit.Net.Core.Diagnostics;
@@ -41,20 +41,20 @@ namespace Pkuyo.CanKit.ZLG.Diagnostics
 
         public static ZlgErrorInfo ToErrorInfo(ZLGCAN.ZCAN_CHANNEL_ERROR_INFO errInfo)
         {
+            // ECC fields
             var rawEcc = errInfo.passive_ErrData[0];
             byte eccType   = (byte)((rawEcc >> 6) & 0x03);  // 0=Bit,1=Form,2=Stuff,3=Other
             byte eccDirBit = (byte)((rawEcc >> 5) & 0x01);  // 0=Tx, 1=Rx
             byte eccLoc    = (byte)(rawEcc & 0x1F);
-                        
-            var kind = eccType switch
+
+            FrameErrorKind eccKind = eccType switch
             {
                 0 => FrameErrorKind.BitError,
                 1 => FrameErrorKind.FormError,
                 2 => FrameErrorKind.StuffError,
-                3 => InferOtherKindByLocation(eccLoc),      // 细分 CRC/ACK/Controller
+                3 => InferOtherKindByLocation(eccLoc),
                 _ => FrameErrorKind.Unknown
             };
-
 
             var dir = eccDirBit switch
             {
@@ -62,19 +62,56 @@ namespace Pkuyo.CanKit.ZLG.Diagnostics
                 1 => FrameDirection.Rx,
                 _ => FrameDirection.Unknown
             };
-            return  new ZlgErrorInfo(errInfo.error_code)
+
+            // Map ZLG error flags to more granular kinds
+            var flags = (ZlgErrorFlag)errInfo.error_code;
+            var kind = MapZlgFlagsToKind(flags, eccKind);
+
+            return new ZlgErrorInfo(errInfo.error_code)
             {
                 Kind = kind,
                 Direction = dir,
                 SystemTimestamp = DateTime.Now
             };
-            
-            FrameErrorKind InferOtherKindByLocation(byte loc) => loc switch
+
+            static FrameErrorKind InferOtherKindByLocation(byte loc) => loc switch
             {
                 0x08 or 0x09 => FrameErrorKind.CrcError,
                 0x19 or 0x1A => FrameErrorKind.AckError,
                 _            => FrameErrorKind.Controller
             };
+
+            static FrameErrorKind MapZlgFlagsToKind(ZlgErrorFlag flags, FrameErrorKind fallback)
+            {
+                if (flags == ZlgErrorFlag.None)
+                    return fallback;
+
+                // Channel/bus states
+                if ((flags & ZlgErrorFlag.BusOff) != 0)
+                    fallback |= FrameErrorKind.BusOff;
+                if ((flags & ZlgErrorFlag.BusErr) != 0)
+                    fallback |= FrameErrorKind.BusError;
+                if ((flags & ZlgErrorFlag.ArbitrationLost) != 0)
+                    fallback |= FrameErrorKind.ArbitrationLost;
+                if ((flags & (ZlgErrorFlag.FifoOverflow | ZlgErrorFlag.BufferOverflow | ZlgErrorFlag.DeviceBufferOverflow)) != 0)
+                    fallback |= FrameErrorKind.RxOverflow;
+                if ((flags & ZlgErrorFlag.ErrPassive) != 0)
+                    fallback |= FrameErrorKind.Passive;
+                if ((flags & ZlgErrorFlag.ErrAlarm) != 0)
+                    fallback |= FrameErrorKind.Warning;
+
+                // Device/system classes
+                if ((flags & (ZlgErrorFlag.DeviceOpenErr | ZlgErrorFlag.DeviceNotOpen | ZlgErrorFlag.DeviceNotExist)) != 0)
+                    fallback |= FrameErrorKind.DeviceError;
+                if ((flags & ZlgErrorFlag.LoadKernelErr) != 0)
+                    fallback |= FrameErrorKind.DriverError;
+                if ((flags & ZlgErrorFlag.OutOfMemory) != 0)
+                    fallback |= FrameErrorKind.ResourceError;
+                if ((flags & ZlgErrorFlag.CmdFailed) != 0)
+                    fallback |= FrameErrorKind.CommandFailed;
+
+                return fallback;
+            }
         }
 
         public static void ThrowIfInvalid(SafeHandle handle, string operation)
@@ -95,3 +132,5 @@ namespace Pkuyo.CanKit.ZLG.Diagnostics
         }
     }
 }
+
+

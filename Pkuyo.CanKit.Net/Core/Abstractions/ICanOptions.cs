@@ -125,6 +125,7 @@ namespace Pkuyo.CanKit.Net.Core.Abstractions
         /// ID/data filter (过滤器)。
         /// </summary>
         CanFilter Filter { get; set; }
+        
     }
 }
 

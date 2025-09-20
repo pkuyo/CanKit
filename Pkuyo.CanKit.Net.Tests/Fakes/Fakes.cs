@@ -30,7 +30,7 @@ public sealed class TestChannelOptions : IChannelOptions
 {
     public required ICanModelProvider Provider { get; init; }
     public int ChannelIndex { get; set; }
-    public BitTiming BitTiming { get; set; } = new BitTiming(500_000, null, null);
+    public BitTiming BitTiming { get; set; } = new (500_000, null, null);
     public bool InternalResistance { get; set; }
     public bool BusUsageEnabled { get; set; }
     public uint BusUsagePeriodTime { get; set; } = 1000;
@@ -151,14 +151,14 @@ public sealed class TestChannel : ICanChannel<IChannelRTOptionsConfigurator>
     public void Close() { _opened = false; }
     public void Reset() { }
     public void ClearBuffer() { }
-    public uint Transmit(IEnumerable<CanTransmitData> frames)
+    public uint Transmit(IEnumerable<CanTransmitData> frames, int timeOut = 0)
     {
         if (!_opened) throw new CanChannelNotOpenException();
         return _transceiver.Transmit(this, frames);
     }
     public float BusUsage() => 12.34f;
     public CanErrorCounters ErrorCounters() => new() { ReceiveErrorCounter = 0, TransmitErrorCounter = 0 };
-    public IEnumerable<CanReceiveData> Receive(uint count = 1, int timeOut = -1)
+    public IEnumerable<CanReceiveData> Receive(uint count = 1, int timeOut = 0)
     {
         if (!_opened) throw new CanChannelNotOpenException();
         var items = _transceiver.Receive(this, count, timeOut);
@@ -184,14 +184,15 @@ public sealed class FakeTransceiver : ITransceiver
     public List<CanTransmitData> Sent { get; } = new();
     public List<CanReceiveData> ToReceive { get; } = new();
 
-    public uint Transmit(ICanChannel<IChannelRTOptionsConfigurator> channel, IEnumerable<CanTransmitData> frames)
+    public uint Transmit(ICanChannel<IChannelRTOptionsConfigurator> channel, IEnumerable<CanTransmitData> frames,
+        int timeOut = 0)
     {
         var last = Sent.Count;
         Sent.AddRange(frames);
         return (uint)(Sent.Count - last);
     }
 
-    public IEnumerable<CanReceiveData> Receive(ICanChannel<IChannelRTOptionsConfigurator> channel, uint count = 1, int timeOut = -1)
+    public IEnumerable<CanReceiveData> Receive(ICanChannel<IChannelRTOptionsConfigurator> channel, uint count = 1, int timeOut = 0)
     {
         if (ToReceive.Count == 0) return Array.Empty<CanReceiveData>();
         var take = (int)Math.Min(count, (uint)ToReceive.Count);

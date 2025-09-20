@@ -38,8 +38,9 @@ namespace Pkuyo.CanKit.Net.Core.Abstractions
         /// Transmit one or more CAN frames (发送一个或多个 CAN 帧)。
         /// </summary>
         /// <param name="frames">Frames to transmit (待发送帧集合)。</param>
+        /// <param name="timeOut">Timeout in ms, -1 for infinite (超时毫秒，-1 表示无限等待)。</param>
         /// <returns>Number of frames accepted by driver (被底层接受的帧数)。</returns>
-        uint Transmit(IEnumerable<CanTransmitData> frames);
+        uint Transmit(IEnumerable<CanTransmitData> frames, int timeOut = 0);
 
         /// <summary>
         /// Get bus usage ratio (获取总线利用率)。
@@ -59,7 +60,7 @@ namespace Pkuyo.CanKit.Net.Core.Abstractions
         /// <param name="count">Expected frame count (期望读取的帧数)。</param>
         /// <param name="timeOut">Timeout in ms, -1 for infinite (超时毫秒，-1 表示无限等待)。</param>
         /// <returns>Received frames (收到的帧集合)。</returns>
-        IEnumerable<CanReceiveData> Receive(uint count = 1, int timeOut = -1);
+        IEnumerable<CanReceiveData> Receive(uint count = 1, int timeOut = 0);
 
         /// <summary>
         /// Try read channel error info (获取通道错误信息)。

@@ -152,6 +152,7 @@ public interface IChannelInitOptionsConfigurator : ICanOptionsConfigurator
     /// Protocol mode (协议模式)。
     /// </summary>
     CanProtocolMode ProtocolMode { get; }
+    
 
     /// <summary>
     /// Current filter (当前过滤器)。
@@ -232,6 +233,7 @@ public interface IChannelInitOptionsConfigurator : ICanOptionsConfigurator
     /// <param name="idType">ID type (ID 类型)。</param>
     /// <returns>Configurator (配置器本身)。</returns>
     IChannelInitOptionsConfigurator AccMask(uint accCode, uint accMask, CanFilterIDType idType);
+    
 }
 
 

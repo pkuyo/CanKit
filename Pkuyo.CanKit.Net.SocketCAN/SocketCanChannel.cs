@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Threading;
+using System.Threading.Tasks;
 using Pkuyo.CanKit.Net.Core.Abstractions;
 using Pkuyo.CanKit.Net.Core.Definitions;
 using Pkuyo.CanKit.Net.Core.Exceptions;
@@ -16,13 +17,7 @@ public sealed class SocketCanChannel : ICanChannel<SocketCanChannelRTConfigurato
         Options = new SocketCanChannelRTConfigurator();
         Options.Init((SocketCanChannelOptions)options);
         _device = device;
-
-        // Create socket & bind immediately; Open() will only mark logical state
-        _fd = CreateAndBind(Options.InterfaceName, Options.ProtocolMode);
-
-        // Apply initial options (filter / protocol enabling etc.)
-        options.Apply(this, true);
-
+        _options = options;
         _transceiver = transceiver;
     }
 
@@ -31,9 +26,23 @@ public sealed class SocketCanChannel : ICanChannel<SocketCanChannelRTConfigurato
         // create raw socket
         var fd = Libc.socket(Libc.AF_CAN, Libc.SOCK_RAW, Libc.CAN_RAW);
         if (fd < 0) throw new CanChannelCreationException("socket(AF_CAN, SOCK_RAW, CAN_RAW) failed.");
-
         try
         {
+            
+            // set no block
+            var flags = Libc.fcntl(fd, Libc.F_GETFL, 0);
+            if (flags == -1)
+            {
+                //TODO:异常处理
+            }
+
+            if (Libc.fcntl(fd, Libc.F_SETFL, flags | Libc.O_NONBLOCK) == -1)
+            {
+                //TODO:异常处理
+            }
+            
+  
+            
             // enable FD frames if needed
             if (mode == CanProtocolMode.CanFd)
             {
@@ -42,6 +51,16 @@ public sealed class SocketCanChannel : ICanChannel<SocketCanChannelRTConfigurato
                 {
                     Libc.close(fd);
                     throw new CanChannelCreationException("setsockopt(CAN_RAW_FD_FRAMES) failed; kernel may not support CAN FD.");
+                }
+            }
+
+            // enable error frames reception (subscribe to all error classes)
+            {
+                int errMask = unchecked((int)Libc.CAN_ERR_MASK);
+                if (Libc.setsockopt(fd, Libc.SOL_CAN_RAW, Libc.CAN_RAW_ERR_FILTER, ref errMask, (uint)Marshal.SizeOf<int>()) != 0)
+                {
+                    Libc.close(fd);
+                    throw new CanChannelCreationException("setsockopt(CAN_RAW_ERR_FILTER) failed.");
                 }
             }
 
@@ -55,7 +74,7 @@ public sealed class SocketCanChannel : ICanChannel<SocketCanChannelRTConfigurato
 
             var addr = new Libc.sockaddr_can
             {
-                can_family = (ushort)Libc.AF_CAN,
+                can_family = Libc.AF_CAN,
                 can_ifindex = unchecked((int)ifIndex),
             };
 
@@ -77,7 +96,17 @@ public sealed class SocketCanChannel : ICanChannel<SocketCanChannelRTConfigurato
     public void Open()
     {
         ThrowIfDisposed();
+        if (_isOpen) return;
+
+        // Create socket & bind
+        _fd = CreateAndBind(Options.InterfaceName, Options.ProtocolMode);
+
+        // Apply initial options (filters etc.)
+        _options.Apply(this, true);
+
         _isOpen = true;
+        if (Volatile.Read(ref _subscriberCount) > 0)
+            StartPollingIfNeeded();
     }
 
     public void Reset()
@@ -86,31 +115,85 @@ public sealed class SocketCanChannel : ICanChannel<SocketCanChannelRTConfigurato
         _isOpen = false;
     }
 
-    public void Close()
+        public void Close()
     {
-        Reset();
+        ThrowIfDisposed();
+        StopPolling();
+        if (_fd >= 0)
+        {
+            try { Libc.close(_fd); } catch { }
+            _fd = -1;
+        }
+        _isOpen = false;
+    }
+    
+    
+    public uint Transmit(IEnumerable<CanTransmitData> frames, int timeOut = 0)
+    {
+        ThrowIfDisposed();
+        
+        if (!_isOpen) 
+            throw new CanChannelNotOpenException();
+
+        uint sendCount = 0;
+        var startTime = Environment.TickCount;
+        var pollFd = new Libc.pollfd { fd = _fd, events = Libc.POLLOUT };
+        using var enumerator = frames.GetEnumerator();
+        if (!enumerator.MoveNext())
+            return 0;
+        
+        do
+        {
+            var remainingTime = timeOut > 0 
+                ? Math.Max(0, timeOut - (Environment.TickCount - startTime)) 
+                : timeOut;
+
+            if (timeOut > 0 && remainingTime <= 0)
+                break;
+
+            if (Libc.poll(ref pollFd, 1, remainingTime) <= 0)
+            {
+                //TODO:异常处理
+                break;
+            }
+
+            if (_transceiver.Transmit(this, [enumerator.Current!]) == 1)
+            {
+                sendCount++;
+                if (!enumerator.MoveNext())
+                {
+                    break;
+                }
+            }
+        } while (true);
+
+        return sendCount;
+    }
+    
+    public IEnumerable<CanReceiveData> Receive(uint count = 1, int timeOut = 0)
+    {
+        ThrowIfDisposed();
+        if (!_isOpen) throw new CanChannelNotOpenException();
+        
+        if (timeOut > 0)
+        {
+            var pollFd = new Libc.pollfd { fd = _fd, events = Libc.POLLIN };
+            if (Libc.poll(ref pollFd, 1, timeOut) == -1)
+            {
+                //TODO:异常处理
+            }
+        }
+  
+        return _transceiver.Receive(this, count);
     }
 
     public void ClearBuffer()
     {
         ThrowIfDisposed();
-        // Drain with non-blocking reads based on FIONREAD
-        int bytes = 0;
-        if (_fd >= 0 && Libc.ioctl(_fd, Libc.FIONREAD, ref bytes) == 0 && bytes > 0)
-        {
-            var buf = Marshal.AllocHGlobal(bytes);
-            try { _ = Libc.read(_fd, buf, (ulong)bytes); }
-            finally { Marshal.FreeHGlobal(buf); }
-        }
+        
+        //TODO:异常处理
+        throw new NotImplementedException();
     }
-
-    public uint Transmit(params IEnumerable<CanTransmitData> frames)
-    {
-        ThrowIfDisposed();
-        if (!_isOpen) throw new CanChannelNotOpenException();
-        return _transceiver.Transmit(this, frames);
-    }
-
     public float BusUsage()
     {
         throw new CanFeatureNotSupportedException(CanFeature.BusUsage, Options.Provider.Features);
@@ -120,21 +203,7 @@ public sealed class SocketCanChannel : ICanChannel<SocketCanChannelRTConfigurato
     {
         throw new CanFeatureNotSupportedException(CanFeature.ErrorCounters, Options.Provider.Features);
     }
-
-    public IEnumerable<CanReceiveData> Receive(uint count = 1, int timeOut = -1)
-    {
-        ThrowIfDisposed();
-        if (!_isOpen) throw new CanChannelNotOpenException();
-
-        // Dispatch to appropriate read path via transceiver to respect frame type
-        return _transceiver switch
-        {
-            SocketCanClassicTransceiver => ReadClassic(count, timeOut),
-            SocketCanFdTransceiver => ReadFd(count, timeOut),
-            _ => []
-        };
-    }
-
+    
     public bool ReadChannelErrorInfo(out ICanErrorInfo? errorInfo)
     {
         // SocketCAN via raw socket does not expose detailed error info here
@@ -145,13 +214,8 @@ public sealed class SocketCanChannel : ICanChannel<SocketCanChannelRTConfigurato
     public uint GetReceiveCount()
     {
         ThrowIfDisposed();
-        int bytes = 0;
-        if (_fd < 0) return 0;
-        if (Libc.ioctl(_fd, Libc.FIONREAD, ref bytes) != 0 || bytes <= 0) return 0;
-
-        var unit = _transceiver is SocketCanFdTransceiver ? Marshal.SizeOf<Libc.canfd_frame>() : Marshal.SizeOf<Libc.can_frame>();
-        if (unit <= 0) return 0;
-        return (uint)Math.Max(0, bytes / unit);
+        //TODO:异常处理
+        throw new NotImplementedException();
     }
 
     public void Dispose()
@@ -185,169 +249,59 @@ public sealed class SocketCanChannel : ICanChannel<SocketCanChannelRTConfigurato
                 options?.GetType() ?? typeof(IChannelOptions),
                 $"channel {Options.ChannelIndex}");
 
-        // Protocol: enable FD if needed (already set at creation). No further action.
+        // Protocol: enable FD is handled at creation time.
 
-        // Filters: only mask filters are supported directly
-        if (sc.Filter.filterRules.Count > 0)
+        // Build filter array from mask rules; respect Standard/Extended frames.
+        var rules = sc.Filter.FilterRules;
+        if (rules.Count > 0)
         {
-            if (sc.Filter.filterRules[0] is FilterRule.Mask mask)
+            var filters = new List<Libc.can_filter>();
+            foreach (var r in rules)
             {
-                if (sc.Filter.filterRules.Count > 1)
-                    throw new CanFilterConfigurationException("SocketCAN channel only supports a single mask rule in this wrapper.");
+                if (r is not FilterRule.Mask m)
+                    throw new CanFilterConfigurationException("SocketCAN only supports mask filters.");
 
-                var cf = new Libc.can_filter
+                uint can_id, can_mask;
+                if (m.FilterIdType == CanFilterIDType.Extend)
                 {
-                    can_id = mask.AccCode,
-                    can_mask = mask.AccMask
-                };
+                    can_id = (m.AccCode & Libc.CAN_EFF_MASK) | Libc.CAN_EFF_FLAG;
+                    can_mask = (m.AccMask & Libc.CAN_EFF_MASK) | Libc.CAN_EFF_FLAG;
+                }
+                else
+                {
+                    can_id = (m.AccCode & Libc.CAN_SFF_MASK);
+                    can_mask = (m.AccMask & Libc.CAN_SFF_MASK) | Libc.CAN_EFF_FLAG; // match only standard frames
+                }
 
-                var size = Marshal.SizeOf<Libc.can_filter>();
-                var ptr = Marshal.AllocHGlobal(size);
-                try
-                {
-                    Marshal.StructureToPtr(cf, ptr, false);
-                    if (Libc.setsockopt(_fd, Libc.SOL_CAN_RAW, Libc.CAN_RAW_FILTER, ptr, (uint)size) != 0)
-                    {
-                        throw new CanChannelConfigurationException("setsockopt(CAN_RAW_FILTER) failed.");
-                    }
-                }
-                finally
-                {
-                    Marshal.FreeHGlobal(ptr);
-                }
+                filters.Add(new Libc.can_filter { can_id = can_id, can_mask = can_mask });
             }
-            else
+
+            var elem = Marshal.SizeOf<Libc.can_filter>();
+            var total = elem * filters.Count;
+            var arr = filters.ToArray();
+            var handle = GCHandle.Alloc(arr, GCHandleType.Pinned);
+            try
             {
-                throw new CanFilterConfigurationException("SocketCAN wrapper does not support range filters.");
+                var ptr = handle.AddrOfPinnedObject();
+                if (Libc.setsockopt(_fd, Libc.SOL_CAN_RAW, Libc.CAN_RAW_FILTER, ptr, (uint)total) != 0)
+                    throw new CanChannelConfigurationException("setsockopt(CAN_RAW_FILTER) failed.");
             }
+            finally { handle.Free(); }
+        }
+        else
+        {
+            // Clear filters to receive all
+            _ = Libc.setsockopt(_fd, Libc.SOL_CAN_RAW, Libc.CAN_RAW_FILTER, IntPtr.Zero, 0);
         }
     }
 
     public CanOptionType ApplierStatus => _fd >= 0 ? CanOptionType.Runtime : CanOptionType.Init;
-
-    // Classic read/write helpers
-    internal uint WriteClassic(params CanTransmitData[] frames)
-    {
-        uint ok = 0;
-        foreach (var f in frames)
-        {
-            if (f.CanFrame is not CanClassicFrame cf) continue;
-            var frame = new Libc.can_frame
-            {
-                can_id = cf.RawID,
-                can_dlc = cf.Dlc,
-                __pad = 0,
-                __res0 = 0,
-                __res1 = 0,
-                data = new byte[8]
-            };
-            var src = cf.Data.Span;
-            for (int i = 0; i < src.Length && i < 8; i++) frame.data[i] = src[i];
-
-            var size = Marshal.SizeOf<Libc.can_frame>();
-            var ptr = Marshal.AllocHGlobal(size);
-            try
-            {
-                Marshal.StructureToPtr(frame, ptr, false);
-                var n = Libc.write(_fd, ptr, (ulong)size);
-                if (n == size) ok++;
-            }
-            finally { Marshal.FreeHGlobal(ptr); }
-        }
-        return ok;
-    }
-
-    internal IEnumerable<CanReceiveData> ReadClassic(uint count, int timeout)
-    {
-        var result = new List<CanReceiveData>((int)count);
-        var pollfd = new Libc.pollfd { fd = _fd, events = Libc.POLLIN };
-        if (Libc.poll(ref pollfd, 1, timeout) <= 0)
-            return result;
-
-        int unit = Marshal.SizeOf<Libc.can_frame>();
-        for (uint i = 0; i < count; i++)
-        {
-            var buf = Marshal.AllocHGlobal(unit);
-            try
-            {
-                var n = Libc.read(_fd, buf, (ulong)unit);
-                if (n != unit) break;
-                var frame = Marshal.PtrToStructure<Libc.can_frame>(buf);
-                var data = new byte[frame.can_dlc];
-                Array.Copy(frame.data, data, Math.Min(data.Length, 8));
-                result.Add(new CanReceiveData(new CanClassicFrame(frame.can_id, data))
-                {
-                    recvTimestamp = 0
-                });
-            }
-            finally { Marshal.FreeHGlobal(buf); }
-        }
-        return result;
-    }
-
-    // FD read/write helpers
-    internal uint WriteFd(params CanTransmitData[] frames)
-    {
-        uint ok = 0;
-        foreach (var f in frames)
-        {
-            if (f.CanFrame is not CanFdFrame ff) continue;
-            var frame = new Libc.canfd_frame
-            {
-                can_id = ff.RawID,
-                len = (byte)CanFdFrame.DlcToLen(ff.Dlc),
-                flags = (byte)(ff.BitRateSwitch ? 1 : 0),
-                __res0 = 0,
-                __res1 = 0,
-                data = new byte[64]
-            };
-            var src = ff.Data.Span;
-            for (int i = 0; i < src.Length && i < 64; i++) frame.data[i] = src[i];
-
-            var size = Marshal.SizeOf<Libc.canfd_frame>();
-            var ptr = Marshal.AllocHGlobal(size);
-            try
-            {
-                Marshal.StructureToPtr(frame, ptr, false);
-                var n = Libc.write(_fd, ptr, (ulong)size);
-                if (n == size) ok++;
-            }
-            finally { Marshal.FreeHGlobal(ptr); }
-        }
-        return ok;
-    }
-
-    internal IEnumerable<CanReceiveData> ReadFd(uint count, int timeout)
-    {
-        var result = new List<CanReceiveData>((int)count);
-        var pollfd = new Libc.pollfd { fd = _fd, events = Libc.POLLIN };
-        if (Libc.poll(ref pollfd, 1, timeout) <= 0)
-            return result;
-
-        int unit = Marshal.SizeOf<Libc.canfd_frame>();
-        for (uint i = 0; i < count; i++)
-        {
-            var buf = Marshal.AllocHGlobal(unit);
-            try
-            {
-                var n = Libc.read(_fd, buf, (ulong)unit);
-                if (n != unit) break;
-                var frame = Marshal.PtrToStructure<Libc.canfd_frame>(buf);
-                var data = new byte[frame.len];
-                Array.Copy(frame.data, data, Math.Min(data.Length, 64));
-                result.Add(new CanReceiveData(new CanFdFrame(frame.can_id, data))
-                {
-                    recvTimestamp = 0
-                });
-            }
-            finally { Marshal.FreeHGlobal(buf); }
-        }
-        return result;
-    }
+    
 
     private void StartPollingIfNeeded()
     {
-        if (_epollTask is { IsCompleted: false }) return;
+        if (_epollTask is { IsCompleted: false } || !_isOpen || _fd < 0)
+            return;
         
         _epfd = Libc.epoll_create1(0);
         if (_epfd < 0) 
@@ -407,7 +361,37 @@ public sealed class SocketCanChannel : ICanChannel<SocketCanChannelRTConfigurato
                 {
                     while (true)
                     {
-                        //TODO:实际接收
+                        // drain available data without blocking
+                        int bytes = 0;
+                        if (Libc.ioctl(_fd, Libc.FIONREAD, ref bytes) != 0 || bytes <= 0)
+                            break;
+
+                        // receive one frame via transceiver
+                        foreach (var rec in _transceiver.Receive(this, 1))
+                        {
+                            var frame = rec.CanFrame;
+                            bool isErr = frame is CanClassicFrame { IsErrorFrame: true } ||
+                                         frame is CanFdFrame { IsErrorFrame: true };
+
+                            if (isErr)
+                            {
+                                uint raw = frame.RawID;
+                                uint err = raw & Libc.CAN_ERR_MASK;
+                                var kind = SocketCanErrors.MapToKind(err, frame.Data);
+                                var info = new DefaultCanErrorInfo(
+                                    kind,
+                                    DateTime.Now,
+                                    err,
+                                    rec.recvTimestamp,
+                                    FrameDirection.Rx,
+                                    frame);
+                                _errorOccurred?.Invoke(this, info);
+                            }
+                            else
+                            {
+                                _frameReceived?.Invoke(this, rec);
+                            }
+                        }
                     }
                 }
             }
@@ -471,6 +455,8 @@ public sealed class SocketCanChannel : ICanChannel<SocketCanChannelRTConfigurato
     private bool _isDisposed;
     private bool _isOpen;
     private int _fd;
+    
+    private readonly IChannelOptions _options;
 
 
     private readonly object _evtGate = new();
@@ -482,3 +468,4 @@ public sealed class SocketCanChannel : ICanChannel<SocketCanChannelRTConfigurato
     private int _epfd = -1;
     private Libc.epoll_event[] _events = new Libc.epoll_event[8];
 }
+
