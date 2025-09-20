@@ -16,7 +16,7 @@ using Pkuyo.CanKit.ZLG.Transceivers;
 namespace Pkuyo.CanKit.ZLG
 {
     
-    public sealed class ZlgCanChannel : ICanChannel<ZlgChannelRTConfigurator>, INamedCanApplier
+    public sealed class ZlgCanChannel : ICanBus<ZlgChannelRTConfigurator>, INamedCanApplier, IChannelOwnership
     {
         
         internal ZlgCanChannel(ZlgCanDevice device ,IChannelOptions options, ITransceiver transceiver)
@@ -217,6 +217,8 @@ namespace Pkuyo.CanKit.ZLG
             finally
             {
                 _isDisposed = true;
+                try { _owner?.Dispose(); } catch { }
+                _owner = null;
             }
 
         }
@@ -522,5 +524,12 @@ namespace Pkuyo.CanKit.ZLG
         private CancellationTokenSource? _pollCts;
         
         private System.Threading.Tasks.Task? _pollTask;
+
+        private IDisposable? _owner;
+
+        public void AttachOwner(IDisposable owner)
+        {
+            _owner = owner;
+        }
     }
 }

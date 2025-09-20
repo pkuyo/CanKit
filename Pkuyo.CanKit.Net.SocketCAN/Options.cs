@@ -1,15 +1,9 @@
 using Pkuyo.CanKit.Net.Core.Abstractions;
 using Pkuyo.CanKit.Net.Core.Definitions;
 
-namespace Pkuyo.CanKit.SocketCAN;
+namespace Pkuyo.CanKit.Net.SocketCAN;
 
-public sealed class SocketCanDeviceOptions(ICanModelProvider provider) : IDeviceOptions
-{
-    public ICanModelProvider Provider { get; } = provider;
-    public DeviceType DeviceType => Provider.DeviceType;
-    public uint TxTimeOut { get; set; } = 100U;
-    public void Apply(ICanApplier applier, bool force = false) => applier.Apply(this);
-}
+
 
 public sealed class SocketCanChannelOptions(ICanModelProvider provider) : IChannelOptions
 {
@@ -33,14 +27,6 @@ public sealed class SocketCanChannelOptions(ICanModelProvider provider) : IChann
     public void Apply(ICanApplier applier, bool force = false) => applier.Apply(this);
 }
 
-public sealed class SocketCanDeviceInitOptionsConfigurator
-    : DeviceInitOptionsConfigurator<SocketCanDeviceOptions, SocketCanDeviceInitOptionsConfigurator>
-{
-}
-
-public sealed class SocketCanDeviceRTOptionsConfigurator
-    : DeviceRTOptionsConfigurator<SocketCanDeviceOptions>
-{ }
 
 public sealed class SocketCanChannelInitConfigurator
     : ChannelInitOptionsConfigurator<SocketCanChannelOptions, SocketCanChannelInitConfigurator>

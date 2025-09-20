@@ -1,12 +1,9 @@
-using System;
-using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using Pkuyo.CanKit.Net.Core.Abstractions;
 using Pkuyo.CanKit.Net.Core.Definitions;
-using Pkuyo.CanKit.Net.Core.Exceptions;
-using Pkuyo.CanKit.SocketCAN.Native;
+using Pkuyo.CanKit.Net.SocketCAN.Native;
 
-namespace Pkuyo.CanKit.SocketCAN;
+namespace Pkuyo.CanKit.Net.SocketCAN;
 
 public sealed class SocketCanClassicTransceiver : ITransceiver
 {
@@ -34,7 +31,7 @@ public sealed class SocketCanClassicTransceiver : ITransceiver
             {
                 > 0 => 1,
                 0 => 0,
-                _ => throw new Exception() //TODO:异常处理
+                _ => throw new Exception() // TODO: exception handling
             };
         }
     }
@@ -153,7 +150,7 @@ public sealed class SocketCanFdTransceiver : ITransceiver
             {
                 > 0 => 1,
                 0 => 0,
-                _ => throw new Exception() //TODO:异常处理
+                _ => throw new Exception() // TODO: exception handling
             };
         }
     }
@@ -248,4 +245,3 @@ public sealed class SocketCanFdTransceiver : ITransceiver
         return result;
     }
 }
-

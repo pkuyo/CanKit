@@ -1,34 +1,19 @@
-using System;
-using Pkuyo.CanKit.Net;
-using Pkuyo.CanKit.Net.Core;
-using Pkuyo.CanKit.Net.Core.Abstractions;
-using Pkuyo.CanKit.Net.Core.Definitions;
 using Pkuyo.CanKit.SocketCAN.Definitions;
+using Pkuyo.CanKit.Net;
+using System;
 
-namespace Pkuyo.CanKit.SocketCAN;
+namespace Pkuyo.CanKit.Net.SocketCAN;
 
 public static class SocketCan
 {
-    public static SocketCanSession Open(Action<SocketCanDeviceInitOptionsConfigurator>? configure = null)
+    /// <summary>
+    /// Open a SocketCAN channel by interface name (e.g. "can0").
+    /// The channel is opened and owns the underlying (null) device lifetime.
+    /// </summary>
+    public static SocketCanChannel Open(string interfaceName, Action<SocketCanChannelInitConfigurator>? configure = null)
     {
-        return (SocketCanSession)Can.Open<SocketCanDevice, SocketCanChannel, SocketCanDeviceOptions, SocketCanDeviceInitOptionsConfigurator>(
+        return CanBus.Open<SocketCanChannel, SocketCanChannelOptions, SocketCanChannelInitConfigurator>(
             LinuxDeviceType.SocketCAN,
-            configure,
-            (device, provider) => new SocketCanSession(device, provider));
-    }
-}
-
-public sealed class SocketCanSession(SocketCanDevice device, ICanModelProvider provider)
-    : CanSession<SocketCanDevice, SocketCanChannel>(device, provider)
-{
-    public SocketCanChannel CreateChannel(int index, Action<SocketCanChannelInitConfigurator>? configure = null)
-    {
-        return CreateChannel<SocketCanChannelOptions, SocketCanChannelInitConfigurator>(index, configure);
-    }
-
-    public SocketCanChannel CreateChannel(string interfaceName, Action<SocketCanChannelInitConfigurator>? configure = null)
-    {
-        return CreateChannel<SocketCanChannelOptions, SocketCanChannelInitConfigurator>(
             0,
             cfg =>
             {
@@ -36,5 +21,15 @@ public sealed class SocketCanSession(SocketCanDevice device, ICanModelProvider p
                 configure?.Invoke(cfg);
             });
     }
-}
 
+    /// <summary>
+    /// Open a SocketCAN channel by numeric index (maps to can{index}).
+    /// </summary>
+    public static SocketCanChannel Open(int channelIndex = 0, Action<SocketCanChannelInitConfigurator>? configure = null)
+    {
+        return CanBus.Open<SocketCanChannel, SocketCanChannelOptions, SocketCanChannelInitConfigurator>(
+            LinuxDeviceType.SocketCAN,
+            channelIndex,
+            configure);
+    }
+}

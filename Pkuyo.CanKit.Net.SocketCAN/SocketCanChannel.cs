@@ -1,27 +1,22 @@
-using System;
-using System.Collections.Generic;
 using System.Runtime.InteropServices;
-using System.Threading;
-using System.Threading.Tasks;
 using Pkuyo.CanKit.Net.Core.Abstractions;
 using Pkuyo.CanKit.Net.Core.Definitions;
 using Pkuyo.CanKit.Net.Core.Exceptions;
-using Pkuyo.CanKit.SocketCAN.Native;
+using Pkuyo.CanKit.Net.SocketCAN.Native;
 
-namespace Pkuyo.CanKit.SocketCAN;
+namespace Pkuyo.CanKit.Net.SocketCAN;
 
-public sealed class SocketCanChannel : ICanChannel<SocketCanChannelRTConfigurator>, ICanApplier
+public sealed class SocketCanChannel : ICanBus<SocketCanChannelRTConfigurator>, ICanApplier, IChannelOwnership
 {
-    internal SocketCanChannel(SocketCanDevice device, IChannelOptions options, ITransceiver transceiver)
+    internal SocketCanChannel(IChannelOptions options, ITransceiver transceiver)
     {
         Options = new SocketCanChannelRTConfigurator();
         Options.Init((SocketCanChannelOptions)options);
-        _device = device;
         _options = options;
         _transceiver = transceiver;
     }
 
-    private static int CreateAndBind(string ifName, CanProtocolMode mode, bool preferKernelTs)
+    private int CreateAndBind(string ifName, CanProtocolMode mode, bool preferKernelTs)
     {
         // create raw socket
         var fd = Libc.socket(Libc.AF_CAN, Libc.SOCK_RAW, Libc.CAN_RAW);
@@ -33,23 +28,32 @@ public sealed class SocketCanChannel : ICanChannel<SocketCanChannelRTConfigurato
             var flags = Libc.fcntl(fd, Libc.F_GETFL, 0);
             if (flags == -1)
             {
-                //TODO:异常处理
+                // TODO: exception handling
             }
 
             if (Libc.fcntl(fd, Libc.F_SETFL, flags | Libc.O_NONBLOCK) == -1)
             {
-                //TODO:异常处理
+                // TODO: exception handling
             }
             
-  
-            
+            //enable echo mode
+            if (_options.WorkMode == ChannelWorkMode.Echo)
+            {
+                int enable = 1;
+                if (Libc.setsockopt(fd, Libc.SOL_CAN_RAW, Libc.CAN_RAW_RECV_OWN_MSGS, ref enable,
+                        (uint)Marshal.SizeOf<int>()) != 0)
+                {
+                    throw new CanChannelCreationException(
+                        "setsockopt(CAN_RAW_RECV_OWN_MSGS) failed; kernel may not support echo mode.");
+                }
+            }
+
             // enable FD frames if needed
             if (mode == CanProtocolMode.CanFd)
             {
                 int on = 1;
                 if (Libc.setsockopt(fd, Libc.SOL_CAN_RAW, Libc.CAN_RAW_FD_FRAMES, ref on, (uint)Marshal.SizeOf<int>()) != 0)
                 {
-                    Libc.close(fd);
                     throw new CanChannelCreationException("setsockopt(CAN_RAW_FD_FRAMES) failed; kernel may not support CAN FD.");
                 }
             }
@@ -164,7 +168,7 @@ public sealed class SocketCanChannel : ICanChannel<SocketCanChannelRTConfigurato
 
             if (Libc.poll(ref pollFd, 1, remainingTime) <= 0)
             {
-                //TODO:异常处理
+                // TODO: exception handling
                 break;
             }
 
@@ -191,7 +195,7 @@ public sealed class SocketCanChannel : ICanChannel<SocketCanChannelRTConfigurato
             var pollFd = new Libc.pollfd { fd = _fd, events = Libc.POLLIN };
             if (Libc.poll(ref pollFd, 1, timeOut) == -1)
             {
-                //TODO:异常处理
+                // TODO: exception handling
             }
         }
   
@@ -202,7 +206,7 @@ public sealed class SocketCanChannel : ICanChannel<SocketCanChannelRTConfigurato
     {
         ThrowIfDisposed();
         
-        //TODO:异常处理
+        // TODO: exception handling
         throw new NotImplementedException();
     }
     public float BusUsage()
@@ -225,7 +229,7 @@ public sealed class SocketCanChannel : ICanChannel<SocketCanChannelRTConfigurato
     public uint GetReceiveCount()
     {
         ThrowIfDisposed();
-        //TODO:异常处理
+        // TODO: exception handling
         throw new NotImplementedException();
     }
 
@@ -243,6 +247,8 @@ public sealed class SocketCanChannel : ICanChannel<SocketCanChannelRTConfigurato
             _fd = -1;
             _isOpen = false;
             _isDisposed = true;
+            try { _owner?.Dispose(); } catch { }
+            _owner = null;
         }
     }
 
@@ -464,7 +470,6 @@ public sealed class SocketCanChannel : ICanChannel<SocketCanChannelRTConfigurato
 
     internal int FileDescriptor => _fd;
 
-    private readonly SocketCanDevice _device;
     private readonly ITransceiver _transceiver;
     private bool _isDisposed;
     private bool _isOpen;
@@ -481,5 +486,11 @@ public sealed class SocketCanChannel : ICanChannel<SocketCanChannelRTConfigurato
     private Task? _epollTask;
     private int _epfd = -1;
     private Libc.epoll_event[] _events = new Libc.epoll_event[8];
-}
 
+    private IDisposable? _owner;
+
+    public void AttachOwner(IDisposable owner)
+    {
+        _owner = owner;
+    }
+}

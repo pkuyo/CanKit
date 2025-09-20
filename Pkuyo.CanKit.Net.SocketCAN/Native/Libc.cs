@@ -1,8 +1,7 @@
-using System;
 using System.Runtime.InteropServices;
 
-namespace Pkuyo.CanKit.SocketCAN.Native;
-
+namespace Pkuyo.CanKit.Net.SocketCAN.Native;
+#nullable disable
 internal static class Libc
 {
     // Address family / socket types

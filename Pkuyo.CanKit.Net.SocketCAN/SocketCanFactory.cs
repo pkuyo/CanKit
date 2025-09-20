@@ -4,21 +4,20 @@ using Pkuyo.CanKit.Net.Core.Definitions;
 using Pkuyo.CanKit.Net.Core.Exceptions;
 using Pkuyo.CanKit.SocketCAN.Definitions;
 
-namespace Pkuyo.CanKit.SocketCAN;
+namespace Pkuyo.CanKit.Net.SocketCAN;
 
 [CanFactory("SocketCAN")]
 public sealed class SocketCanFactory : ICanFactory
 {
     public ICanDevice CreateDevice(IDeviceOptions options)
     {
-        return new SocketCanDevice(options);
+        // SocketCAN has no real device; use generic NullDevice to keep typing for options.
+        return new NullDevice<NullDeviceOptions>(options);
     }
 
     public ICanChannel CreateChannel(ICanDevice device, IChannelOptions options, ITransceiver transceiver)
     {
-        if (device is not SocketCanDevice scDevice)
-            throw new CanFactoryDeviceMismatchException(typeof(SocketCanDevice), device?.GetType() ?? typeof(ICanDevice));
-        return new SocketCanChannel(scDevice, options, transceiver);
+        return new SocketCanChannel(options, transceiver);
     }
 
     public ITransceiver CreateTransceivers(IDeviceRTOptionsConfigurator deviceOptions, IChannelInitOptionsConfigurator channelOptions)
@@ -37,4 +36,3 @@ public sealed class SocketCanFactory : ICanFactory
         return deviceType.Equals(LinuxDeviceType.SocketCAN);
     }
 }
-

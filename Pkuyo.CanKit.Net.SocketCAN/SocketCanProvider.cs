@@ -3,7 +3,7 @@ using Pkuyo.CanKit.Net.Core.Definitions;
 using Pkuyo.CanKit.Net.Core.Registry;
 using Pkuyo.CanKit.SocketCAN.Definitions;
 
-namespace Pkuyo.CanKit.SocketCAN;
+namespace Pkuyo.CanKit.Net.SocketCAN;
 
 public sealed class SocketCanProvider : ICanModelProvider
 {
@@ -15,8 +15,8 @@ public sealed class SocketCanProvider : ICanModelProvider
 
     public (IDeviceOptions, IDeviceInitOptionsConfigurator) GetDeviceOptions()
     {
-        var options = new SocketCanDeviceOptions(this);
-        var cfg = new SocketCanDeviceInitOptionsConfigurator();
+        var options = new NullDeviceOptions(this);
+        var cfg = new NullDeviceInitOptionsConfigurator();
         cfg.Init(options);
         return (options, cfg);
     }
@@ -36,4 +36,3 @@ public sealed class SocketCanProvider : ICanModelProvider
         return (options, cfg);
     }
 }
-
