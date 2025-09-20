@@ -21,7 +21,7 @@ public sealed class SocketCanChannel : ICanChannel<SocketCanChannelRTConfigurato
         _transceiver = transceiver;
     }
 
-    private static int CreateAndBind(string ifName, CanProtocolMode mode)
+    private static int CreateAndBind(string ifName, CanProtocolMode mode, bool preferKernelTs)
     {
         // create raw socket
         var fd = Libc.socket(Libc.AF_CAN, Libc.SOCK_RAW, Libc.CAN_RAW);
@@ -51,6 +51,17 @@ public sealed class SocketCanChannel : ICanChannel<SocketCanChannelRTConfigurato
                 {
                     Libc.close(fd);
                     throw new CanChannelCreationException("setsockopt(CAN_RAW_FD_FRAMES) failed; kernel may not support CAN FD.");
+                }
+            }
+
+            // enable timestamping (prefer hardware) if requested
+            if (preferKernelTs)
+            {
+                int tsFlags = Libc.SOF_TIMESTAMPING_RX_HARDWARE | Libc.SOF_TIMESTAMPING_RAW_HARDWARE | Libc.SOF_TIMESTAMPING_SOFTWARE;
+                if (Libc.setsockopt(fd, Libc.SOL_SOCKET, Libc.SO_TIMESTAMPING, ref tsFlags, (uint)Marshal.SizeOf<int>()) != 0)
+                {
+                    int on = 1;
+                    _ = Libc.setsockopt(fd, Libc.SOL_SOCKET, Libc.SO_TIMESTAMPNS, ref on, (uint)Marshal.SizeOf<int>());
                 }
             }
 
@@ -99,7 +110,7 @@ public sealed class SocketCanChannel : ICanChannel<SocketCanChannelRTConfigurato
         if (_isOpen) return;
 
         // Create socket & bind
-        _fd = CreateAndBind(Options.InterfaceName, Options.ProtocolMode);
+        _fd = CreateAndBind(Options.InterfaceName, Options.ProtocolMode, Options.PreferKernelTimestamp);
 
         // Apply initial options (filters etc.)
         _options.Apply(this, true);
@@ -378,9 +389,12 @@ public sealed class SocketCanChannel : ICanChannel<SocketCanChannelRTConfigurato
                                 uint raw = frame.RawID;
                                 uint err = raw & Libc.CAN_ERR_MASK;
                                 var kind = SocketCanErrors.MapToKind(err, frame.Data);
+                                var sysTs = Options.PreferKernelTimestamp && rec.recvTimestamp != 0
+                                    ? new DateTime((long)rec.recvTimestamp, DateTimeKind.Utc)
+                                    : DateTime.Now;
                                 var info = new DefaultCanErrorInfo(
                                     kind,
-                                    DateTime.Now,
+                                    sysTs,
                                     err,
                                     rec.recvTimestamp,
                                     FrameDirection.Rx,

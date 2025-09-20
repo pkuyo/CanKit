@@ -27,6 +27,9 @@ public sealed class SocketCanChannelOptions(ICanModelProvider provider) : IChann
 
     // SocketCAN specific: interface name, e.g. "can0", "vcan0" etc.
     public string InterfaceName { get; set; } = "can0";
+
+    // Prefer kernel-provided timestamps (hardware if available, fallback to software)
+    public bool PreferKernelTimestamp { get; set; } = true;
     public void Apply(ICanApplier applier, bool force = false) => applier.Apply(this);
 }
 
@@ -47,10 +50,17 @@ public sealed class SocketCanChannelInitConfigurator
         Options.InterfaceName = name;
         return this;
     }
+
+    public SocketCanChannelInitConfigurator PreferKernelTimestamp(bool enable = true)
+    {
+        Options.PreferKernelTimestamp = enable;
+        return this;
+    }
 }
 
 public sealed class SocketCanChannelRTConfigurator
     : ChannelRTOptionsConfigurator<SocketCanChannelOptions>
 {
     public string InterfaceName => Options.InterfaceName;
+    public bool PreferKernelTimestamp => Options.PreferKernelTimestamp;
 }

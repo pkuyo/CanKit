@@ -120,16 +120,16 @@ namespace Pkuyo.CanKit.ZLG
             var list = frames.ToList();
             bool isFirst = true;
             uint result = 0;
-            var lastTime = DateTime.Now;
+            var startTime = Environment.TickCount;
             do
             {
                 if (isFirst)
                     isFirst = false;
                 else
-                    Thread.Sleep(Math.Min((DateTime.Now - lastTime).Milliseconds, Options.PollingInterval));
+                    Thread.Sleep(Math.Min(Environment.TickCount- startTime, Options.PollingInterval));
                 
                 result += _transceiver.Transmit(this, list);
-            } while (result < list.Count && DateTime.Now - lastTime <= TimeSpan.FromMilliseconds(timeOut));
+            } while (result < list.Count && Environment.TickCount- startTime <=timeOut);
 
             return result;
         }

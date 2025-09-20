@@ -81,11 +81,15 @@ internal static class Libc
     public const byte CANFD_ESI = 0x02; // error state indicator
     
     // timeStamp
+    public const int SO_TIMESTAMP = 29;
+    public const int SO_TIMESTAMPNS = 35;
     public const int SO_TIMESTAMPING = 37;      
     public const int SOF_TIMESTAMPING_SOFTWARE      = 1 << 4;
     public const int SOF_TIMESTAMPING_RX_HARDWARE   = 1 << 3;
     public const int SOF_TIMESTAMPING_TX_HARDWARE   = 1 << 0;
     public const int SOF_TIMESTAMPING_RAW_HARDWARE  = 1 << 6;
+    public const int SCM_TIMESTAMPNS = SO_TIMESTAMPNS;
+    public const int SCM_TIMESTAMPING = SO_TIMESTAMPING;
     
     public const int SIOCSHWTSTAMP = 0x89b0;  
     
@@ -119,6 +123,40 @@ internal static class Libc
         public byte __res0;
         public byte __res1;
         public fixed byte data[64];
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public unsafe struct iovec
+    {
+        public void* iov_base;
+        public UIntPtr iov_len;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public unsafe struct msghdr
+    {
+        public void* msg_name;
+        public uint msg_namelen;
+        public iovec* msg_iov;
+        public UIntPtr msg_iovlen;
+        public void* msg_control;
+        public UIntPtr msg_controllen;
+        public int msg_flags;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct timespec
+    {
+        public long tv_sec;   // seconds
+        public long tv_nsec;  // nanoseconds
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct cmsghdr
+    {
+        public UIntPtr cmsg_len;
+        public int cmsg_level;
+        public int cmsg_type;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -177,6 +215,9 @@ internal static class Libc
 
     [DllImport("libc", SetLastError = true)]
     public static extern unsafe long write(int fd, void* buf, ulong count);
+
+    [DllImport("libc", SetLastError = true)]
+    public static extern unsafe long recvmsg(int sockfd, msghdr* msg, int flags);
 
     [DllImport("libc", SetLastError = true)]
     public static extern int close(int fd);
