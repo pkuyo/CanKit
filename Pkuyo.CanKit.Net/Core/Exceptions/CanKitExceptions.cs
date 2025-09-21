@@ -264,48 +264,38 @@ namespace Pkuyo.CanKit.Net.Core.Exceptions
     }
 
     /// <summary>
-    /// Base type for channel-related exceptions (通道相关异常基类)。
+    /// Base type for bus-related exceptions (通道相关异常基类)。
     /// </summary>
-    public class CanChannelException : CanKitException
+    public class CanBusException : CanKitException
     {
-        public CanChannelException(CanKitErrorCode errorCode, string message, uint? nativeErrorCode = null, Exception? innerException = null)
+        public CanBusException(CanKitErrorCode errorCode, string message, uint? nativeErrorCode = null, Exception? innerException = null)
             : base(errorCode, message, nativeErrorCode, innerException)
         {
         }
     }
 
     /// <summary>
-    /// Thrown when channel creation fails (通道创建失败异常)。
+    /// Thrown when bus creation fails (通道创建失败异常)。
     /// </summary>
-    public class CanChannelCreationException : CanChannelException
+    public class CanBusCreationException : CanBusException
     {
-        public CanChannelCreationException(string message)
+        public CanBusCreationException(string message)
             : base(CanKitErrorCode.ChannelCreationFailed, message)
         {
         }
     }
 
     /// <summary>
-    /// Thrown when channel has been disposed (通道已释放异常)。
+    /// Thrown when bus has been disposed (通道已释放异常)。
     /// </summary>
-    public class CanChannelDisposedException : CanChannelException
+    public class CanBusDisposedException : CanBusException
     {
-        public CanChannelDisposedException()
+        public CanBusDisposedException()
             : base(CanKitErrorCode.ChannelDisposed, "The CAN channel has been disposed and cannot be used anymore.")
         {
         }
     }
-
-    /// <summary>
-    /// Thrown when channel is not open (通道未打开异常)。
-    /// </summary>
-    public class CanChannelNotOpenException : CanDeviceException
-    {
-        public CanChannelNotOpenException()
-            : base(CanKitErrorCode.ChannelNotOpen, "The CAN channel must be opened before this operation can be performed.")
-        {
-        }
-    }
+    
 
     /// <summary>
     /// Transceiver type mismatch (收发器类型不匹配异常)。
@@ -406,7 +396,7 @@ namespace Pkuyo.CanKit.Net.Core.Exceptions
     /// <summary>
     /// Encapsulates native call failure with low-level info (封装原生调用失败并携带底层信息)。
     /// </summary>
-    public class CanNativeCallException : CanChannelException
+    public class CanNativeCallException : CanBusException
     {
         public CanNativeCallException(string operation, string message, uint? nativeErrorCode = null, Exception? innerException = null)
             : base(CanKitErrorCode.NativeCallFailed, $"{message} (Operation: {operation})", nativeErrorCode, innerException)

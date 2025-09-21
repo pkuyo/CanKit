@@ -82,29 +82,15 @@ namespace Pkuyo.CanKit.ZLG
             _transceiver = zlg;
             
         }
-
-  
-        public void Open()
-        {
-            ThrowIfDisposed();
-
-            ZlgErr.ThrowIfError(ZLGCAN.ZCAN_StartCAN(_nativeHandle), nameof(ZLGCAN.ZCAN_StartCAN), _nativeHandle);
-            _isOpen = true;
-        }
+        
 
         public void Reset()
         {
             ThrowIfDisposed();
 
             ZlgErr.ThrowIfError(ZLGCAN.ZCAN_ResetCAN(_nativeHandle), nameof(ZLGCAN.ZCAN_ResetCAN), _nativeHandle);
-
-            _isOpen = false;
         }
-
-        public void Close()
-        {
-            Reset();
-        }
+        
 
         public void ClearBuffer()
         {
@@ -202,16 +188,14 @@ namespace Pkuyo.CanKit.ZLG
 
             try
             {
-                if (_isOpen)
+         
+                try
                 {
-                    try
-                    {
-                        Reset();
-                    }
-                    catch (CanKitException ex)
-                    {
-                        CanKitLogger.LogWarning("Failed to reset CAN channel during dispose.", ex);
-                    }
+                    Reset();
+                }
+                catch (CanKitException ex)
+                {
+                    CanKitLogger.LogWarning("Failed to reset CAN channel during dispose.", ex);
                 }
             }
             finally
@@ -226,7 +210,7 @@ namespace Pkuyo.CanKit.ZLG
         private void ThrowIfDisposed()
         {
             if (_isDisposed)
-                throw new CanChannelDisposedException();
+                throw new CanBusDisposedException();
         }
         
         public bool ApplyOne<T>(object id, T value)
@@ -374,13 +358,6 @@ namespace Pkuyo.CanKit.ZLG
         {
             while (!token.IsCancellationRequested)
             {
-                // 未 Start，睡眠等待
-                if (!_isOpen)
-                {
-                    Thread.Sleep(Options.PollingInterval);
-                    continue;
-                }
-                
                 if (Volatile.Read(ref _subscriberCount) <= 0)
                 {
                     break;
@@ -447,7 +424,6 @@ namespace Pkuyo.CanKit.ZLG
             }
         }
         
-        public bool IsOpen => _isOpen;
 
         public ZlgChannelHandle NativeHandle => _nativeHandle;
 
@@ -510,8 +486,6 @@ namespace Pkuyo.CanKit.ZLG
         private readonly IZlgTransceiver  _transceiver;
 
         private bool _isDisposed;
-
-        private bool _isOpen;
         
         private readonly object _evtGate = new ();
         

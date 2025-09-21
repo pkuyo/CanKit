@@ -72,15 +72,13 @@ internal static class ZlgEndpoint
 
         var channel = provider.Factory.CreateBus(device, chOpt, transceiver);
         if (channel == null)
-            throw new CanChannelCreationException($"Factory '{provider.Factory.GetType().FullName}' returned null channel.");
+            throw new CanBusCreationException($"Factory '{provider.Factory.GetType().FullName}' returned null channel.");
 
         if (channel is not ICanBus bus)
-            throw new CanChannelCreationException($"Created channel type '{channel.GetType().FullName}' does not implement ICanBus.");
+            throw new CanBusCreationException($"Created channel type '{channel.GetType().FullName}' does not implement ICanBus.");
 
         if (channel is IBusOwnership own)
             own.AttachOwner(lease);
-
-        bus.Open();
         return bus;
     }
 

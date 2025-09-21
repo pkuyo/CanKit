@@ -15,12 +15,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
         Options.Init((PcanBusOptions)options);
         _options = (PcanBusOptions)options;
         _transceiver = transceiver;
-    }
-
-    public void Open()
-    {
-        ThrowIfDisposed();
-        if (_isOpen) return;
+        
         _handle = ParseHandle(_options.Channel);
 
         if (Options.ProtocolMode != CanProtocolMode.Can20)
@@ -29,33 +24,22 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
         var baud = MapClassicBaud(Options.BitTiming);
         var st = PCANBasic.Initialize(_handle, baud);
         if (st != TPCANStatus.PCAN_ERROR_OK)
-            throw new CanChannelCreationException($"PCAN Initialize failed: {st}");
-        _isOpen = true;
+            throw new CanBusCreationException($"PCAN Initialize failed: {st}");
     }
+    
 
     public void Reset()
     {
         ThrowIfDisposed();
-        if (_isOpen)
-        {
-            _ = PCANBasic.Uninitialize(_handle);
-            _isOpen = false;
-        }
+        _ = PCANBasic.Reset(_handle);
     }
-
-    public void Close()
-    {
-        Reset();
-    }
-
+    
     public void ClearBuffer()
     {
         ThrowIfDisposed();
-        if (_isOpen)
-        {
-            // Reset clears the receive/transmit queues
-            _ = PCANBasic.Reset(_handle);
-        }
+        // Reset clears the receive/transmit queues
+        _ = PCANBasic.Reset(_handle);
+        
     }
 
     public uint Transmit(IEnumerable<CanTransmitData> frames, int timeOut = 0)
@@ -94,15 +78,14 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
     public PcanBusRtConfigurator Options { get; }
 
     IBusRTOptionsConfigurator ICanBus.Options => Options;
-
-    public bool IsOpen => _isOpen;
+    
 
     public void Dispose()
     {
         if (_isDisposed) return;
         try
         {
-            _isOpen = false;
+            
         }
         finally
         {
@@ -116,7 +99,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
         // For now no-op. Future integration can map Options.Filter, BitTiming, etc.
     }
 
-    public CanOptionType ApplierStatus => IsOpen ? CanOptionType.Runtime : CanOptionType.Init;
+    public CanOptionType ApplierStatus => CanOptionType.Runtime;
 
     public event EventHandler<CanReceiveData>? FrameReceived
     {
@@ -141,7 +124,6 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
     private readonly PcanBusOptions _options;
     private readonly ITransceiver _transceiver;
     private bool _isDisposed;
-    private bool _isOpen;
     private readonly object _evtGate = new();
     private EventHandler<CanReceiveData>? _frameReceived;
     private EventHandler<ICanErrorInfo>? _errorOccurred;
@@ -200,6 +182,6 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
             if (f != null && f.GetValue(null) is ushort u2) return u2;
         }
 
-        throw new CanChannelCreationException($"Unknown PCAN channel '{channel}'.");
+        throw new CanBusCreationException($"Unknown PCAN channel '{channel}'.");
     }
 }

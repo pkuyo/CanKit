@@ -33,10 +33,10 @@ public static class CanBus
     /// <summary>
     /// Open a typed bus (打开强类型总线)，返回已打开的实例并托管设备生命周期。
     /// </summary>
-    public static TChannel Open<TChannel, TChannelOptions, TInitCfg>(DeviceType deviceType, int channelIndex,
+    public static TBus Open<TBus, TBusOptions, TInitCfg>(DeviceType deviceType, int channelIndex,
         Action<TInitCfg>? configure = null)
-        where TChannel : class, ICanBus
-        where TChannelOptions : class, IBusOptions
+        where TBus : class, ICanBus
+        where TBusOptions : class, IBusOptions
         where TInitCfg : IBusInitOptionsConfigurator
     {
         var provider = CanRegistry.Registry.Resolve(deviceType);
@@ -44,11 +44,11 @@ public static class CanBus
         var (deviceOptions, _) = provider.GetDeviceOptions();
         var (chOptions, chInitCfg) = provider.GetChannelOptions(channelIndex);
 
-        if (chOptions is not TChannelOptions typedChOptions)
+        if (chOptions is not TBusOptions typedChOptions)
         {
             throw new CanOptionTypeMismatchException(
                 CanKitErrorCode.ChannelOptionTypeMismatch,
-                typeof(TChannelOptions),
+                typeof(TBusOptions),
                 chOptions?.GetType() ?? typeof(IBusOptions),
                 $"channel {channelIndex}");
         }
@@ -81,22 +81,21 @@ public static class CanBus
         var channel = provider.Factory.CreateBus(device, typedChOptions, transceiver);
         if (channel == null)
         {
-            throw new CanChannelCreationException($"Factory '{provider.Factory.GetType().FullName}' returned null channel.");
+            throw new CanBusCreationException($"Factory '{provider.Factory.GetType().FullName}' returned null can bus.");
         }
 
-        if (channel is not TChannel typedChannel)
+        if (channel is not TBus typedBus)
         {
-            throw new CanChannelCreationException($"Factory produced channel type '{channel.GetType().FullName}' which cannot be assigned to '{typeof(TChannel).FullName}'.");
+            throw new CanBusCreationException($"Factory produced bus type '{channel.GetType().FullName}' which cannot be assigned to '{typeof(TBus).FullName}'.");
         }
 
-        // Attach lifetime so disposing channel also disposes device
-        if (typedChannel is IBusOwnership own)
+        // Attach lifetime so disposing bus also disposes device
+        if (typedBus is IBusOwnership own)
         {
             own.AttachOwner(new DeviceOwner(device));
         }
-
-        typedChannel.Open();
-        return typedChannel;
+        
+        return typedBus;
     }
 
     private sealed class DeviceOwner(ICanDevice device) : IDisposable

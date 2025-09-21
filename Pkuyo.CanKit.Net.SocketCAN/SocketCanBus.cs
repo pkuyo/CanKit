@@ -14,13 +14,19 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
         Options.Init((SocketCanBusOptions)options);
         _options = options;
         _transceiver = transceiver;
+        
+        // Create socket & bind
+        _fd = CreateAndBind(Options.InterfaceName, Options.ProtocolMode, Options.PreferKernelTimestamp);
+
+        // Apply initial options (filters etc.)
+        _options.Apply(this, true);
     }
 
     private int CreateAndBind(string ifName, CanProtocolMode mode, bool preferKernelTs)
     {
         // create raw socket
         var fd = Libc.socket(Libc.AF_CAN, Libc.SOCK_RAW, Libc.CAN_RAW);
-        if (fd < 0) throw new CanChannelCreationException("socket(AF_CAN, SOCK_RAW, CAN_RAW) failed.");
+        if (fd < 0) throw new CanBusCreationException("socket(AF_CAN, SOCK_RAW, CAN_RAW) failed.");
         try
         {
             
@@ -43,7 +49,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
                 if (Libc.setsockopt(fd, Libc.SOL_CAN_RAW, Libc.CAN_RAW_RECV_OWN_MSGS, ref enable,
                         (uint)Marshal.SizeOf<int>()) != 0)
                 {
-                    throw new CanChannelCreationException(
+                    throw new CanBusCreationException(
                         "setsockopt(CAN_RAW_RECV_OWN_MSGS) failed; kernel may not support echo mode.");
                 }
             }
@@ -54,7 +60,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
                 int on = 1;
                 if (Libc.setsockopt(fd, Libc.SOL_CAN_RAW, Libc.CAN_RAW_FD_FRAMES, ref on, (uint)Marshal.SizeOf<int>()) != 0)
                 {
-                    throw new CanChannelCreationException("setsockopt(CAN_RAW_FD_FRAMES) failed; kernel may not support CAN FD.");
+                    throw new CanBusCreationException("setsockopt(CAN_RAW_FD_FRAMES) failed; kernel may not support CAN FD.");
                 }
             }
 
@@ -75,7 +81,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
                 if (Libc.setsockopt(fd, Libc.SOL_CAN_RAW, Libc.CAN_RAW_ERR_FILTER, ref errMask, (uint)Marshal.SizeOf<int>()) != 0)
                 {
                     Libc.close(fd);
-                    throw new CanChannelCreationException("setsockopt(CAN_RAW_ERR_FILTER) failed.");
+                    throw new CanBusCreationException("setsockopt(CAN_RAW_ERR_FILTER) failed.");
                 }
             }
 
@@ -84,7 +90,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
             if (ifIndex == 0)
             {
                 Libc.close(fd);
-                throw new CanChannelCreationException($"Interface '{ifName}' not found.");
+                throw new CanBusCreationException($"Interface '{ifName}' not found.");
             }
 
             var addr = new Libc.sockaddr_can
@@ -96,7 +102,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
             if (Libc.bind(fd, ref addr, Marshal.SizeOf<Libc.sockaddr_can>()) != 0)
             {
                 Libc.close(fd);
-                throw new CanChannelCreationException($"bind({ifName}) failed.");
+                throw new CanBusCreationException($"bind({ifName}) failed.");
             }
 
             return fd;
@@ -108,47 +114,19 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
         }
     }
 
-    public void Open()
-    {
-        ThrowIfDisposed();
-        if (_isOpen) return;
 
-        // Create socket & bind
-        _fd = CreateAndBind(Options.InterfaceName, Options.ProtocolMode, Options.PreferKernelTimestamp);
-
-        // Apply initial options (filters etc.)
-        _options.Apply(this, true);
-
-        _isOpen = true;
-        if (Volatile.Read(ref _subscriberCount) > 0)
-            StartPollingIfNeeded();
-    }
 
     public void Reset()
     {
         ThrowIfDisposed();
-        _isOpen = false;
+        //TODO:
     }
-
-        public void Close()
-    {
-        ThrowIfDisposed();
-        StopPolling();
-        if (_fd >= 0)
-        {
-            try { Libc.close(_fd); } catch { }
-            _fd = -1;
-        }
-        _isOpen = false;
-    }
+    
     
     
     public uint Transmit(IEnumerable<CanTransmitData> frames, int timeOut = 0)
     {
         ThrowIfDisposed();
-        
-        if (!_isOpen) 
-            throw new CanChannelNotOpenException();
 
         uint sendCount = 0;
         var startTime = Environment.TickCount;
@@ -188,7 +166,6 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
     public IEnumerable<CanReceiveData> Receive(uint count = 1, int timeOut = 0)
     {
         ThrowIfDisposed();
-        if (!_isOpen) throw new CanChannelNotOpenException();
         
         if (timeOut > 0)
         {
@@ -245,7 +222,6 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
         finally
         {
             _fd = -1;
-            _isOpen = false;
             _isDisposed = true;
             try { _owner?.Dispose(); } catch { }
             _owner = null;
@@ -254,7 +230,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
 
     private void ThrowIfDisposed()
     {
-        if (_isDisposed) throw new CanChannelDisposedException();
+        if (_isDisposed) throw new CanBusDisposedException();
     }
 
     public void Apply(ICanOptions options)
@@ -317,7 +293,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
 
     private void StartPollingIfNeeded()
     {
-        if (_epollTask is { IsCompleted: false } || !_isOpen || _fd < 0)
+        if (_epollTask is { IsCompleted: false } || _fd < 0)
             return;
         
         _epfd = Libc.epoll_create1(0);
@@ -362,11 +338,6 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
     {
         while (!token.IsCancellationRequested)
         {
-            if (!_isOpen)
-            {
-                Thread.Sleep(20);
-                continue;
-            }
             if (Volatile.Read(ref _subscriberCount) <= 0) break;
             
             int n = Libc.epoll_wait(_epfd, _events, _events.Length, 500);
@@ -417,8 +388,6 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
             }
         }
     }
-
-    public bool IsOpen => _isOpen;
 
     public SocketCanBusRtConfigurator Options { get; }
 
@@ -472,7 +441,6 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
 
     private readonly ITransceiver _transceiver;
     private bool _isDisposed;
-    private bool _isOpen;
     private int _fd;
     
     private readonly IBusOptions _options;

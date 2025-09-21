@@ -34,18 +34,14 @@ namespace Pkuyo.CanKit.Net.Sample
                 Console.WriteLine(
                     $"[{frame.SystemTimestamp}] Error Kind: {frame.Kind}, Direction:{frame.Direction}");
             };
-
-            // 3. Open buses and send sample data
-            sendChannel.Open();
-            listenChannel.Open();
-
+            
             for (int i = 0; i < 50; i++)
             {
-                sendChannel.Transmit(new[]
-                {
-                    new CanTransmitData(new CanClassicFrame(0x1824080F, new ReadOnlyMemory<byte>(new byte[]{0xAA,0xBB,0xCC,0xDD}), true)),
-                    new CanTransmitData(new CanClassicFrame(0x18240801, new ReadOnlyMemory<byte>(new byte[]{0xAA,0xBB,0xCC,0xDD,0xEE,0xFF}), true))
-                });
+                sendChannel.Transmit([
+                    new CanTransmitData(new CanClassicFrame(0x1824080F, new ReadOnlyMemory<byte>([0xAA,0xBB,0xCC,0xDD]), true)),
+                    new CanTransmitData(new CanClassicFrame(0x18240801, new ReadOnlyMemory<byte>([0xAA,0xBB,0xCC,0xDD,0xEE,0xFF]),
+                        true))
+                ]);
                 Thread.Sleep(200);
             }
             

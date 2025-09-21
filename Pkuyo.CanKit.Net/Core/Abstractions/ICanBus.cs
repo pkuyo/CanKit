@@ -15,16 +15,6 @@ namespace Pkuyo.CanKit.Net.Core.Abstractions
     public interface ICanBus : IDisposable
     {
         /// <summary>
-        /// Open the channel (打开通道)。
-        /// </summary>
-        void Open();
-
-        /// <summary>
-        /// Close the channel and release resources (关闭通道并释放资源)。
-        /// </summary>
-        void Close();
-
-        /// <summary>
         /// Reset the channel to initial state (复位通道到初始状态)。
         /// </summary>
         void Reset();
