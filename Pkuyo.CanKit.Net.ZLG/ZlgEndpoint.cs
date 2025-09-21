@@ -21,7 +21,7 @@ internal static class ZlgEndpoint
         BusEndpointRegistry.Register("zlg", Open);
     }
 
-    private static ICanBus Open(CanEndpoint ep, Action<IChannelInitOptionsConfigurator>? configure)
+    private static ICanBus Open(CanEndpoint ep, Action<IBusInitOptionsConfigurator>? configure)
     {
         // 路径匹配 DeviceType.Id 或其去前缀的尾部，例如：
         //   zlg://ZLG.ZCAN_USBCANFD_200U?index=0#ch1
@@ -70,14 +70,14 @@ internal static class ZlgEndpoint
         if (transceiver == null)
             throw new CanFactoryException(CanKitErrorCode.TransceiverMismatch, $"Factory '{provider.Factory.GetType().FullName}' returned null transceiver.");
 
-        var channel = provider.Factory.CreateChannel(device, chOpt, transceiver);
+        var channel = provider.Factory.CreateBus(device, chOpt, transceiver);
         if (channel == null)
             throw new CanChannelCreationException($"Factory '{provider.Factory.GetType().FullName}' returned null channel.");
 
         if (channel is not ICanBus bus)
             throw new CanChannelCreationException($"Created channel type '{channel.GetType().FullName}' does not implement ICanBus.");
 
-        if (channel is IChannelOwnership own)
+        if (channel is IBusOwnership own)
             own.AttachOwner(lease);
 
         bus.Open();

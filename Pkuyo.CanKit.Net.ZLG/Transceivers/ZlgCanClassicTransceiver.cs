@@ -10,7 +10,7 @@ namespace Pkuyo.CanKit.ZLG.Transceivers
 {
     public sealed class ZlgCanClassicTransceiver : IZlgTransceiver
     {
-        public uint Transmit(ICanChannel<IChannelRTOptionsConfigurator> channel,
+        public uint Transmit(ICanBus<IBusRTOptionsConfigurator> channel,
             IEnumerable<CanTransmitData> frames, int _ = 0)
         {
         
@@ -20,14 +20,14 @@ namespace Pkuyo.CanKit.ZLG.Transceivers
                 .Select(i => i.ToTransmitData())
                 .ToArray();
 
-            return ZLGCAN.ZCAN_Transmit(((ZlgCanChannel)channel).NativeHandle, zcanTransmitDatas, (uint)zcanTransmitDatas.Length);
+            return ZLGCAN.ZCAN_Transmit(((ZlgCanBus)channel).NativeHandle, zcanTransmitDatas, (uint)zcanTransmitDatas.Length);
         }
 
-        public IEnumerable<CanReceiveData> Receive(ICanChannel<IChannelRTOptionsConfigurator> channel, uint count = 1, int timeOut = 0)
+        public IEnumerable<CanReceiveData> Receive(ICanBus<IBusRTOptionsConfigurator> channel, uint count = 1, int timeOut = 0)
         {
             var data = new ZLGCAN.ZCAN_Receive_Data[count];
 
-            var recCount = ZLGCAN.ZCAN_Receive(((ZlgCanChannel)channel).NativeHandle, data, count, timeOut);
+            var recCount = ZLGCAN.ZCAN_Receive(((ZlgCanBus)channel).NativeHandle, data, count, timeOut);
 
             return data.Take((int)recCount).Select(i => new CanReceiveData(i.frame.FromReceiveData())
             {

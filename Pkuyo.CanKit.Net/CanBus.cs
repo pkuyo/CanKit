@@ -16,7 +16,7 @@ public static class CanBus
     /// Open a bus by endpoint (通过 Endpoint 打开总线)，例如 "socketcan://can0" 或
     /// "zlg://USBCANFD-200U?index=0#ch1"。各 Provider 需通过 BusEndpointRegistry.Register 注册 scheme。
     /// </summary>
-    public static ICanBus Open(string endpoint, Action<IChannelInitOptionsConfigurator>? configure = null)
+    public static ICanBus Open(string endpoint, Action<IBusInitOptionsConfigurator>? configure = null)
     {
         if (BusEndpointRegistry.TryOpen(endpoint, configure, out var bus) && bus != null)
             return bus;
@@ -25,9 +25,9 @@ public static class CanBus
     /// <summary>
     /// Open a bus by DeviceType + index (以设备类型+索引打开总线)，返回已打开的总线并托管设备生命周期。
     /// </summary>
-    public static ICanChannel Open(DeviceType deviceType, int channelIndex, Action<IChannelInitOptionsConfigurator>? configure = null)
+    public static ICanBus Open(DeviceType deviceType, int channelIndex, Action<IBusInitOptionsConfigurator>? configure = null)
     {
-        return Open<ICanChannel, IChannelOptions, IChannelInitOptionsConfigurator>(deviceType, channelIndex, configure);
+        return Open<ICanBus, IBusOptions, IBusInitOptionsConfigurator>(deviceType, channelIndex, configure);
     }
 
     /// <summary>
@@ -35,9 +35,9 @@ public static class CanBus
     /// </summary>
     public static TChannel Open<TChannel, TChannelOptions, TInitCfg>(DeviceType deviceType, int channelIndex,
         Action<TInitCfg>? configure = null)
-        where TChannel : class, ICanChannel
-        where TChannelOptions : class, IChannelOptions
-        where TInitCfg : IChannelInitOptionsConfigurator
+        where TChannel : class, ICanBus
+        where TChannelOptions : class, IBusOptions
+        where TInitCfg : IBusInitOptionsConfigurator
     {
         var provider = CanRegistry.Registry.Resolve(deviceType);
 
@@ -49,7 +49,7 @@ public static class CanBus
             throw new CanOptionTypeMismatchException(
                 CanKitErrorCode.ChannelOptionTypeMismatch,
                 typeof(TChannelOptions),
-                chOptions?.GetType() ?? typeof(IChannelOptions),
+                chOptions?.GetType() ?? typeof(IBusOptions),
                 $"channel {channelIndex}");
         }
 
@@ -58,7 +58,7 @@ public static class CanBus
             throw new CanOptionTypeMismatchException(
                 CanKitErrorCode.ChannelOptionTypeMismatch,
                 typeof(TInitCfg),
-                chInitCfg?.GetType() ?? typeof(IChannelInitOptionsConfigurator),
+                chInitCfg?.GetType() ?? typeof(IBusInitOptionsConfigurator),
                 $"channel {channelIndex} configurator");
         }
 
@@ -78,7 +78,7 @@ public static class CanBus
             throw new CanFactoryException(CanKitErrorCode.TransceiverMismatch, $"Factory '{provider.Factory.GetType().FullName}' returned null transceiver.");
         }
 
-        var channel = provider.Factory.CreateChannel(device, typedChOptions, transceiver);
+        var channel = provider.Factory.CreateBus(device, typedChOptions, transceiver);
         if (channel == null)
         {
             throw new CanChannelCreationException($"Factory '{provider.Factory.GetType().FullName}' returned null channel.");
@@ -90,7 +90,7 @@ public static class CanBus
         }
 
         // Attach lifetime so disposing channel also disposes device
-        if (typedChannel is IChannelOwnership own)
+        if (typedChannel is IBusOwnership own)
         {
             own.AttachOwner(new DeviceOwner(device));
         }

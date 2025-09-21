@@ -16,15 +16,15 @@ using Pkuyo.CanKit.ZLG.Transceivers;
 namespace Pkuyo.CanKit.ZLG
 {
     
-    public sealed class ZlgCanChannel : ICanBus<ZlgChannelRTConfigurator>, INamedCanApplier, IChannelOwnership
+    public sealed class ZlgCanBus : ICanBus<ZlgBusRtConfigurator>, INamedCanApplier, IBusOwnership
     {
         
-        internal ZlgCanChannel(ZlgCanDevice device ,IChannelOptions options, ITransceiver transceiver)
+        internal ZlgCanBus(ZlgCanDevice device ,IBusOptions options, ITransceiver transceiver)
         {
             _devicePtr = device.NativeHandler.DangerousGetHandle();
             
-            Options = new ZlgChannelRTConfigurator();
-            Options.Init((ZlgChannelOptions)options);
+            Options = new ZlgBusRtConfigurator();
+            Options.Init((ZlgBusOptions)options);
             options.Apply(this, true);
             
             var provider = Options.Provider as ZlgCanProvider;
@@ -237,12 +237,12 @@ namespace Pkuyo.CanKit.ZLG
 
         public void Apply(ICanOptions options)
         {
-            if (options is not ZlgChannelOptions zlgOption)
+            if (options is not ZlgBusOptions zlgOption)
             {
                 throw new CanOptionTypeMismatchException(
                     CanKitErrorCode.ChannelOptionTypeMismatch,
-                    typeof(ZlgChannelOptions),
-                    options?.GetType() ?? typeof(IChannelOptions),
+                    typeof(ZlgBusOptions),
+                    options?.GetType() ?? typeof(IBusOptions),
                     $"channel {Options.ChannelIndex}");
             }
 
@@ -451,9 +451,9 @@ namespace Pkuyo.CanKit.ZLG
 
         public ZlgChannelHandle NativeHandle => _nativeHandle;
 
-        public ZlgChannelRTConfigurator Options { get; }
+        public ZlgBusRtConfigurator Options { get; }
         
-        IChannelRTOptionsConfigurator ICanChannel.Options => Options;
+        IBusRTOptionsConfigurator ICanBus.Options => Options;
         
         public CanOptionType ApplierStatus => _nativeHandle is { IsInvalid: false, IsClosed: false } ?
             CanOptionType.Runtime : 

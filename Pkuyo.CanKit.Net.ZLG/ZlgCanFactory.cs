@@ -14,13 +14,13 @@ public sealed class ZlgCanFactory : ICanFactory
         return new ZlgCanDevice(options);
     }
 
-    public ICanChannel CreateChannel(ICanDevice device, IChannelOptions options, ITransceiver transceiver)
+    public ICanBus CreateBus(ICanDevice device, IBusOptions options, ITransceiver transceiver)
     {
         
         if (device is not ZlgCanDevice zlgCanDevice)
             throw new CanFactoryDeviceMismatchException(typeof(ZlgCanDevice), device?.GetType() ?? typeof(ICanDevice));
 
-        return new ZlgCanChannel(zlgCanDevice, options, transceiver);
+        return new ZlgCanBus(zlgCanDevice, options, transceiver);
     }
 
     public bool Support(DeviceType deviceType)
@@ -29,24 +29,24 @@ public sealed class ZlgCanFactory : ICanFactory
     }
     
     public ITransceiver CreateTransceivers(IDeviceRTOptionsConfigurator configurator,
-        IChannelInitOptionsConfigurator channelOptions)
+        IBusInitOptionsConfigurator busOptions)
     {
         if (configurator.Provider is not ZlgCanProvider provider)
             throw new CanProviderMismatchException(typeof(ZlgCanProvider), configurator.Provider?.GetType() ?? typeof(ICanModelProvider));
 
-        if (channelOptions.ProtocolMode == CanProtocolMode.Merged && 
+        if (busOptions.ProtocolMode == CanProtocolMode.Merged && 
             (configurator.Features & CanFeature.MergeReceive) != 0U)
             return new ZlgMergeTransceiver();
 
-        if (channelOptions.ProtocolMode == CanProtocolMode.Can20
+        if (busOptions.ProtocolMode == CanProtocolMode.Can20
             && (uint)(configurator.Features & CanFeature.CanClassic) != 0U)
             return new ZlgCanClassicTransceiver();
 
-        if (channelOptions.ProtocolMode == CanProtocolMode.CanFd
+        if (busOptions.ProtocolMode == CanProtocolMode.CanFd
             && (uint)(configurator.Features & CanFeature.CanFd) != 0U)
             return new ZlgCanFdTransceiver();
 
-        var requiredFeature = channelOptions.ProtocolMode switch
+        var requiredFeature = busOptions.ProtocolMode switch
         {
             CanProtocolMode.Can20 => CanFeature.CanClassic,
             CanProtocolMode.CanFd => CanFeature.CanFd,
@@ -58,7 +58,7 @@ public sealed class ZlgCanFactory : ICanFactory
         {
             throw new CanFactoryException(
                 CanKitErrorCode.FeatureNotSupported,
-                $"Protocol mode '{channelOptions.ProtocolMode}' is not supported by provider '{provider.DeviceType.Id}'.");
+                $"Protocol mode '{busOptions.ProtocolMode}' is not supported by provider '{provider.DeviceType.Id}'.");
         }
 
         throw new CanFeatureNotSupportedException(requiredFeature, configurator.Features);

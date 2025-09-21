@@ -16,7 +16,7 @@ namespace Pkuyo.CanKit.Net.Core.Abstractions
         /// <param name="frames">需要发送的帧集合。</param>
         /// <param name="timeOut">等待数据的超时时间，单位为毫秒，-1 表示无限等待。</param>
         /// <returns>成功写入硬件的帧数量。</returns>
-        uint Transmit(ICanChannel<IChannelRTOptionsConfigurator> channel,
+        uint Transmit(ICanBus<IBusRTOptionsConfigurator> channel,
             IEnumerable<CanTransmitData> frames,
             int timeOut = 0);
 
@@ -28,7 +28,7 @@ namespace Pkuyo.CanKit.Net.Core.Abstractions
         /// <param name="timeOut">等待数据的超时时间，单位为毫秒，-1 表示无限等待。</param>
         /// <returns>接收到的帧集合。</returns>
         IEnumerable<CanReceiveData> Receive(
-            ICanChannel<IChannelRTOptionsConfigurator> channel,
+            ICanBus<IBusRTOptionsConfigurator> channel,
             uint count = 1,
             int timeOut = 0);
     }

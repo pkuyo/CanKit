@@ -29,13 +29,13 @@ namespace Pkuyo.CanKit.ZLG
             return (option, cfg);
         }
 
-        public  (IChannelOptions,IChannelInitOptionsConfigurator) GetChannelOptions(int channelIndex)
+        public  (IBusOptions,IBusInitOptionsConfigurator) GetChannelOptions(int channelIndex)
         {
-            var option = new ZlgChannelOptions(this)
+            var option = new ZlgBusOptions(this)
             {
                 ChannelIndex = channelIndex
             };
-            var cfg = new ZlgChannelInitConfigurator();
+            var cfg = new ZlgBusInitConfigurator();
             cfg.Init(option);
             return (option, cfg);
         }

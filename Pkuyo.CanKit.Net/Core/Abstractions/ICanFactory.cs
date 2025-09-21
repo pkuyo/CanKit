@@ -16,22 +16,22 @@ public interface ICanFactory
     ICanDevice CreateDevice(IDeviceOptions options);
 
     /// <summary>
-    /// Create a channel for the device (为设备创建通道)。
+    /// Create a bus for the device (为设备创建总线通道)。
     /// </summary>
     /// <param name="device">Device instance (设备实例)。</param>
     /// <param name="options">Channel initialization options (通道初始化选项)。</param>
     /// <param name="transceiver">Transceiver to use (收发器)。</param>
-    /// <returns>Created channel (创建的通道)。</returns>
-    ICanChannel CreateChannel(ICanDevice device, IChannelOptions options, ITransceiver transceiver);
+    /// <returns>Created bus (创建的总线)。</returns>
+    ICanBus CreateBus(ICanDevice device, IBusOptions options, ITransceiver transceiver);
 
     /// <summary>
     /// Create a transceiver matching given options (根据选项创建匹配的收发器)。
     /// </summary>
     /// <param name="deviceOptions">Device RT options configurator (设备运行时配置器)。</param>
-    /// <param name="channelOptions">Channel init options configurator (通道初始化配置器)。</param>
+    /// <param name="busOptions">Channel init options configurator (通道初始化配置器)。</param>
     /// <returns>Transceiver instance (收发器实例)。</returns>
     ITransceiver CreateTransceivers(IDeviceRTOptionsConfigurator deviceOptions,
-        IChannelInitOptionsConfigurator channelOptions);
+        IBusInitOptionsConfigurator busOptions);
 
     /// <summary>
     /// Whether this factory supports the device type (是否支持该设备类型)。

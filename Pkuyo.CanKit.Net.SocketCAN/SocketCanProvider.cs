@@ -21,9 +21,9 @@ public sealed class SocketCanProvider : ICanModelProvider
         return (options, cfg);
     }
 
-    public (IChannelOptions, IChannelInitOptionsConfigurator) GetChannelOptions(int channelIndex)
+    public (IBusOptions, IBusInitOptionsConfigurator) GetChannelOptions(int channelIndex)
     {
-        var options = new SocketCanChannelOptions(this)
+        var options = new SocketCanBusOptions(this)
         {
             ChannelIndex = channelIndex,
             BitTiming = new BitTiming(500_000, null, null),
@@ -31,7 +31,7 @@ public sealed class SocketCanProvider : ICanModelProvider
             WorkMode = ChannelWorkMode.Normal,
             InterfaceName = $"can{channelIndex}"
         };
-        var cfg = new SocketCanChannelInitConfigurator();
+        var cfg = new SocketCanBusInitConfigurator();
         cfg.Init(options);
         return (options, cfg);
     }

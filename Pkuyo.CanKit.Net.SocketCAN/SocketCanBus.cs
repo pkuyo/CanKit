@@ -6,12 +6,12 @@ using Pkuyo.CanKit.Net.SocketCAN.Native;
 
 namespace Pkuyo.CanKit.Net.SocketCAN;
 
-public sealed class SocketCanChannel : ICanBus<SocketCanChannelRTConfigurator>, ICanApplier, IChannelOwnership
+public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanApplier, IBusOwnership
 {
-    internal SocketCanChannel(IChannelOptions options, ITransceiver transceiver)
+    internal SocketCanBus(IBusOptions options, ITransceiver transceiver)
     {
-        Options = new SocketCanChannelRTConfigurator();
-        Options.Init((SocketCanChannelOptions)options);
+        Options = new SocketCanBusRtConfigurator();
+        Options.Init((SocketCanBusOptions)options);
         _options = options;
         _transceiver = transceiver;
     }
@@ -259,11 +259,11 @@ public sealed class SocketCanChannel : ICanBus<SocketCanChannelRTConfigurator>, 
 
     public void Apply(ICanOptions options)
     {
-        if (options is not SocketCanChannelOptions sc)
+        if (options is not SocketCanBusOptions sc)
             throw new CanOptionTypeMismatchException(
                 CanKitErrorCode.ChannelOptionTypeMismatch,
-                typeof(SocketCanChannelOptions),
-                options?.GetType() ?? typeof(IChannelOptions),
+                typeof(SocketCanBusOptions),
+                options?.GetType() ?? typeof(IBusOptions),
                 $"channel {Options.ChannelIndex}");
 
         // Protocol: enable FD is handled at creation time.
@@ -420,9 +420,9 @@ public sealed class SocketCanChannel : ICanBus<SocketCanChannelRTConfigurator>, 
 
     public bool IsOpen => _isOpen;
 
-    public SocketCanChannelRTConfigurator Options { get; }
+    public SocketCanBusRtConfigurator Options { get; }
 
-    IChannelRTOptionsConfigurator ICanChannel.Options => Options;
+    IBusRTOptionsConfigurator ICanBus.Options => Options;
 
     public event EventHandler<CanReceiveData> FrameReceived
     {
@@ -475,7 +475,7 @@ public sealed class SocketCanChannel : ICanBus<SocketCanChannelRTConfigurator>, 
     private bool _isOpen;
     private int _fd;
     
-    private readonly IChannelOptions _options;
+    private readonly IBusOptions _options;
 
 
     private readonly object _evtGate = new();

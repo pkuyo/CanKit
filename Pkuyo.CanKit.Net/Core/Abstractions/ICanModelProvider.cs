@@ -35,7 +35,7 @@ namespace Pkuyo.CanKit.Net.Core.Abstractions
         /// </summary>
         /// <param name="channelIndex">Channel index (通道索引)。</param>
         /// <returns>Tuple of options and configurator (选项与配置器)。</returns>
-        (IChannelOptions, IChannelInitOptionsConfigurator) GetChannelOptions(int channelIndex);
+        (IBusOptions, IBusInitOptionsConfigurator) GetChannelOptions(int channelIndex);
 
     }
 

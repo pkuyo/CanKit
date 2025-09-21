@@ -25,10 +25,10 @@ public sealed class ZlgDeviceRTOptionsConfigurator
     
 }
 
-public sealed class ZlgChannelInitConfigurator 
-    : ChannelInitOptionsConfigurator<ZlgChannelOptions,ZlgChannelInitConfigurator>
+public sealed class ZlgBusInitConfigurator 
+    : BusInitOptionsConfigurator<ZlgBusOptions,ZlgBusInitConfigurator>
 {
-    public ZlgChannelOptions.MaskFilterType MaskFilterType => Options.FilterType;
+    public ZlgBusOptions.MaskFilterType MaskFilterType => Options.FilterType;
     
     /// <summary>
     /// Polling interval in ms (轮询间隔，毫秒)。
@@ -40,19 +40,19 @@ public sealed class ZlgChannelInitConfigurator
     /// </summary>
     /// <param name="newPollingInterval">Interval in ms (间隔毫秒)。</param>
     /// <returns>Configurator (配置器本身)。</returns>
-    public ZlgChannelInitConfigurator SetPollingInterval(int newPollingInterval)
+    public ZlgBusInitConfigurator SetPollingInterval(int newPollingInterval)
     {
         Options.PollingInterval = newPollingInterval;
         return this;
     }
 
-    public ZlgChannelInitConfigurator SetMaskFilterType(ZlgChannelOptions.MaskFilterType maskFilterType)
+    public ZlgBusInitConfigurator SetMaskFilterType(ZlgBusOptions.MaskFilterType maskFilterType)
     {
         Options.FilterType = maskFilterType;
         return this;
     }
 
-    public override ZlgChannelInitConfigurator AccMask(uint accCode, uint accMask, CanFilterIDType idType = CanFilterIDType.Standard)
+    public override ZlgBusInitConfigurator AccMask(uint accCode, uint accMask, CanFilterIDType idType = CanFilterIDType.Standard)
     {
         if(Filter.FilterRules.Any(i => i is FilterRule.Range))
             throw new CanFilterConfigurationException(
@@ -68,7 +68,7 @@ public sealed class ZlgChannelInitConfigurator
         return base.AccMask(accCode, accMask, idType);
     }
 
-    public override ZlgChannelInitConfigurator RangeFilter(uint min, uint max, CanFilterIDType idType = CanFilterIDType.Standard)
+    public override ZlgBusInitConfigurator RangeFilter(uint min, uint max, CanFilterIDType idType = CanFilterIDType.Standard)
     {
         if(Filter.FilterRules.Any(i => i is FilterRule.Mask))
             throw new CanFilterConfigurationException(
@@ -82,10 +82,10 @@ public sealed class ZlgChannelInitConfigurator
     
 }
 
-public sealed class ZlgChannelRTConfigurator 
-    : ChannelRTOptionsConfigurator<ZlgChannelOptions>
+public sealed class ZlgBusRtConfigurator 
+    : BusRtOptionsConfigurator<ZlgBusOptions>
 {
-    public ZlgChannelOptions.MaskFilterType MaskFilterType => Options.FilterType;
+    public ZlgBusOptions.MaskFilterType MaskFilterType => Options.FilterType;
     
     /// <summary>
     /// Polling interval in ms (轮询间隔，毫秒)。
@@ -97,7 +97,7 @@ public sealed class ZlgChannelRTConfigurator
     /// </summary>
     /// <param name="newPollingInterval">Interval in ms (间隔毫秒)。</param>
     /// <returns>Configurator (配置器本身)。</returns>
-    public ZlgChannelRTConfigurator SetPollingInterval(int newPollingInterval)
+    public ZlgBusRtConfigurator SetPollingInterval(int newPollingInterval)
     {
         Options.PollingInterval = newPollingInterval;
         return this;

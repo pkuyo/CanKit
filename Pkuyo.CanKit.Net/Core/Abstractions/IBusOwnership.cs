@@ -6,7 +6,7 @@ namespace Pkuyo.CanKit.Net.Core.Abstractions;
 /// Optional owner attachment for bus lifetime (可选的所有者附加，用于总线生命周期管理)。
 /// 总线释放时会一并释放附加的所有者。
 /// </summary>
-public interface IChannelOwnership
+public interface IBusOwnership
 {
     /// <summary>
     /// Attach an owner disposed with the bus (附加随总线释放的所有者)。

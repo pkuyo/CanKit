@@ -7,7 +7,7 @@ namespace Pkuyo.CanKit.Net.SocketCAN;
 
 public sealed class SocketCanClassicTransceiver : ITransceiver
 {
-    public uint Transmit(ICanChannel<IChannelRTOptionsConfigurator> channel, IEnumerable<CanTransmitData> frames, int _ = 0)
+    public uint Transmit(ICanBus<IBusRTOptionsConfigurator> channel, IEnumerable<CanTransmitData> frames, int _ = 0)
     {
         if (frames.Single().CanFrame is not CanClassicFrame cf)
             throw new InvalidOperationException("SocketCanTransceiver requires CanClassicFrame for transmission");
@@ -26,7 +26,7 @@ public sealed class SocketCanClassicTransceiver : ITransceiver
             for (int i = 0; i < copy; i++) frame.data[i] = src[i];
 
             var size = Marshal.SizeOf<Libc.can_frame>();
-            var result = Libc.write(((SocketCanChannel)channel).FileDescriptor, &frame, (ulong)size);
+            var result = Libc.write(((SocketCanBus)channel).FileDescriptor, &frame, (ulong)size);
             return result switch
             {
                 > 0 => 1,
@@ -36,13 +36,13 @@ public sealed class SocketCanClassicTransceiver : ITransceiver
         }
     }
 
-    public IEnumerable<CanReceiveData> Receive(ICanChannel<IChannelRTOptionsConfigurator> channel, uint count = 1, int _ = -1)
+    public IEnumerable<CanReceiveData> Receive(ICanBus<IBusRTOptionsConfigurator> channel, uint count = 1, int _ = -1)
     {
         var size = Marshal.SizeOf<Libc.can_frame>();
         var result = new List<CanReceiveData>();
         unsafe
         {
-            var ch = (SocketCanChannel)channel;
+            var ch = (SocketCanBus)channel;
             bool preferTs = ch.Options.PreferKernelTimestamp;
 
             var frame = stackalloc Libc.can_frame[1];
@@ -125,7 +125,7 @@ public sealed class SocketCanClassicTransceiver : ITransceiver
 
 public sealed class SocketCanFdTransceiver : ITransceiver
 {
-    public uint Transmit(ICanChannel<IChannelRTOptionsConfigurator> channel, IEnumerable<CanTransmitData> frames, int _ = 0)
+    public uint Transmit(ICanBus<IBusRTOptionsConfigurator> channel, IEnumerable<CanTransmitData> frames, int _ = 0)
     {
         if (frames.Single().CanFrame is not CanFdFrame ff)
             throw new InvalidOperationException("SocketCanFdTransceiver requires CanFdFrame for transmission");
@@ -145,7 +145,7 @@ public sealed class SocketCanFdTransceiver : ITransceiver
             for (int i = 0; i < copy; i++) frame.data[i] = src[i];
 
             var size = Marshal.SizeOf<Libc.canfd_frame>();
-            var result = Libc.write(((SocketCanChannel)channel).FileDescriptor, &frame, (ulong)size);
+            var result = Libc.write(((SocketCanBus)channel).FileDescriptor, &frame, (ulong)size);
             return result switch
             {
                 > 0 => 1,
@@ -155,13 +155,13 @@ public sealed class SocketCanFdTransceiver : ITransceiver
         }
     }
 
-    public IEnumerable<CanReceiveData> Receive(ICanChannel<IChannelRTOptionsConfigurator> channel, uint count = 1, int _ = -1)
+    public IEnumerable<CanReceiveData> Receive(ICanBus<IBusRTOptionsConfigurator> channel, uint count = 1, int _ = -1)
     {
         var size = Marshal.SizeOf<Libc.canfd_frame>();
         var result = new List<CanReceiveData>();
         unsafe
         {
-            var ch = (SocketCanChannel)channel;
+            var ch = (SocketCanBus)channel;
             bool preferTs = ch.Options.PreferKernelTimestamp;
             var frame = stackalloc Libc.canfd_frame[1];
 

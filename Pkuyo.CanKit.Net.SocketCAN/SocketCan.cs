@@ -10,9 +10,9 @@ public static class SocketCan
     /// Open a SocketCAN channel by interface name (e.g. "can0").
     /// The channel is opened and owns the underlying (null) device lifetime.
     /// </summary>
-    public static SocketCanChannel Open(string interfaceName, Action<SocketCanChannelInitConfigurator>? configure = null)
+    public static SocketCanBus Open(string interfaceName, Action<SocketCanBusInitConfigurator>? configure = null)
     {
-        return CanBus.Open<SocketCanChannel, SocketCanChannelOptions, SocketCanChannelInitConfigurator>(
+        return CanBus.Open<SocketCanBus, SocketCanBusOptions, SocketCanBusInitConfigurator>(
             LinuxDeviceType.SocketCAN,
             0,
             cfg =>
@@ -25,9 +25,9 @@ public static class SocketCan
     /// <summary>
     /// Open a SocketCAN channel by numeric index (maps to can{index}).
     /// </summary>
-    public static SocketCanChannel Open(int channelIndex = 0, Action<SocketCanChannelInitConfigurator>? configure = null)
+    public static SocketCanBus Open(int channelIndex = 0, Action<SocketCanBusInitConfigurator>? configure = null)
     {
-        return CanBus.Open<SocketCanChannel, SocketCanChannelOptions, SocketCanChannelInitConfigurator>(
+        return CanBus.Open<SocketCanBus, SocketCanBusOptions, SocketCanBusInitConfigurator>(
             LinuxDeviceType.SocketCAN,
             channelIndex,
             configure);

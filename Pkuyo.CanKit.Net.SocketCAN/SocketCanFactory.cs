@@ -15,15 +15,15 @@ public sealed class SocketCanFactory : ICanFactory
         return new NullDevice<NullDeviceOptions>(options);
     }
 
-    public ICanChannel CreateChannel(ICanDevice device, IChannelOptions options, ITransceiver transceiver)
+    public ICanBus CreateBus(ICanDevice device, IBusOptions options, ITransceiver transceiver)
     {
-        return new SocketCanChannel(options, transceiver);
+        return new SocketCanBus(options, transceiver);
     }
 
-    public ITransceiver CreateTransceivers(IDeviceRTOptionsConfigurator deviceOptions, IChannelInitOptionsConfigurator channelOptions)
+    public ITransceiver CreateTransceivers(IDeviceRTOptionsConfigurator deviceOptions, IBusInitOptionsConfigurator busOptions)
     {
         // SocketCAN supports classic + FD; no merged receive abstraction.
-        return channelOptions.ProtocolMode switch
+        return busOptions.ProtocolMode switch
         {
             CanProtocolMode.Can20 => new SocketCanClassicTransceiver(),
             CanProtocolMode.CanFd => new SocketCanFdTransceiver(),

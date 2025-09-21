@@ -42,7 +42,7 @@ public interface IDeviceRTOptionsConfigurator : ICanOptionsConfigurator
 /// <summary>
 /// Runtime channel option accessor (通道运行时选项访问器)。
 /// </summary>
-public interface IChannelRTOptionsConfigurator : ICanOptionsConfigurator
+public interface IBusRTOptionsConfigurator : ICanOptionsConfigurator
 { 
     /// <summary>
     /// Channel index (通道索引)。
@@ -116,7 +116,7 @@ public interface IDeviceInitOptionsConfigurator : ICanOptionsConfigurator
 /// <summary>
 /// Configurator for initializing channel options (通道初始化选项配置器)。
 /// </summary>
-public interface IChannelInitOptionsConfigurator : ICanOptionsConfigurator
+public interface IBusInitOptionsConfigurator : ICanOptionsConfigurator
 { 
 
     /// <summary>
@@ -170,7 +170,7 @@ public interface IChannelInitOptionsConfigurator : ICanOptionsConfigurator
     /// </summary>
     /// <param name="baud">Bitrate in bps (比特率)。</param>
     /// <returns>Configurator (配置器本身)。</returns>
-    IChannelInitOptionsConfigurator Baud(uint baud);
+    IBusInitOptionsConfigurator Baud(uint baud);
 
     /// <summary>
     /// Set CAN FD arbitration/data bitrates (设置 CAN FD 仲裁/数据位率)。
@@ -178,49 +178,49 @@ public interface IChannelInitOptionsConfigurator : ICanOptionsConfigurator
     /// <param name="abit">Arbitration bitrate (仲裁位率)。</param>
     /// <param name="dbit">Data bitrate (数据位率)。</param>
     /// <returns>Configurator (配置器本身)。</returns>
-    IChannelInitOptionsConfigurator Fd(uint abit, uint dbit);
+    IBusInitOptionsConfigurator Fd(uint abit, uint dbit);
 
     /// <summary>
     /// Enable bus usage measurement (启用总线占用率统计)。
     /// </summary>
     /// <param name="periodMs">Period in ms (统计周期毫秒)。</param>
     /// <returns>Configurator (配置器本身)。</returns>
-    IChannelInitOptionsConfigurator BusUsage(uint periodMs = 1000);
+    IBusInitOptionsConfigurator BusUsage(uint periodMs = 1000);
 
     /// <summary>
     /// Enable/disable internal termination (启用/禁用内部终端电阻)。
     /// </summary>
     /// <param name="enabled">True to enable (是否启用)。</param>
     /// <returns>Configurator (配置器本身)。</returns>
-    IChannelInitOptionsConfigurator InternalRes(bool enabled);
+    IBusInitOptionsConfigurator InternalRes(bool enabled);
 
     /// <summary>
     /// Set TX retry policy (设置发送重试策略)。
     /// </summary>
     /// <param name="retryPolicy">Retry policy (重试策略)。</param>
     /// <returns>Configurator (配置器本身)。</returns>
-    IChannelInitOptionsConfigurator SetTxRetryPolicy(TxRetryPolicy retryPolicy);
+    IBusInitOptionsConfigurator SetTxRetryPolicy(TxRetryPolicy retryPolicy);
 
     /// <summary>
     /// Set channel work mode (设置通道工作模式)。
     /// </summary>
     /// <param name="mode">Work mode (工作模式)。</param>
     /// <returns>Configurator (配置器本身)。</returns>
-    IChannelInitOptionsConfigurator SetWorkMode(ChannelWorkMode mode);
+    IBusInitOptionsConfigurator SetWorkMode(ChannelWorkMode mode);
 
     /// <summary>
     /// Set protocol mode (设置协议模式)。
     /// </summary>
     /// <param name="mode">Protocol mode (协议模式)。</param>
     /// <returns>Configurator (配置器本身)。</returns>
-    IChannelInitOptionsConfigurator SetProtocolMode(CanProtocolMode mode);
+    IBusInitOptionsConfigurator SetProtocolMode(CanProtocolMode mode);
 
     /// <summary>
     /// Set filter (设置过滤器)。
     /// </summary>
     /// <param name="filter">Filter (过滤器)。</param>
     /// <returns>Configurator (配置器本身)。</returns>
-    IChannelInitOptionsConfigurator SetFilter(CanFilter filter);
+    IBusInitOptionsConfigurator SetFilter(CanFilter filter);
 
     /// <summary>
     /// Configure range filter by ID (按 ID 范围设置过滤器)。
@@ -229,7 +229,7 @@ public interface IChannelInitOptionsConfigurator : ICanOptionsConfigurator
     /// <param name="max">Max ID (最大 ID)。</param>
     /// <param name="idType">ID type (ID 类型)。</param>
     /// <returns>Configurator (配置器本身)。</returns>
-    IChannelInitOptionsConfigurator RangeFilter(uint min, uint max, CanFilterIDType idType);
+    IBusInitOptionsConfigurator RangeFilter(uint min, uint max, CanFilterIDType idType);
 
     /// <summary>
     /// Configure filter by acc-code/mask (通过验收码/屏蔽码设置过滤器)。
@@ -238,7 +238,7 @@ public interface IChannelInitOptionsConfigurator : ICanOptionsConfigurator
     /// <param name="accMask">Acceptance mask (屏蔽码)。</param>
     /// <param name="idType">ID type (ID 类型)。</param>
     /// <returns>Configurator (配置器本身)。</returns>
-    IChannelInitOptionsConfigurator AccMask(uint accCode, uint accMask, CanFilterIDType idType);
+    IBusInitOptionsConfigurator AccMask(uint accCode, uint accMask, CanFilterIDType idType);
     
 }
 

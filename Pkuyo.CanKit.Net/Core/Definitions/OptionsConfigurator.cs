@@ -23,10 +23,10 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
 
     
     
-      public class ChannelRTOptionsConfigurator<TChannelOptions>
-        : CallOptionsConfigurator<TChannelOptions, ChannelRTOptionsConfigurator<TChannelOptions>>,
-          IChannelRTOptionsConfigurator
-        where TChannelOptions : class, IChannelOptions
+      public class BusRtOptionsConfigurator<TChannelOptions>
+        : CallOptionsConfigurator<TChannelOptions, BusRtOptionsConfigurator<TChannelOptions>>,
+          IBusRTOptionsConfigurator
+        where TChannelOptions : class, IBusOptions
     {
         public ICanModelProvider Provider => Options.Provider;
         public CanFeature Features => _feature;
@@ -40,7 +40,7 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
         public CanProtocolMode ProtocolMode => Options.ProtocolMode;
         public ICanFilter Filter => Options.Filter;
         
-        public virtual ChannelRTOptionsConfigurator<TChannelOptions> SetInternalResistance(bool enabled)
+        public virtual BusRtOptionsConfigurator<TChannelOptions> SetInternalResistance(bool enabled)
         {
             Options.InternalResistance = enabled;
             return Self;
@@ -71,11 +71,11 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
         
     }
 
-  public class ChannelInitOptionsConfigurator<TChannelOptions, TSelf>
-    : CallOptionsConfigurator<TChannelOptions, ChannelInitOptionsConfigurator<TChannelOptions,TSelf>>,
-      IChannelInitOptionsConfigurator
-    where TChannelOptions : class, IChannelOptions
-    where TSelf : ChannelInitOptionsConfigurator<TChannelOptions, TSelf>
+  public class BusInitOptionsConfigurator<TChannelOptions, TSelf>
+    : CallOptionsConfigurator<TChannelOptions, BusInitOptionsConfigurator<TChannelOptions,TSelf>>,
+      IBusInitOptionsConfigurator
+    where TChannelOptions : class, IBusOptions
+    where TSelf : BusInitOptionsConfigurator<TChannelOptions, TSelf>
     {
  
         public ICanModelProvider Provider => Options.Provider;
@@ -171,34 +171,34 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
             return (TSelf)this;
         }
 
-        IChannelInitOptionsConfigurator IChannelInitOptionsConfigurator.Baud(uint baud) 
+        IBusInitOptionsConfigurator IBusInitOptionsConfigurator.Baud(uint baud) 
             => Baud(baud);
 
-        IChannelInitOptionsConfigurator IChannelInitOptionsConfigurator.Fd(uint abit, uint dbit) 
+        IBusInitOptionsConfigurator IBusInitOptionsConfigurator.Fd(uint abit, uint dbit) 
             => Fd(abit, dbit);
 
-        IChannelInitOptionsConfigurator IChannelInitOptionsConfigurator.BusUsage(uint periodMs) 
+        IBusInitOptionsConfigurator IBusInitOptionsConfigurator.BusUsage(uint periodMs) 
             => BusUsage(periodMs);
 
-        IChannelInitOptionsConfigurator IChannelInitOptionsConfigurator.SetTxRetryPolicy(TxRetryPolicy retryPolicy) 
+        IBusInitOptionsConfigurator IBusInitOptionsConfigurator.SetTxRetryPolicy(TxRetryPolicy retryPolicy) 
             => SetTxRetryPolicy(retryPolicy);
 
-        IChannelInitOptionsConfigurator IChannelInitOptionsConfigurator.SetWorkMode(ChannelWorkMode mode) 
+        IBusInitOptionsConfigurator IBusInitOptionsConfigurator.SetWorkMode(ChannelWorkMode mode) 
             => SetWorkMode(mode);
 
-        IChannelInitOptionsConfigurator IChannelInitOptionsConfigurator.InternalRes(bool enabled) 
+        IBusInitOptionsConfigurator IBusInitOptionsConfigurator.InternalRes(bool enabled) 
             => InternalRes(enabled);
 
-        IChannelInitOptionsConfigurator IChannelInitOptionsConfigurator.SetProtocolMode(CanProtocolMode mode)
+        IBusInitOptionsConfigurator IBusInitOptionsConfigurator.SetProtocolMode(CanProtocolMode mode)
             => SetProtocolMode(mode);
 
-        IChannelInitOptionsConfigurator IChannelInitOptionsConfigurator.SetFilter(CanFilter filter)
+        IBusInitOptionsConfigurator IBusInitOptionsConfigurator.SetFilter(CanFilter filter)
             => SetFilter(filter);
         
-        IChannelInitOptionsConfigurator IChannelInitOptionsConfigurator.RangeFilter(uint min, uint max, CanFilterIDType idType)
+        IBusInitOptionsConfigurator IBusInitOptionsConfigurator.RangeFilter(uint min, uint max, CanFilterIDType idType)
             => RangeFilter(min, max, idType);
         
-        IChannelInitOptionsConfigurator IChannelInitOptionsConfigurator.AccMask(uint accCode, uint accMask, CanFilterIDType idType)
+        IBusInitOptionsConfigurator IBusInitOptionsConfigurator.AccMask(uint accCode, uint accMask, CanFilterIDType idType)
             => AccMask(accCode, accMask, idType);
     }
 

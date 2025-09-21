@@ -10,13 +10,13 @@ namespace Pkuyo.CanKit.Net.Core.Endpoints;
 /// </summary>
 public static class BusEndpointRegistry
 {
-    private static readonly Dictionary<string, Func<CanEndpoint, Action<IChannelInitOptionsConfigurator>?, ICanBus>> _handlers =
+    private static readonly Dictionary<string, Func<CanEndpoint, Action<IBusInitOptionsConfigurator>?, ICanBus>> _handlers =
         new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// Register a scheme handler (注册一个 scheme 处理器)。
     /// </summary>
-    public static void Register(string scheme, Func<CanEndpoint, Action<IChannelInitOptionsConfigurator>?, ICanBus> openHandler)
+    public static void Register(string scheme, Func<CanEndpoint, Action<IBusInitOptionsConfigurator>?, ICanBus> openHandler)
     {
         if (string.IsNullOrWhiteSpace(scheme)) throw new ArgumentNullException(nameof(scheme));
         if (openHandler == null) throw new ArgumentNullException(nameof(openHandler));
@@ -26,7 +26,7 @@ public static class BusEndpointRegistry
     /// <summary>
     /// Try open bus by endpoint (按 endpoint 尝试打开总线)。
     /// </summary>
-    public static bool TryOpen(string endpoint, Action<IChannelInitOptionsConfigurator>? configure, out ICanBus? bus)
+    public static bool TryOpen(string endpoint, Action<IBusInitOptionsConfigurator>? configure, out ICanBus? bus)
     {
         var ep = CanEndpoint.Parse(endpoint);
         if (_handlers.TryGetValue(ep.Scheme, out var h))

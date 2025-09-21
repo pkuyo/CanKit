@@ -14,7 +14,7 @@ internal static class SocketCanEndpoint
         BusEndpointRegistry.Register("socketcan", Open);
     }
 
-    private static ICanBus Open(CanEndpoint ep, Action<IChannelInitOptionsConfigurator>? configure)
+    private static ICanBus Open(CanEndpoint ep, Action<IBusInitOptionsConfigurator>? configure)
     {
         // Interpret path as interfaceName, or use query iface= / if=, else index as number
         string iface = ep.Path;
@@ -32,7 +32,7 @@ internal static class SocketCanEndpoint
             iface = $"can{index}";
         }
 
-        return CanBus.Open<SocketCanChannel, SocketCanChannelOptions, SocketCanChannelInitConfigurator>(
+        return CanBus.Open<SocketCanBus, SocketCanBusOptions, SocketCanBusInitConfigurator>(
             LinuxDeviceType.SocketCAN,
             index,
             cfg =>

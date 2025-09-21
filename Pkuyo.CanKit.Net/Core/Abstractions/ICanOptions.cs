@@ -76,9 +76,9 @@ namespace Pkuyo.CanKit.Net.Core.Abstractions
     }
 
     /// <summary>
-    /// Options related to CAN channel (与 CAN 通道相关的选项)。
+    /// Options related to CAN bus (与 CAN 总线相关的选项)。
     /// </summary>
-    public interface IChannelOptions : ICanOptions
+    public interface IBusOptions : ICanOptions
     {
 
         /// <summary>

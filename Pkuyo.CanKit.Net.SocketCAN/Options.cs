@@ -5,7 +5,7 @@ namespace Pkuyo.CanKit.Net.SocketCAN;
 
 
 
-public sealed class SocketCanChannelOptions(ICanModelProvider provider) : IChannelOptions
+public sealed class SocketCanBusOptions(ICanModelProvider provider) : IBusOptions
 {
     public ICanModelProvider Provider { get; } = provider;
 
@@ -28,24 +28,24 @@ public sealed class SocketCanChannelOptions(ICanModelProvider provider) : IChann
 }
 
 
-public sealed class SocketCanChannelInitConfigurator
-    : ChannelInitOptionsConfigurator<SocketCanChannelOptions, SocketCanChannelInitConfigurator>
+public sealed class SocketCanBusInitConfigurator
+    : BusInitOptionsConfigurator<SocketCanBusOptions, SocketCanBusInitConfigurator>
 {
-    public SocketCanChannelInitConfigurator UseInterface(string name)
+    public SocketCanBusInitConfigurator UseInterface(string name)
     {
         Options.InterfaceName = name;
         return this;
     }
 
-    public SocketCanChannelInitConfigurator PreferKernelTimestamp(bool enable = true)
+    public SocketCanBusInitConfigurator PreferKernelTimestamp(bool enable = true)
     {
         Options.PreferKernelTimestamp = enable;
         return this;
     }
 }
 
-public sealed class SocketCanChannelRTConfigurator
-    : ChannelRTOptionsConfigurator<SocketCanChannelOptions>
+public sealed class SocketCanBusRtConfigurator
+    : BusRtOptionsConfigurator<SocketCanBusOptions>
 {
     public string InterfaceName => Options.InterfaceName;
     public bool PreferKernelTimestamp => Options.PreferKernelTimestamp;
