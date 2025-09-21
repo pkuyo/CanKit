@@ -64,17 +64,12 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
         return _transceiver.Receive(this, count, timeOut);
     }
 
-    public bool ReadChannelErrorInfo(out ICanErrorInfo? errorInfo)
+    public bool ReadErrorInfo(out ICanErrorInfo? errorInfo)
     {
         errorInfo = null;
         return false;
     }
-
-    public uint GetReceiveCount()
-    {
-        return 0;
-    }
-
+    
     public PcanBusRtConfigurator Options { get; }
 
     IBusRTOptionsConfigurator ICanBus.Options => Options;

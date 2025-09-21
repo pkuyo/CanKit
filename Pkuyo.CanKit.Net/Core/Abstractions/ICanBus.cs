@@ -57,13 +57,7 @@ namespace Pkuyo.CanKit.Net.Core.Abstractions
         /// </summary>
         /// <param name="errorInfo">Error info if present, otherwise null (错误信息或 null)。</param>
         /// <returns>True if error exists (存在错误返回 true)。</returns>
-        bool ReadChannelErrorInfo(out ICanErrorInfo? errorInfo);
-
-        /// <summary>
-        /// Get readable frame count in RX buffer (获取接收缓冲可读帧数)。
-        /// </summary>
-        /// <returns>Readable frame count (可读帧数)。</returns>
-        uint GetReceiveCount();
+        bool ReadErrorInfo(out ICanErrorInfo? errorInfo);
 
         /// <summary>
         /// Real-time options configurator (运行时通道选项配置器)。

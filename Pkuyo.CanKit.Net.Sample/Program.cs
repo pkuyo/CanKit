@@ -16,7 +16,7 @@ namespace Pkuyo.CanKit.Net.Sample
 
             using var listenChannel = CanBus.Open("zlg://ZCAN_USBCAN2?index=0#ch1", cfg =>
                 cfg.Baud(500_000)
-                    .AccMask(0X78, 0xFFFFFF87, CanFilterIDType.Standard)
+                    .AccMask(0X78, 0xFFFFFF87, CanFilterIDType.Extend)
                     .SetWorkMode(ChannelWorkMode.ListenOnly)
                     .SetProtocolMode(CanProtocolMode.Can20));
 
@@ -34,14 +34,11 @@ namespace Pkuyo.CanKit.Net.Sample
                 Console.WriteLine(
                     $"[{frame.SystemTimestamp}] Error Kind: {frame.Kind}, Direction:{frame.Direction}");
             };
-            
+            var frame1 = new CanTransmitData(new CanClassicFrame(0x1824080F, new ReadOnlyMemory<byte>([0xAA, 0xBB, 0xCC, 0xDD]), true));
+            var frame2 = new CanTransmitData(new CanClassicFrame(0x18240801, new ReadOnlyMemory<byte>([0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF]),true));
             for (int i = 0; i < 50; i++)
             {
-                sendChannel.Transmit([
-                    new CanTransmitData(new CanClassicFrame(0x1824080F, new ReadOnlyMemory<byte>([0xAA,0xBB,0xCC,0xDD]), true)),
-                    new CanTransmitData(new CanClassicFrame(0x18240801, new ReadOnlyMemory<byte>([0xAA,0xBB,0xCC,0xDD,0xEE,0xFF]),
-                        true))
-                ]);
+                sendChannel.Transmit([frame1, frame2]);
                 Thread.Sleep(200);
             }
             

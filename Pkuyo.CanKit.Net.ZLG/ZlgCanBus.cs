@@ -149,7 +149,7 @@ namespace Pkuyo.CanKit.ZLG
             return _transceiver.Receive(this, count, timeOut);
         }
 
-        public bool ReadChannelErrorInfo(out ICanErrorInfo? errorInfo)
+        public bool ReadErrorInfo(out ICanErrorInfo? errorInfo)
         {
             errorInfo = null;
             
@@ -387,7 +387,7 @@ namespace Pkuyo.CanKit.ZLG
                         Thread.Sleep(Options.PollingInterval);
                     }
 
-                    if (_errorOccurred != null && ReadChannelErrorInfo(out var errInfo))
+                    if (_errorOccurred != null && ReadErrorInfo(out var errInfo))
                     {
                         _errorOccurred.Invoke(this, errInfo!);
                     }

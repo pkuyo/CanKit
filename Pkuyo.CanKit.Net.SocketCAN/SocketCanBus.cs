@@ -196,19 +196,13 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
         throw new CanFeatureNotSupportedException(CanFeature.ErrorCounters, Options.Features);
     }
     
-    public bool ReadChannelErrorInfo(out ICanErrorInfo? errorInfo)
+    public bool ReadErrorInfo(out ICanErrorInfo? errorInfo)
     {
         // SocketCAN via raw socket does not expose detailed error info here
         errorInfo = null;
         return false;
     }
-
-    public uint GetReceiveCount()
-    {
-        ThrowIfDisposed();
-        // TODO: exception handling
-        throw new NotImplementedException();
-    }
+    
 
     public void Dispose()
     {
