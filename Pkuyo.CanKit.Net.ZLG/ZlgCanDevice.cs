@@ -80,10 +80,10 @@ namespace Pkuyo.CanKit.ZLG
         private ZlgDeviceHandle _nativeHandler = new ();
 
         private bool _isDisposed;
-        public bool ApplyOne<T>(string name, T value)
+        public bool ApplyOne<T>(object id, T value)
         {
             return ZLGCAN.ZCAN_SetValue(NativeHandler,
-                Options.DeviceIndex.ToString() + name, value!.ToString()) != 0;
+                Options.DeviceIndex + (string)id, value!.ToString()) != 0;
         }
 
         public void Apply(ICanOptions options)

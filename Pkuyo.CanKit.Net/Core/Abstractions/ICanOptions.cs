@@ -33,10 +33,10 @@ namespace Pkuyo.CanKit.Net.Core.Abstractions
         /// Apply a single option value (应用单个选项)。
         /// </summary>
         /// <typeparam name="T">Value type (值类型)。</typeparam>
-        /// <param name="name">Option name (选项名)。</param>
+        /// <param name="ID">Option name (选项名)。</param>
         /// <param name="value">Option value (选项值)。</param>
         /// <returns>True if applied (应用成功返回 true)。</returns>
-        bool ApplyOne<T>(string name, T value);
+        bool ApplyOne<T>(object ID, T value);
     }
 
     /// <summary>

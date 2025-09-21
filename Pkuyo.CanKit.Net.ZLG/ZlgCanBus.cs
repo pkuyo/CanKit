@@ -229,10 +229,10 @@ namespace Pkuyo.CanKit.ZLG
                 throw new CanChannelDisposedException();
         }
         
-        public bool ApplyOne<T>(string name, T value)
+        public bool ApplyOne<T>(object id, T value)
         {
             return ZLGCAN.ZCAN_SetValue(_devicePtr,
-                Options.ChannelIndex + name, value!.ToString()) != 0; //Only ValueType
+                Options.ChannelIndex + (string)id, value!.ToString()) != 0; //Only ValueType
         }
 
         public void Apply(ICanOptions options)

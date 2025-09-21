@@ -11,9 +11,9 @@ namespace Pkuyo.CanKit.Net.Core.Attributes
     }
     
     [AttributeUsage(AttributeTargets.Property)]
-    public sealed class CanOptionItemAttribute(string optionName, CanOptionType type, string? defaultValue = null) : Attribute
+    public sealed class CanOptionItemAttribute(object optionId, CanOptionType type, string? defaultValue = null) : Attribute
     {
-        public string OptionName { get; } = optionName;
+        public object OptionID { get; } = optionId;
         public CanOptionType Type { get; } = type;
         public string? DefaultValue { get; } = defaultValue;
     }
