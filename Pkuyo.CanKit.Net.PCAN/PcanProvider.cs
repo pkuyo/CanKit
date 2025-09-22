@@ -9,7 +9,7 @@ public sealed class PcanProvider : ICanModelProvider
 {
     public DeviceType DeviceType => PcanDeviceType.PCANBasic;
 
-    // Keep initial scope to classic + filters. FD can be added later.
+    // PCAN-Basic supports classic and filters; FD depends on hardware (sniffed at runtime).
     public CanFeature StaticFeatures => CanFeature.CanClassic | CanFeature.Filters;
 
     public ICanFactory Factory => CanRegistry.Registry.Factory("PCAN");

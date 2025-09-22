@@ -24,6 +24,7 @@ public sealed class PcanFactory : ICanFactory
         return busOptions.ProtocolMode switch
         {
             CanProtocolMode.Can20 => new PcanClassicTransceiver(),
+            CanProtocolMode.CanFd  => new PcanFdTransceiver(),
             _ => throw new CanFeatureNotSupportedException(CanFeature.CanFd, CanFeature.CanClassic)
         };
     }

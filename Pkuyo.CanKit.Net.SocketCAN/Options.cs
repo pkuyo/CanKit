@@ -18,6 +18,7 @@ public sealed class SocketCanBusOptions(ICanModelProvider provider) : IBusOption
     public TxRetryPolicy TxRetryPolicy { get; set; } = TxRetryPolicy.NoRetry;
     public CanProtocolMode ProtocolMode { get; set; } = CanProtocolMode.Can20;
     public CanFilter Filter { get; set; } = new();
+    public bool AllowErrorInfo { get; set; }
 
     // SocketCAN specific: interface name, e.g. "can0", "vcan0" etc.
     public string InterfaceName { get; set; } = "can0";

@@ -39,6 +39,7 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
         public bool InternalResistance => Options.InternalResistance;
         public CanProtocolMode ProtocolMode => Options.ProtocolMode;
         public ICanFilter Filter => Options.Filter;
+        public bool AllowErrorInfo => Options.AllowErrorInfo;
 
         public virtual BusRtOptionsConfigurator<TChannelOptions> SetInternalResistance(bool enabled)
         {
@@ -90,6 +91,7 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
         public CanProtocolMode ProtocolMode => Options.ProtocolMode;
 
         public ICanFilter Filter => Options.Filter;
+        public bool AllowErrorInfo { get; }
 
 
         public virtual TSelf Baud(uint baud)
@@ -171,6 +173,12 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
             return (TSelf)this;
         }
 
+        public virtual TSelf EnableErrorInfo()
+        {
+            Options.AllowErrorInfo = true;
+            return (TSelf)this;
+        }
+
         IBusInitOptionsConfigurator IBusInitOptionsConfigurator.Baud(uint baud)
             => Baud(baud);
 
@@ -200,6 +208,9 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
 
         IBusInitOptionsConfigurator IBusInitOptionsConfigurator.AccMask(uint accCode, uint accMask, CanFilterIDType idType)
             => AccMask(accCode, accMask, idType);
+
+        IBusInitOptionsConfigurator IBusInitOptionsConfigurator.EnableErrorInfo()
+            => EnableErrorInfo();
     }
 
 }

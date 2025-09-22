@@ -1,5 +1,4 @@
 using Peak.Can.Basic;
-using Peak.Can.Basic.BackwardCompatibility;
 using Pkuyo.CanKit.Net.Core.Abstractions;
 using Pkuyo.CanKit.Net.Core.Definitions;
 
@@ -14,24 +13,41 @@ public sealed class PcanClassicTransceiver : ITransceiver
         foreach (var item in frames)
         {
             if (item.CanFrame is not CanClassicFrame cf)
-                throw new InvalidOperationException("PCAN classic transceiver requires CanClassicFrame.");
-
-            var type = TPCANMessageType.PCAN_MESSAGE_STANDARD;
-            if (cf.IsExtendedFrame) type |= TPCANMessageType.PCAN_MESSAGE_EXTENDED;
-            if (cf.IsRemoteFrame) type |= TPCANMessageType.PCAN_MESSAGE_RTR;
-
-            var msg = new TPCANMsg
             {
-                ID = cf.ID,
-                LEN = (byte)Math.Min(8, (int)cf.Dlc),
-                MSGTYPE = type,
-                DATA = new byte[8]
-            };
-            var src = cf.Data.Span;
-            for (int i = 0; i < msg.LEN; i++) msg.DATA[i] = src[i];
+                throw new InvalidOperationException("PCAN classic transceiver requires CanClassicFrame.");
+            }
 
-            var st = PCANBasic.Write(ch.Handle, ref msg);
-            if (st == TPCANStatus.PCAN_ERROR_OK) sent++;
+            var type = MessageType.Standard;
+            if (cf.IsExtendedFrame)
+            {
+                type |= MessageType.Extended;
+            }
+
+            if (cf.IsRemoteFrame)
+            {
+                type |= MessageType.RemoteRequest;
+            }
+
+            var dlc = (byte)Math.Min(8, (int)cf.Dlc);
+            byte[] payload;
+            if ((type & MessageType.RemoteRequest) != 0)
+            {
+                payload = Array.Empty<byte>();
+            }
+            else
+            {
+                payload = cf.Data.ToArray();
+                if (payload.Length > dlc)
+                    Array.Resize(ref payload, dlc);
+            }
+
+            var msg = new PcanMessage(cf.ID, type, dlc, payload, extendedDataLength: false);
+
+            var st = Api.Write(ch.Handle, msg);
+            if (st == PcanStatus.OK)
+            {
+                sent++;
+            }
         }
         return sent;
     }
@@ -42,33 +58,33 @@ public sealed class PcanClassicTransceiver : ITransceiver
         var list = new List<CanReceiveData>();
         for (int i = 0; i < count; i++)
         {
-            var st = PCANBasic.Read(ch.Handle, out TPCANMsg msg, out TPCANTimestamp ts);
-            if (st == TPCANStatus.PCAN_ERROR_QRCVEMPTY)
+            PcanMessage pmsg;
+            ulong ts;
+            var st = Api.Read(ch.Handle, out pmsg, out ts);
+            if (st == PcanStatus.ReceiveQueueEmpty)
                 break;
-            if (st != TPCANStatus.PCAN_ERROR_OK)
+            if (st != PcanStatus.OK)
                 break;
-
-            bool isExt = (msg.MSGTYPE & TPCANMessageType.PCAN_MESSAGE_EXTENDED) != 0;
-            bool isRtr = (msg.MSGTYPE & TPCANMessageType.PCAN_MESSAGE_RTR) != 0;
-
-            var data = new byte[msg.LEN];
-            Array.Copy(msg.DATA, data, msg.LEN);
-
-            var frame = new CanClassicFrame(msg.ID, data, isExt) { IsRemoteFrame = isRtr };
-
-            ulong ticks;
-            try
+            var isFd = (pmsg.MsgType & MessageType.FlexibleDataRate) != 0;
+            if (isFd)
             {
-                // Convert PCAN relative timestamp to ticks (best effort)
-                // millis_overflow increments when millis wraps 32-bit
-                var microsTotal = ((ulong)ts.millis_overflow << 32) * 1000UL + (ulong)ts.millis * 1000UL + (ulong)ts.micros;
-                ticks = (ulong)(microsTotal * 10); // 1 tick = 100 ns
-            }
-            catch
-            {
-                ticks = (ulong)DateTime.UtcNow.Ticks;
+                // Skip FD frames in classic transceiver
+                continue;
             }
 
+            bool isExt = (pmsg.MsgType & MessageType.Extended) != 0;
+            bool isRtr = (pmsg.MsgType & MessageType.RemoteRequest) != 0;
+
+            byte[] data = pmsg.Data;
+            if (data.Length > pmsg.DLC)
+            {
+                Array.Resize(ref data, pmsg.DLC);
+            }
+
+            var frame = new CanClassicFrame(pmsg.ID, data, isExt) { IsRemoteFrame = isRtr };
+
+            // Assume PCAN timestamp is in microseconds. Convert to ticks (100ns)
+            var ticks = ts * 10UL;
             list.Add(new CanReceiveData(frame) { recvTimestamp = ticks });
         }
         return list;
@@ -79,11 +95,78 @@ public sealed class PcanFdTransceiver : ITransceiver
 {
     public uint Transmit(ICanBus<IBusRTOptionsConfigurator> channel, IEnumerable<CanTransmitData> frames, int timeOut = 0)
     {
-        throw new NotSupportedException("PCAN FD not integrated yet.");
+        var ch = (PcanBus)channel;
+        uint sent = 0;
+        foreach (var item in frames)
+        {
+            if (item.CanFrame is not CanFdFrame fd)
+            {
+                throw new InvalidOperationException("PCAN FD transceiver requires CanFdFrame.");
+            }
+
+            var type = MessageType.FlexibleDataRate;
+            if (fd.IsExtendedFrame)
+            {
+                type |= MessageType.Extended;
+            }
+            if (fd.BitRateSwitch)
+            {
+                type |= MessageType.BitRateSwitch;
+            }
+            if (fd.ErrorStateIndicator)
+            {
+                type |= MessageType.ErrorStateIndicator;
+            }
+
+            var payload = fd.Data.ToArray();
+            var msg = new PcanMessage(fd.ID, type, fd.Dlc, payload, extendedDataLength: true);
+
+            var st = Api.Write(ch.Handle, msg);
+            if (st == PcanStatus.OK)
+            {
+                sent++;
+            }
+        }
+        return sent;
     }
 
     public IEnumerable<CanReceiveData> Receive(ICanBus<IBusRTOptionsConfigurator> channel, uint count = 1, int timeOut = 0)
     {
-        throw new NotSupportedException("PCAN FD not integrated yet.");
+        var ch = (PcanBus)channel;
+        var list = new List<CanReceiveData>();
+        for (int i = 0; i < count; i++)
+        {
+            PcanMessage pmsg;
+            ulong ts;
+            var st = Api.Read(ch.Handle, out pmsg, out ts);
+
+            if (st == PcanStatus.ReceiveQueueEmpty)
+                break;
+            if (st != PcanStatus.OK)
+                break;
+
+            var isFd = (pmsg.MsgType & MessageType.FlexibleDataRate) != 0;
+            if (!isFd)
+            {
+                // Skip classic frames in FD transceiver
+                continue;
+            }
+
+            bool isExt = (pmsg.MsgType & MessageType.Extended) != 0;
+            bool brs = (pmsg.MsgType & MessageType.BitRateSwitch) != 0;
+            bool esi = (pmsg.MsgType & MessageType.ErrorStateIndicator) != 0;
+
+            byte[] data = pmsg.Data;
+            if (data.Length > CanFdFrame.DlcToLen(pmsg.DLC))
+            {
+                Array.Resize(ref data, CanFdFrame.DlcToLen(pmsg.DLC));
+            }
+
+            var frame = new CanFdFrame(pmsg.ID, data, brs, esi) { IsExtendedFrame = isExt };
+
+            var ticks = ts * 10UL;
+            list.Add(new CanReceiveData(frame) { recvTimestamp = ticks });
+        }
+        return list;
     }
 }

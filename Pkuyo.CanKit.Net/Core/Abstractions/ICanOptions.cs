@@ -126,6 +126,12 @@ namespace Pkuyo.CanKit.Net.Core.Abstractions
         /// </summary>
         CanFilter Filter { get; set; }
 
+
+        /// <summary>
+        /// Enable error information monitoring  (启用错误信息监听)。
+        /// </summary>
+        bool AllowErrorInfo { get; set; }
+
     }
 }
 

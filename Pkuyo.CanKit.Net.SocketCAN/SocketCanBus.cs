@@ -26,7 +26,11 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
     {
         // create raw socket
         var fd = Libc.socket(Libc.AF_CAN, Libc.SOCK_RAW, Libc.CAN_RAW);
-        if (fd < 0) throw new CanBusCreationException("socket(AF_CAN, SOCK_RAW, CAN_RAW) failed.");
+        if (fd < 0)
+        {
+            throw new CanBusCreationException("socket(AF_CAN, SOCK_RAW, CAN_RAW) failed.");
+        }
+
         try
         {
 
@@ -76,6 +80,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
             }
 
             // enable error frames reception (subscribe to all error classes)
+            if(Options.AllowErrorInfo)
             {
                 int errMask = unchecked((int)Libc.CAN_ERR_MASK);
                 if (Libc.setsockopt(fd, Libc.SOL_CAN_RAW, Libc.CAN_RAW_ERR_FILTER, ref errMask, (uint)Marshal.SizeOf<int>()) != 0)
@@ -413,6 +418,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
     {
         add
         {
+            //TODO:在未启用时抛出异常
             lock (_evtGate)
             {
                 _errorOccurred += value;

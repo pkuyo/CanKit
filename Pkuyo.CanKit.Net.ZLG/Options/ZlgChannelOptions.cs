@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using Pkuyo.CanKit.Net.Core.Abstractions;
 using Pkuyo.CanKit.Net.Core.Attributes;
 using Pkuyo.CanKit.Net.Core.Definitions;
@@ -27,6 +27,7 @@ namespace Pkuyo.CanKit.ZLG.Options
         public CanProtocolMode ProtocolMode { get; set; }
 
         public CanFilter Filter { get; set; } = new();
+        public bool AllowErrorInfo { get; set; }
 
         public int PollingInterval { get; set; }
 

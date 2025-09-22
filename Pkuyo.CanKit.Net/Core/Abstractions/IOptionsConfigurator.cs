@@ -88,6 +88,11 @@ public interface IBusRTOptionsConfigurator : ICanOptionsConfigurator
     /// Active filter (当前过滤器)。
     /// </summary>
     ICanFilter Filter { get; }
+
+    /// <summary>
+    /// Enable error information monitoring  (启用错误信息监听)。
+    /// </summary>
+    bool AllowErrorInfo { get; }
 }
 
 /// <summary>
@@ -159,11 +164,15 @@ public interface IBusInitOptionsConfigurator : ICanOptionsConfigurator
     /// </summary>
     CanProtocolMode ProtocolMode { get; }
 
-
     /// <summary>
     /// Current filter (当前过滤器)。
     /// </summary>
     ICanFilter Filter { get; }
+
+    /// <summary>
+    /// Enable error information monitoring  (启用错误信息监听)。
+    /// </summary>
+    bool AllowErrorInfo { get; }
 
     /// <summary>
     /// Set channel bitrate (设置通道波特率)。
@@ -239,6 +248,12 @@ public interface IBusInitOptionsConfigurator : ICanOptionsConfigurator
     /// <param name="idType">ID type (ID 类型)。</param>
     /// <returns>Configurator (配置器本身)。</returns>
     IBusInitOptionsConfigurator AccMask(uint accCode, uint accMask, CanFilterIDType idType);
+
+    /// <summary>
+    /// Enable error information monitoring (启用错误信息监听)。
+    /// </summary>
+    /// <returns>Configurator (配置器本身)。</returns>
+    IBusInitOptionsConfigurator EnableErrorInfo();
 
 }
 
