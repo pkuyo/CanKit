@@ -9,7 +9,7 @@ namespace System.Runtime.CompilerServices
 
 namespace Pkuyo.CanKit.Net.Core.Definitions
 {
-  
+
 
     /// <summary>
     /// CAN bus bit timing for initialization (CAN 总线位时序，用于初始化)。
@@ -45,7 +45,7 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
         /// <summary>
         /// System time corresponding to the record (对应的系统时间)。
         /// </summary>
-        public DateTime SystemTimestamp { get;  } = DateTime.Now;
+        public DateTime SystemTimestamp { get; } = DateTime.Now;
     }
 
     /// <summary>
@@ -58,7 +58,7 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
         /// Transmit error counter (发送错误计数 TEC)。
         /// </summary>
         public int TransmitErrorCounter { get; init; }
-        
+
         /// <summary>
         /// Receive error counter (接收错误计数 REC)。
         /// </summary>

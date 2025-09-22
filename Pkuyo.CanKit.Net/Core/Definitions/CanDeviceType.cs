@@ -84,7 +84,7 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
         }
 
         /// <inheritdoc />
-        public virtual bool Equals(DeviceType other) =>
+        public virtual bool Equals(DeviceType? other) =>
             other is not null && NativeCode == other.NativeCode;
 
         /// <inheritdoc />

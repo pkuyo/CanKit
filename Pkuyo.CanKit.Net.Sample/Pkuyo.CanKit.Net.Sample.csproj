@@ -1,11 +1,8 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-		<OutputType>Exe</OutputType>
-	  <TargetFramework>net48</TargetFramework>
-	  <LangVersion>latest</LangVersion>
+      <OutputType>Exe</OutputType>
 	  <Platforms>AnyCPU;x64;x86</Platforms>
-	  <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|x64' ">

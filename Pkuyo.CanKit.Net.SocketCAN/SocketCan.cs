@@ -1,6 +1,6 @@
-using Pkuyo.CanKit.SocketCAN.Definitions;
-using Pkuyo.CanKit.Net;
 using System;
+using Pkuyo.CanKit.Net;
+using Pkuyo.CanKit.SocketCAN.Definitions;
 
 namespace Pkuyo.CanKit.Net.SocketCAN;
 

@@ -22,14 +22,14 @@ public sealed class ZlgDeviceRTOptionsConfigurator
     : DeviceRTOptionsConfigurator<ZlgDeviceOptions>
 {
     public uint DeviceIndex => Options.DeviceIndex;
-    
+
 }
 
-public sealed class ZlgBusInitConfigurator 
-    : BusInitOptionsConfigurator<ZlgBusOptions,ZlgBusInitConfigurator>
+public sealed class ZlgBusInitConfigurator
+    : BusInitOptionsConfigurator<ZlgBusOptions, ZlgBusInitConfigurator>
 {
     public ZlgBusOptions.MaskFilterType MaskFilterType => Options.FilterType;
-    
+
     /// <summary>
     /// Polling interval in ms (轮询间隔，毫秒)。
     /// </summary>
@@ -54,39 +54,39 @@ public sealed class ZlgBusInitConfigurator
 
     public override ZlgBusInitConfigurator AccMask(uint accCode, uint accMask, CanFilterIDType idType = CanFilterIDType.Standard)
     {
-        if(Filter.FilterRules.Any(i => i is FilterRule.Range))
+        if (Filter.FilterRules.Any(i => i is FilterRule.Range))
             throw new CanFilterConfigurationException(
                 "ZLG channels only supports the same type of filter rule.");
-        
+
         if (Filter.FilterRules.Count > 1)
             throw new CanFilterConfigurationException(
                 "ZLG channels only support a single mask filter rule.");
-        
-        if(Provider is ZlgCanProvider provider)
+
+        if (Provider is ZlgCanProvider provider)
             ZlgErr.ThrowIfNotSupport(provider.ZlgFeature, ZlgFeature.MaskFilter);
-        
+
         return base.AccMask(accCode, accMask, idType);
     }
 
     public override ZlgBusInitConfigurator RangeFilter(uint min, uint max, CanFilterIDType idType = CanFilterIDType.Standard)
     {
-        if(Filter.FilterRules.Any(i => i is FilterRule.Mask))
+        if (Filter.FilterRules.Any(i => i is FilterRule.Mask))
             throw new CanFilterConfigurationException(
                 "ZLG channels only supports the same type of filter rule.");
-        
-        if(Provider is ZlgCanProvider provider)
+
+        if (Provider is ZlgCanProvider provider)
             ZlgErr.ThrowIfNotSupport(provider.ZlgFeature, ZlgFeature.RangeFilter);
-        
+
         return base.RangeFilter(min, max, idType);
     }
-    
+
 }
 
-public sealed class ZlgBusRtConfigurator 
+public sealed class ZlgBusRtConfigurator
     : BusRtOptionsConfigurator<ZlgBusOptions>
 {
     public ZlgBusOptions.MaskFilterType MaskFilterType => Options.FilterType;
-    
+
     /// <summary>
     /// Polling interval in ms (轮询间隔，毫秒)。
     /// </summary>
@@ -102,5 +102,5 @@ public sealed class ZlgBusRtConfigurator
         Options.PollingInterval = newPollingInterval;
         return this;
     }
-    
+
 }

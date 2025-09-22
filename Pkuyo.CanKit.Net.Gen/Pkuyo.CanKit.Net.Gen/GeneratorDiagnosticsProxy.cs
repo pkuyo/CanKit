@@ -4,7 +4,7 @@ using Microsoft.CodeAnalysis.Diagnostics;
 
 namespace Pkuyo.CanKit.Net.Gen
 {
-    
+
     internal static class GeneratorDiagnosticsCatalog
     {
         // Match IDs and categories documented in AnalyzerReleases.Shipped.md

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Text;
 
 namespace Pkuyo.CanKit.Net.Core.Definitions
@@ -157,10 +157,10 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
         /// <summary>
         /// 获取或设置帧数据，同时执行长度校验。
         /// </summary>
-        public  ReadOnlyMemory<byte> Data
+        public ReadOnlyMemory<byte> Data
         {
             get => _data;
-            init =>  _data = Validate(value);
+            init => _data = Validate(value);
 
         }
 
@@ -245,7 +245,13 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
         public static int DlcToLen(byte dlc)
             => dlc <= 8 ? dlc : dlc switch
             {
-                9 => 12, 10 => 16, 11 => 20, 12 => 24, 13 => 32, 14 => 48, 15 => 64,
+                9 => 12,
+                10 => 16,
+                11 => 20,
+                12 => 24,
+                13 => 32,
+                14 => 48,
+                15 => 64,
                 _ => throw new ArgumentOutOfRangeException(nameof(dlc))
             };
 
@@ -258,7 +264,13 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
             if (len <= 8) return (byte)len;
             return len switch
             {
-                <= 12 => 9, <= 16 => 10, <= 20 => 11, <= 24 => 12, <= 32 => 13, <= 48 => 14, _ => 15,
+                <= 12 => 9,
+                <= 16 => 10,
+                <= 20 => 11,
+                <= 24 => 12,
+                <= 32 => 13,
+                <= 48 => 14,
+                _ => 15,
             };
         }
 

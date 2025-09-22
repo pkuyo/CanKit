@@ -1,5 +1,6 @@
-﻿// update time 2025/7/16
+// update time 2025/7/16
 #nullable disable
+#pragma warning disable IDE0055
 using System;
 using System.Runtime.InteropServices;
 using Pkuyo.CanKit.ZLG.Definitions;

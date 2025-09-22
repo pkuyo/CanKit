@@ -1,29 +1,14 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <TargetFramework>netstandard2.0</TargetFramework>
-        <LangVersion>latest</LangVersion>
-        <Nullable>enable</Nullable>
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
         <RootNamespace>Pkuyo.CanKit.ZLG</RootNamespace>
         <Platforms>x64;x86</Platforms>
         <PackageId>Pkuyo.CanKit.ZLG</PackageId>
     </PropertyGroup>
-
-    <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|x64' ">
-      <Prefer32bit>true</Prefer32bit>
-    </PropertyGroup>
-
-    <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|x86' ">
-      <Prefer32bit>true</Prefer32bit>
-    </PropertyGroup>
-
-    <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|x64' ">
-      <Prefer32bit>true</Prefer32bit>
-    </PropertyGroup>
-
-    <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|x86' ">
-      <Prefer32bit>true</Prefer32bit>
+    
+    <PropertyGroup Condition="'$(TargetFrameworkIdentifier)' == '.NETFramework'">
+        <Prefer32Bit>true</Prefer32Bit>
     </PropertyGroup>
 
     <ItemGroup>

@@ -7,7 +7,7 @@ namespace Pkuyo.CanKit.Net.Core.Abstractions;
 /// Factory to create CAN components (创建 CAN 组件的工厂)。
 /// </summary>
 public interface ICanFactory
-{ 
+{
     /// <summary>
     /// Create a device with provided options (用给定选项创建设备)。
     /// </summary>

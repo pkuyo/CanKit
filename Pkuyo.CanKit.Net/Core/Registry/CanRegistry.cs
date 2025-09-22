@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -16,13 +16,13 @@ namespace Pkuyo.CanKit.Net.Core.Registry
     /// </summary>
     public partial class CanRegistry
     {
-        
+
         /// <summary>
         /// Gets the singleton instance of the CAN registry. (获取CAN注册表的单例实例)
         /// </summary>
         public static CanRegistry Registry => _Registry.Value;
 
-        
+
         /// <summary>
         /// Registers one or more CAN model providers.(注册设备描述)
         /// </summary>
@@ -55,7 +55,7 @@ namespace Pkuyo.CanKit.Net.Core.Registry
             }
             _factories.Add(factoryId, factory);
         }
-        
+
         /// <summary>
         /// Resolves a CAN model provider for the specified device type. (根据指定的设备类型解析CAN模型提供者)
         /// </summary>
@@ -68,7 +68,7 @@ namespace Pkuyo.CanKit.Net.Core.Registry
                 return provider;
             throw new NotSupportedException("Unknown device");
         }
-        
+
         /// <summary>
         /// Retrieves a CAN factory by its unique identifier. (通过唯一标识符检索CAN工厂)
         /// </summary>
@@ -114,7 +114,7 @@ namespace Pkuyo.CanKit.Net.Core.Registry
             {
                 var provider = (ICanModelProvider)Activator.CreateInstance(t)!;
                 if (_providers.ContainsKey(provider.DeviceType))
-                { 
+                {
                     CanKitLogger.LogError($"A provider with the DeviceType '{provider.DeviceType}' is already registered.");
                 }
                 else
@@ -199,15 +199,15 @@ namespace Pkuyo.CanKit.Net.Core.Registry
                 {
                     _factories.Add(attr.FactoryId, factory);
                 }
-              
+
             }
         }
-        
+
         private static readonly Lazy<CanRegistry> _Registry =
             new(BuildRegistry, LazyThreadSafetyMode.ExecutionAndPublication);
-        
+
         private readonly Dictionary<DeviceType, ICanModelProvider> _providers = new();
-        
-        private readonly Dictionary<string, ICanFactory> _factories = new ();
+
+        private readonly Dictionary<string, ICanFactory> _factories = new();
     }
 }

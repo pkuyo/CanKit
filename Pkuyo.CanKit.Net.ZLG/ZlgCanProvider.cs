@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using Pkuyo.CanKit.Net.Core;
 using Pkuyo.CanKit.Net.Core.Abstractions;
@@ -14,14 +14,14 @@ namespace Pkuyo.CanKit.ZLG
     public abstract class ZlgCanProvider : ICanModelProvider
     {
         public abstract DeviceType DeviceType { get; }
-        
+
         public virtual CanFeature StaticFeatures => CanFeature.CanClassic | CanFeature.Filters | CanFeature.ErrorCounters;
 
         public virtual ZlgFeature ZlgFeature => ZlgFeature.None;
-        
+
         public ICanFactory Factory => CanRegistry.Registry.Factory("Zlg");
-        
-        public (IDeviceOptions,IDeviceInitOptionsConfigurator) GetDeviceOptions()
+
+        public (IDeviceOptions, IDeviceInitOptionsConfigurator) GetDeviceOptions()
         {
             var option = new ZlgDeviceOptions(this);
             var cfg = new ZlgDeviceInitOptionsConfigurator();
@@ -29,7 +29,7 @@ namespace Pkuyo.CanKit.ZLG
             return (option, cfg);
         }
 
-        public  (IBusOptions,IBusInitOptionsConfigurator) GetChannelOptions(int channelIndex)
+        public (IBusOptions, IBusInitOptionsConfigurator) GetChannelOptions(int channelIndex)
         {
             var option = new ZlgBusOptions(this)
             {

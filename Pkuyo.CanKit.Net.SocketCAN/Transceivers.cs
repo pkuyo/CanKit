@@ -104,7 +104,7 @@ public sealed class SocketCanClassicTransceiver : ITransceiver
             }
             else
             {
-                n = Libc.read(ch.FileDescriptor, frame , (ulong)size);
+                n = Libc.read(ch.FileDescriptor, frame, (ulong)size);
             }
             if (n <= 0)
             {
@@ -117,7 +117,7 @@ public sealed class SocketCanClassicTransceiver : ITransceiver
 
             if (tsTicks == 0) tsTicks = (ulong)DateTime.UtcNow.Ticks;
             result.Add(new CanReceiveData(new CanClassicFrame(frame->can_id, data2))
-                { recvTimestamp = tsTicks });
+            { recvTimestamp = tsTicks });
         }
         return result;
     }
@@ -239,7 +239,7 @@ public sealed class SocketCanFdTransceiver : ITransceiver
             bool esi = (frame->flags & Libc.CANFD_ESI) != 0;
             if (tsTicks == 0) tsTicks = (ulong)DateTime.UtcNow.Ticks;
             result.Add(new CanReceiveData(new CanFdFrame(frame->can_id, data, brs, esi))
-                { recvTimestamp = tsTicks });
+            { recvTimestamp = tsTicks });
         }
 
         return result;

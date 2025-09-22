@@ -8,13 +8,13 @@ namespace Pkuyo.CanKit.Net.Core.Abstractions;
 /// Base interface for device/channel option configurators (设备/通道选项配置器的基础接口)。
 /// </summary>
 public interface ICanOptionsConfigurator
-{ 
+{
     /// <summary>
     /// Model provider for current options (当前设备/通道所属的模型提供者)。
     /// </summary>
     ICanModelProvider Provider { get; }
-    
-    
+
+
     /// <summary>
     /// Features supported by current options (当前设备/通道选项支持的功能)。
     /// </summary>
@@ -25,7 +25,7 @@ public interface ICanOptionsConfigurator
 /// Runtime device option accessor (设备运行时选项访问器)。
 /// </summary>
 public interface IDeviceRTOptionsConfigurator : ICanOptionsConfigurator
-{ 
+{
 
     /// <summary>
     /// Device type (设备类型)。
@@ -43,7 +43,7 @@ public interface IDeviceRTOptionsConfigurator : ICanOptionsConfigurator
 /// Runtime channel option accessor (通道运行时选项访问器)。
 /// </summary>
 public interface IBusRTOptionsConfigurator : ICanOptionsConfigurator
-{ 
+{
     /// <summary>
     /// Channel index (通道索引)。
     /// </summary>
@@ -94,7 +94,7 @@ public interface IBusRTOptionsConfigurator : ICanOptionsConfigurator
 /// Configurator for initializing device options (设备初始化选项配置器)。
 /// </summary>
 public interface IDeviceInitOptionsConfigurator : ICanOptionsConfigurator
-{ 
+{
     /// <summary>
     /// Device type (设备类型)。
     /// </summary>
@@ -117,7 +117,7 @@ public interface IDeviceInitOptionsConfigurator : ICanOptionsConfigurator
 /// Configurator for initializing channel options (通道初始化选项配置器)。
 /// </summary>
 public interface IBusInitOptionsConfigurator : ICanOptionsConfigurator
-{ 
+{
 
     /// <summary>
     /// Channel index (通道索引)。
@@ -158,7 +158,7 @@ public interface IBusInitOptionsConfigurator : ICanOptionsConfigurator
     /// Protocol mode (协议模式)。
     /// </summary>
     CanProtocolMode ProtocolMode { get; }
-    
+
 
     /// <summary>
     /// Current filter (当前过滤器)。
@@ -239,7 +239,7 @@ public interface IBusInitOptionsConfigurator : ICanOptionsConfigurator
     /// <param name="idType">ID type (ID 类型)。</param>
     /// <returns>Configurator (配置器本身)。</returns>
     IBusInitOptionsConfigurator AccMask(uint accCode, uint accMask, CanFilterIDType idType);
-    
+
 }
 
 
@@ -248,9 +248,9 @@ public interface IBusInitOptionsConfigurator : ICanOptionsConfigurator
 
 public abstract class CallOptionsConfigurator<TOption, TSelf>
     where TOption : class, ICanOptions
-    where TSelf   : CallOptionsConfigurator<TOption, TSelf>
+    where TSelf : CallOptionsConfigurator<TOption, TSelf>
 {
-    protected TOption?  _options;
+    protected TOption? _options;
     protected CanFeature _feature;
 
     public virtual TSelf Init(TOption options)
@@ -262,8 +262,8 @@ public abstract class CallOptionsConfigurator<TOption, TSelf>
     }
 
     protected TOption Options => _options ?? throw new InvalidOperationException("Options have not been initialized.");
-    
-    
+
+
     /// <summary>
     /// Merge dynamic features discovered at runtime into current capability set.
     /// ZH: 合并运行期发现的动态功能到当前能力集合。
@@ -273,6 +273,6 @@ public abstract class CallOptionsConfigurator<TOption, TSelf>
         _feature |= dynamic;
         return (TSelf)this;
     }
-    
+
     protected TSelf Self => (TSelf)this;
 }

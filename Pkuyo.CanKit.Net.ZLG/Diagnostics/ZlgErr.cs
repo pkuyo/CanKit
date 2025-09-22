@@ -43,9 +43,9 @@ namespace Pkuyo.CanKit.ZLG.Diagnostics
         {
             // ECC fields
             var rawEcc = errInfo.passive_ErrData[0];
-            byte eccType   = (byte)((rawEcc >> 6) & 0x03);  // 0=Bit,1=Form,2=Stuff,3=Other
+            byte eccType = (byte)((rawEcc >> 6) & 0x03);  // 0=Bit,1=Form,2=Stuff,3=Other
             byte eccDirBit = (byte)((rawEcc >> 5) & 0x01);  // 0=Tx, 1=Rx
-            byte eccLoc    = (byte)(rawEcc & 0x1F);
+            byte eccLoc = (byte)(rawEcc & 0x1F);
 
             FrameErrorKind eccKind = eccType switch
             {
@@ -78,7 +78,7 @@ namespace Pkuyo.CanKit.ZLG.Diagnostics
             {
                 0x08 or 0x09 => FrameErrorKind.CrcError,
                 0x19 or 0x1A => FrameErrorKind.AckError,
-                _            => FrameErrorKind.Controller
+                _ => FrameErrorKind.Controller
             };
 
             static FrameErrorKind MapZlgFlagsToKind(ZlgErrorFlag flags, FrameErrorKind fallback)

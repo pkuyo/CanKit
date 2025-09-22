@@ -37,7 +37,7 @@ namespace Pkuyo.CanKit.Net.Gen
                     t.AttributeLists.Count > 0,
                 static (ctx, ct) => Transform(ctx, ct)
             ).Where(static t => t is not null)!;
-            
+
             var combo = context.CompilationProvider.Combine(candidates.Collect());
 
             context.RegisterSourceOutput(combo, static (spc, tuple) =>
@@ -66,7 +66,7 @@ namespace Pkuyo.CanKit.Net.Gen
             {
                 if (!member.Modifiers.Any(m => m.IsKind(SyntaxKind.PartialKeyword)))
                     continue;
-                
+
                 // no method body
                 if (member.AccessorList is null) continue;
                 var allAccessorsAreAuto =
@@ -79,13 +79,13 @@ namespace Pkuyo.CanKit.Net.Gen
                 var attr = GetAttr(propSymbol, ParamAttrFull, ParamAttrShort);
                 if (attr == null || attr.ConstructorArguments.Any(i => i.Kind == TypedConstantKind.Error))
                     continue;
-                
+
                 var hasGet = propSymbol.GetMethod is not null;
                 var hasSet = propSymbol.SetMethod is not null &&
                              propSymbol.SetMethod.DeclaredAccessibility != Accessibility.NotApplicable;
                 var isInit = member.AccessorList.Accessors.Any(a =>
                     a.Kind() == SyntaxKind.InitAccessorDeclaration);
-                
+
                 list.Add(new PropertyWork(
                     Name: propSymbol.Name,
                     TypeDisplay: propSymbol.Type.ToDisplayString(
@@ -93,7 +93,7 @@ namespace Pkuyo.CanKit.Net.Gen
                             SymbolDisplayMiscellaneousOptions.IncludeNullableReferenceTypeModifier)),
                     HasGet: hasGet,
                     HasSet: hasSet,
-                    Accessibility: propSymbol.DeclaredAccessibility ,
+                    Accessibility: propSymbol.DeclaredAccessibility,
                     HasModifers: member.Modifiers.Any(m =>
                             m.IsKind(SyntaxKind.PublicKeyword) ||
                             m.IsKind(SyntaxKind.PrivateKeyword) ||
@@ -102,7 +102,7 @@ namespace Pkuyo.CanKit.Net.Gen
                     UseInit: isInit,
                     OptionName: (string)attr.ConstructorArguments[0].Value!,
                     OptionType: (CanOptionType)((int)attr.ConstructorArguments[1].Value!),
-                    DefaultValue:attr.ConstructorArguments[2].Value as string
+                    DefaultValue: attr.ConstructorArguments[2].Value as string
                 ));
             }
 
@@ -135,7 +135,7 @@ namespace Pkuyo.CanKit.Net.Gen
                 sb.AppendLine();
             }
 
-          
+
             var stack = new Stack<INamedTypeSymbol>();
             var cur = work.TypeSymbol;
             while (cur is not null)
@@ -173,7 +173,7 @@ namespace Pkuyo.CanKit.Net.Gen
                 opened = t;
             }
 
-        
+
             // backing field + property impl
 
             var avaiableProerties = new List<PropertyWork>();
@@ -181,22 +181,22 @@ namespace Pkuyo.CanKit.Net.Gen
             for (int i = 0; i < work.Properties.Count; i++)
             {
                 var p = work.Properties[i];
-                
+
                 if (!p.HasGet || !p.HasSet)
                 {
                     var descriptor = new DiagnosticDescriptor(
-                        id: "CANG001",                     
-                        title: "属性缺少partial get/set",        
-                        messageFormat: "{0}.{1}缺少{2}",         
-                        category: "SourceGenerator",           
-                        DiagnosticSeverity.Error,              
+                        id: "CANG001",
+                        title: "属性缺少partial get/set",
+                        messageFormat: "{0}.{1}缺少{2}",
+                        category: "SourceGenerator",
+                        DiagnosticSeverity.Error,
                         isEnabledByDefault: true
                     );
                     var str = !p.HasGet ? "Get" : "";
                     if (!p.HasSet)
                         str += !string.IsNullOrEmpty(str) ? "/Set" : "Set";
-                    
-                    var diagnostic = Diagnostic.Create(descriptor, Location.None, 
+
+                    var diagnostic = Diagnostic.Create(descriptor, Location.None,
                         work.TypeSymbol.Name,
                         p.Name,
                         str);
@@ -207,15 +207,15 @@ namespace Pkuyo.CanKit.Net.Gen
                 if (p.Accessibility == Accessibility.NotApplicable && p.HasModifers)
                 {
                     var descriptor = new DiagnosticDescriptor(
-                        id: "CANG002",                     
-                        title: "属性访问权限错误",        
-                        messageFormat: "{0}.{1}访问权限描述符错误",         
-                        category: "SourceGenerator",           
-                        DiagnosticSeverity.Error,              
+                        id: "CANG002",
+                        title: "属性访问权限错误",
+                        messageFormat: "{0}.{1}访问权限描述符错误",
+                        category: "SourceGenerator",
+                        DiagnosticSeverity.Error,
                         isEnabledByDefault: true
                     );
-                  
-                    var diagnostic = Diagnostic.Create(descriptor, Location.None, 
+
+                    var diagnostic = Diagnostic.Create(descriptor, Location.None,
                         work.TypeSymbol.Name,
                         p.Name);
                     spc.ReportDiagnostic(diagnostic);
@@ -223,7 +223,7 @@ namespace Pkuyo.CanKit.Net.Gen
                 }
 
                 avaiableProerties.Add(p);
-                
+
                 var backing = MakeBackingName(p.Name);
 
                 // backing field
@@ -232,7 +232,7 @@ namespace Pkuyo.CanKit.Net.Gen
 
                 if (p.DefaultValue != null)
                     sb.Append($" = {p.DefaultValue}");
-                
+
                 sb.AppendLine(";");
                 // property impl
                 sb.Append("    ");
@@ -265,11 +265,11 @@ namespace Pkuyo.CanKit.Net.Gen
 
                 sb.Append("partial ").Append(p.TypeDisplay).Append(' ').Append(p.Name).AppendLine();
                 sb.AppendLine("    {");
-                
+
                 sb.Append("        get => ");
                 sb.Append("this.");
                 sb.Append(backing).AppendLine(";");
-                
+
                 var accessor = p.UseInit ? "init" : "set";
                 sb.Append("        ").AppendLine(accessor).AppendLine("        {");
                 sb.AppendLine($"            if(this.{backing} != value)");
@@ -278,7 +278,7 @@ namespace Pkuyo.CanKit.Net.Gen
                 sb.AppendLine($"                this._hasChanged[{avaiableIndex}] = true;");
                 sb.AppendLine("            }");
                 sb.AppendLine("        }");
-                
+
 
                 sb.AppendLine("    }");
                 sb.AppendLine();
@@ -290,7 +290,7 @@ namespace Pkuyo.CanKit.Net.Gen
             sb.AppendLine(
                 $"    BitArray _hasChanged = new BitArray({avaiableProerties.Count});");
             sb.AppendLine();
-            sb.AppendLine("    public partial void Apply(Pkuyo.CanKit.Net.Core.Abstractions.ICanApplier applier, bool force)"); 
+            sb.AppendLine("    public partial void Apply(Pkuyo.CanKit.Net.Core.Abstractions.ICanApplier applier, bool force)");
             sb.AppendLine("    {");
             sb.AppendLine("         if(applier is Pkuyo.CanKit.Net.Core.Abstractions.INamedCanApplier namedApplier)");
             sb.AppendLine("         {");

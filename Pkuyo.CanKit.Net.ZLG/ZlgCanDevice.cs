@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Pkuyo.CanKit.Net.Core.Abstractions;
 using Pkuyo.CanKit.Net.Core.Definitions;
 using Pkuyo.CanKit.Net.Core.Diagnostics;
@@ -11,19 +11,19 @@ using Pkuyo.CanKit.ZLG.Options;
 
 namespace Pkuyo.CanKit.ZLG
 {
-     public sealed class ZlgCanDevice : ICanDevice<ZlgDeviceRTOptionsConfigurator>, INamedCanApplier
-     {
-         public ZlgCanDevice(IDeviceOptions options)
-         {
-             Options = new ZlgDeviceRTOptionsConfigurator();
-             Options.Init((ZlgDeviceOptions)options);
-             _options = options;
-         }
-         
+    public sealed class ZlgCanDevice : ICanDevice<ZlgDeviceRTOptionsConfigurator>, INamedCanApplier
+    {
+        public ZlgCanDevice(IDeviceOptions options)
+        {
+            Options = new ZlgDeviceRTOptionsConfigurator();
+            Options.Init((ZlgDeviceOptions)options);
+            _options = options;
+        }
+
         public void OpenDevice()
         {
             ThrowIfDisposed();
-            var ptr = ZLGCAN.ZCAN_OpenDevice(Options.DeviceIndex,0, 0);
+            var ptr = ZLGCAN.ZCAN_OpenDevice(Options.DeviceIndex, 0, 0);
             var handle = new ZlgDeviceHandle(ptr);
             if (handle is { IsInvalid: false })
             {
@@ -49,13 +49,13 @@ namespace Pkuyo.CanKit.ZLG
             if (_isDisposed)
                 throw new CanDeviceDisposedException();
         }
-        
-        
+
+
         public void Dispose()
         {
             try
             {
-            
+
                 ThrowIfDisposed();
                 _nativeHandler?.Dispose();
             }
@@ -65,19 +65,19 @@ namespace Pkuyo.CanKit.ZLG
                 _isDisposed = true;
             }
         }
-        
+
 
         public ZlgDeviceHandle NativeHandler => _nativeHandler;
 
         public bool IsDeviceOpen => _isDeviceOpen;
-        
+
         public ZlgDeviceRTOptionsConfigurator Options { get; }
 
         private bool _isDeviceOpen = false;
 
         private IDeviceOptions _options;
 
-        private ZlgDeviceHandle _nativeHandler = new ();
+        private ZlgDeviceHandle _nativeHandler = new();
 
         private bool _isDisposed;
         public bool ApplyOne<T>(object id, T value)
@@ -88,11 +88,11 @@ namespace Pkuyo.CanKit.ZLG
 
         public void Apply(ICanOptions options)
         {
-           
+
         }
 
         public CanOptionType ApplierStatus => IsDeviceOpen ? CanOptionType.Runtime : CanOptionType.Init;
-        
+
         IDeviceRTOptionsConfigurator ICanDevice.Options => Options;
-     }
+    }
 }

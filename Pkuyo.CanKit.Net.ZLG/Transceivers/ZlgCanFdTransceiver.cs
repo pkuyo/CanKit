@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using System.Linq;
 using Pkuyo.CanKit.Net.Core.Abstractions;
 using Pkuyo.CanKit.Net.Core.Definitions;
@@ -12,7 +12,7 @@ namespace Pkuyo.CanKit.ZLG.Transceivers
         public uint Transmit(ICanBus<IBusRTOptionsConfigurator> channel,
             IEnumerable<CanTransmitData> frames, int _ = 0)
         {
-            var zcanTransmitData = 
+            var zcanTransmitData =
                 frames.Select(i => i.CanFrame)
                     .OfType<CanFdFrame>()
                     .Select(i => i.ToTransmitData())

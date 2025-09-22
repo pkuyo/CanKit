@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -15,20 +15,20 @@ using Pkuyo.CanKit.ZLG.Transceivers;
 
 namespace Pkuyo.CanKit.ZLG
 {
-    
+
     public sealed class ZlgCanBus : ICanBus<ZlgBusRtConfigurator>, INamedCanApplier, IBusOwnership
     {
-        
-        internal ZlgCanBus(ZlgCanDevice device ,IBusOptions options, ITransceiver transceiver)
+
+        internal ZlgCanBus(ZlgCanDevice device, IBusOptions options, ITransceiver transceiver)
         {
             _devicePtr = device.NativeHandler.DangerousGetHandle();
-            
+
             Options = new ZlgBusRtConfigurator();
             Options.Init((ZlgBusOptions)options);
             options.Apply(this, true);
-            
+
             var provider = Options.Provider as ZlgCanProvider;
-            
+
             ZLGCAN.ZCAN_CHANNEL_INIT_CONFIG config = new ZLGCAN.ZCAN_CHANNEL_INIT_CONFIG
             {
                 can_type = options.ProtocolMode == CanProtocolMode.Can20 ? 0U : 1U,
@@ -36,8 +36,8 @@ namespace Pkuyo.CanKit.ZLG
             if (options.ProtocolMode == CanProtocolMode.Can20)
             {
                 config.config.can.mode = (byte)options.WorkMode;
-                
-          
+
+
             }
             else
             {
@@ -59,14 +59,14 @@ namespace Pkuyo.CanKit.ZLG
                     config.config.can.acc_code = mask.AccCode;
                     config.config.can.acc_mask = mask.AccMask;
                     config.config.can.filter = (byte)Options.MaskFilterType;
-                    
+
                 }
-                else 
+                else
                 {
                     config.config.can.acc_code = 0;
                     config.config.can.acc_mask = 0xffffffff;
                 }
-            
+
             }
 
             var handle = ZLGCAN.ZCAN_InitCAN(device.NativeHandler, (uint)Options.ChannelIndex, ref config);
@@ -76,13 +76,13 @@ namespace Pkuyo.CanKit.ZLG
             _nativeHandle = handle;
 
             Reset();
-            
+
             if (transceiver is not IZlgTransceiver zlg)
                 throw new CanTransceiverMismatchException(typeof(IZlgTransceiver), transceiver?.GetType() ?? typeof(ITransceiver));
             _transceiver = zlg;
-            
+
         }
-        
+
 
         public void Reset()
         {
@@ -90,7 +90,7 @@ namespace Pkuyo.CanKit.ZLG
 
             ZlgErr.ThrowIfError(ZLGCAN.ZCAN_ResetCAN(_nativeHandle), nameof(ZLGCAN.ZCAN_ResetCAN), _nativeHandle);
         }
-        
+
 
         public void ClearBuffer()
         {
@@ -102,7 +102,7 @@ namespace Pkuyo.CanKit.ZLG
         public uint Transmit(IEnumerable<CanTransmitData> frames, int timeOut = 0)
         {
             ThrowIfDisposed();
-            
+
             var list = frames.ToList();
             bool isFirst = true;
             uint result = 0;
@@ -112,10 +112,10 @@ namespace Pkuyo.CanKit.ZLG
                 if (isFirst)
                     isFirst = false;
                 else
-                    Thread.Sleep(Math.Min(Environment.TickCount- startTime, Options.PollingInterval));
-                
+                    Thread.Sleep(Math.Min(Environment.TickCount - startTime, Options.PollingInterval));
+
                 result += _transceiver.Transmit(this, list);
-            } while (result < list.Count && Environment.TickCount- startTime <=timeOut);
+            } while (result < list.Count && Environment.TickCount - startTime <= timeOut);
 
             return result;
         }
@@ -133,7 +133,7 @@ namespace Pkuyo.CanKit.ZLG
         {
             if ((Options.Features & CanFeature.ErrorCounters) == 0U)
                 throw new CanFeatureNotSupportedException(CanFeature.ErrorCounters, Options.Features);
-            
+
             var errInfo = new ZLGCAN.ZCAN_CHANNEL_ERROR_INFO();
             ZLGCAN.ZCAN_ReadChannelErrInfo(_nativeHandle, ref errInfo);
             return new CanErrorCounters()
@@ -152,7 +152,7 @@ namespace Pkuyo.CanKit.ZLG
         public bool ReadErrorInfo(out ICanErrorInfo? errorInfo)
         {
             errorInfo = null;
-            
+
             var errInfo = new ZLGCAN.ZCAN_CHANNEL_ERROR_INFO();
             if (ZLGCAN.ZCAN_ReadChannelErrInfo(_nativeHandle, ref errInfo) != ZlgErr.StatusOk ||
                 errInfo.error_code == 0)
@@ -160,7 +160,7 @@ namespace Pkuyo.CanKit.ZLG
 
             errorInfo = ZlgErr.ToErrorInfo(errInfo);
             return true;
-            
+
         }
 
 
@@ -174,11 +174,11 @@ namespace Pkuyo.CanKit.ZLG
                 CanProtocolMode.CanFd => ZlgFrameType.CanFd,
                 _ => ZlgFrameType.CanClassic
             };
-       
+
             return ZLGCAN.ZCAN_GetReceiveNum(_nativeHandle, (byte)zlgFilterType);
         }
 
-        
+
         public void Dispose()
         {
             if (_isDisposed)
@@ -188,7 +188,7 @@ namespace Pkuyo.CanKit.ZLG
 
             try
             {
-         
+
                 try
                 {
                     Reset();
@@ -212,7 +212,7 @@ namespace Pkuyo.CanKit.ZLG
             if (_isDisposed)
                 throw new CanBusDisposedException();
         }
-        
+
         public bool ApplyOne<T>(object id, T value)
         {
             return ZLGCAN.ZCAN_SetValue(_devicePtr,
@@ -289,10 +289,10 @@ namespace Pkuyo.CanKit.ZLG
                 {
                     foreach (var rule in zlgOption.Filter.filterRules)
                     {
-                        if(rule is not FilterRule.Range range)
+                        if (rule is not FilterRule.Range range)
                             throw new CanFilterConfigurationException(
                                 "ZLG channels only supports the same type of filter rule.");
-                        
+
                         ZlgErr.ThrowIfError(
                             ZLGCAN.ZCAN_SetValue(
                                 _devicePtr,
@@ -329,7 +329,7 @@ namespace Pkuyo.CanKit.ZLG
 
             _pollCts = new CancellationTokenSource();
             var token = _pollCts.Token;
-            
+
             _pollTask = System.Threading.Tasks.Task.Factory.StartNew(
                 () => PollLoop(token),
                 token,
@@ -343,7 +343,7 @@ namespace Pkuyo.CanKit.ZLG
             try
             {
                 _pollCts?.Cancel();
-                _pollTask?.Wait(500); 
+                _pollTask?.Wait(500);
             }
             catch { /* ignore on shutdown */ }
             finally
@@ -423,18 +423,18 @@ namespace Pkuyo.CanKit.ZLG
                 }
             }
         }
-        
+
 
         public ZlgChannelHandle NativeHandle => _nativeHandle;
 
         public ZlgBusRtConfigurator Options { get; }
-        
+
         IBusRTOptionsConfigurator ICanBus.Options => Options;
-        
+
         public CanOptionType ApplierStatus => _nativeHandle is { IsInvalid: false, IsClosed: false } ?
-            CanOptionType.Runtime : 
+            CanOptionType.Runtime :
             CanOptionType.Init;
-        
+
         public event EventHandler<CanReceiveData> FrameReceived
         {
             add
@@ -460,14 +460,14 @@ namespace Pkuyo.CanKit.ZLG
         public event EventHandler<ICanErrorInfo> ErrorOccurred
         {
             add
-            {   
+            {
                 lock (_evtGate)
                 {
                     _errorOccurred += value;
                     _subscriberCount++;
                     CheckSubscribers(true);
                 }
-      
+
             }
             remove
             {
@@ -482,21 +482,21 @@ namespace Pkuyo.CanKit.ZLG
         private readonly ZlgChannelHandle _nativeHandle;
 
         private readonly IntPtr _devicePtr;
-        
-        private readonly IZlgTransceiver  _transceiver;
+
+        private readonly IZlgTransceiver _transceiver;
 
         private bool _isDisposed;
-        
-        private readonly object _evtGate = new ();
-        
-        private EventHandler<CanReceiveData>? _frameReceived; 
-        
-        private EventHandler<ICanErrorInfo>? _errorOccurred; 
-        
+
+        private readonly object _evtGate = new();
+
+        private EventHandler<CanReceiveData>? _frameReceived;
+
+        private EventHandler<ICanErrorInfo>? _errorOccurred;
+
         private int _subscriberCount;
-        
+
         private CancellationTokenSource? _pollCts;
-        
+
         private System.Threading.Tasks.Task? _pollTask;
 
         private IDisposable? _owner;

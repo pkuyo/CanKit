@@ -94,7 +94,7 @@ public static class CanBus
         {
             own.AttachOwner(new DeviceOwner(device));
         }
-        
+
         return typedBus;
     }
 

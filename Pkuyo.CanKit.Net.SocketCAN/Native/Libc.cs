@@ -2,6 +2,8 @@ using System.Runtime.InteropServices;
 
 namespace Pkuyo.CanKit.Net.SocketCAN.Native;
 #nullable disable
+#pragma warning disable IDE0055
+#pragma warning disable CS8981
 internal static class Libc
 {
     // Address family / socket types

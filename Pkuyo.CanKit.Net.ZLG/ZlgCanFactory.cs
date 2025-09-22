@@ -16,7 +16,7 @@ public sealed class ZlgCanFactory : ICanFactory
 
     public ICanBus CreateBus(ICanDevice device, IBusOptions options, ITransceiver transceiver)
     {
-        
+
         if (device is not ZlgCanDevice zlgCanDevice)
             throw new CanFactoryDeviceMismatchException(typeof(ZlgCanDevice), device?.GetType() ?? typeof(ICanDevice));
 
@@ -27,14 +27,14 @@ public sealed class ZlgCanFactory : ICanFactory
     {
         return deviceType is ZlgDeviceType;
     }
-    
+
     public ITransceiver CreateTransceivers(IDeviceRTOptionsConfigurator configurator,
         IBusInitOptionsConfigurator busOptions)
     {
         if (configurator.Provider is not ZlgCanProvider provider)
             throw new CanProviderMismatchException(typeof(ZlgCanProvider), configurator.Provider?.GetType() ?? typeof(ICanModelProvider));
 
-        if (busOptions.ProtocolMode == CanProtocolMode.Merged && 
+        if (busOptions.ProtocolMode == CanProtocolMode.Merged &&
             (configurator.Features & CanFeature.MergeReceive) != 0U)
             return new ZlgMergeTransceiver();
 

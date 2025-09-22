@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using System.Linq;
 using Pkuyo.CanKit.Net.Core.Abstractions;
 using Pkuyo.CanKit.Net.Core.Definitions;
@@ -8,7 +8,7 @@ using Pkuyo.CanKit.ZLG.Utils;
 
 namespace Pkuyo.CanKit.ZLG.Transceivers
 {
-    
+
     public sealed class ZlgMergeTransceiver : IZlgTransceiver
     {
         public uint Transmit(ICanBus<IBusRTOptionsConfigurator> channel,
@@ -29,5 +29,5 @@ namespace Pkuyo.CanKit.ZLG.Transceivers
 
         public ZlgFrameType FrameType => ZlgFrameType.Any;
     }
-    
+
 }

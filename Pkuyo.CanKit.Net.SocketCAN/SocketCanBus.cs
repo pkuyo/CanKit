@@ -14,7 +14,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
         Options.Init((SocketCanBusOptions)options);
         _options = options;
         _transceiver = transceiver;
-        
+
         // Create socket & bind
         _fd = CreateAndBind(Options.InterfaceName, Options.ProtocolMode, Options.PreferKernelTimestamp);
 
@@ -29,7 +29,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
         if (fd < 0) throw new CanBusCreationException("socket(AF_CAN, SOCK_RAW, CAN_RAW) failed.");
         try
         {
-            
+
             // set no block
             var flags = Libc.fcntl(fd, Libc.F_GETFL, 0);
             if (flags == -1)
@@ -41,7 +41,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
             {
                 // TODO: exception handling
             }
-            
+
             //enable echo mode
             if (_options.WorkMode == ChannelWorkMode.Echo)
             {
@@ -121,9 +121,9 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
         ThrowIfDisposed();
         //TODO:
     }
-    
-    
-    
+
+
+
     public uint Transmit(IEnumerable<CanTransmitData> frames, int timeOut = 0)
     {
         ThrowIfDisposed();
@@ -134,11 +134,11 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
         using var enumerator = frames.GetEnumerator();
         if (!enumerator.MoveNext())
             return 0;
-        
+
         do
         {
-            var remainingTime = timeOut > 0 
-                ? Math.Max(0, timeOut - (Environment.TickCount - startTime)) 
+            var remainingTime = timeOut > 0
+                ? Math.Max(0, timeOut - (Environment.TickCount - startTime))
                 : timeOut;
 
             if (timeOut > 0 && remainingTime <= 0)
@@ -162,11 +162,11 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
 
         return sendCount;
     }
-    
+
     public IEnumerable<CanReceiveData> Receive(uint count = 1, int timeOut = 0)
     {
         ThrowIfDisposed();
-        
+
         if (timeOut > 0)
         {
             var pollFd = new Libc.pollfd { fd = _fd, events = Libc.POLLIN };
@@ -175,14 +175,14 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
                 // TODO: exception handling
             }
         }
-  
+
         return _transceiver.Receive(this, count);
     }
 
     public void ClearBuffer()
     {
         ThrowIfDisposed();
-        
+
         // TODO: exception handling
         throw new NotImplementedException();
     }
@@ -195,14 +195,14 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
     {
         throw new CanFeatureNotSupportedException(CanFeature.ErrorCounters, Options.Features);
     }
-    
+
     public bool ReadErrorInfo(out ICanErrorInfo? errorInfo)
     {
         // SocketCAN via raw socket does not expose detailed error info here
         errorInfo = null;
         return false;
     }
-    
+
 
     public void Dispose()
     {
@@ -211,7 +211,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
         {
             StopPolling();
             if (_fd >= 0)
-                 Libc.close(_fd); 
+                Libc.close(_fd);
         }
         finally
         {
@@ -283,21 +283,21 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
     }
 
     public CanOptionType ApplierStatus => _fd >= 0 ? CanOptionType.Runtime : CanOptionType.Init;
-    
+
 
     private void StartPollingIfNeeded()
     {
         if (_epollTask is { IsCompleted: false } || _fd < 0)
             return;
-        
+
         _epfd = Libc.epoll_create1(0);
-        if (_epfd < 0) 
+        if (_epfd < 0)
             Libc.ThrowErrno("epoll_create1");
         var ev = new Libc.epoll_event { events = Libc.EPOLLIN, data = (IntPtr)_fd };
-        
+
         if (Libc.epoll_ctl(_epfd, Libc.EPOLL_CTL_ADD, _fd, ref ev) < 0)
             Libc.ThrowErrno("epoll_ctl ADD sock");
-        
+
         _epollCts = new CancellationTokenSource();
         var token = _epollCts.Token;
         _epollTask = Task.Factory.StartNew(
@@ -319,9 +319,9 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
         }
         finally
         {
-            if (_epfd >= 0) 
+            if (_epfd >= 0)
                 Libc.close(_epfd);
-            
+
             _epollTask = null;
             _epollCts?.Dispose();
             _epollCts = null;
@@ -333,7 +333,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
         while (!token.IsCancellationRequested)
         {
             if (Volatile.Read(ref _subscriberCount) <= 0) break;
-            
+
             int n = Libc.epoll_wait(_epfd, _events, _events.Length, 500);
             if (n < 0) { continue; }
 
@@ -436,7 +436,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
     private readonly ITransceiver _transceiver;
     private bool _isDisposed;
     private int _fd;
-    
+
     private readonly IBusOptions _options;
 
 

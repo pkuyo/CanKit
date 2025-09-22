@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 
 namespace Pkuyo.CanKit.Net.Core.Definitions
@@ -79,14 +79,14 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
         ZCAN_MINI_PCIE_CANFD = 84,
         ZCAN_USBCANFD_800H = 85,
     }
-    
+
     public sealed record ZlgDeviceType : DeviceType
     {
         public ZlgDeviceType(string id, int meta) : base($"ZLG.{id}", meta)
         {
         }
-        
-        public static readonly ZlgDeviceType ZCAN_PCI9810 = new ZlgDeviceType(nameof(ZCAN_PCI9810),(int)ZlgDeviceKind.ZCAN_PCI9810);
+
+        public static readonly ZlgDeviceType ZCAN_PCI9810 = new ZlgDeviceType(nameof(ZCAN_PCI9810), (int)ZlgDeviceKind.ZCAN_PCI9810);
         public static readonly ZlgDeviceType ZCAN_USBCAN1 = new ZlgDeviceType(nameof(ZCAN_USBCAN1), (int)ZlgDeviceKind.ZCAN_USBCAN1);
         public static readonly ZlgDeviceType ZCAN_USBCAN2 = new ZlgDeviceType(nameof(ZCAN_USBCAN2), (int)ZlgDeviceKind.ZCAN_USBCAN2);
         public static readonly ZlgDeviceType ZCAN_PCI9820 = new ZlgDeviceType(nameof(ZCAN_PCI9820), (int)ZlgDeviceKind.ZCAN_PCI9820);

@@ -1,6 +1,6 @@
+using System.Reflection;
 using Peak.Can.Basic;
 using Peak.Can.Basic.BackwardCompatibility;
-using System.Reflection;
 using Pkuyo.CanKit.Net.Core.Abstractions;
 using Pkuyo.CanKit.Net.Core.Definitions;
 using Pkuyo.CanKit.Net.Core.Exceptions;
@@ -15,7 +15,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
         Options.Init((PcanBusOptions)options);
         _options = (PcanBusOptions)options;
         _transceiver = transceiver;
-        
+
         _handle = ParseHandle(_options.Channel);
 
         if (Options.ProtocolMode != CanProtocolMode.Can20)
@@ -26,20 +26,20 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
         if (st != TPCANStatus.PCAN_ERROR_OK)
             throw new CanBusCreationException($"PCAN Initialize failed: {st}");
     }
-    
+
 
     public void Reset()
     {
         ThrowIfDisposed();
         _ = PCANBasic.Reset(_handle);
     }
-    
+
     public void ClearBuffer()
     {
         ThrowIfDisposed();
         // Reset clears the receive/transmit queues
         _ = PCANBasic.Reset(_handle);
-        
+
     }
 
     public uint Transmit(IEnumerable<CanTransmitData> frames, int timeOut = 0)
@@ -69,18 +69,18 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
         errorInfo = null;
         return false;
     }
-    
+
     public PcanBusRtConfigurator Options { get; }
 
     IBusRTOptionsConfigurator ICanBus.Options => Options;
-    
+
 
     public void Dispose()
     {
         if (_isDisposed) return;
         try
         {
-            
+
         }
         finally
         {

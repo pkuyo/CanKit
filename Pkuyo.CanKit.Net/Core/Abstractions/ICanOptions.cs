@@ -3,13 +3,13 @@ using Pkuyo.CanKit.Net.Core.Definitions;
 
 namespace Pkuyo.CanKit.Net.Core.Abstractions
 {
-    
+
     /// <summary>
     /// Applies options to a target (用于将选项应用到目标的接口)。
     /// </summary>
     public interface ICanApplier
     {
-     
+
 
         /// <summary>
         /// Apply a batch of options (批量应用选项)。
@@ -23,7 +23,7 @@ namespace Pkuyo.CanKit.Net.Core.Abstractions
         CanOptionType ApplierStatus { get; }
     }
 
-    
+
     /// <summary>
     /// Named applier that supports applying options by name (支持按名称应用选项的应用器)。
     /// </summary>
@@ -125,7 +125,7 @@ namespace Pkuyo.CanKit.Net.Core.Abstractions
         /// ID/data filter (过滤器)。
         /// </summary>
         CanFilter Filter { get; set; }
-        
+
     }
 }
 

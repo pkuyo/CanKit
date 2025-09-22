@@ -295,7 +295,7 @@ namespace Pkuyo.CanKit.Net.Core.Exceptions
         {
         }
     }
-    
+
 
     /// <summary>
     /// Transceiver type mismatch (收发器类型不匹配异常)。

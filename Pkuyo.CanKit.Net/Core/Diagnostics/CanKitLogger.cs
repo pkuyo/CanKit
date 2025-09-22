@@ -82,7 +82,7 @@ namespace Pkuyo.CanKit.Net.Core.Diagnostics
             if (exception == null) throw new ArgumentNullException(nameof(exception));
             Log(CanKitLogLevel.Error, message ?? exception.Message, exception);
         }
-        
+
         /// <summary>
         /// Log an error, with optional custom exception (记录错误)。
         /// </summary>
@@ -91,9 +91,9 @@ namespace Pkuyo.CanKit.Net.Core.Diagnostics
         public static void LogError(string message, Exception? exception = null)
         {
             if (message == null) throw new ArgumentNullException(nameof(message));
-            Log(CanKitLogLevel.Error, message , exception);
+            Log(CanKitLogLevel.Error, message, exception);
         }
-        
+
         /// <summary>
         /// Log a warning (记录警告)。
         /// </summary>

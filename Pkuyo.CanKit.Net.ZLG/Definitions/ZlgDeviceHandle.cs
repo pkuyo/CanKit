@@ -8,11 +8,11 @@ public sealed class ZlgDeviceHandle : SafeHandle
 {
     public ZlgDeviceHandle() : base(IntPtr.Zero, true)
     {
-        
+
     }
     public ZlgDeviceHandle(IntPtr ptr) : base(ptr, true)
     {
-        
+
     }
     protected override bool ReleaseHandle()
     {
@@ -29,9 +29,9 @@ public sealed class ZlgChannelHandle() : SafeHandle(IntPtr.Zero, false)
     {
         DeviceHandle = deviceHandle;
     }
-    
+
     public IntPtr DeviceHandle { get; private set; }
-    
+
     protected override bool ReleaseHandle() => true;
 
     public override bool IsInvalid => handle == IntPtr.Zero || DeviceHandle == IntPtr.Zero;
