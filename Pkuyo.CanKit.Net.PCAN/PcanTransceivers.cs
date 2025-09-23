@@ -72,8 +72,9 @@ public sealed class PcanClassicTransceiver : ITransceiver
                 continue;
             }
 
-            bool isExt = (pmsg.MsgType & MessageType.Extended) != 0;
-            bool isRtr = (pmsg.MsgType & MessageType.RemoteRequest) != 0;
+            var isExt = (pmsg.MsgType & MessageType.Extended) != 0;
+            var isRtr = (pmsg.MsgType & MessageType.RemoteRequest) != 0;
+            var isErr = (pmsg.MsgType & MessageType.Error) != 0;
 
             byte[] data = pmsg.Data;
             if (data.Length > pmsg.DLC)
@@ -81,7 +82,7 @@ public sealed class PcanClassicTransceiver : ITransceiver
                 Array.Resize(ref data, pmsg.DLC);
             }
 
-            var frame = new CanClassicFrame(pmsg.ID, data, isExt) { IsRemoteFrame = isRtr };
+            var frame = new CanClassicFrame(pmsg.ID, data, isExt) { IsRemoteFrame = isRtr, IsErrorFrame = isErr };
 
             // Assume PCAN timestamp is in microseconds. Convert to ticks (100ns)
             var ticks = ts * 10UL;
@@ -152,9 +153,10 @@ public sealed class PcanFdTransceiver : ITransceiver
                 continue;
             }
 
-            bool isExt = (pmsg.MsgType & MessageType.Extended) != 0;
-            bool brs = (pmsg.MsgType & MessageType.BitRateSwitch) != 0;
-            bool esi = (pmsg.MsgType & MessageType.ErrorStateIndicator) != 0;
+            var isExt = (pmsg.MsgType & MessageType.Extended) != 0;
+            var brs = (pmsg.MsgType & MessageType.BitRateSwitch) != 0;
+            var esi = (pmsg.MsgType & MessageType.ErrorStateIndicator) != 0;
+            var isErr = (pmsg.MsgType & MessageType.Error) != 0;
 
             byte[] data = pmsg.Data;
             if (data.Length > CanFdFrame.DlcToLen(pmsg.DLC))
@@ -162,7 +164,7 @@ public sealed class PcanFdTransceiver : ITransceiver
                 Array.Resize(ref data, CanFdFrame.DlcToLen(pmsg.DLC));
             }
 
-            var frame = new CanFdFrame(pmsg.ID, data, brs, esi) { IsExtendedFrame = isExt };
+            var frame = new CanFdFrame(pmsg.ID, data, brs, esi) { IsExtendedFrame = isExt, IsErrorFrame = isErr };
 
             var ticks = ts * 10UL;
             list.Add(new CanReceiveData(frame) { recvTimestamp = ticks });

@@ -15,6 +15,9 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
         _options = options;
         _transceiver = transceiver;
 
+        // Init socket configs
+        InitSocketCanConfig();
+
         // Create socket & bind
         _fd = CreateAndBind(Options.InterfaceName, Options.ProtocolMode, Options.PreferKernelTimestamp);
 
@@ -62,7 +65,8 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
             if (mode == CanProtocolMode.CanFd)
             {
                 int on = 1;
-                if (Libc.setsockopt(fd, Libc.SOL_CAN_RAW, Libc.CAN_RAW_FD_FRAMES, ref on, (uint)Marshal.SizeOf<int>()) != 0)
+                if (Libc.setsockopt(fd, Libc.SOL_CAN_RAW, Libc.CAN_RAW_FD_FRAMES,
+                        ref on, (uint)Marshal.SizeOf<int>()) != 0)
                 {
                     throw new CanBusCreationException("setsockopt(CAN_RAW_FD_FRAMES) failed; kernel may not support CAN FD.");
                 }
@@ -72,36 +76,33 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
             if (preferKernelTs)
             {
                 int tsFlags = Libc.SOF_TIMESTAMPING_RX_HARDWARE | Libc.SOF_TIMESTAMPING_RAW_HARDWARE | Libc.SOF_TIMESTAMPING_SOFTWARE;
-                if (Libc.setsockopt(fd, Libc.SOL_SOCKET, Libc.SO_TIMESTAMPING, ref tsFlags, (uint)Marshal.SizeOf<int>()) != 0)
+                if (Libc.setsockopt(fd, Libc.SOL_SOCKET, Libc.SO_TIMESTAMPING,
+                        ref tsFlags, (uint)Marshal.SizeOf<int>()) != 0)
                 {
                     int on = 1;
-                    _ = Libc.setsockopt(fd, Libc.SOL_SOCKET, Libc.SO_TIMESTAMPNS, ref on, (uint)Marshal.SizeOf<int>());
+                    _ = Libc.setsockopt(fd, Libc.SOL_SOCKET, Libc.SO_TIMESTAMPNS,
+                        ref on, (uint)Marshal.SizeOf<int>());
                 }
             }
 
             // enable error frames reception (subscribe to all error classes)
-            if(Options.AllowErrorInfo)
+            if (Options.AllowErrorInfo)
             {
                 int errMask = unchecked((int)Libc.CAN_ERR_MASK);
-                if (Libc.setsockopt(fd, Libc.SOL_CAN_RAW, Libc.CAN_RAW_ERR_FILTER, ref errMask, (uint)Marshal.SizeOf<int>()) != 0)
+                if (Libc.setsockopt(fd, Libc.SOL_CAN_RAW, Libc.CAN_RAW_ERR_FILTER,
+                        ref errMask, (uint)Marshal.SizeOf<int>()) != 0)
                 {
                     Libc.close(fd);
                     throw new CanBusCreationException("setsockopt(CAN_RAW_ERR_FILTER) failed.");
                 }
             }
 
-            // bind to interface
-            uint ifIndex = Libc.if_nametoindex(ifName);
-            if (ifIndex == 0)
-            {
-                Libc.close(fd);
-                throw new CanBusCreationException($"Interface '{ifName}' not found.");
-            }
+
 
             var addr = new Libc.sockaddr_can
             {
                 can_family = Libc.AF_CAN,
-                can_ifindex = unchecked((int)ifIndex),
+                can_ifindex = _options.ChannelIndex,
             };
 
             if (Libc.bind(fd, ref addr, Marshal.SizeOf<Libc.sockaddr_can>()) != 0)
@@ -119,12 +120,117 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
         }
     }
 
+    private void InitSocketCanConfig()
+    {
+        // bind to interface
+        var ifName = Options.InterfaceName;
+        var ifIndex = Libc.if_nametoindex(ifName);
+        if (ifIndex == 0)
+        {
+            throw new CanBusCreationException($"Interface '{ifName}' not found.");
+        }
+        _options.ChannelIndex = unchecked((int)ifIndex);
 
+        if (LibSocketCan.can_get_ctrlmode(Options.InterfaceName, out var ctrlMode) != Libc.OK)
+        {
+            //TODO: 异常处理
+            throw new CanBusCreationException("");
+        }
+
+        if (Options.WorkMode == ChannelWorkMode.Echo)
+        {
+            if ((ctrlMode.mask & LibSocketCan.CAN_CTRLMODE_LOOPBACK) == 0)
+            {
+                //TODO: 异常处理
+                throw new CanBusCreationException("");
+            }
+
+            ctrlMode.flags &= ~(LibSocketCan.CAN_CTRLMODE_LISTENONLY);
+            ctrlMode.flags |= LibSocketCan.CAN_CTRLMODE_LOOPBACK;
+        }
+        else
+        {
+            if ((ctrlMode.mask & LibSocketCan.CAN_CTRLMODE_LISTENONLY) == 0)
+            {
+                //TODO: 异常处理
+                throw new CanBusCreationException("");
+            }
+
+            ctrlMode.flags &= ~(LibSocketCan.CAN_CTRLMODE_LOOPBACK);
+            ctrlMode.flags |= LibSocketCan.CAN_CTRLMODE_LISTENONLY;
+        }
+
+        if (Options.ProtocolMode == CanProtocolMode.Can20)
+        {
+            if (LibSocketCan.can_set_bitrate(ifName, Options.BitTiming.BaudRate!.Value) != Libc.OK)
+            {
+                //TODO: 异常处理
+                throw new CanBusCreationException("");
+            }
+            ctrlMode.flags &= ~LibSocketCan.CAN_CTRLMODE_FD;
+        }
+        else
+        {
+            if ((ctrlMode.mask & LibSocketCan.CAN_CTRLMODE_FD) == 0)
+            {
+                //TODO: 异常处理
+                throw new CanBusCreationException("");
+            }
+
+            ctrlMode.flags |= LibSocketCan.CAN_CTRLMODE_FD;
+
+            if (LibSocketCan.can_set_fd_bitrates(ifName, Options.BitTiming.ArbitrationBitRate!.Value,
+                    Options.BitTiming.DataBitRate!.Value) != Libc.OK)
+            {
+                //TODO: 异常处理
+                throw new CanBusCreationException("");
+            }
+        }
+
+        if (Options.AllowErrorInfo)
+        {
+            if ((ctrlMode.mask & LibSocketCan.CAN_CTRLMODE_BERR_REPORTING) == 0)
+            {
+                //TODO: 异常处理
+                throw new CanBusCreationException("");
+            }
+
+            ctrlMode.flags |= LibSocketCan.CAN_CTRLMODE_BERR_REPORTING;
+        }
+        else
+        {
+            ctrlMode.flags &= ~LibSocketCan.CAN_CTRLMODE_BERR_REPORTING;
+        }
+
+        if (LibSocketCan.can_set_ctrlmode(Options.InterfaceName, ctrlMode) != Libc.OK)
+        {
+            //TODO: 异常处理
+            throw new CanBusCreationException("");
+        }
+
+        //start device
+        if (LibSocketCan.can_get_state(ifName, out var state) != Libc.OK)
+        {
+            //TODO: 异常处理
+            throw new CanBusCreationException("");
+        }
+        if (state == (int)LibSocketCan.can_state.CAN_STATE_STOPPED)
+        {
+            if (LibSocketCan.can_do_start(ifName) != Libc.OK)
+            {
+                //TODO: 异常处理
+                throw new CanBusCreationException("");
+            }
+        }
+    }
 
     public void Reset()
     {
         ThrowIfDisposed();
-        //TODO:
+        if (LibSocketCan.can_do_restart(Options.InterfaceName) != Libc.OK)
+        {
+            //TODO: 异常处理
+        }
     }
 
 
@@ -155,7 +261,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
                 break;
             }
 
-            if (_transceiver.Transmit(this, [enumerator.Current!]) == 1)
+            if (_transceiver.Transmit(this, [enumerator.Current]) == 1)
             {
                 sendCount++;
                 if (!enumerator.MoveNext())
@@ -198,7 +304,19 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
 
     public CanErrorCounters ErrorCounters()
     {
-        throw new CanFeatureNotSupportedException(CanFeature.ErrorCounters, Options.Features);
+        if (LibSocketCan.can_get_berr_counter(Options.InterfaceName, out var counter) != Libc.OK)
+        {
+            return new CanErrorCounters()
+            {
+                ReceiveErrorCounter = counter.rxerr,
+                TransmitErrorCounter = counter.txerr
+            };
+        }
+        else
+        {
+            //TODO:异常处理
+            throw new Exception();
+        }
     }
 
     public bool ReadErrorInfo(out ICanErrorInfo? errorInfo)
@@ -235,11 +353,13 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
     public void Apply(ICanOptions options)
     {
         if (options is not SocketCanBusOptions sc)
+        {
             throw new CanOptionTypeMismatchException(
                 CanKitErrorCode.ChannelOptionTypeMismatch,
                 typeof(SocketCanBusOptions),
-                options?.GetType() ?? typeof(IBusOptions),
+                options.GetType(),
                 $"channel {Options.ChannelIndex}");
+        }
 
         // Protocol: enable FD is handled at creation time.
 
@@ -253,19 +373,19 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
                 if (r is not FilterRule.Mask m)
                     throw new CanFilterConfigurationException("SocketCAN only supports mask filters.");
 
-                uint can_id, can_mask;
+                uint canId, canMask;
                 if (m.FilterIdType == CanFilterIDType.Extend)
                 {
-                    can_id = (m.AccCode & Libc.CAN_EFF_MASK) | Libc.CAN_EFF_FLAG;
-                    can_mask = (m.AccMask & Libc.CAN_EFF_MASK) | Libc.CAN_EFF_FLAG;
+                    canId = (m.AccCode & Libc.CAN_EFF_MASK) | Libc.CAN_EFF_FLAG;
+                    canMask = (m.AccMask & Libc.CAN_EFF_MASK) | Libc.CAN_EFF_FLAG;
                 }
                 else
                 {
-                    can_id = (m.AccCode & Libc.CAN_SFF_MASK);
-                    can_mask = (m.AccMask & Libc.CAN_SFF_MASK) | Libc.CAN_EFF_FLAG; // match only standard frames
+                    canId = (m.AccCode & Libc.CAN_SFF_MASK);
+                    canMask = (m.AccMask & Libc.CAN_SFF_MASK) | Libc.CAN_EFF_FLAG; // match only standard frames
                 }
 
-                filters.Add(new Libc.can_filter { can_id = can_id, can_mask = can_mask });
+                filters.Add(new Libc.can_filter { can_id = canId, can_mask = canMask });
             }
 
             var elem = Marshal.SizeOf<Libc.can_filter>();
@@ -354,7 +474,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
                             break;
 
                         // receive one frame via transceiver
-                        foreach (var rec in _transceiver.Receive(this, 1))
+                        foreach (var rec in _transceiver.Receive(this))
                         {
                             var frame = rec.CanFrame;
                             bool isErr = frame is CanClassicFrame { IsErrorFrame: true } ||
@@ -433,6 +553,31 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
                 _errorOccurred -= value;
                 _subscriberCount = Math.Max(0, _subscriberCount - 1);
                 if (_subscriberCount == 0) StopPolling();
+            }
+        }
+    }
+
+    public BusState BusState
+    {
+        get
+        {
+            ThrowIfDisposed();
+            if (LibSocketCan.can_get_state(Options.InterfaceName, out var i) == Libc.OK)
+            {
+                var state = (LibSocketCan.can_state)i;
+                return state switch
+                {
+                    LibSocketCan.can_state.CAN_STATE_BUS_OFF => BusState.BusOff,
+                    LibSocketCan.can_state.CAN_STATE_ERROR_PASSIVE => BusState.ErrPassive,
+                    LibSocketCan.can_state.CAN_STATE_ERROR_WARNING => BusState.ErrWarning,
+                    LibSocketCan.can_state.CAN_STATE_ERROR_ACTIVE => BusState.ErrActive,
+                    _ => BusState.None
+                };
+            }
+            else
+            {
+                //TODO:异常处理
+                return BusState.Unknown;
             }
         }
     }

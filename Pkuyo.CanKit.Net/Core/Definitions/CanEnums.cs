@@ -44,17 +44,7 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
         Rx
     }
 
-    /// <summary>
-    /// Channel error state (通道错误状态)
-    /// </summary>
-    public enum ChannelErrorState
-    {
-        None = 0,
-        AlarmErr = 1,
-        PassiveErr = 2,
-        BusOff = 3,
-        BusRestart = 4,
-    }
+
 
     /// <summary>
     /// Frame type flags used to identify frame kind (帧类型标志)
@@ -133,6 +123,19 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
         Extend,
     }
 
+    /// <summary>
+    /// CAN Bus state (CAN总线错误状态)
+    /// </summary>
+    public enum BusState
+    {
+        None = 0,
+        ErrActive = 1,
+        ErrWarning = 2,
+        ErrPassive = 3,
+        BusOff = 4,
+
+        Unknown = int.MaxValue
+    }
 }
 
 

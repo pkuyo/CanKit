@@ -73,6 +73,8 @@ namespace Pkuyo.CanKit.Net.Core.Abstractions
         /// Raised when a channel error occurs (通道发生错误时触发)。
         /// </summary>
         event EventHandler<ICanErrorInfo> ErrorOccurred;
+
+        public BusState BusState { get; }
     }
 
 

@@ -479,6 +479,26 @@ namespace Pkuyo.CanKit.ZLG
                 }
             }
         }
+
+        public BusState BusState
+        {
+            get
+            {
+                ThrowIfDisposed();
+                if (ReadErrorInfo(out var info) && info is { })
+                {
+                    if ((info.Kind & FrameErrorKind.BusOff) != 0)
+                        return BusState.BusOff;
+                    if ((info.Kind & FrameErrorKind.Passive) != 0)
+                        return BusState.ErrPassive;
+                    if ((info.Kind & FrameErrorKind.Warning) != 0)
+                        return BusState.ErrWarning;
+                    return BusState.None;
+                }
+
+                return BusState.Unknown;
+            }
+        }
         private readonly ZlgChannelHandle _nativeHandle;
 
         private readonly IntPtr _devicePtr;

@@ -92,7 +92,10 @@ internal static class Libc
     public const int SCM_TIMESTAMPNS = SO_TIMESTAMPNS;
     public const int SCM_TIMESTAMPING = SO_TIMESTAMPING;
     
-    public const int SIOCSHWTSTAMP = 0x89b0;  
+    public const int SIOCSHWTSTAMP = 0x89b0;
+
+
+    public const int OK = 0;
     
     
     [StructLayout(LayoutKind.Sequential)]

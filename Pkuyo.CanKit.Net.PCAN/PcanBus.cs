@@ -1,5 +1,6 @@
-using System.Reflection;
-using System.Threading;
+
+using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
 using Peak.Can.Basic;
 using Pkuyo.CanKit.Net.Core.Abstractions;
 using Pkuyo.CanKit.Net.Core.Definitions;
@@ -15,10 +16,10 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
     {
         Options = new PcanBusRtConfigurator();
         Options.Init((PcanBusOptions)options);
-        _options = (PcanBusOptions)options;
+        var options1 = (PcanBusOptions)options;
         _transceiver = transceiver;
 
-        _handle = ParseHandle(_options.Channel);
+        _handle = ParseHandle(options1.Channel);
 
         // Discover runtime capabilities (e.g., FD) and merge to dynamic features
         SniffDynamicFeatures();
@@ -54,7 +55,35 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
         }
 
         // Apply initial options (filters etc.)
-        _options.Apply(this, true);
+        options1.Apply(this, true);
+#if NETSTANDARD2_0
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            _recEvent = new EventWaitHandle(false, EventResetMode.AutoReset);
+        }
+        else
+        {
+            var ok = Api.GetValue(_handle, PcanParameter.ReceiveEvent, out uint evHandle);
+            if (ok != PcanStatus.OK)
+                throw new InvalidOperationException($"Get ReceiveEvent failed: {ok}");
+
+            _recEvent = new EventWaitHandle(false, EventResetMode.AutoReset);
+            _recEvent.SafeWaitHandle?.Close();
+            _recEvent.SafeWaitHandle = new SafeWaitHandle(new IntPtr(evHandle), false);
+        }
+#else
+#if WINDOWS
+        _recEvent = new EventWaitHandle(false, EventResetMode.AutoReset);
+#else
+        var ok = Api.GetValue(_handle, PcanParameter.ReceiveEvent, out uint evHandle);
+        if (ok != PcanStatus.OK)
+            throw new InvalidOperationException($"Get ReceiveEvent failed: {ok}");
+
+        _recEvent = new EventWaitHandle(false, EventResetMode.AutoReset);
+        _recEvent.SafeWaitHandle.Close();
+        _recEvent.SafeWaitHandle = new SafeWaitHandle(new IntPtr(evHandle), false);
+#endif
+#endif
     }
 
 
@@ -141,7 +170,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
                 throw new CanFilterConfigurationException("PCAN only supports range filters.");
             }
         }
-        if(pc.AllowErrorInfo)
+        if (pc.AllowErrorInfo)
         {
             Api.SetValue(_handle, PcanParameter.AllowErrorFrames, ParameterValue.Activation.On);
         }
@@ -194,6 +223,26 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
         }
     }
 
+    public BusState BusState
+    {
+        get
+        {
+            ThrowIfDisposed();
+            var state = Api.GetStatus(_handle);
+            if ((state & PcanStatus.BusOff) != 0)
+                return BusState.BusOff;
+            if ((state & PcanStatus.BusPassive) != 0)
+                return BusState.ErrPassive;
+            if ((state & PcanStatus.BusWarning) != 0)
+                return BusState.ErrWarning;
+            return BusState.None;
+        }
+
+    }
+
+
+    public PcanStatus PCanState => Api.GetStatus(_handle);
+
     private void ThrowIfDisposed()
     {
         if (_isDisposed)
@@ -202,31 +251,26 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
         }
     }
 
-    private readonly PcanBusOptions _options;
-    private readonly ITransceiver _transceiver;
-    private bool _isDisposed;
-    private readonly object _evtGate = new();
-    private EventHandler<CanReceiveData>? _frameReceived;
-    private EventHandler<ICanErrorInfo>? _errorOccurred;
-    private int _subscriberCount;
-    private CancellationTokenSource? _pollCts;
-    private Task? _pollTask;
-
-    private IDisposable? _owner;
-    public void AttachOwner(IDisposable owner)
-    {
-        _owner = owner;
-    }
-
-    internal PcanChannel Handle => _handle;
-
-    private PcanChannel _handle;
 
     private void StartPollingIfNeeded()
     {
         if (_pollTask != null) return;
         _pollCts = new CancellationTokenSource();
         var token = _pollCts.Token;
+#if NETSTANDARD2_0
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            _recEvent = new EventWaitHandle(false, EventResetMode.AutoReset);
+            var h = (uint)_recEvent.SafeWaitHandle.DangerousGetHandle().ToInt32();
+            Api.SetValue(_handle, PcanParameter.ReceiveEvent, h);
+        }
+#else
+#if WINDOWS
+        _recEvent = new EventWaitHandle(false, EventResetMode.AutoReset);
+        var h = (uint)_recEvent.SafeWaitHandle.DangerousGetHandle().ToInt32();
+        Api.SetValue(_handle, PcanParameter.ReceiveEvent, h);
+#endif
+#endif
         _pollTask = Task.Run(() => PollLoop(token), token);
     }
 
@@ -234,6 +278,16 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
     {
         try
         {
+#if NETSTANDARD2_0
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                Api.SetValue(_handle, PcanParameter.ReceiveEvent, 0);
+            }
+#else
+#if WINDOWS
+            Api.SetValue(_handle, PcanParameter.ReceiveEvent, 0);
+#endif
+#endif
             _pollCts?.Cancel();
             _pollTask?.Wait(200);
         }
@@ -251,18 +305,13 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
         while (!token.IsCancellationRequested)
         {
             if (Volatile.Read(ref _subscriberCount) <= 0)
+            {
                 break;
-
-            bool any = false;
+            }
+            _recEvent.WaitOne();
             foreach (var rec in _transceiver.Receive(this, 16))
             {
-                any = true;
                 _frameReceived?.Invoke(this, rec);
-            }
-
-            if (!any)
-            {
-                Thread.Sleep(10);
             }
         }
     }
@@ -378,4 +427,26 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
             Options.UpdateDynamicFeatures(CanFeature.CanClassic | CanFeature.Filters);
         }
     }
+
+    public void AttachOwner(IDisposable owner)
+    {
+        _owner = owner;
+    }
+
+    private readonly ITransceiver _transceiver;
+    private bool _isDisposed;
+    private readonly object _evtGate = new();
+    private EventHandler<CanReceiveData>? _frameReceived;
+    private EventHandler<ICanErrorInfo>? _errorOccurred;
+
+    private int _subscriberCount;
+    private CancellationTokenSource? _pollCts;
+    private Task? _pollTask;
+    private EventWaitHandle _recEvent;
+
+    private IDisposable? _owner;
+
+    internal PcanChannel Handle => _handle;
+
+    private PcanChannel _handle;
 }
