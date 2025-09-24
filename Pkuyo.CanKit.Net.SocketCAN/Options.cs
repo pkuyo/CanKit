@@ -1,5 +1,6 @@
 using Pkuyo.CanKit.Net.Core.Abstractions;
 using Pkuyo.CanKit.Net.Core.Definitions;
+using Pkuyo.CanKit.Net.Core.Exceptions;
 
 namespace Pkuyo.CanKit.Net.SocketCAN;
 
@@ -43,6 +44,15 @@ public sealed class SocketCanBusInitConfigurator
     {
         Options.PreferKernelTimestamp = enable;
         return this;
+    }
+
+    public override SocketCanBusInitConfigurator RangeFilter(uint min, uint max, CanFilterIDType idType = CanFilterIDType.Standard)
+    {
+        if (!SoftwareFilterEnabled)
+        {
+            throw new CanFilterConfigurationException("SocketCAN only supports mask filters.");
+        }
+        return base.RangeFilter(min, max, idType);
     }
 }
 

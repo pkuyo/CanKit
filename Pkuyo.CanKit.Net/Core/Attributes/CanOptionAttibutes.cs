@@ -1,20 +1,19 @@
 using System;
 using Pkuyo.CanKit.Net.Core.Definitions;
 
-namespace Pkuyo.CanKit.Net.Core.Attributes
+namespace Pkuyo.CanKit.Net.Core.Attributes;
+
+[AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct)]
+public sealed class CanOptionAttribute : Attribute
 {
 
-    [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct)]
-    public sealed class CanOptionAttribute : Attribute
-    {
-
-    }
-
-    [AttributeUsage(AttributeTargets.Property)]
-    public sealed class CanOptionItemAttribute(object optionId, CanOptionType type, string? defaultValue = null) : Attribute
-    {
-        public object OptionID { get; } = optionId;
-        public CanOptionType Type { get; } = type;
-        public string? DefaultValue { get; } = defaultValue;
-    }
 }
+
+[AttributeUsage(AttributeTargets.Property)]
+public sealed class CanOptionItemAttribute(object optionId, CanOptionType type, string? defaultValue = null) : Attribute
+{
+    public object OptionID { get; } = optionId;
+    public CanOptionType Type { get; } = type;
+    public string? DefaultValue { get; } = defaultValue;
+}
+

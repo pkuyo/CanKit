@@ -284,6 +284,14 @@ namespace Pkuyo.CanKit.ZLG
                             Options.ChannelIndex + "/acc_mask",
                             mask.AccMask.ToString()),
                         "ZCAN_SetValue(acc_mask)");
+
+                    foreach (var rule in zlgOption.Filter.filterRules.Skip(1))
+                    {
+                        if (zlgOption.SoftwareFilterEnabled)
+                        {
+                            zlgOption.Filter.softwareFilter.Add(rule);
+                        }
+                    }
                 }
                 else
                 {
@@ -291,13 +299,8 @@ namespace Pkuyo.CanKit.ZLG
                     {
                         if (rule is not FilterRule.Range range)
                         {
-                            if (zlgOption.SoftwareFilterEnabled)
-                            {
-                                zlgOption.Filter.softwareFilter.Add(rule);
-                                continue;
-                            }
-                            throw new CanFilterConfigurationException(
-                                "ZLG channels only supports the same type of filter rule.");
+                            zlgOption.Filter.softwareFilter.Add(rule);
+                            continue;
                         }
 
                         ZlgErr.ThrowIfError(
@@ -498,7 +501,7 @@ namespace Pkuyo.CanKit.ZLG
             get
             {
                 ThrowIfDisposed();
-                if (ReadErrorInfo(out var info) && info is { })
+                if (ReadErrorInfo(out var info) && info is not null)
                 {
                     if ((info.Kind & FrameErrorKind.BusOff) != 0)
                         return BusState.BusOff;

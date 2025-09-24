@@ -388,14 +388,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
                 }
                 else
                 {
-                    if (sc.SoftwareFilterEnabled)
-                    {
-                        sc.Filter.softwareFilter.Add(r);
-                    }
-                    else
-                    {
-                        throw new CanFilterConfigurationException("SocketCAN only supports mask filters.");
-                    }
+                    sc.Filter.softwareFilter.Add(r);
                 }
             }
         }

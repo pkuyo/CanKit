@@ -18,7 +18,7 @@ public static class CanBus
     /// </summary>
     public static ICanBus Open(string endpoint, Action<IBusInitOptionsConfigurator>? configure = null)
     {
-        if (BusEndpointRegistry.TryOpen(endpoint, configure, out var bus) && bus != null)
+        if (BusEndpointEntry.TryOpen(endpoint, configure, out var bus) && bus != null)
             return bus;
         throw new CanFactoryException(CanKitErrorCode.DeviceCreationFailed, $"No endpoint handler registered for '{endpoint}'.");
     }

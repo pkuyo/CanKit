@@ -1,4 +1,5 @@
 using Pkuyo.CanKit.Net.Core.Abstractions;
+using Pkuyo.CanKit.Net.Core.Attributes;
 using Pkuyo.CanKit.Net.Core.Endpoints;
 using Pkuyo.CanKit.SocketCAN.Definitions;
 
@@ -7,14 +8,11 @@ namespace Pkuyo.CanKit.Net.SocketCAN;
 /// <summary>
 /// Registers endpoint handler for scheme "socketcan" (为 "socketcan" scheme 注册 Endpoint 处理器)。
 /// </summary>
+
+[CanEndPoint("socketcan")]
 internal static class SocketCanEndpoint
 {
-    static SocketCanEndpoint()
-    {
-        BusEndpointRegistry.Register("socketcan", Open);
-    }
-
-    private static ICanBus Open(CanEndpoint ep, Action<IBusInitOptionsConfigurator>? configure)
+    public static ICanBus Open(CanEndpoint ep, Action<IBusInitOptionsConfigurator>? configure)
     {
         // Interpret path as interfaceName, or use query iface= / if=, else index as number
         string iface = ep.Path;

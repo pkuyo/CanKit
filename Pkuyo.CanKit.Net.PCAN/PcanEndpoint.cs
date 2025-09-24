@@ -1,4 +1,5 @@
 using Pkuyo.CanKit.Net.Core.Abstractions;
+using Pkuyo.CanKit.Net.Core.Attributes;
 using Pkuyo.CanKit.Net.Core.Endpoints;
 using Pkuyo.CanKit.PCAN.Definitions;
 
@@ -11,13 +12,9 @@ namespace Pkuyo.CanKit.Net.PCAN;
 ///  - pcan://?ch=PCAN_PCIBUS1
 ///  - pcan:PCAN_USBBUS2
 /// </summary>
+[CanEndPoint("pcan")]
 internal static class PcanEndpoint
 {
-    static PcanEndpoint()
-    {
-        BusEndpointRegistry.Register("pcan", Open);
-    }
-
     private static ICanBus Open(CanEndpoint ep, Action<IBusInitOptionsConfigurator>? configure)
     {
         string ch = ep.Path;

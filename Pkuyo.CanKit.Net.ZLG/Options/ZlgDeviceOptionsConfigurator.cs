@@ -54,28 +54,33 @@ public sealed class ZlgBusInitConfigurator
 
     public override ZlgBusInitConfigurator AccMask(uint accCode, uint accMask, CanFilterIDType idType = CanFilterIDType.Standard)
     {
-        if (Filter.FilterRules.Any(i => i is FilterRule.Range))
-            throw new CanFilterConfigurationException(
-                "ZLG channels only supports the same type of filter rule.");
+        if (!SoftwareFilterEnabled)
+        {
+            if (Filter.FilterRules.Any(i => i is FilterRule.Range))
+                throw new CanFilterConfigurationException(
+                    "ZLG channels only supports the same type of filter rule.(without software filter)");
 
-        if (Filter.FilterRules.Count > 1)
-            throw new CanFilterConfigurationException(
-                "ZLG channels only support a single mask filter rule.");
+            if (Filter.FilterRules.Count > 1)
+                throw new CanFilterConfigurationException(
+                    "ZLG channels only support a single mask filter rule.(without software filter)");
 
-        if (Provider is ZlgCanProvider provider)
-            ZlgErr.ThrowIfNotSupport(provider.ZlgFeature, ZlgFeature.MaskFilter);
-
+            if (Provider is ZlgCanProvider provider)
+                ZlgErr.ThrowIfNotSupport(provider.ZlgFeature, ZlgFeature.MaskFilter);
+        }
         return base.AccMask(accCode, accMask, idType);
     }
 
     public override ZlgBusInitConfigurator RangeFilter(uint min, uint max, CanFilterIDType idType = CanFilterIDType.Standard)
     {
-        if (Filter.FilterRules.Any(i => i is FilterRule.Mask))
-            throw new CanFilterConfigurationException(
-                "ZLG channels only supports the same type of filter rule.");
+        if (!SoftwareFilterEnabled)
+        {
+            if (Filter.FilterRules.Any(i => i is FilterRule.Mask))
+                throw new CanFilterConfigurationException(
+                    "ZLG channels only supports the same type of filter rule.(without software filter)");
 
-        if (Provider is ZlgCanProvider provider)
-            ZlgErr.ThrowIfNotSupport(provider.ZlgFeature, ZlgFeature.RangeFilter);
+            if (Provider is ZlgCanProvider provider)
+                ZlgErr.ThrowIfNotSupport(provider.ZlgFeature, ZlgFeature.RangeFilter);
+        }
 
         return base.RangeFilter(min, max, idType);
     }

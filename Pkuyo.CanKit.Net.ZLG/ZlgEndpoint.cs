@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Linq;
 using Pkuyo.CanKit.Net.Core;
 using Pkuyo.CanKit.Net.Core.Abstractions;
+using Pkuyo.CanKit.Net.Core.Attributes;
 using Pkuyo.CanKit.Net.Core.Definitions;
 using Pkuyo.CanKit.Net.Core.Endpoints;
 using Pkuyo.CanKit.Net.Core.Exceptions;
@@ -14,13 +15,9 @@ namespace Pkuyo.CanKit.ZLG;
 /// <summary>
 /// Endpoint handler for scheme "zlg" (ZLG Endpoint 处理器，支持同设备多通道)。
 /// </summary>
+[CanEndPoint("zlg")]
 internal static class ZlgEndpoint
 {
-    static ZlgEndpoint()
-    {
-        BusEndpointRegistry.Register("zlg", Open);
-    }
-
     private static ICanBus Open(CanEndpoint ep, Action<IBusInitOptionsConfigurator>? configure)
     {
         // 路径匹配 DeviceType.Id 或其去前缀的尾部，例如：

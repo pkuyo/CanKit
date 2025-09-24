@@ -2,6 +2,7 @@ using Pkuyo.CanKit.Net.Core.Abstractions;
 using Pkuyo.CanKit.Net.Core.Attributes;
 using Pkuyo.CanKit.Net.Core.Definitions;
 using Pkuyo.CanKit.Net.Core.Exceptions;
+using Pkuyo.CanKit.Net.SocketCAN.Transceivers;
 using Pkuyo.CanKit.SocketCAN.Definitions;
 
 namespace Pkuyo.CanKit.Net.SocketCAN;
