@@ -16,6 +16,7 @@ public sealed class PcanBusOptions(ICanModelProvider provider) : IBusOptions
     public TxRetryPolicy TxRetryPolicy { get; set; } = TxRetryPolicy.NoRetry;
     public CanProtocolMode ProtocolMode { get; set; } = CanProtocolMode.Can20;
     public CanFilter Filter { get; set; } = new();
+    public bool SoftwareFilterEnabled { get; set; }
     public bool AllowErrorInfo { get; set; }
 
     // PCAN specific: channel name, e.g. "PCAN_USBBUS1", "PCAN_PCIBUS1", etc.
@@ -39,4 +40,3 @@ public sealed class PcanBusRtConfigurator
 {
     public string Channel => Options.Channel;
 }
-

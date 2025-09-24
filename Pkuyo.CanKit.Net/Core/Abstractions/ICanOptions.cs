@@ -126,6 +126,11 @@ namespace Pkuyo.CanKit.Net.Core.Abstractions
         /// </summary>
         CanFilter Filter { get; set; }
 
+        /// <summary>
+        /// Enable software filtering for unsupported hardware rules (启用软件滤波)
+        /// </summary>
+        bool SoftwareFilterEnabled { get; set; }
+
 
         /// <summary>
         /// Enable error information monitoring  (启用错误信息监听)。
@@ -134,4 +139,3 @@ namespace Pkuyo.CanKit.Net.Core.Abstractions
 
     }
 }
-

@@ -8,6 +8,7 @@ public sealed class PcanClassicTransceiver : ITransceiver
 {
     public uint Transmit(ICanBus<IBusRTOptionsConfigurator> channel, IEnumerable<CanTransmitData> frames, int timeOut = 0)
     {
+        _ = timeOut;
         var ch = (PcanBus)channel;
         uint sent = 0;
         foreach (var item in frames)
@@ -32,7 +33,7 @@ public sealed class PcanClassicTransceiver : ITransceiver
             byte[] payload;
             if ((type & MessageType.RemoteRequest) != 0)
             {
-                payload = Array.Empty<byte>();
+                payload = [];
             }
             else
             {
@@ -54,6 +55,7 @@ public sealed class PcanClassicTransceiver : ITransceiver
 
     public IEnumerable<CanReceiveData> Receive(ICanBus<IBusRTOptionsConfigurator> channel, uint count = 1, int timeOut = 0)
     {
+        _ = timeOut;
         var ch = (PcanBus)channel;
         var list = new List<CanReceiveData>();
         for (int i = 0; i < count; i++)
@@ -96,6 +98,7 @@ public sealed class PcanFdTransceiver : ITransceiver
 {
     public uint Transmit(ICanBus<IBusRTOptionsConfigurator> channel, IEnumerable<CanTransmitData> frames, int timeOut = 0)
     {
+        _ = timeOut;
         var ch = (PcanBus)channel;
         uint sent = 0;
         foreach (var item in frames)
@@ -133,6 +136,7 @@ public sealed class PcanFdTransceiver : ITransceiver
 
     public IEnumerable<CanReceiveData> Receive(ICanBus<IBusRTOptionsConfigurator> channel, uint count = 1, int timeOut = 0)
     {
+        _ = timeOut;
         var ch = (PcanBus)channel;
         var list = new List<CanReceiveData>();
         for (int i = 0; i < count; i++)

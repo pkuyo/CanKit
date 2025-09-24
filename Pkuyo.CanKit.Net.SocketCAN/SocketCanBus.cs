@@ -365,29 +365,43 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
 
         // Build filter array from mask rules; respect Standard/Extended frames.
         var rules = sc.Filter.FilterRules;
+        var filters = new List<Libc.can_filter>();
         if (rules.Count > 0)
         {
-            var filters = new List<Libc.can_filter>();
             foreach (var r in rules)
             {
-                if (r is not FilterRule.Mask m)
-                    throw new CanFilterConfigurationException("SocketCAN only supports mask filters.");
-
-                uint canId, canMask;
-                if (m.FilterIdType == CanFilterIDType.Extend)
+                if (r is FilterRule.Mask m)
                 {
-                    canId = (m.AccCode & Libc.CAN_EFF_MASK) | Libc.CAN_EFF_FLAG;
-                    canMask = (m.AccMask & Libc.CAN_EFF_MASK) | Libc.CAN_EFF_FLAG;
+                    uint canId, canMask;
+                    if (m.FilterIdType == CanFilterIDType.Extend)
+                    {
+                        canId = (m.AccCode & Libc.CAN_EFF_MASK) | Libc.CAN_EFF_FLAG;
+                        canMask = (m.AccMask & Libc.CAN_EFF_MASK) | Libc.CAN_EFF_FLAG;
+                    }
+                    else
+                    {
+                        canId = (m.AccCode & Libc.CAN_SFF_MASK);
+                        canMask = (m.AccMask & Libc.CAN_SFF_MASK) | Libc.CAN_EFF_FLAG; // match only standard frames
+                    }
+
+                    filters.Add(new Libc.can_filter { can_id = canId, can_mask = canMask });
                 }
                 else
                 {
-                    canId = (m.AccCode & Libc.CAN_SFF_MASK);
-                    canMask = (m.AccMask & Libc.CAN_SFF_MASK) | Libc.CAN_EFF_FLAG; // match only standard frames
+                    if (sc.SoftwareFilterEnabled)
+                    {
+                        sc.Filter.softwareFilter.Add(r);
+                    }
+                    else
+                    {
+                        throw new CanFilterConfigurationException("SocketCAN only supports mask filters.");
+                    }
                 }
-
-                filters.Add(new Libc.can_filter { can_id = canId, can_mask = canMask });
             }
+        }
 
+        if (filters.Count > 0)
+        {
             var elem = Marshal.SizeOf<Libc.can_filter>();
             var total = elem * filters.Count;
             var arr = filters.ToArray();
@@ -474,6 +488,9 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
                             break;
 
                         // receive one frame via transceiver
+                        // Build software predicate once per drain cycle if needed
+                        var useSw = Options.SoftwareFilterEnabled && Options.Filter.SoftwareFilterRules.Count > 0;
+                        var pred = useSw ? FilterRule.Build(Options.Filter.SoftwareFilterRules) : null;
                         foreach (var rec in _transceiver.Receive(this))
                         {
                             var frame = rec.CanFrame;
@@ -499,6 +516,8 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
                             }
                             else
                             {
+                                if (useSw && pred is not null && !pred(frame))
+                                    continue;
                                 _frameReceived?.Invoke(this, rec);
                             }
                         }

@@ -290,8 +290,15 @@ namespace Pkuyo.CanKit.ZLG
                     foreach (var rule in zlgOption.Filter.filterRules)
                     {
                         if (rule is not FilterRule.Range range)
+                        {
+                            if (zlgOption.SoftwareFilterEnabled)
+                            {
+                                zlgOption.Filter.softwareFilter.Add(rule);
+                                continue;
+                            }
                             throw new CanFilterConfigurationException(
                                 "ZLG channels only supports the same type of filter rule.");
+                        }
 
                         ZlgErr.ThrowIfError(
                             ZLGCAN.ZCAN_SetValue(
@@ -370,10 +377,16 @@ namespace Pkuyo.CanKit.ZLG
                     if (count > 0)
                     {
                         var frames = Receive(Math.Min(count, batch), 0);
+                        var useSw = Options.SoftwareFilterEnabled && Options.Filter.SoftwareFilterRules.Count > 0;
+                        var pred = useSw ? FilterRule.Build(Options.Filter.SoftwareFilterRules) : null;
                         foreach (var frame in frames)
                         {
                             try
                             {
+                                if (useSw && pred is not null && !pred(frame.CanFrame))
+                                {
+                                    continue;
+                                }
                                 _frameReceived?.Invoke(this, frame);
                             }
                             catch (Exception ex)

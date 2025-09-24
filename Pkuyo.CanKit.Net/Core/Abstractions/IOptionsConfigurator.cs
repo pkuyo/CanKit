@@ -90,6 +90,11 @@ public interface IBusRTOptionsConfigurator : ICanOptionsConfigurator
     ICanFilter Filter { get; }
 
     /// <summary>
+    /// Software filtering enabled (是否启用软件滤波)
+    /// </summary>
+    bool SoftwareFilterEnabled { get; }
+
+    /// <summary>
     /// Enable error information monitoring  (启用错误信息监听)。
     /// </summary>
     bool AllowErrorInfo { get; }
@@ -170,6 +175,11 @@ public interface IBusInitOptionsConfigurator : ICanOptionsConfigurator
     ICanFilter Filter { get; }
 
     /// <summary>
+    /// Software filtering enabled (是否启用软件滤波)
+    /// </summary>
+    bool SoftwareFilterEnabled { get; }
+
+    /// <summary>
     /// Enable error information monitoring  (启用错误信息监听)。
     /// </summary>
     bool AllowErrorInfo { get; }
@@ -230,6 +240,18 @@ public interface IBusInitOptionsConfigurator : ICanOptionsConfigurator
     /// <param name="filter">Filter (过滤器)。</param>
     /// <returns>Configurator (配置器本身)。</returns>
     IBusInitOptionsConfigurator SetFilter(CanFilter filter);
+
+    /// <summary>
+    /// Enable or disable software filtering. When enabled, unsupported hardware
+    /// rules will be evaluated in software. (启用/禁用软件滤波)
+    /// </summary>
+    IBusInitOptionsConfigurator UseSoftwareFiltering(bool enabled = true);
+
+    /// <summary>
+    /// Provide software-only filter rules and optionally clear hardware rules.
+    /// （设置软件滤波，同时可删除硬件滤波规则）
+    /// </summary>
+    IBusInitOptionsConfigurator SetSoftwareFilter(CanFilter filter, bool disableHardware = true);
 
     /// <summary>
     /// Configure range filter by ID (按 ID 范围设置过滤器)。

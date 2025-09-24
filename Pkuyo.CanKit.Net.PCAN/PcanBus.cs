@@ -153,21 +153,28 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
             return;
 
         var rules = pc.Filter.filterRules;
-        if (rules.Count == 0)
-            return;
-
-        foreach (var r in rules)
+        if (rules.Count > 0)
         {
-            if (r is FilterRule.Range rg)
+            foreach (var r in rules)
             {
-                var mode = rg.FilterIdType == CanFilterIDType.Extend
-                    ? FilterMode.Extended
-                    : FilterMode.Standard;
-                _ = Api.FilterMessages(_handle, rg.From, rg.To, mode);
-            }
-            else
-            {
-                throw new CanFilterConfigurationException("PCAN only supports range filters.");
+                if (r is FilterRule.Range rg)
+                {
+                    var mode = rg.FilterIdType == CanFilterIDType.Extend
+                        ? FilterMode.Extended
+                        : FilterMode.Standard;
+                    _ = Api.FilterMessages(_handle, rg.From, rg.To, mode);
+                }
+                else
+                {
+                    if (pc.SoftwareFilterEnabled)
+                    {
+                        pc.Filter.softwareFilter.Add(r);
+                    }
+                    else
+                    {
+                        throw new CanFilterConfigurationException("PCAN only supports range filters.");
+                    }
+                }
             }
         }
         if (pc.AllowErrorInfo)
@@ -311,6 +318,12 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
             _recEvent.WaitOne();
             foreach (var rec in _transceiver.Receive(this, 16))
             {
+                var useSw = Options.SoftwareFilterEnabled && Options.Filter.SoftwareFilterRules.Count > 0;
+                if (useSw)
+                {
+                    var pred = FilterRule.Build(Options.Filter.SoftwareFilterRules);
+                    if (!pred(rec.CanFrame)) continue;
+                }
                 _frameReceived?.Invoke(this, rec);
             }
         }
@@ -448,5 +461,5 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
 
     internal PcanChannel Handle => _handle;
 
-    private PcanChannel _handle;
+    private readonly PcanChannel _handle;
 }
