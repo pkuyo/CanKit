@@ -319,6 +319,13 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
         }
     }
 
+    public IPeriodicTx TransmitPeriodic(CanTransmitData frame, PeriodicTxOptions options)
+    {
+        ThrowIfDisposed();
+        //TODO:定时发送
+        throw new NotImplementedException();
+    }
+
     public bool ReadErrorInfo(out ICanErrorInfo? errorInfo)
     {
         // SocketCAN via raw socket does not expose detailed error info here

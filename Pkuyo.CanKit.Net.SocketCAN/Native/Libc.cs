@@ -9,8 +9,9 @@ internal static class Libc
     // Address family / socket types
     public const int AF_CAN = 29;           // Linux specific
     public const int SOCK_RAW = 3;
+    public const int SOCK_DGRAM = 2;
     public const int CAN_RAW = 1;
-    
+
     public const int SOL_SOCKET = 1;
 
     // SOL_CAN_RAW level and options
@@ -20,6 +21,13 @@ internal static class Libc
     public const int CAN_RAW_LOOPBACK = 3;
     public const int CAN_RAW_RECV_OWN_MSGS = 4;
     public const int CAN_RAW_FD_FRAMES = 5;
+
+    public const int CAN_BCM = 2;
+
+    // bcm opcode/flags
+    public const uint TX_SETUP   = 1;
+    public const uint SETTIMER   = 0x0001;
+    public const uint STARTTIMER = 0x0002;
 
     // CAN ID flags and masks
     public const uint CAN_EFF_FLAG = 0x80000000U; // extended frame format
@@ -67,37 +75,37 @@ internal static class Libc
     // poll
     public const short POLLIN = 0x0001;
     public const short POLLOUT = 0x0004;
-    
+
     // epoll
     public const int EPOLLIN = 0x001;
     public const int EPOLL_CTL_ADD = 1;
-    
-    // fcntl 
+
+    // fcntl
     public const int F_GETFL = 3;
     public const int F_SETFL = 4;
-    public const int O_NONBLOCK = 0x800; 
-    
+    public const int O_NONBLOCK = 0x800;
+
     // CAN FD flags (linux/can.h)
     public const byte CANFD_BRS = 0x01; // bit rate switch
     public const byte CANFD_ESI = 0x02; // error state indicator
-    
+
     // timeStamp
     public const int SO_TIMESTAMP = 29;
     public const int SO_TIMESTAMPNS = 35;
-    public const int SO_TIMESTAMPING = 37;      
+    public const int SO_TIMESTAMPING = 37;
     public const int SOF_TIMESTAMPING_SOFTWARE      = 1 << 4;
     public const int SOF_TIMESTAMPING_RX_HARDWARE   = 1 << 3;
     public const int SOF_TIMESTAMPING_TX_HARDWARE   = 1 << 0;
     public const int SOF_TIMESTAMPING_RAW_HARDWARE  = 1 << 6;
     public const int SCM_TIMESTAMPNS = SO_TIMESTAMPNS;
     public const int SCM_TIMESTAMPING = SO_TIMESTAMPING;
-    
+
     public const int SIOCSHWTSTAMP = 0x89b0;
 
 
     public const int OK = 0;
-    
-    
+
+
     [StructLayout(LayoutKind.Sequential)]
     public struct sockaddr_can
     {
@@ -177,7 +185,7 @@ internal static class Libc
         public short events;
         public short revents;
     }
-    
+
     [StructLayout(LayoutKind.Sequential)]
     internal struct epoll_event
     {
@@ -198,7 +206,7 @@ internal static class Libc
 
     [DllImport("libc", SetLastError = true)]
     public static extern int bind(int sockfd, ref sockaddr_can addr, int addrlen);
-    
+
     [DllImport("libc", SetLastError = true)]
     public static extern int fcntl(int fd, int cmd, int arg);
 
@@ -228,7 +236,7 @@ internal static class Libc
 
     [DllImport("libc", SetLastError = true)]
     public static extern int poll(ref pollfd fds, uint nfds, int timeout);
-    
+
     [DllImport("libc", SetLastError = true)]
     public static extern int epoll_create1(int flags);
 
@@ -237,11 +245,11 @@ internal static class Libc
 
     [DllImport("libc", SetLastError = true)]
     public static extern int epoll_wait(int epfd, [In, Out] epoll_event[] events, int maxevents, int timeout);
-    
+
 
     [DllImport("libc", SetLastError = true, CharSet = CharSet.Ansi)]
     public static extern uint if_nametoindex(string ifname);
-    
+
     public static void ThrowErrno(string where)
     {
         int err = Marshal.GetLastWin32Error();

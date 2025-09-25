@@ -33,6 +33,15 @@ namespace Pkuyo.CanKit.Net.Core.Abstractions
         uint Transmit(IEnumerable<CanTransmitData> frames, int timeOut = 0);
 
         /// <summary>
+        /// Schedule a periodic transmit of a single CAN frame.
+        /// 以固定周期定时发送同一帧。
+        /// </summary>
+        /// <param name="frame">The frame to transmit periodically (需要周期发送的帧)。</param>
+        /// <param name="options">Periodic transmit options (周期发送参数)。</param>
+        /// <returns>A handle to control the periodic task (用于控制周期任务的句柄)。</returns>
+        IPeriodicTx TransmitPeriodic(CanTransmitData frame, PeriodicTxOptions options);
+
+        /// <summary>
         /// Get bus usage ratio (获取总线利用率)。
         /// </summary>
         /// <returns>Usage ratio in percent [0..100] (利用率百分比)。</returns>
@@ -92,4 +101,3 @@ namespace Pkuyo.CanKit.Net.Core.Abstractions
     }
 
 }
-

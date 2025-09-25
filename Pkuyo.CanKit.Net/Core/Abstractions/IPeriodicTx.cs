@@ -1,0 +1,51 @@
+using System;
+using Pkuyo.CanKit.Net.Core.Definitions;
+
+namespace Pkuyo.CanKit.Net.Core.Abstractions;
+
+/// <summary>
+/// Represents a controllable periodic transmit task.
+/// 表示一个可控的周期发送任务。
+/// </summary>
+public interface IPeriodicTx : IDisposable
+{
+    /// <summary>
+    /// Whether the task is currently running.
+    /// 指示任务当前是否在运行。
+    /// </summary>
+    bool IsRunning { get; }
+
+    /// <summary>
+    /// Current period between transmits.
+    /// 当前发送周期。
+    /// </summary>
+    TimeSpan Period { get; }
+
+    /// <summary>
+    /// Remaining sends, -1 for infinite.
+    /// 剩余发送次数，-1 表示无限。
+    /// </summary>
+    int RemainingCount { get; }
+
+    /// <summary>
+    /// Stop the periodic task.
+    /// 停止周期任务。
+    /// </summary>
+    void Stop();
+
+    /// <summary>
+    /// Update the frame and/or period and/or remaining count.
+    /// 运行时更新帧/周期/剩余次数。
+    /// </summary>
+    /// <param name="frame">New frame to send, null to keep unchanged。</param>
+    /// <param name="period">New period, null to keep unchanged。</param>
+    /// <param name="remainingCount">New remaining count, null to keep unchanged。</param>
+    void Update(CanTransmitData? frame = null, TimeSpan? period = null, int? remainingCount = null);
+
+    /// <summary>
+    /// Raised when the task finishes due to reaching the repeat count.
+    /// 因达到次数而结束时触发。
+    /// </summary>
+    event EventHandler? Completed;
+}
+

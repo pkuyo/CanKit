@@ -5,6 +5,7 @@ using Peak.Can.Basic;
 using Pkuyo.CanKit.Net.Core.Abstractions;
 using Pkuyo.CanKit.Net.Core.Definitions;
 using Pkuyo.CanKit.Net.Core.Exceptions;
+using Pkuyo.CanKit.Net.Core.Utils;
 
 namespace Pkuyo.CanKit.Net.PCAN;
 
@@ -105,6 +106,12 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
     {
         ThrowIfDisposed();
         return _transceiver.Transmit(this, frames, timeOut);
+    }
+
+    public IPeriodicTx TransmitPeriodic(CanTransmitData frame, PeriodicTxOptions options)
+    {
+        ThrowIfDisposed();
+        return SoftwarePeriodicTx.Start(this, frame, options);
     }
 
     public float BusUsage() => throw new CanFeatureNotSupportedException(CanFeature.BusUsage, Options.Features);

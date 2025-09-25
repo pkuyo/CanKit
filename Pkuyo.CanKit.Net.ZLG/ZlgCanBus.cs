@@ -120,6 +120,13 @@ namespace Pkuyo.CanKit.ZLG
             return result;
         }
 
+        public IPeriodicTx TransmitPeriodic(CanTransmitData frame, PeriodicTxOptions options)
+        {
+            ThrowIfDisposed();
+            //TODO:定时发送
+            throw new NotImplementedException();
+        }
+
         public float BusUsage()
         {
             if ((Options.Features & CanFeature.BusUsage) == 0U)
