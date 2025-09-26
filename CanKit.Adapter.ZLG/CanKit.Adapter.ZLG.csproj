@@ -1,0 +1,20 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+        <RootNamespace>CanKit.Adapter.ZLG</RootNamespace>
+        <Platforms>x64;x86</Platforms>
+        <PackageId>Pkuyo.CanKit.ZLG</PackageId>
+        <AssemblyName>CanKit.Adapter.ZLG</AssemblyName>
+    </PropertyGroup>
+    
+    <PropertyGroup Condition="'$(TargetFrameworkIdentifier)' == '.NETFramework'">
+        <Prefer32Bit>true</Prefer32Bit>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\CanKit.Core\CanKit.Core.csproj" />
+        <ProjectReference Include="..\CanKit.Gen\CanKit.Gen\CanKit.Gen.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+    </ItemGroup>
+    
+</Project>

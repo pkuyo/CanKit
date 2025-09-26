@@ -1,0 +1,29 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+      <OutputType>Exe</OutputType>
+	  <Platforms>AnyCPU;x64;x86</Platforms>
+	  <RootNamespace>CanKit.Sample</RootNamespace>
+  </PropertyGroup>
+
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|x64' ">
+    <Prefer32bit>true</Prefer32bit>
+  </PropertyGroup>
+
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|x86' ">
+    <Prefer32bit>true</Prefer32bit>
+  </PropertyGroup>
+
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|x64' ">
+    <Prefer32bit>true</Prefer32bit>
+  </PropertyGroup>
+
+  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|x86' ">
+    <Prefer32bit>true</Prefer32bit>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CanKit.Adapter.ZLG\CanKit.Adapter.ZLG.csproj" />
+    <ProjectReference Include="..\CanKit.Core\CanKit.Core.csproj" />
+  </ItemGroup>
+</Project>
