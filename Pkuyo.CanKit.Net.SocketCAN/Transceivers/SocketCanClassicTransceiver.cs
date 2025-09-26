@@ -3,6 +3,7 @@ using Pkuyo.CanKit.Net.Core.Abstractions;
 using Pkuyo.CanKit.Net.Core.Definitions;
 using Pkuyo.CanKit.Net.SocketCAN.Native;
 using Pkuyo.CanKit.Net.Core.Exceptions;
+using Pkuyo.CanKit.Net.SocketCAN.Utils;
 
 namespace Pkuyo.CanKit.Net.SocketCAN.Transceivers;
 
@@ -14,18 +15,7 @@ public sealed class SocketCanClassicTransceiver : ITransceiver
             throw new InvalidOperationException("SocketCanTransceiver requires CanClassicFrame for transmission");
         unsafe
         {
-            var frame = new Libc.can_frame
-            {
-                can_id = cf.RawID,
-                can_dlc = cf.Dlc,
-                __pad = 0,
-                __res0 = 0,
-                __res1 = 0,
-            };
-            var src = cf.Data.Span;
-            int copy = Math.Min(src.Length, 8);
-            for (int i = 0; i < copy; i++) frame.data[i] = src[i];
-
+            var frame = cf.ToCanFrame();
             var size = Marshal.SizeOf<Libc.can_frame>();
             var result = Libc.write(((SocketCanBus)channel).FileDescriptor, &frame, (ulong)size);
             return result switch

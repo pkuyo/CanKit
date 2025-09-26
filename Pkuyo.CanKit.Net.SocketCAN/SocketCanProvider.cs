@@ -9,7 +9,8 @@ public sealed class SocketCanProvider : ICanModelProvider
 {
     public DeviceType DeviceType => LinuxDeviceType.SocketCAN;
 
-    public CanFeature StaticFeatures => CanFeature.CanClassic | CanFeature.CanFd | CanFeature.Filters;
+    public CanFeature StaticFeatures => CanFeature.CanClassic | CanFeature.CanFd | CanFeature.Filters |
+                                        CanFeature.ErrorFrame | CanFeature.ErrorCounters | CanFeature.CyclicTx;
 
     public ICanFactory Factory => CanRegistry.Registry.Factory("SocketCAN");
 
@@ -26,7 +27,7 @@ public sealed class SocketCanProvider : ICanModelProvider
         var options = new SocketCanBusOptions(this)
         {
             ChannelIndex = channelIndex,
-            BitTiming = new BitTiming(500_000, null, null),
+            BitTiming = new BitTiming(500_000),
             ProtocolMode = CanProtocolMode.Can20,
             WorkMode = ChannelWorkMode.Normal,
             InterfaceName = $"can{channelIndex}"

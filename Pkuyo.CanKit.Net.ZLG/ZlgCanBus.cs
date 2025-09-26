@@ -387,7 +387,8 @@ namespace Pkuyo.CanKit.ZLG
                     if (count > 0)
                     {
                         var frames = Receive(Math.Min(count, batch), 0);
-                        var useSw = Options.SoftwareFilterEnabled && Options.Filter.SoftwareFilterRules.Count > 0;
+                        var useSw = (Options.EnabledSoftwareFallbackE & CanFeature.Filters) != 0
+                                    && Options.Filter.SoftwareFilterRules.Count > 0;
                         var pred = useSw ? FilterRule.Build(Options.Filter.SoftwareFilterRules) : null;
                         foreach (var frame in frames)
                         {

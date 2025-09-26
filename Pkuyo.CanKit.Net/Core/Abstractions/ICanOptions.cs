@@ -127,9 +127,9 @@ namespace Pkuyo.CanKit.Net.Core.Abstractions
         CanFilter Filter { get; set; }
 
         /// <summary>
-        /// Enable software filtering for unsupported hardware rules (启用软件滤波)
+        /// Enable software fallback for unsupported hardware features (启用软件替代功能)
         /// </summary>
-        bool SoftwareFilterEnabled { get; set; }
+        CanFeature EnabledSoftwareFallback { get; set; }
 
 
         /// <summary>

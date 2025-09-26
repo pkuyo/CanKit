@@ -27,6 +27,7 @@ namespace Pkuyo.CanKit.ZLG.Options
         public CanProtocolMode ProtocolMode { get; set; }
 
         public CanFilter Filter { get; set; } = new();
+        public CanFeature EnabledSoftwareFallback { get; set; }
         public bool SoftwareFilterEnabled { get; set; }
         public bool AllowErrorInfo { get; set; }
 

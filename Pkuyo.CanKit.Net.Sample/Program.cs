@@ -36,12 +36,9 @@ namespace Pkuyo.CanKit.Net.Sample
             };
             var frame1 = new CanTransmitData(new CanClassicFrame(0x1824080F, new ReadOnlyMemory<byte>([0xAA, 0xBB, 0xCC, 0xDD]), true));
             var frame2 = new CanTransmitData(new CanClassicFrame(0x18240801, new ReadOnlyMemory<byte>([0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF]), true));
-            for (int i = 0; i < 50; i++)
-            {
-                sendChannel.Transmit([frame1, frame2]);
-                Thread.Sleep(200);
-            }
 
+            using var periodicTx1 = sendChannel.TransmitPeriodic(frame1, new PeriodicTxOptions(TimeSpan.FromMilliseconds(200), 100));
+            using var periodicTx2 = sendChannel.TransmitPeriodic(frame2, new PeriodicTxOptions(TimeSpan.FromMilliseconds(200), 100));
         }
     }
 }

@@ -90,9 +90,9 @@ public interface IBusRTOptionsConfigurator : ICanOptionsConfigurator
     ICanFilter Filter { get; }
 
     /// <summary>
-    /// Software filtering enabled (是否启用软件滤波)
+    /// Software fallback enabled (是否启用软件替代)
     /// </summary>
-    bool SoftwareFilterEnabled { get; }
+    CanFeature EnabledSoftwareFallbackE { get; set; }
 
     /// <summary>
     /// Enable error information monitoring  (启用错误信息监听)。
@@ -175,9 +175,9 @@ public interface IBusInitOptionsConfigurator : ICanOptionsConfigurator
     ICanFilter Filter { get; }
 
     /// <summary>
-    /// Software filtering enabled (是否启用软件滤波)
+    /// Software fallback enabled (是否启用软件替代)
     /// </summary>
-    bool SoftwareFilterEnabled { get; }
+    CanFeature EnabledSoftwareFallback { get; }
 
     /// <summary>
     /// Enable error information monitoring  (启用错误信息监听)。
@@ -241,17 +241,9 @@ public interface IBusInitOptionsConfigurator : ICanOptionsConfigurator
     /// <returns>Configurator (配置器本身)。</returns>
     IBusInitOptionsConfigurator SetFilter(CanFilter filter);
 
-    /// <summary>
-    /// Enable or disable software filtering. When enabled, unsupported hardware
-    /// rules will be evaluated in software. (启用/禁用软件滤波)
-    /// </summary>
-    IBusInitOptionsConfigurator UseSoftwareFiltering(bool enabled = true);
 
-    /// <summary>
-    /// Provide software-only filter rules and optionally clear hardware rules.
-    /// （设置软件滤波，同时可删除硬件滤波规则）
-    /// </summary>
-    IBusInitOptionsConfigurator SetSoftwareFilter(CanFilter filter, bool disableHardware = true);
+    //TODO:
+    IBusInitOptionsConfigurator SoftwareFeaturesFallBack(CanFeature features);
 
     /// <summary>
     /// Configure range filter by ID (按 ID 范围设置过滤器)。
@@ -289,7 +281,7 @@ public abstract class CallOptionsConfigurator<TOption, TSelf>
 {
     protected TOption? _options;
     protected CanFeature _feature;
-
+    private CanFeature _softwareFeature;
     public virtual TSelf Init(TOption options)
     {
         _options = options;
@@ -311,5 +303,17 @@ public abstract class CallOptionsConfigurator<TOption, TSelf>
         return (TSelf)this;
     }
 
+
+    /// <summary>
+    /// Merge software fallback features discovered at runtime into current capability set.
+    /// ZH: 合并软件替代功能到当前能力集合。
+    /// </summary>
+    public TSelf UpdateSoftwareFeatures(CanFeature softwareFeatures)
+    {
+        _feature &= ~_softwareFeature;
+        _softwareFeature = softwareFeatures;
+        _feature |= softwareFeatures;
+        return (TSelf)this;
+    }
     protected TSelf Self => (TSelf)this;
 }

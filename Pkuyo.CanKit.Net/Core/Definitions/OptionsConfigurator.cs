@@ -39,7 +39,8 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
         public bool InternalResistance => Options.InternalResistance;
         public CanProtocolMode ProtocolMode => Options.ProtocolMode;
         public ICanFilter Filter => Options.Filter;
-        public bool SoftwareFilterEnabled => Options.SoftwareFilterEnabled;
+
+        public CanFeature EnabledSoftwareFallbackE { get; set; }
         public bool AllowErrorInfo => Options.AllowErrorInfo;
 
         public virtual BusRtOptionsConfigurator<TChannelOptions> SetInternalResistance(bool enabled)
@@ -92,8 +93,9 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
         public CanProtocolMode ProtocolMode => Options.ProtocolMode;
 
         public ICanFilter Filter => Options.Filter;
-        public bool SoftwareFilterEnabled => Options.SoftwareFilterEnabled;
-        public bool AllowErrorInfo { get; }
+        public CanFeature EnabledSoftwareFallback => Options.EnabledSoftwareFallback;
+
+        public bool AllowErrorInfo => Options.AllowErrorInfo;
 
 
         public virtual TSelf Baud(uint baud)
@@ -155,20 +157,10 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
             return (TSelf)this;
         }
 
-        public virtual TSelf UseSoftwareFiltering(bool enabled = true)
+        public virtual TSelf SoftwareFeaturesFallBack(CanFeature features)
         {
-            Options.SoftwareFilterEnabled = enabled;
-            return (TSelf)this;
-        }
-
-        public virtual TSelf SetSoftwareFilter(CanFilter filter, bool disableHardware = true)
-        {
-            CanKitErr.ThrowIfNotSupport(_feature, CanFeature.Filters);
-            Options.SoftwareFilterEnabled = true;
-            if (disableHardware)
-                Options.Filter.filterRules.Clear();
-            if (filter is not null)
-                Options.Filter.softwareFilter.AddRange(filter.FilterRules);
+            Options.EnabledSoftwareFallback = features;
+            UpdateSoftwareFeatures(features);
             return (TSelf)this;
         }
 
@@ -222,11 +214,9 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
         IBusInitOptionsConfigurator IBusInitOptionsConfigurator.SetFilter(CanFilter filter)
             => SetFilter(filter);
 
-        IBusInitOptionsConfigurator IBusInitOptionsConfigurator.UseSoftwareFiltering(bool enabled)
-            => UseSoftwareFiltering(enabled);
+        IBusInitOptionsConfigurator IBusInitOptionsConfigurator.SoftwareFeaturesFallBack(CanFeature features)
+            => SoftwareFeaturesFallBack(features);
 
-        IBusInitOptionsConfigurator IBusInitOptionsConfigurator.SetSoftwareFilter(CanFilter filter, bool disableHardware)
-            => SetSoftwareFilter(filter, disableHardware);
 
         IBusInitOptionsConfigurator IBusInitOptionsConfigurator.RangeFilter(uint min, uint max, CanFilterIDType idType)
             => RangeFilter(min, max, idType);

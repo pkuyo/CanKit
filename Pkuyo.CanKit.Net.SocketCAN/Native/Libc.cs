@@ -25,10 +25,32 @@ internal static class Libc
 
     public const int CAN_BCM = 2;
 
-    // bcm opcode/flags
+    // bcm opcode/flags (see include/uapi/linux/can/bcm.h)
     public const uint TX_SETUP   = 1;
-    public const uint SETTIMER   = 0x0001;
-    public const uint STARTTIMER = 0x0002;
+    public const uint TX_DELETE  = 2;
+    public const uint TX_READ    = 3;
+    public const uint TX_SEND    = 4;
+    public const uint RX_SETUP   = 5;
+    public const uint RX_DELETE  = 6;
+    public const uint RX_READ    = 7;
+    public const uint TX_STATUS  = 8;
+    public const uint TX_EXPIRED = 9;
+    public const uint RX_STATUS  = 10;
+    public const uint RX_TIMEOUT = 11;
+    public const uint RX_CHANGED = 12;
+
+    public const uint SETTIMER    = 0x0001;
+    public const uint STARTTIMER  = 0x0002;
+    public const uint TX_COUNTEVT = 0x0004;
+    public const uint TX_ANNOUNCE = 0x0008;
+    public const uint TX_CP_CAN_ID = 0x0010;
+    public const uint RX_FILTER_ID = 0x0020;
+    public const uint RX_CHECK_DLC = 0x0040;
+    public const uint RX_NO_AUTOTIMER = 0x0080;
+    public const uint RX_ANNOUNCE_RESUME = 0x0100;
+    public const uint TX_RESET_MULTI_IDX = 0x0200;
+    public const uint RX_RTR_FRAME = 0x0400;
+    public const uint CAN_FD_FRAME = 0x0800;
 
     // CAN ID flags and masks
     public const uint CAN_EFF_FLAG = 0x80000000U; // extended frame format
@@ -194,12 +216,23 @@ internal static class Libc
         public IntPtr data; // fd
     }
 
-    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
-    public struct ifreq
+    [StructLayout(LayoutKind.Sequential)]
+    public struct timeval
     {
-        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 16)]
-        public string ifr_name;
-        public int ifr_ifindex;
+        public long tv_sec;
+        public int  tv_usec;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct bcm_msg_head
+    {
+        public uint opcode;
+        public uint flags;
+        public uint count;
+        public timeval ival1;
+        public timeval ival2;
+        public uint can_id;
+        public uint nframes;
     }
 
     [DllImport("libc", SetLastError = true)]
@@ -207,6 +240,10 @@ internal static class Libc
 
     [DllImport("libc", SetLastError = true)]
     public static extern int bind(int sockfd, ref sockaddr_can addr, int addrlen);
+
+
+    [DllImport("libc", SetLastError = true)]
+    public static extern int connect(int sockfd, ref sockaddr_can addr, int addrlen);
 
     [DllImport("libc", SetLastError = true)]
     public static extern int fcntl(int fd, int cmd, int arg);
@@ -224,13 +261,13 @@ internal static class Libc
     public static extern int ioctl(int fd, uint request, IntPtr argp);
 
     [DllImport("libc", SetLastError = true)]
-    public static extern unsafe long read(int fd, void* buf, ulong count);
+    public static unsafe extern long read(int fd, void* buf, ulong count);
 
     [DllImport("libc", SetLastError = true)]
-    public static extern unsafe long write(int fd, void* buf, ulong count);
+    public static unsafe extern long write(int fd, void* buf, ulong count);
 
     [DllImport("libc", SetLastError = true)]
-    public static extern unsafe long recvmsg(int sockfd, msghdr* msg, int flags);
+    public static unsafe extern long recvmsg(int sockfd, msghdr* msg, int flags);
 
     [DllImport("libc", SetLastError = true)]
     public static extern int close(int fd);
@@ -261,5 +298,15 @@ internal static class Libc
     {
         ThrowErrno(operation, message);
         return default;
+    }
+
+
+    public static timeval ToTimeval(TimeSpan t)
+    {
+        return new timeval
+        {
+            tv_sec = (int)Math.Floor(t.TotalSeconds),
+            tv_usec = (int)((t - TimeSpan.FromSeconds(Math.Floor(t.TotalSeconds))).TotalMilliseconds * 1000.0)
+        };
     }
 }

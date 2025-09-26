@@ -54,7 +54,7 @@ public sealed class ZlgBusInitConfigurator
 
     public override ZlgBusInitConfigurator AccMask(uint accCode, uint accMask, CanFilterIDType idType = CanFilterIDType.Standard)
     {
-        if (!SoftwareFilterEnabled)
+        if ((EnabledSoftwareFallback & CanFeature.Filters) == 0)
         {
             if (Filter.FilterRules.Any(i => i is FilterRule.Range))
                 throw new CanFilterConfigurationException(
@@ -72,7 +72,7 @@ public sealed class ZlgBusInitConfigurator
 
     public override ZlgBusInitConfigurator RangeFilter(uint min, uint max, CanFilterIDType idType = CanFilterIDType.Standard)
     {
-        if (!SoftwareFilterEnabled)
+        if ((EnabledSoftwareFallback & CanFeature.Filters) == 0)
         {
             if (Filter.FilterRules.Any(i => i is FilterRule.Mask))
                 throw new CanFilterConfigurationException(

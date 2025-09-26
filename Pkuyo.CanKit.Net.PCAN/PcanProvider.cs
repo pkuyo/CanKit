@@ -9,8 +9,8 @@ public sealed class PcanProvider : ICanModelProvider
 {
     public DeviceType DeviceType => PcanDeviceType.PCANBasic;
 
-    // PCAN-Basic supports classic and filters; FD depends on hardware (sniffed at runtime).
-    public CanFeature StaticFeatures => CanFeature.CanClassic | CanFeature.Filters;
+    // FD depends on hardware (sniffed at runtime).
+    public CanFeature StaticFeatures => CanFeature.CanClassic | CanFeature.Filters | CanFeature.ErrorCounters;
 
     public ICanFactory Factory => CanRegistry.Registry.Factory("PCAN");
 
@@ -27,7 +27,7 @@ public sealed class PcanProvider : ICanModelProvider
         var options = new PcanBusOptions(this)
         {
             ChannelIndex = channelIndex,
-            BitTiming = new BitTiming(500_000, null, null),
+            BitTiming = new BitTiming(500_000),
             ProtocolMode = CanProtocolMode.Can20,
             WorkMode = ChannelWorkMode.Normal,
             Channel = $"PCAN_USBBUS{Math.Max(1, channelIndex + 1)}"

@@ -3,6 +3,7 @@ using Pkuyo.CanKit.Net.Core.Abstractions;
 using Pkuyo.CanKit.Net.Core.Definitions;
 using Pkuyo.CanKit.Net.SocketCAN.Native;
 using Pkuyo.CanKit.Net.Core.Exceptions;
+using Pkuyo.CanKit.Net.SocketCAN.Utils;
 
 namespace Pkuyo.CanKit.Net.SocketCAN.Transceivers;
 
@@ -12,23 +13,14 @@ public sealed class SocketCanFdTransceiver : ITransceiver
 {
     public uint Transmit(ICanBus<IBusRTOptionsConfigurator> channel, IEnumerable<CanTransmitData> frames, int _ = 0)
     {
-        if (frames.Single().CanFrame is not CanFdFrame ff)
-            throw new InvalidOperationException("SocketCanFdTransceiver requires CanFdFrame for transmission");
-        var frame = new Libc.canfd_frame
-        {
-            can_id = ff.RawID,
-            len = (byte)CanFdFrame.DlcToLen(ff.Dlc),
-            flags = (byte)((ff.BitRateSwitch ? Libc.CANFD_BRS : 0) | (ff.ErrorStateIndicator ? Libc.CANFD_ESI : 0)),
-            __res0 = 0,
-            __res1 = 0,
-        };
-
         unsafe
         {
-            var src = ff.Data.Span;
-            int copy = Math.Min(src.Length, 64);
-            for (int i = 0; i < copy; i++) frame.data[i] = src[i];
+            if (frames.Single().CanFrame is not CanFdFrame ff)
+            {
+                throw new InvalidOperationException("SocketCanFdTransceiver requires CanFdFrame for transmission");
+            }
 
+            var frame = ff.ToCanFrame();
             var size = Marshal.SizeOf<Libc.canfd_frame>();
             var result = Libc.write(((SocketCanBus)channel).FileDescriptor, &frame, (ulong)size);
             return result switch

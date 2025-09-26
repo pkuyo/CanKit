@@ -16,6 +16,7 @@ public sealed class PcanBusOptions(ICanModelProvider provider) : IBusOptions
     public TxRetryPolicy TxRetryPolicy { get; set; } = TxRetryPolicy.NoRetry;
     public CanProtocolMode ProtocolMode { get; set; } = CanProtocolMode.Can20;
     public CanFilter Filter { get; set; } = new();
+    public CanFeature EnabledSoftwareFallback { get; set; }
     public bool SoftwareFilterEnabled { get; set; }
     public bool AllowErrorInfo { get; set; }
 

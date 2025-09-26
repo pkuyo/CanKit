@@ -118,7 +118,10 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
     public IPeriodicTx TransmitPeriodic(CanTransmitData frame, PeriodicTxOptions options)
     {
         ThrowIfDisposed();
-        return SoftwarePeriodicTx.Start(this, frame, options);
+        if ((Options.EnabledSoftwareFallbackE & CanFeature.CyclicTx) != 0)
+            return SoftwarePeriodicTx.Start(this, frame, options);
+        else
+            throw new CanFeatureNotSupportedException(CanFeature.CyclicTx, Options.Features);
     }
 
     public float BusUsage() => throw new CanFeatureNotSupportedException(CanFeature.BusUsage, Options.Features);
@@ -223,29 +226,8 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
 
     public event EventHandler<ICanErrorInfo>? ErrorOccurred
     {
-        add
-        {
-            //TODO:在未启用时抛出异常
-            lock (_evtGate)
-            {
-                if (!Options.AllowErrorInfo)
-                {
-                    throw new CanChannelConfigurationException("ErrorOccurred subscription requires AllowErrorInfo=true in options.");
-                }
-                _errorOccurred += value;
-                _subscriberCount++;
-                StartPollingIfNeeded();
-            }
-        }
-        remove
-        {
-            lock (_evtGate)
-            {
-                _errorOccurred -= value;
-                _subscriberCount = Math.Max(0, _subscriberCount - 1);
-                if (_subscriberCount == 0) StopPolling();
-            }
-        }
+        add => throw new CanFeatureNotSupportedException(CanFeature.ErrorFrame, Options.Features);
+        remove => throw new CanFeatureNotSupportedException(CanFeature.ErrorFrame, Options.Features);
     }
 
     public BusState BusState
@@ -338,7 +320,8 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
             _recEvent.WaitOne();
             foreach (var rec in _transceiver.Receive(this, 16))
             {
-                var useSw = Options.SoftwareFilterEnabled && Options.Filter.SoftwareFilterRules.Count > 0;
+                var useSw = (Options.EnabledSoftwareFallbackE & CanFeature.Filters) != 0
+                            && Options.Filter.SoftwareFilterRules.Count > 0;
                 if (useSw)
                 {
                     var pred = FilterRule.Build(Options.Filter.SoftwareFilterRules);
@@ -450,7 +433,9 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
             var feats = (PcanDeviceFeatures)feature;
             var dyn = CanFeature.CanClassic | CanFeature.Filters;
             if ((feats & PcanDeviceFeatures.FlexibleDataRate) != 0)
+            {
                 dyn |= CanFeature.CanFd;
+            }
 
             Options.UpdateDynamicFeatures(dyn);
         }
@@ -470,7 +455,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
     private bool _isDisposed;
     private readonly object _evtGate = new();
     private EventHandler<CanReceiveData>? _frameReceived;
-    private EventHandler<ICanErrorInfo>? _errorOccurred;
+    //private EventHandler<ICanErrorInfo>? _errorOccurred;
 
     private int _subscriberCount;
     private CancellationTokenSource? _pollCts;

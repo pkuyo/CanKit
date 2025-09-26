@@ -9,11 +9,6 @@ namespace Pkuyo.CanKit.Net.Core.Abstractions;
 /// </summary>
 public interface IPeriodicTx : IDisposable
 {
-    /// <summary>
-    /// Whether the task is currently running.
-    /// 指示任务当前是否在运行。
-    /// </summary>
-    bool IsRunning { get; }
 
     /// <summary>
     /// Current period between transmits.
@@ -22,7 +17,13 @@ public interface IPeriodicTx : IDisposable
     TimeSpan Period { get; }
 
     /// <summary>
-    /// Remaining sends, -1 for infinite.
+    /// sends times, -1 for infinite.
+    /// 发送次数，-1 表示无限。
+    /// </summary>
+    int RepeatCount { get; }
+
+    /// <summary>
+    /// remaining sends, -1 for infinite.
     /// 剩余发送次数，-1 表示无限。
     /// </summary>
     int RemainingCount { get; }
@@ -39,8 +40,8 @@ public interface IPeriodicTx : IDisposable
     /// </summary>
     /// <param name="frame">New frame to send, null to keep unchanged。</param>
     /// <param name="period">New period, null to keep unchanged。</param>
-    /// <param name="remainingCount">New remaining count, null to keep unchanged。</param>
-    void Update(CanTransmitData? frame = null, TimeSpan? period = null, int? remainingCount = null);
+    /// <param name="repeatCount">New remaining count, null to keep unchanged。</param>
+    void Update(CanTransmitData? frame = null, TimeSpan? period = null, int? repeatCount = null);
 
     /// <summary>
     /// Raised when the task finishes due to reaching the repeat count.

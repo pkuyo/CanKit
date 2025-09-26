@@ -25,30 +25,29 @@ public sealed class SoftwarePeriodicTx : IPeriodicTx
         return h;
     }
 
-    private readonly ICanBus _bus;
-    private readonly CancellationTokenSource _cts = new();
-    private readonly object _gate = new();
-    private Task? _task;
-
-    private CanTransmitData _frame;
-    private TimeSpan _period;
-    private int _remaining; // -1 for infinite
-    private readonly bool _fireImmediately;
-    private volatile bool _running;
-
-    public SoftwarePeriodicTx(ICanBus bus, CanTransmitData frame, PeriodicTxOptions options)
+    private SoftwarePeriodicTx(ICanBus bus, CanTransmitData frame, PeriodicTxOptions options)
     {
         _bus = bus;
         _frame = frame;
         _period = options.Period <= TimeSpan.Zero ? TimeSpan.FromMilliseconds(1) : options.Period;
         _remaining = options.Repeat;
+        _repeat = options.Repeat;
         _fireImmediately = options.FireImmediately;
     }
 
+    /// <summary>
+    /// Whether the task is currently running.
+    /// 指示任务当前是否在运行。
+    /// </summary>
     public bool IsRunning => _running;
     public TimeSpan Period => _period;
+    public int RepeatCount => _repeat;
     public int RemainingCount => _remaining;
 
+    /// <summary>
+    /// Raised when the task finishes due to reaching the repeat count.
+    /// 因达到次数而结束时触发。
+    /// </summary>
     public event EventHandler? Completed;
 
     public void Start()
@@ -72,13 +71,17 @@ public sealed class SoftwarePeriodicTx : IPeriodicTx
         }
     }
 
-    public void Update(CanTransmitData? frame = null, TimeSpan? period = null, int? remainingCount = null)
+    public void Update(CanTransmitData? frame = null, TimeSpan? period = null, int? repeatCount = null)
     {
         lock (_gate)
         {
             if (frame is not null) _frame = frame;
             if (period.HasValue && period.Value > TimeSpan.Zero) _period = period.Value;
-            if (remainingCount.HasValue) _remaining = remainingCount.Value;
+            if (repeatCount.HasValue)
+            {
+                _remaining = repeatCount.Value;
+                _repeat = repeatCount.Value;
+            }
         }
     }
 
@@ -147,6 +150,18 @@ public sealed class SoftwarePeriodicTx : IPeriodicTx
         Stop();
         _cts.Dispose();
     }
+
+    private readonly ICanBus _bus;
+    private readonly CancellationTokenSource _cts = new();
+    private readonly object _gate = new();
+    private Task? _task;
+
+    private CanTransmitData _frame;
+    private TimeSpan _period;
+    private int _remaining; // -1 for infinite
+    private readonly bool _fireImmediately;
+    private volatile bool _running;
+    private int _repeat;
 }
 
 

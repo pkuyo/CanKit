@@ -19,7 +19,7 @@ public sealed class SocketCanBusOptions(ICanModelProvider provider) : IBusOption
     public TxRetryPolicy TxRetryPolicy { get; set; } = TxRetryPolicy.NoRetry;
     public CanProtocolMode ProtocolMode { get; set; } = CanProtocolMode.Can20;
     public CanFilter Filter { get; set; } = new();
-    public bool SoftwareFilterEnabled { get; set; }
+    public CanFeature EnabledSoftwareFallback { get; set; }
     public bool AllowErrorInfo { get; set; }
 
     // SocketCAN specific: interface name, e.g. "can0", "vcan0" etc.
@@ -48,7 +48,7 @@ public sealed class SocketCanBusInitConfigurator
 
     public override SocketCanBusInitConfigurator RangeFilter(uint min, uint max, CanFilterIDType idType = CanFilterIDType.Standard)
     {
-        if (!SoftwareFilterEnabled)
+        if ((Options.EnabledSoftwareFallback & CanFeature.Filters) == 0)
         {
             throw new CanFilterConfigurationException("SocketCAN only supports mask filters.");
         }

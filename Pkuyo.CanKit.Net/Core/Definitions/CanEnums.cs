@@ -84,6 +84,7 @@ namespace Pkuyo.CanKit.Net.Core.Definitions
         CyclicTx = 1 << 4,
         BusUsage = 1 << 5,
         ErrorCounters = 1 << 6,
+        ErrorFrame = 1 << 7,
     }
 
     /// <summary>

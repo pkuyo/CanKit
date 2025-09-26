@@ -4,6 +4,7 @@ using Pkuyo.CanKit.Net.Core.Definitions;
 using Pkuyo.CanKit.Net.Core.Exceptions;
 using Pkuyo.CanKit.Net.SocketCAN.Native;
 using Pkuyo.CanKit.Net.Core.Diagnostics;
+using Pkuyo.CanKit.Net.SocketCAN.Utils;
 
 namespace Pkuyo.CanKit.Net.SocketCAN;
 
@@ -302,20 +303,34 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
             : Marshal.SizeOf<Libc.can_frame>();
         unsafe
         {
-            while (iterations++ < maxIterations)
+            if (Options.ProtocolMode == CanProtocolMode.CanFd)
             {
-                var pr = Libc.poll(ref pollFd, 1, 0);
-                if (pr <= 0) break; // no data or error (ignore)
-
-                if (Options.ProtocolMode == CanProtocolMode.CanFd)
+                Libc.canfd_frame* buf = stackalloc Libc.canfd_frame[1]; // 只分配一次
+                while (iterations++ < maxIterations)
                 {
-                    var buf = stackalloc Libc.canfd_frame[1];
-                    _ = Libc.read(_fd, buf, (ulong)readSize);
+                    var pr = Libc.poll(ref pollFd, 1, 0);
+                    if (pr <= 0) break;
+                    var n = Libc.read(_fd, buf, (ulong)readSize);
+                    if (n <= 0)
+                    {
+                        //TODO:错误输出
+                        break;
+                    }
                 }
-                else
+            }
+            else
+            {
+                Libc.can_frame* buf = stackalloc Libc.can_frame[1]; // 只分配一次
+                while (iterations++ < maxIterations)
                 {
-                    var buf = stackalloc Libc.can_frame[1];
-                    _ = Libc.read(_fd, buf, (ulong)readSize);
+                    var pr = Libc.poll(ref pollFd, 1, 0);
+                    if (pr <= 0) break;
+                    var n = Libc.read(_fd, buf, (ulong)readSize);
+                    if (n <= 0)
+                    {
+                        //TODO:错误输出
+                        break;
+                    }
                 }
             }
         }
@@ -343,8 +358,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
     public IPeriodicTx TransmitPeriodic(CanTransmitData frame, PeriodicTxOptions options)
     {
         ThrowIfDisposed();
-        //TODO:定时发送
-        throw new NotImplementedException();
+        return new BCMPeriodicTx(this, frame, options, Options);
     }
 
     public bool ReadErrorInfo(out ICanErrorInfo? errorInfo)
@@ -519,7 +533,8 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
 
                         // receive one frame via transceiver
                         // Build software predicate once per drain cycle if needed
-                        var useSw = Options.SoftwareFilterEnabled && Options.Filter.SoftwareFilterRules.Count > 0;
+                        var useSw = (Options.EnabledSoftwareFallbackE & CanFeature.Filters) != 0
+                                    && Options.Filter.SoftwareFilterRules.Count > 0;
                         var pred = useSw ? FilterRule.Build(Options.Filter.SoftwareFilterRules) : null;
                         foreach (var rec in _transceiver.Receive(this))
                         {
