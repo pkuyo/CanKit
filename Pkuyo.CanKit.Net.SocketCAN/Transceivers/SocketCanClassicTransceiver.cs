@@ -2,6 +2,7 @@ using System.Runtime.InteropServices;
 using Pkuyo.CanKit.Net.Core.Abstractions;
 using Pkuyo.CanKit.Net.Core.Definitions;
 using Pkuyo.CanKit.Net.SocketCAN.Native;
+using Pkuyo.CanKit.Net.Core.Exceptions;
 
 namespace Pkuyo.CanKit.Net.SocketCAN.Transceivers;
 
@@ -31,7 +32,7 @@ public sealed class SocketCanClassicTransceiver : ITransceiver
             {
                 > 0 => 1,
                 0 => 0,
-                _ => throw new Exception() // TODO: exception handling
+                _ => throw new CanNativeCallException("write(can_frame)", "Failed to write classic CAN frame", (uint)Marshal.GetLastWin32Error())
             };
         }
     }

@@ -1,6 +1,8 @@
 using Pkuyo.CanKit.Net.Core.Abstractions;
 using Pkuyo.CanKit.Net.Core.Definitions;
 using Pkuyo.CanKit.Net.SocketCAN.Native;
+using Pkuyo.CanKit.Net.Core.Exceptions;
+using System.Runtime.InteropServices;
 
 namespace Pkuyo.CanKit.Net.SocketCAN.Utils;
 
@@ -12,7 +14,7 @@ public class BCMPeriodicTx : IPeriodicTx
         _fd = Libc.socket(Libc.AF_CAN, Libc.SOCK_DGRAM, Libc.CAN_BCM);
         if (_fd < 0)
         {
-            //TODO:异常处理
+            Libc.ThrowErrno("socket(AF_CAN, SOCK_DGRAM, CAN_BCM)", "Failed to create BCM socket");
         }
         var ifr = new Libc.ifreq { ifr_name = configurator.InterfaceName };
 

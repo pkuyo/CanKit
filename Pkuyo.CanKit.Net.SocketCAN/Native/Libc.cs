@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using Pkuyo.CanKit.Net.Core.Exceptions;
 
 namespace Pkuyo.CanKit.Net.SocketCAN.Native;
 #nullable disable
@@ -250,9 +251,15 @@ internal static class Libc
     [DllImport("libc", SetLastError = true, CharSet = CharSet.Ansi)]
     public static extern uint if_nametoindex(string ifname);
 
-    public static void ThrowErrno(string where)
+    public static void ThrowErrno(string operation, string message)
     {
-        int err = Marshal.GetLastWin32Error();
-        throw new InvalidOperationException($"{where} failed, errno={err}");
+        var err = (uint)Marshal.GetLastWin32Error();
+        throw new CanNativeCallException(operation, message, err);
+    }
+
+    public static T ThrowErrno<T>(string operation, string message)
+    {
+        ThrowErrno(operation, message);
+        return default;
     }
 }

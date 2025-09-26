@@ -3,6 +3,7 @@ using Pkuyo.CanKit.Net.Core.Abstractions;
 using Pkuyo.CanKit.Net.Core.Definitions;
 using Pkuyo.CanKit.Net.Core.Exceptions;
 using Pkuyo.CanKit.Net.SocketCAN.Native;
+using Pkuyo.CanKit.Net.Core.Diagnostics;
 
 namespace Pkuyo.CanKit.Net.SocketCAN;
 
@@ -16,6 +17,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
         _transceiver = transceiver;
 
         // Init socket configs
+        CanKitLogger.LogInformation($"SocketCAN: Initializing interface '{Options.InterfaceName}', Mode={Options.ProtocolMode}...");
         InitSocketCanConfig();
 
         // Create socket & bind
@@ -23,6 +25,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
 
         // Apply initial options (filters etc.)
         _options.Apply(this, true);
+        CanKitLogger.LogDebug("SocketCAN: Initial options applied.");
     }
 
     private int CreateAndBind(string ifName, CanProtocolMode mode, bool preferKernelTs)
@@ -41,12 +44,12 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
             var flags = Libc.fcntl(fd, Libc.F_GETFL, 0);
             if (flags == -1)
             {
-                // TODO: exception handling
+                Libc.ThrowErrno("fcntl(F_GETFL)", "Failed to get socket flags");
             }
 
             if (Libc.fcntl(fd, Libc.F_SETFL, flags | Libc.O_NONBLOCK) == -1)
             {
-                // TODO: exception handling
+                Libc.ThrowErrno("fcntl(F_SETFL|O_NONBLOCK)", "Failed to set non-blocking mode");
             }
 
             //enable echo mode
@@ -133,16 +136,14 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
 
         if (LibSocketCan.can_get_ctrlmode(Options.InterfaceName, out var ctrlMode) != Libc.OK)
         {
-            //TODO: 异常处理
-            throw new CanBusCreationException("");
+            Libc.ThrowErrno("can_get_ctrlmode", $"Failed to get ctrlmode for '{ifName}'");
         }
 
         if (Options.WorkMode == ChannelWorkMode.Echo)
         {
             if ((ctrlMode.mask & LibSocketCan.CAN_CTRLMODE_LOOPBACK) == 0)
             {
-                //TODO: 异常处理
-                throw new CanBusCreationException("");
+                throw new CanChannelConfigurationException("Kernel driver does not support loopback (echo) mode.");
             }
 
             ctrlMode.flags &= ~(LibSocketCan.CAN_CTRLMODE_LISTENONLY);
@@ -152,8 +153,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
         {
             if ((ctrlMode.mask & LibSocketCan.CAN_CTRLMODE_LISTENONLY) == 0)
             {
-                //TODO: 异常处理
-                throw new CanBusCreationException("");
+                throw new CanChannelConfigurationException("Kernel driver does not support listen-only mode.");
             }
 
             ctrlMode.flags &= ~(LibSocketCan.CAN_CTRLMODE_LOOPBACK);
@@ -164,8 +164,8 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
         {
             if (LibSocketCan.can_set_bitrate(ifName, Options.BitTiming.BaudRate!.Value) != Libc.OK)
             {
-                //TODO: 异常处理
-                throw new CanBusCreationException("");
+                Libc.ThrowErrno("can_set_bitrate",
+                    $"Failed to set bitrate {Options.BitTiming.BaudRate!.Value} on '{ifName}'");
             }
             ctrlMode.flags &= ~LibSocketCan.CAN_CTRLMODE_FD;
         }
@@ -173,8 +173,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
         {
             if ((ctrlMode.mask & LibSocketCan.CAN_CTRLMODE_FD) == 0)
             {
-                //TODO: 异常处理
-                throw new CanBusCreationException("");
+                throw new CanFeatureNotSupportedException(CanFeature.CanFd, Options.Features);
             }
 
             ctrlMode.flags |= LibSocketCan.CAN_CTRLMODE_FD;
@@ -182,8 +181,8 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
             if (LibSocketCan.can_set_fd_bitrates(ifName, Options.BitTiming.ArbitrationBitRate!.Value,
                     Options.BitTiming.DataBitRate!.Value) != Libc.OK)
             {
-                //TODO: 异常处理
-                throw new CanBusCreationException("");
+                Libc.ThrowErrno("can_set_fd_bitrates",
+                    $"Failed to set FD bitrates arb={Options.BitTiming.ArbitrationBitRate!.Value}, data={Options.BitTiming.DataBitRate!.Value} on '{ifName}'");
             }
         }
 
@@ -191,8 +190,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
         {
             if ((ctrlMode.mask & LibSocketCan.CAN_CTRLMODE_BERR_REPORTING) == 0)
             {
-                //TODO: 异常处理
-                throw new CanBusCreationException("");
+                throw new CanChannelConfigurationException("Kernel driver does not support bus-error reporting.");
             }
 
             ctrlMode.flags |= LibSocketCan.CAN_CTRLMODE_BERR_REPORTING;
@@ -204,22 +202,19 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
 
         if (LibSocketCan.can_set_ctrlmode(Options.InterfaceName, ctrlMode) != Libc.OK)
         {
-            //TODO: 异常处理
-            throw new CanBusCreationException("");
+            Libc.ThrowErrno("can_set_ctrlmode", $"Failed to set ctrlmode on '{Options.InterfaceName}'");
         }
 
         //start device
         if (LibSocketCan.can_get_state(ifName, out var state) != Libc.OK)
         {
-            //TODO: 异常处理
-            throw new CanBusCreationException("");
+            Libc.ThrowErrno("can_get_state", $"Failed to get state for '{ifName}'");
         }
         if (state == (int)LibSocketCan.can_state.CAN_STATE_STOPPED)
         {
             if (LibSocketCan.can_do_start(ifName) != Libc.OK)
             {
-                //TODO: 异常处理
-                throw new CanBusCreationException("");
+                Libc.ThrowErrno("can_do_start", $"Failed to start interface '{ifName}'");
             }
         }
     }
@@ -229,7 +224,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
         ThrowIfDisposed();
         if (LibSocketCan.can_do_restart(Options.InterfaceName) != Libc.OK)
         {
-            //TODO: 异常处理
+            Libc.ThrowErrno("can_do_restart", $"Failed to restart interface '{Options.InterfaceName}'");
         }
     }
 
@@ -255,10 +250,14 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
             if (timeOut > 0 && remainingTime <= 0)
                 break;
 
-            if (Libc.poll(ref pollFd, 1, remainingTime) <= 0)
+            var pr = Libc.poll(ref pollFd, 1, remainingTime);
+            if (pr < 0)
             {
-                // TODO: exception handling
-                break;
+                Libc.ThrowErrno("poll(POLLOUT)", "Polling for writable socket failed");
+            }
+            if (pr == 0)
+            {
+                break; // timeout
             }
 
             if (_transceiver.Transmit(this, [enumerator.Current]) == 1)
@@ -281,9 +280,10 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
         if (timeOut > 0)
         {
             var pollFd = new Libc.pollfd { fd = _fd, events = Libc.POLLIN };
-            if (Libc.poll(ref pollFd, 1, timeOut) == -1)
+            var pr = Libc.poll(ref pollFd, 1, timeOut);
+            if (pr == -1)
             {
-                // TODO: exception handling
+                Libc.ThrowErrno("poll(POLLIN)", "Polling for readable socket failed");
             }
         }
 
@@ -293,9 +293,33 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
     public void ClearBuffer()
     {
         ThrowIfDisposed();
+        // Drain any pending frames from the socket RX queue
+        var pollFd = new Libc.pollfd { fd = _fd, events = Libc.POLLIN };
+        int iterations = 0;
+        int maxIterations = 64;
+        int readSize = Options.ProtocolMode == CanProtocolMode.CanFd
+            ? Marshal.SizeOf<Libc.canfd_frame>()
+            : Marshal.SizeOf<Libc.can_frame>();
+        unsafe
+        {
+            while (iterations++ < maxIterations)
+            {
+                var pr = Libc.poll(ref pollFd, 1, 0);
+                if (pr <= 0) break; // no data or error (ignore)
 
-        // TODO: exception handling
-        throw new NotImplementedException();
+                if (Options.ProtocolMode == CanProtocolMode.CanFd)
+                {
+                    var buf = stackalloc Libc.canfd_frame[1];
+                    _ = Libc.read(_fd, buf, (ulong)readSize);
+                }
+                else
+                {
+                    var buf = stackalloc Libc.can_frame[1];
+                    _ = Libc.read(_fd, buf, (ulong)readSize);
+                }
+            }
+        }
+        CanKitLogger.LogDebug("SocketCAN: RX buffer drained.");
     }
     public float BusUsage()
     {
@@ -304,7 +328,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
 
     public CanErrorCounters ErrorCounters()
     {
-        if (LibSocketCan.can_get_berr_counter(Options.InterfaceName, out var counter) != Libc.OK)
+        if (LibSocketCan.can_get_berr_counter(Options.InterfaceName, out var counter) == Libc.OK)
         {
             return new CanErrorCounters()
             {
@@ -312,11 +336,8 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
                 TransmitErrorCounter = counter.txerr
             };
         }
-        else
-        {
-            //TODO:异常处理
-            throw new Exception();
-        }
+        return Libc.ThrowErrno<CanErrorCounters>("can_get_berr_counter",
+            $"Failed to get error counters for '{Options.InterfaceName}'");
     }
 
     public IPeriodicTx TransmitPeriodic(CanTransmitData frame, PeriodicTxOptions options)
@@ -410,7 +431,9 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
             {
                 var ptr = handle.AddrOfPinnedObject();
                 if (Libc.setsockopt(_fd, Libc.SOL_CAN_RAW, Libc.CAN_RAW_FILTER, ptr, (uint)total) != 0)
+                {
                     throw new CanChannelConfigurationException("setsockopt(CAN_RAW_FILTER) failed.");
+                }
             }
             finally { handle.Free(); }
         }
@@ -431,11 +454,16 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
 
         _epfd = Libc.epoll_create1(0);
         if (_epfd < 0)
-            Libc.ThrowErrno("epoll_create1");
+        {
+            Libc.ThrowErrno("epoll_create1","Failed to create epoll instance");
+        }
+
         var ev = new Libc.epoll_event { events = Libc.EPOLLIN, data = (IntPtr)_fd };
 
         if (Libc.epoll_ctl(_epfd, Libc.EPOLL_CTL_ADD, _fd, ref ev) < 0)
-            Libc.ThrowErrno("epoll_ctl ADD sock");
+        {
+            Libc.ThrowErrno("epoll_ctl(EPOLL_CTL_ADD)","failed to add fd to epoll instance");
+        }
 
         _epollCts = new CancellationTokenSource();
         var token = _epollCts.Token;
@@ -443,6 +471,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
             () => EPollLoop(token), token,
             TaskCreationOptions.LongRunning,
             TaskScheduler.Default);
+        CanKitLogger.LogDebug("SocketCAN: epoll loop started.");
     }
 
     private void StopPolling()
@@ -464,6 +493,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
             _epollTask = null;
             _epollCts?.Dispose();
             _epollCts = null;
+            CanKitLogger.LogDebug("SocketCAN: epoll loop stopped.");
         }
     }
 
@@ -557,6 +587,10 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
     {
         add
         {
+            if (!Options.AllowErrorInfo)
+            {
+                throw new CanChannelConfigurationException("ErrorOccurred subscription requires AllowErrorInfo=true in options.");
+            }
             //TODO:在未启用时抛出异常
             lock (_evtGate)
             {
@@ -595,7 +629,8 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
             }
             else
             {
-                //TODO:异常处理
+                var errno = (uint)Marshal.GetLastWin32Error();
+                CanKitLogger.LogWarning($"SocketCAN: can_get_state failed for '{Options.InterfaceName}', errno={errno}.");
                 return BusState.Unknown;
             }
         }

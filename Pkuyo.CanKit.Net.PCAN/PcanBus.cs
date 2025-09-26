@@ -5,6 +5,7 @@ using Peak.Can.Basic;
 using Pkuyo.CanKit.Net.Core.Abstractions;
 using Pkuyo.CanKit.Net.Core.Definitions;
 using Pkuyo.CanKit.Net.Core.Exceptions;
+using Pkuyo.CanKit.Net.Core.Diagnostics;
 using Pkuyo.CanKit.Net.Core.Utils;
 
 namespace Pkuyo.CanKit.Net.PCAN;
@@ -24,6 +25,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
 
         // Discover runtime capabilities (e.g., FD) and merge to dynamic features
         SniffDynamicFeatures();
+        CanKitLogger.LogInformation($"PCAN: Initializing on '{options1.Channel}', Mode={Options.ProtocolMode}, Features={Options.Features}");
 
         // If requested FD but not supported at runtime, fail early
         if (Options.ProtocolMode == CanProtocolMode.CanFd && (Options.Features & CanFeature.CanFd) == 0)
@@ -40,6 +42,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
             {
                 throw new CanBusCreationException($"PCAN InitializeFD failed: {st}");
             }
+            CanKitLogger.LogInformation("PCAN: InitializeFD succeeded.");
         }
         else if (Options.ProtocolMode == CanProtocolMode.Can20)
         {
@@ -49,6 +52,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
             {
                 throw new CanBusCreationException($"PCAN Initialize failed: {st}");
             }
+            CanKitLogger.LogInformation("PCAN: Initialize (classic) succeeded.");
         }
         else
         {
@@ -57,6 +61,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
 
         // Apply initial options (filters etc.)
         options1.Apply(this, true);
+        CanKitLogger.LogDebug("PCAN: Initial options applied.");
 #if NETSTANDARD2_0
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
@@ -92,6 +97,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
     {
         ThrowIfDisposed();
         _ = Api.Reset(_handle);
+        CanKitLogger.LogDebug("PCAN: Channel reset issued.");
     }
 
     public void ClearBuffer()
@@ -99,6 +105,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
         ThrowIfDisposed();
         // Reset clears the receive/transmit queues
         _ = Api.Reset(_handle);
+        CanKitLogger.LogDebug("PCAN: Buffers cleared via reset.");
 
     }
 
@@ -221,6 +228,10 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
             //TODO:在未启用时抛出异常
             lock (_evtGate)
             {
+                if (!Options.AllowErrorInfo)
+                {
+                    throw new CanChannelConfigurationException("ErrorOccurred subscription requires AllowErrorInfo=true in options.");
+                }
                 _errorOccurred += value;
                 _subscriberCount++;
                 StartPollingIfNeeded();
@@ -286,6 +297,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
 #endif
 #endif
         _pollTask = Task.Run(() => PollLoop(token), token);
+        CanKitLogger.LogDebug("PCAN: Poll loop started.");
     }
 
     private void StopPolling()
@@ -311,6 +323,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
             _pollTask = null;
             _pollCts?.Dispose();
             _pollCts = null;
+            CanKitLogger.LogDebug("PCAN: Poll loop stopped.");
         }
     }
 
