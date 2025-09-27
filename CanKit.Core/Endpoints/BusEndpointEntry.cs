@@ -11,5 +11,5 @@ public static class BusEndpointEntry
     /// Try open bus by endpoint (按 endpoint 尝试打开总线)。
     /// </summary>
     public static bool TryOpen(string endpoint, Action<IBusInitOptionsConfigurator>? configure, out ICanBus? bus)
-        => CanRegistry.TryOpenEndPoint(endpoint, configure, out bus);
+        => CanRegistry.Registry.TryOpenEndPoint(endpoint, configure, out bus);
 }

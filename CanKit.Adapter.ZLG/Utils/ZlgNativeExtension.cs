@@ -12,45 +12,48 @@ namespace CanKit.Adapter.ZLG.Utils
     {
         internal static IEnumerable<CanReceiveData> RecvCanFrames(ZCANDataObj[] recvData, int receiveCount)
         {
+            var list = new List<CanReceiveData>();
+            int count = Math.Min(receiveCount, recvData?.Length ?? 0);
 
-            for (int i = 0; i < receiveCount; i++)
+            for (int i = 0; i < count; i++)
             {
-                CanReceiveData? receiveData = null;
-                var recData = recvData[i];
-                var typeFlag = GetFrameType(recData.dataType);
-
-                unsafe
-                {
-                    if ((typeFlag & CanFrameType.Can20) != 0 || (typeFlag & CanFrameType.CanFd) != 0)
-                    {
-                        var data = ByteArrayToStruct<ZCANCANFDData>(recData.data);
-                        if (data.frameType == 1)
-                        {
-                            receiveData = new CanReceiveData(
-                                new CanFdFrame(data.frame.can_id, ToArray(data.frame.data, data.frame.len))
-                                {
-                                    //TODO: flag
-                                })
-                            {
-                                recvTimestamp = data.timeStamp,
-                            };
-                        }
-                        else
-                        {
-                            receiveData = new CanReceiveData(
-                                new CanClassicFrame(data.frame.can_id, ToArray(data.frame.data, data.frame.len)))
-                            {
-                                recvTimestamp = data.timeStamp,
-
-                            };
-                        }
-                    }
-                }
-                if (receiveData != null)
-                    yield return receiveData;
+                var item = TryParseCan(recvData[i]); // 包含 unsafe 的解析函数
+                if (item != null) list.Add(item);
             }
+            return list;
         }
 
+        private static CanReceiveData? TryParseCan(in ZCANDataObj recData) // 这个函数里再用 unsafe
+        {
+            var typeFlag = GetFrameType(recData.dataType);
+
+            if ((typeFlag & CanFrameType.Can20) == 0 && (typeFlag & CanFrameType.CanFd) == 0)
+                return null;
+
+            unsafe
+            {
+                fixed (byte* p = recData.data)
+                {
+                    var data = ByteArrayToStruct<ZCANCANFDData>(p);
+                    if (data.frameType == 1)
+                    {
+                        return new CanReceiveData(
+                            new CanFdFrame(data.frame.can_id, ToArray(data.frame.data, data.frame.len)))
+                        {
+                            recvTimestamp = data.timeStamp,
+                        };
+                    }
+                    else
+                    {
+                        return new CanReceiveData(
+                            new CanClassicFrame(data.frame.can_id, ToArray(data.frame.data, data.frame.len)))
+                        {
+                            recvTimestamp = data.timeStamp,
+                        };
+                    }
+                }
+            }
+        }
         internal static ZCANDataObj[] TransmitCanFrames(IEnumerable<CanTransmitData> canFrames, byte channelId)
         {
             List<ZCANDataObj> transmitData = new List<ZCANDataObj>();

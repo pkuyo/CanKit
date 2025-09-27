@@ -35,18 +35,34 @@ namespace CanKit.Adapter.ZLG.Options
         public MaskFilterType FilterType { get; set; }
 
         [CanOptionItem("/initenal_resistance", CanOptionType.Init, "true")]
-        public partial bool InternalResistance { get; set; }
+        public bool InternalResistance
+        {
+            get => Get_InternalResistance();
+            set => Set_InternalResistance(value);
+        }
 
         [CanOptionItem("/set_bus_usage_enable", CanOptionType.Init, "false")]
-        public partial bool BusUsageEnabled { get; set; }
+        public bool BusUsageEnabled
+        {
+            get => Get_BusUsageEnabled();
+            set => Set_BusUsageEnabled(value);
+        }
 
         [CanOptionItem("/set_bus_usage_period", CanOptionType.Init, "200U")]
-        public partial uint BusUsagePeriodTime { get; set; }
-
+        public uint BusUsagePeriodTime
+        {
+            get => Get_BusUsagePeriodTime();
+            set => Set_BusUsagePeriodTime(value);
+        }
 
         [CanOptionItem("/set_tx_retry_policy", CanOptionType.Init,
             "CanKit.Core.Definitions.TxRetryPolicy.NoRetry")]
-        public partial TxRetryPolicy TxRetryPolicy { get; set; }
+        public TxRetryPolicy TxRetryPolicy
+        {
+            get => Get_TxRetryPolicy();
+            set => Set_TxRetryPolicy(value);
+        }
+
 
     }
 }

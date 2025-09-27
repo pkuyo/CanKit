@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Threading;
@@ -69,7 +70,7 @@ public partial class CanRegistry
     /// <summary>
     /// Try open bus by endpoint (按 endpoint 尝试打开总线)。
     /// </summary>
-    public static bool TryOpenEndPoint(string endpoint, Action<IBusInitOptionsConfigurator>? configure, out ICanBus? bus)
+    public bool TryOpenEndPoint(string endpoint, Action<IBusInitOptionsConfigurator>? configure, out ICanBus? bus)
     {
         var ep = CanEndpoint.Parse(endpoint);
         if (_handlers.TryGetValue(ep.Scheme, out var h))
@@ -117,7 +118,7 @@ public partial class CanRegistry
     /// <summary>
     /// Register a scheme handler (注册一个 scheme 处理器)。
     /// </summary>
-    internal static void RegisterEndPoint(string scheme, Func<CanEndpoint, Action<IBusInitOptionsConfigurator>?, ICanBus> openHandler)
+    internal void RegisterEndPoint(string scheme, Func<CanEndpoint, Action<IBusInitOptionsConfigurator>?, ICanBus> openHandler)
     {
         if (string.IsNullOrWhiteSpace(scheme)) throw new ArgumentNullException(nameof(scheme));
         _handlers[scheme] = openHandler ?? throw new ArgumentNullException(nameof(openHandler));
@@ -126,8 +127,23 @@ public partial class CanRegistry
 
 public partial class CanRegistry
 {
+
+    private const string DefaultPrefix = "CanKit";
+
     private static CanRegistry BuildRegistry()
     {
+        //TODO:白名单
+        var pre = DefaultPrefix;
+        var baseDir = AppContext.BaseDirectory;
+        foreach (var path in Directory.EnumerateFiles(baseDir, "*.dll"))
+        {
+            var fileName = Path.GetFileName(path);
+            if (fileName.StartsWith(pre, StringComparison.OrdinalIgnoreCase))
+            {
+                SafeLoadFromPath(path);
+            }
+        }
+
         var asms = AppDomain.CurrentDomain.GetAssemblies()
             .Where(a => !a.IsDynamic)
             .ToArray();
@@ -135,6 +151,20 @@ public partial class CanRegistry
         var reg = new CanRegistry(asms);
 
         return reg;
+    }
+
+    private static void SafeLoadFromPath(string path)
+    {
+        try
+        {
+#if NET5_0_OR_GREATER
+            var asm = System.Runtime.Loader.AssemblyLoadContext.Default.LoadFromAssemblyPath(path);
+#else
+            var asm = Assembly.LoadFrom(path); // .NET Framework
+#endif
+
+        }
+        catch { /* 忽略非托管/不兼容/重复加载等 */ }
     }
 
     internal CanRegistry(params Assembly[] assembliesToScan)
@@ -367,7 +397,7 @@ public partial class CanRegistry
 
     private readonly Dictionary<string, ICanFactory> _factories = new();
 
-    private static readonly Dictionary<string, Func<CanEndpoint, Action<IBusInitOptionsConfigurator>?, ICanBus>> _handlers =
+    private readonly Dictionary<string, Func<CanEndpoint, Action<IBusInitOptionsConfigurator>?, ICanBus>> _handlers =
         new(StringComparer.OrdinalIgnoreCase);
 }
 

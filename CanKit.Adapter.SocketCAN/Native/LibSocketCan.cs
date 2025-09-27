@@ -150,61 +150,61 @@ namespace CanKit.Adapter.SocketCAN.Native
 
         public const UInt32 IFLA_CAN_MAX = ((UInt32)IFLA_CAN.__IFLA_CAN_MAX - 1);
 
-        [DllImport("libsocket.so", SetLastError = true, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
+        [DllImport("socketcan", SetLastError = true, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
         public static extern int can_do_restart(string name);
 
-        [DllImport("libsocket.so", SetLastError = true, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
+        [DllImport("socketcan", SetLastError = true, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
         public static extern int can_do_stop(string name);
 
-        [DllImport("libsocket.so", SetLastError = true, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
+        [DllImport("socketcan", SetLastError = true, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
         public static extern int can_do_start(string name);
 
-        [DllImport("libsocket.so", SetLastError = true, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
+        [DllImport("socketcan", SetLastError = true, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
         public static extern int can_set_restart_ms(string name, UInt32 restart_ms);
 
-        [DllImport("libsocket.so", SetLastError = true, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
+        [DllImport("socketcan", SetLastError = true, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
         public static extern int can_set_bittiming(string name, in can_bittiming bt);
 
-        [DllImport("libsocket.so", SetLastError = true, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
+        [DllImport("socketcan", SetLastError = true, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
         public static extern int can_set_canfd_bittiming(string name, in can_bittiming bt, in can_bittiming dbt);
 
-        [DllImport("libsocket.so", SetLastError = true, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
+        [DllImport("socketcan", SetLastError = true, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
         public static extern int can_set_fd_bitrates(string name, UInt32 bitrate, UInt32 dbitrate);
 
-        [DllImport("libsocket.so", SetLastError = true, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
+        [DllImport("socketcan", SetLastError = true, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
         public static extern int can_set_ctrlmode(string name, in can_ctrlmode cm);
 
-        [DllImport("libsocket.so", SetLastError = true, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
+        [DllImport("socketcan", SetLastError = true, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
         public static extern int can_set_bitrate(string name, UInt32 bitrate);
 
-        [DllImport("libsocket.so", SetLastError = true, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
+        [DllImport("socketcan", SetLastError = true, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
         public static extern int can_set_bitrate_samplepoint(string name, UInt32 bitrate, UInt32 sample_point);
 
-        [DllImport("libsocket.so", SetLastError = true, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
+        [DllImport("socketcan", SetLastError = true, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
         public static extern int can_get_restart_ms(string name, out UInt32 restart_ms);
 
-        [DllImport("libsocket.so", SetLastError = true, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
+        [DllImport("socketcan", SetLastError = true, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
         public static extern int can_get_bittiming(string name, out can_bittiming bt);
 
-        [DllImport("libsocket.so", SetLastError = true, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
+        [DllImport("socketcan", SetLastError = true, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
         public static extern int can_get_ctrlmode(string name, out can_ctrlmode cm);
 
-        [DllImport("libsocket.so", SetLastError = true, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
+        [DllImport("socketcan", SetLastError = true, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
         public static extern int can_get_state(string name, out int state);
 
-        [DllImport("libsocket.so", SetLastError = true, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
+        [DllImport("socketcan", SetLastError = true, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
         public static extern int can_get_clock(string name, out can_clock clock);
 
-        [DllImport("libsocket.so", SetLastError = true, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
+        [DllImport("socketcan", SetLastError = true, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
         public static extern int can_get_bittiming_const(string name, out can_bittiming_const btc);
 
-        [DllImport("libsocket.so", SetLastError = true, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
+        [DllImport("socketcan", SetLastError = true, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
         public static extern int can_get_berr_counter(string name, out can_berr_counter bc);
 
-        [DllImport("libsocket.so", SetLastError = true, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
+        [DllImport("socketcan", SetLastError = true, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
         public static extern int can_get_device_stats(string name, out can_device_stats cds);
 
-        [DllImport("libsocket.so", SetLastError = true, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
+        [DllImport("socketcan", SetLastError = true, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
         public static extern unsafe int can_get_link_stats(string name, out rtnl_link_stats64 rls);
     }
 }

@@ -14,12 +14,24 @@ namespace CanKit.Adapter.ZLG.Options
         public partial void Apply(ICanApplier applier, bool force = false);
 
         [CanOptionItem("device_index", CanOptionType.Init, "0U")]
-        public partial uint DeviceIndex { get; set; }
+        public uint DeviceIndex
+        {
+            get => Get_DeviceIndex();
+            set => Set_DeviceIndex(value);
+        }
 
         [CanOptionItem("/tx_timeout", CanOptionType.Init, "100U")]
-        public partial uint TxTimeOut { get; set; }
+        public uint TxTimeOut
+        {
+            get => Get_TxTimeOut();
+            set => Set_TxTimeOut(value);
+        }
 
         [CanOptionItem("/set_device_recv_merge", CanOptionType.Init, "true")]
-        public partial bool MergeReceive { get; set; }
+        public bool MergeReceive
+        {
+            get => Get_MergeReceive();
+            set => Set_MergeReceive(value);
+        }
     }
 }

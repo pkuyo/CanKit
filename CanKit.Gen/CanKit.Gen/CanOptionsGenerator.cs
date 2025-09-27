@@ -7,12 +7,12 @@ using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace CanKit.Gen;
 
-
 public enum CanOptionType
 {
     Init = 1,
     Runtime = 2
 }
+
 [Generator(LanguageNames.CSharp)]
 public sealed class CanOptionsGenerator : IIncrementalGenerator
 {
@@ -23,7 +23,7 @@ public sealed class CanOptionsGenerator : IIncrementalGenerator
 
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
-        // partial + [CanOptions]
+        // 找到被 [CanOption] 标注的 partial 类型
         var candidates = context.SyntaxProvider.CreateSyntaxProvider(
             static (node, _) =>
                 node is TypeDeclarationSyntax t &&
@@ -54,20 +54,11 @@ public sealed class CanOptionsGenerator : IIncrementalGenerator
 
         if (!HasAttr(symbol, OptionAttrFull, OptionAttrShort)) return null;
 
-        // collect partial + [CanOptionItem]
+        // 收集：实例属性 + [CanOptionItem]（不再要求 partial/auto-property）
         var list = new List<PropertyWork>();
         foreach (var member in typeDecl.Members.OfType<PropertyDeclarationSyntax>())
         {
-            if (!member.Modifiers.Any(m => m.IsKind(SyntaxKind.PartialKeyword)))
-                continue;
-
-            // no method body
-            if (member.AccessorList is null) continue;
-            var allAccessorsAreAuto =
-                member.AccessorList.Accessors.All(a => a.Body is null && a.ExpressionBody is null);
-            if (!allAccessorsAreAuto) continue;
-
-            var propSymbol = ctx.SemanticModel.GetDeclaredSymbol(member, ct);
+            var propSymbol = ctx.SemanticModel.GetDeclaredSymbol(member, ct) as IPropertySymbol;
             if (propSymbol is null || propSymbol.IsStatic) continue;
 
             var attr = GetAttr(propSymbol, ParamAttrFull, ParamAttrShort);
@@ -77,8 +68,8 @@ public sealed class CanOptionsGenerator : IIncrementalGenerator
             var hasGet = propSymbol.GetMethod is not null;
             var hasSet = propSymbol.SetMethod is not null &&
                          propSymbol.SetMethod.DeclaredAccessibility != Accessibility.NotApplicable;
-            var isInit = member.AccessorList.Accessors.Any(a =>
-                a.Kind() == SyntaxKind.InitAccessorDeclaration);
+            var isInit = member.AccessorList?.Accessors.Any(a =>
+                a.Kind() == SyntaxKind.InitAccessorDeclaration) == true;
 
             list.Add(new PropertyWork(
                 Name: propSymbol.Name,
@@ -96,11 +87,11 @@ public sealed class CanOptionsGenerator : IIncrementalGenerator
                 UseInit: isInit,
                 OptionName: (string)attr.ConstructorArguments[0].Value!,
                 OptionType: (CanOptionType)((int)attr.ConstructorArguments[1].Value!),
-                DefaultValue: attr.ConstructorArguments[2].Value as string
+                DefaultValue: attr.ConstructorArguments.Length > 2
+                    ? attr.ConstructorArguments[2].Value as string
+                    : null
             ));
         }
-
-        //if (list.Count == 0) return null;
 
         return new TypeWork(symbol, list);
     }
@@ -109,8 +100,10 @@ public sealed class CanOptionsGenerator : IIncrementalGenerator
         => symbol.GetAttributes().FirstOrDefault(a =>
             a.AttributeClass?.ToDisplayString() == full
             || a.AttributeClass?.Name == shortName);
+
     private static bool HasAttr(ISymbol symbol, string full, string shortName)
         => GetAttr(symbol, full, shortName) != null;
+
     private static void Emit(SourceProductionContext spc, Compilation compilation, TypeWork work)
     {
         var ns = work.TypeSymbol.ContainingNamespace?.IsGlobalNamespace == true
@@ -122,6 +115,7 @@ public sealed class CanOptionsGenerator : IIncrementalGenerator
         sb.AppendLine("using System;");
         sb.AppendLine("using System.CodeDom.Compiler;");
         sb.AppendLine("using System.Collections;");
+        sb.AppendLine("using System.Collections.Generic;");
 
         if (ns is not null)
         {
@@ -129,7 +123,7 @@ public sealed class CanOptionsGenerator : IIncrementalGenerator
             sb.AppendLine();
         }
 
-
+        // 打开嵌套的 partial 类型
         var stack = new Stack<INamedTypeSymbol>();
         var cur = work.TypeSymbol;
         while (cur is not null)
@@ -138,7 +132,6 @@ public sealed class CanOptionsGenerator : IIncrementalGenerator
             cur = cur.ContainingType;
         }
 
-        INamedTypeSymbol? opened = null;
         foreach (var t in stack)
         {
             var kw = t.TypeKind switch
@@ -158,43 +151,32 @@ public sealed class CanOptionsGenerator : IIncrementalGenerator
                     if (i > 0) sb.Append(", ");
                     sb.Append(t.TypeArguments[i].Name);
                 }
-
                 sb.Append('>');
             }
 
             sb.AppendLine();
             sb.AppendLine("{");
-            opened = t;
         }
 
+        // 验证 + 生成 backing 字段、partial 方法实现
+        var available = new List<PropertyWork>();
+        var index = 0;
 
-        // backing field + property impl
-
-        var avaiableProerties = new List<PropertyWork>();
-        var avaiableIndex = 0;
-        for (int i = 0; i < work.Properties.Count; i++)
+        foreach (var p in work.Properties)
         {
-            var p = work.Properties[i];
-
             if (!p.HasGet || !p.HasSet)
             {
                 var descriptor = new DiagnosticDescriptor(
                     id: "CANG001",
-                    title: "属性缺少partial get/set",
-                    messageFormat: "{0}.{1}缺少{2}",
+                    title: "属性缺少 get/set",
+                    messageFormat: "{0}.{1} 缺少 {2}",
                     category: "SourceGenerator",
                     DiagnosticSeverity.Error,
                     isEnabledByDefault: true
                 );
-                var str = !p.HasGet ? "Get" : "";
-                if (!p.HasSet)
-                    str += !string.IsNullOrEmpty(str) ? "/Set" : "Set";
-
-                var diagnostic = Diagnostic.Create(descriptor, Location.None,
-                    work.TypeSymbol.Name,
-                    p.Name,
-                    str);
-                spc.ReportDiagnostic(diagnostic);
+                var miss = (!p.HasGet ? "Get" : "") + (!p.HasSet ? (string.IsNullOrEmpty((!p.HasGet ? "Get" : "")) ? "Set" : "/Set") : "");
+                spc.ReportDiagnostic(Diagnostic.Create(descriptor, Location.None,
+                    work.TypeSymbol.Name, p.Name, miss));
                 continue;
             }
 
@@ -203,109 +185,79 @@ public sealed class CanOptionsGenerator : IIncrementalGenerator
                 var descriptor = new DiagnosticDescriptor(
                     id: "CANG002",
                     title: "属性访问权限错误",
-                    messageFormat: "{0}.{1}访问权限描述符错误",
+                    messageFormat: "{0}.{1} 访问权限描述符错误",
                     category: "SourceGenerator",
                     DiagnosticSeverity.Error,
                     isEnabledByDefault: true
                 );
-
-                var diagnostic = Diagnostic.Create(descriptor, Location.None,
-                    work.TypeSymbol.Name,
-                    p.Name);
-                spc.ReportDiagnostic(diagnostic);
+                spc.ReportDiagnostic(Diagnostic.Create(descriptor, Location.None,
+                    work.TypeSymbol.Name, p.Name));
                 continue;
             }
 
-            avaiableProerties.Add(p);
+            available.Add(p);
 
             var backing = MakeBackingName(p.Name);
 
             // backing field
-            sb.Append("    private ");
-            sb.Append(p.TypeDisplay).Append(' ').Append(backing);
-
-            if (p.DefaultValue != null)
-                sb.Append($" = {p.DefaultValue}");
-
+            sb.Append("    private ").Append(p.TypeDisplay).Append(' ').Append(backing);
+            if (p.DefaultValue != null) sb.Append(" = ").Append(p.DefaultValue);
             sb.AppendLine(";");
-            // property impl
-            sb.Append("    ");
-            if (p.HasModifers)
-            {
-                switch (p.Accessibility)
-                {
-                    case Accessibility.Public:
-                        sb.Append("public");
-                        break;
-                    case Accessibility.Private:
-                        sb.Append("private");
-                        break;
-                    case Accessibility.Protected:
-                        sb.Append("protected");
-                        break;
-                    case Accessibility.Internal:
-                        sb.Append("internal");
-                        break;
-                    case Accessibility.ProtectedOrInternal:
-                        sb.Append("protected internal");
-                        break;
-                    case Accessibility.ProtectedAndInternal:
-                        sb.Append("private protected");
-                        break;
-                }
 
-                sb.Append(" ");
-            }
-
-            sb.Append("partial ").Append(p.TypeDisplay).Append(' ').Append(p.Name).AppendLine();
+            // Get_ 方法
+            sb.Append("    private ").Append(p.TypeDisplay)
+              .Append(" Get_").Append(p.Name).AppendLine("()");
             sb.AppendLine("    {");
-
-            sb.Append("        get => ");
-            sb.Append("this.");
-            sb.Append(backing).AppendLine(";");
-
-            var accessor = p.UseInit ? "init" : "set";
-            sb.Append("        ").AppendLine(accessor).AppendLine("        {");
-            sb.AppendLine($"            if(this.{backing} != value)");
-            sb.AppendLine("            {");
-            sb.AppendLine($"                this.{backing} = value;");
-            sb.AppendLine($"                this._hasChanged[{avaiableIndex}] = true;");
-            sb.AppendLine("            }");
-            sb.AppendLine("        }");
-
-
+            sb.Append("        return this.").Append(backing).AppendLine(";");
             sb.AppendLine("    }");
-            sb.AppendLine();
 
-            avaiableIndex++;
+            // Set_/Init 方法
+            var setterName = "Set_" + p.Name;
+            sb.Append("    private void ").Append(setterName)
+              .Append("(").Append(p.TypeDisplay).Append(" value)").AppendLine();
+            sb.AppendLine("    {");
+            // 用 EqualityComparer<T>.Default 提升兼容性
+            sb.Append("        if (!EqualityComparer<").Append(p.TypeDisplay).Append(">")
+              .Append(".Default.Equals(this.").Append(backing).Append(", value))").AppendLine();
+            sb.AppendLine("        {");
+            sb.Append("            this.").Append(backing).AppendLine(" = value;");
+            sb.Append("            this._hasChanged[").Append(index).AppendLine("] = true;");
+            sb.AppendLine("        }");
+            sb.AppendLine("    }");
+
+            sb.AppendLine();
+            index++;
         }
 
         sb.AppendLine();
-        sb.AppendLine(
-            $"    BitArray _hasChanged = new BitArray({avaiableProerties.Count});");
+        sb.Append("    private BitArray _hasChanged = new BitArray(")
+          .Append(available.Count).AppendLine(");");
         sb.AppendLine();
+
+        // Apply 方法
         sb.AppendLine("    public partial void Apply(CanKit.Core.Abstractions.ICanApplier applier, bool force)");
         sb.AppendLine("    {");
-        sb.AppendLine("         if(applier is CanKit.Core.Abstractions.INamedCanApplier namedApplier)");
-        sb.AppendLine("         {");
-        for (int i = 0; i < avaiableProerties.Count; i++)
+        sb.AppendLine("        if (applier is CanKit.Core.Abstractions.INamedCanApplier namedApplier)");
+        sb.AppendLine("        {");
+        for (int i = 0; i < available.Count; i++)
         {
-            var p = avaiableProerties[i];
+            var p = available[i];
             var backing = MakeBackingName(p.Name);
-            sb.Append($"            if((_hasChanged[{i}] || force)");
-            sb.Append($" && namedApplier.ApplierStatus == CanKit.Core.Definitions.CanOptionType.{p.OptionType}");
-            sb.AppendLine($" && namedApplier.ApplyOne<{p.TypeDisplay}>(\"{p.OptionName}\",{backing}))");
-            sb.AppendLine($"                _hasChanged[{i}] = false;");
+            sb.Append("            if ((_hasChanged[").Append(i).Append("] || force)")
+              .Append(" && namedApplier.ApplierStatus == CanKit.Core.Definitions.CanOptionType.")
+              .Append(p.OptionType).AppendLine()
+              .Append("                && namedApplier.ApplyOne<").Append(p.TypeDisplay).Append(">(")
+              .Append('"').Append(p.OptionName).Append('"').Append(", ").Append(backing).Append("))")
+              .AppendLine()
+              .AppendLine("                _hasChanged[" + i + "] = false;");
         }
-        sb.AppendLine("         }");
-        sb.AppendLine($"        applier.Apply(this);");
+        sb.AppendLine("        }");
+        sb.AppendLine("        applier.Apply(this);");
         sb.AppendLine("    }");
+
         // 关闭嵌套
-        while (stack.Count > 0)
-        {
+        for (int i = 0; i < stack.Count; i++)
             sb.AppendLine("}");
-            stack.Pop();
-        }
 
         var hintName = "CanOption." + work.TypeSymbol.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)
             .Replace("global::", string.Empty)
