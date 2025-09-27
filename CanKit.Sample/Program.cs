@@ -9,11 +9,11 @@ namespace CanKit.Sample
         static void Main(string[] args)
         {
             // 1. Open two buses via endpoint (equivalent to ch0/ch1)
-            using var sendChannel = CanBus.Open("zlg://ZCAN_USBCAN2?index=0#ch0", cfg =>
+            using var sendChannel = CanBus.Open("socketcan://vxcan0", cfg =>
                 cfg.Baud(500_000)
                     .SetProtocolMode(CanProtocolMode.Can20));
 
-            using var listenChannel = CanBus.Open("zlg://ZCAN_USBCAN2?index=0#ch1", cfg =>
+            using var listenChannel = CanBus.Open("socketcan://vxcan1", cfg =>
                 cfg.Baud(500_000)
                     .AccMask(0X78, 0xFFFFFF87, CanFilterIDType.Extend)
                     .SetWorkMode(ChannelWorkMode.ListenOnly)
