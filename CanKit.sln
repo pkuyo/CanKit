@@ -17,6 +17,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CanKit.Adapter.SocketCAN", 
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CanKit.Adapter.PCAN", "CanKit.Adapter.PCAN\CanKit.Adapter.PCAN.csproj", "{6A1D3C3E-AB12-4D0E-9F4C-23CB3B6C51A2}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CanKit.Adapter.Kvaser", "CanKit.Adapter.Kvaser\CanKit.Adapter.Kvaser.csproj", "{BF250745-CA59-4AD7-B3A5-6939D017D0D2}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -111,6 +113,18 @@ Global
 		{6A1D3C3E-AB12-4D0E-9F4C-23CB3B6C51A2}.Release|x64.Build.0 = Release|Any CPU
 		{6A1D3C3E-AB12-4D0E-9F4C-23CB3B6C51A2}.Release|x86.ActiveCfg = Release|Any CPU
 		{6A1D3C3E-AB12-4D0E-9F4C-23CB3B6C51A2}.Release|x86.Build.0 = Release|Any CPU
+		{BF250745-CA59-4AD7-B3A5-6939D017D0D2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{BF250745-CA59-4AD7-B3A5-6939D017D0D2}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{BF250745-CA59-4AD7-B3A5-6939D017D0D2}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{BF250745-CA59-4AD7-B3A5-6939D017D0D2}.Debug|x64.Build.0 = Debug|Any CPU
+		{BF250745-CA59-4AD7-B3A5-6939D017D0D2}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{BF250745-CA59-4AD7-B3A5-6939D017D0D2}.Debug|x86.Build.0 = Debug|Any CPU
+		{BF250745-CA59-4AD7-B3A5-6939D017D0D2}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{BF250745-CA59-4AD7-B3A5-6939D017D0D2}.Release|Any CPU.Build.0 = Release|Any CPU
+		{BF250745-CA59-4AD7-B3A5-6939D017D0D2}.Release|x64.ActiveCfg = Release|Any CPU
+		{BF250745-CA59-4AD7-B3A5-6939D017D0D2}.Release|x64.Build.0 = Release|Any CPU
+		{BF250745-CA59-4AD7-B3A5-6939D017D0D2}.Release|x86.ActiveCfg = Release|Any CPU
+		{BF250745-CA59-4AD7-B3A5-6939D017D0D2}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

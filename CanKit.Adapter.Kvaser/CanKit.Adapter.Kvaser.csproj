@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CanKit.Core\CanKit.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Kvaser.CanLib" Version="1.16.851" />
+  </ItemGroup>
+
+  <!-- Note: The official Kvaser .NET wrapper (canlibCLSNET) is typically supplied with the CANlib SDK.
+       If you manage it via NuGet, add a PackageReference here. Otherwise, reference the DLL in your solution. -->
+</Project>
+

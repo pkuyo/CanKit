@@ -13,7 +13,7 @@ namespace CanKit.Adapter.ZLG.Utils
         internal static IEnumerable<CanReceiveData> RecvCanFrames(ZCANDataObj[] recvData, int receiveCount)
         {
             var list = new List<CanReceiveData>();
-            int count = Math.Min(receiveCount, recvData?.Length ?? 0);
+            int count = Math.Min(receiveCount, recvData.Length);
 
             for (int i = 0; i < count; i++)
             {
