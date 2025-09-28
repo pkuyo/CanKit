@@ -41,10 +41,10 @@ namespace CanKit.Adapter.ZLG
             }
             else
             {
-                var arbitrationRate = options.BitTiming.ArbitrationBitRate
-                                      ?? throw new CanChannelConfigurationException("ArbitRation bit rate must be specified when configuring CAN FD timing.");
-                var dataRate = options.BitTiming.DataBitRate
-                               ?? throw new CanChannelConfigurationException("Data bit rate must be specified when configuring CAN FD timing.");
+                var arbitrationRate = options.BitTiming.Fd?.Nominal.Bitrate
+                                      ?? throw new CanChannelConfigurationException("Arbitration bitrate must be specified when configuring CAN FD timing.");
+                var dataRate = options.BitTiming.Fd?.Data.Bitrate
+                               ?? throw new CanChannelConfigurationException("Data bitrate must be specified when configuring CAN FD timing.");
                 config.config.canfd.abit_timing = arbitrationRate;
                 config.config.canfd.dbit_timing = dataRate;
             }
@@ -239,10 +239,10 @@ namespace CanKit.Adapter.ZLG
 
             if (zlgOption.ProtocolMode != CanProtocolMode.Can20)
             {
-                var arbitrationRate = zlgOption.BitTiming.ArbitrationBitRate
-                                  ?? throw new CanChannelConfigurationException("ArbitRation bit rate must be specified when configuring CAN FD timing.");
-                var dataRate = zlgOption.BitTiming.DataBitRate
-                               ?? throw new CanChannelConfigurationException("Data bit rate must be specified when configuring CAN FD timing.");
+                var arbitrationRate = zlgOption.BitTiming.Fd?.Nominal.Bitrate
+                                  ?? throw new CanChannelConfigurationException("Arbitration bitrate must be specified when configuring CAN FD timing.");
+                var dataRate = zlgOption.BitTiming.Fd?.Data.Bitrate
+                               ?? throw new CanChannelConfigurationException("Data bitrate must be specified when configuring CAN FD timing.");
                 ZlgErr.ThrowIfError(
                     ZLGCAN.ZCAN_SetValue(
                         _devicePtr,
@@ -259,8 +259,8 @@ namespace CanKit.Adapter.ZLG
             }
             else
             {
-                var bitRate = zlgOption.BitTiming.BaudRate
-                                      ?? throw new CanChannelConfigurationException("Bit rate must be specified when configuring CAN FD timing.");
+                var bitRate = zlgOption.BitTiming.Classic?.Bitrate
+                                      ?? throw new CanChannelConfigurationException("Bitrate must be specified when configuring classic CAN timing.");
                 ZlgErr.ThrowIfError(
                     ZLGCAN.ZCAN_SetValue(
                         _devicePtr,

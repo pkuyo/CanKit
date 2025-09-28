@@ -163,11 +163,51 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
 
         if (Options.ProtocolMode == CanProtocolMode.Can20)
         {
-            if (LibSocketCan.can_set_bitrate(ifName, Options.BitTiming.BaudRate!.Value) != Libc.OK)
+
+            var classic = Options.BitTiming.Classic?.Bitrate ?? 0;
+            if (Options.BitTiming.Classic is not { } timing)
             {
-                Libc.ThrowErrno("can_set_bitrate",
-                    $"Failed to set bitrate {Options.BitTiming.BaudRate!.Value} on '{ifName}'");
+                //异常处理
+                return;
             }
+
+            if (timing.UseSegment)
+            {
+                if (LibSocketCan.can_set_bittiming(ifName, new LibSocketCan.can_bittiming()
+                {
+                    tq = timing.Segment!.Value.TqNs ?? 0,
+                    prop_seg = timing.Segment!.Value.PropSeg,
+                    phase_seg1 = timing.Segment!.Value.PhaseSeg1,
+                    phase_seg2 = timing.Segment!.Value.PhaseSeg2,
+                    sjw = timing.Segment!.Value.Sjw,
+                    brp = timing.Segment!.Value.Brp,
+                }) != Libc.OK)
+                {
+                    Libc.ThrowErrno("can_set_bittiming",
+                        $"Failed to set bittiming by segment {classic} on '{ifName}'");
+                }
+            }
+            else if (timing.UseBitRateWithSamplePoint)
+            {
+                if (LibSocketCan.can_set_bitrate_samplepoint(ifName, classic, timing.SamplePointPermille!.Value) != Libc.OK)
+                {
+                    Libc.ThrowErrno("can_set_bitrate",
+                        $"Failed to set bitrate {classic} on '{ifName}'");
+                }
+            }
+            else if (timing.UseBitRate)
+            {
+                if (LibSocketCan.can_set_bitrate(ifName, classic) != Libc.OK)
+                {
+                    Libc.ThrowErrno("can_set_bitrate",
+                        $"Failed to set bitrate {classic} on '{ifName}'");
+                }
+            }
+            else
+            {
+                //TODO:异常处理
+            }
+
             ctrlMode.flags &= ~LibSocketCan.CAN_CTRLMODE_FD;
         }
         else
@@ -179,11 +219,14 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
 
             ctrlMode.flags |= LibSocketCan.CAN_CTRLMODE_FD;
 
-            if (LibSocketCan.can_set_fd_bitrates(ifName, Options.BitTiming.ArbitrationBitRate!.Value,
-                    Options.BitTiming.DataBitRate!.Value) != Libc.OK)
+            var abit = Options.BitTiming.Fd?.Nominal.Bitrate
+                       ?? throw new CanChannelConfigurationException("FD nominal bitrate must be specified for SocketCAN FD mode.");
+            var dbit = Options.BitTiming.Fd?.Data.Bitrate
+                       ?? throw new CanChannelConfigurationException("FD data bitrate must be specified for SocketCAN FD mode.");
+            if (LibSocketCan.can_set_fd_bitrates(ifName, abit, dbit) != Libc.OK)
             {
                 Libc.ThrowErrno("can_set_fd_bitrates",
-                    $"Failed to set FD bitrates arb={Options.BitTiming.ArbitrationBitRate!.Value}, data={Options.BitTiming.DataBitRate!.Value} on '{ifName}'");
+                    $"Failed to set FD bitrates arb={abit}, data={dbit} on '{ifName}'");
             }
         }
 
@@ -259,6 +302,12 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
             if (pr == 0)
             {
                 break; // timeout
+            }
+
+            if (enumerator.Current == null)
+            {
+                //TODO:Exception
+                break;
             }
 
             if (_transceiver.Transmit(this, [enumerator.Current]) == 1)

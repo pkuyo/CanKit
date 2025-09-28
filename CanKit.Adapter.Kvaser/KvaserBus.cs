@@ -92,19 +92,34 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, ICanApplier, I
         if (opt.ProtocolMode == CanProtocolMode.Can20)
         {
             // Map common bitrates to predefined constants if available; otherwise, attempt a generic setup
-            var baud = opt.BitTiming.BaudRate ?? 500_000u;
-            // Prefer presets; if not exact, still select the nearest common preset
-            _ = Canlib.canSetBusParams(handle, (int)baud,0,0,0,0);
+            var baud = opt.BitTiming.Classic?.Bitrate ?? 500_000u;
+            var adv = opt.BitTiming.OverrideSegments;
+            if (adv is { } seg)
+            {
+                _ = Canlib.canSetBusParams(handle, (int)baud, (int)seg.Tseg1, (int)seg.Tseg2, (int)seg.Sjw, 1);
+            }
+            else
+            {
+                _ = Canlib.canSetBusParams(handle, (int)baud, 0, 0, 0, 0);
+            }
         }
         else if (opt.ProtocolMode == CanProtocolMode.CanFd)
         {
-            var abit = opt.BitTiming.ArbitrationBitRate ?? 500_000u;
-            var dbit = opt.BitTiming.DataBitRate ?? 2_000_000u;
+            var abit = opt.BitTiming.Fd?.Nominal.Bitrate ?? 500_000u;
+            var dbit = opt.BitTiming.Fd?.Data.Bitrate ?? 2_000_000u;
             // Try set FD params using built-in presets where possible
             // If not exact match, at least set arbitration to a common preset
-
-            _ = Canlib.canSetBusParams(handle, (int)abit,0,0,0,0);
-            _ = Canlib.canSetBusParamsFd(handle, (int)dbit, 0, 0, 0);
+            var adv = opt.BitTiming.OverrideSegments;
+            if (adv is { } seg)
+            {
+                _ = Canlib.canSetBusParams(handle, (int)abit, (int)seg.Tseg1, (int)seg.Tseg2, (int)seg.Sjw, 1);
+                _ = Canlib.canSetBusParamsFd(handle, (int)dbit, (int)seg.Tseg1, (int)seg.Tseg2, (int)seg.Sjw);
+            }
+            else
+            {
+                _ = Canlib.canSetBusParams(handle, (int)abit, 0, 0, 0, 0);
+                _ = Canlib.canSetBusParamsFd(handle, (int)dbit, 0, 0, 0);
+            }
         }
         else
         {

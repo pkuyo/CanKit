@@ -8,7 +8,7 @@ public sealed class KvaserBusOptions(ICanModelProvider provider) : IBusOptions
     public ICanModelProvider Provider { get; } = provider;
 
     public int ChannelIndex { get; set; }
-    public BitTiming BitTiming { get; set; } = new(500_000, null, null);
+    public BitTiming BitTiming { get; set; } = new(new CanTimingConfig(500_000), null);
     public bool InternalResistance { get; set; }
     public bool BusUsageEnabled { get; set; }
     public uint BusUsagePeriodTime { get; set; } = 1000U;
@@ -56,4 +56,3 @@ public sealed class KvaserBusRtConfigurator
     public string? ChannelName => Options.ChannelName;
     public bool AcceptVirtual => Options.AcceptVirtual;
 }
-

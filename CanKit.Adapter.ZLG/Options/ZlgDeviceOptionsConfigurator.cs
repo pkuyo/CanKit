@@ -83,6 +83,9 @@ public sealed class ZlgBusInitConfigurator
         return base.RangeFilter(min, max, idType);
     }
 
+    public ZlgBusInitConfigurator ClassicTiming(uint bitrate, uint? samplePointPermille = null, uint? sjwTq = null)
+        => TimingClassic(bitrate, samplePointPermille, sjwTq);
+
 }
 
 public sealed class ZlgBusRtConfigurator

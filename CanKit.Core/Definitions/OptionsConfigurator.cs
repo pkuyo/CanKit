@@ -98,14 +98,48 @@ namespace CanKit.Core.Definitions
         public virtual TSelf Baud(uint baud)
         {
             CanKitErr.ThrowIfNotSupport(_feature, CanFeature.CanClassic);
-            Options.BitTiming = new BitTiming(BaudRate: baud);
+            Options.BitTiming = new BitTiming(new CanTimingConfig(baud),null);
             return (TSelf)this;
         }
 
         public virtual TSelf Fd(uint abit, uint dbit)
         {
             CanKitErr.ThrowIfNotSupport(_feature, CanFeature.CanFd);
-            Options.BitTiming = new BitTiming(ArbitrationBitRate: abit, DataBitRate: dbit);
+            Options.BitTiming = new BitTiming(
+                null,
+                new CanFdTimingConfig(new CanTimingConfig(abit), new CanTimingConfig(dbit)));
+            return (TSelf)this;
+        }
+
+        public virtual TSelf TimingClassic(uint bitrate, uint? samplePointPermille = null, uint? sjwTq = null)
+        {
+            CanKitErr.ThrowIfNotSupport(_feature, CanFeature.CanClassic);
+            Options.BitTiming = new BitTiming(new CanTimingConfig(bitrate, samplePointPermille, sjwTq),null);
+            return (TSelf)this;
+        }
+
+        public virtual TSelf TimingClassic(CanTimingConfig timing)
+        {
+            CanKitErr.ThrowIfNotSupport(_feature, CanFeature.CanClassic);
+            Options.BitTiming = new BitTiming(timing, null);
+            return (TSelf)this;
+        }
+
+        public virtual TSelf TimingFd(uint abit, uint dbit,
+            uint? nominalSamplePointPermille = null, uint? nominalSjwTq = null,
+            uint? dataSamplePointPermille = null, uint? dataSjwTq = null)
+        {
+            CanKitErr.ThrowIfNotSupport(_feature, CanFeature.CanFd);
+            var nominal = new CanTimingConfig(abit, nominalSamplePointPermille, nominalSjwTq);
+            var data = new CanTimingConfig(dbit, dataSamplePointPermille, dataSjwTq);
+            Options.BitTiming = new BitTiming(null, new CanFdTimingConfig(nominal, data));
+            return (TSelf)this;
+        }
+
+        public virtual TSelf TimingFd(CanFdTimingConfig timing)
+        {
+            CanKitErr.ThrowIfNotSupport(_feature, CanFeature.CanFd);
+            Options.BitTiming = new BitTiming(null, timing);
             return (TSelf)this;
         }
 
@@ -140,8 +174,9 @@ namespace CanKit.Core.Definitions
             Options.ProtocolMode = mode;
             Options.BitTiming = mode switch
             {
-                CanProtocolMode.Can20 => new BitTiming(),
-                _ => new BitTiming(null, 500_000, 500_000)
+                CanProtocolMode.Can20 => new BitTiming(new CanTimingConfig(500_000), null),
+                _ => new BitTiming(null, new CanFdTimingConfig(new CanTimingConfig(500_000),
+                    new CanTimingConfig(500_000)))
             };
             return (TSelf)this;
         }
@@ -187,11 +222,20 @@ namespace CanKit.Core.Definitions
             return (TSelf)this;
         }
 
-        IBusInitOptionsConfigurator IBusInitOptionsConfigurator.Baud(uint baud)
-            => Baud(baud);
+        IBusInitOptionsConfigurator IBusInitOptionsConfigurator.Baud(uint baud) => Baud(baud);
+        IBusInitOptionsConfigurator IBusInitOptionsConfigurator.Fd(uint abit, uint dbit) => Fd(abit, dbit);
 
-        IBusInitOptionsConfigurator IBusInitOptionsConfigurator.Fd(uint abit, uint dbit)
-            => Fd(abit, dbit);
+        IBusInitOptionsConfigurator IBusInitOptionsConfigurator.TimingClassic(uint bitrate, uint? samplePointPermille, uint? sjwTq)
+            => TimingClassic(bitrate, samplePointPermille, sjwTq);
+
+        IBusInitOptionsConfigurator IBusInitOptionsConfigurator.TimingClassic(CanTimingConfig timing)
+            => TimingClassic(timing);
+
+        IBusInitOptionsConfigurator IBusInitOptionsConfigurator.TimingFd(uint abit, uint dbit, uint? nominalSamplePointPermille, uint? nominalSjwTq, uint? dataSamplePointPermille, uint? dataSjwTq)
+            => TimingFd(abit, dbit, nominalSamplePointPermille, nominalSjwTq, dataSamplePointPermille, dataSjwTq);
+
+        IBusInitOptionsConfigurator IBusInitOptionsConfigurator.TimingFd(CanFdTimingConfig timing)
+            => TimingFd(timing);
 
         IBusInitOptionsConfigurator IBusInitOptionsConfigurator.BusUsage(uint periodMs)
             => BusUsage(periodMs);

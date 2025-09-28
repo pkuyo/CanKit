@@ -333,7 +333,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
 
     private static Bitrate MapClassicBaud(BitTiming timing)
     {
-        var b = timing.BaudRate ?? 500_000u;
+        var b = timing.Classic?.Bitrate ?? 500_000u;
         return b switch
         {
             1_000_000 => Bitrate.Pcan1000,
@@ -356,8 +356,19 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
 
     private static BitrateFD MapFdBitrate(BitTiming timing)
     {
-        var abit = timing.ArbitrationBitRate ?? 500_000u;
-        var dbit = timing.DataBitRate ?? 2_000_000u;
+        // If advanced override is provided, build a custom FD string using same segments for both phases.
+        if (timing.OverrideSegments is { } seg)
+        {
+            var fmhz = seg.TqNs.HasValue && seg.TqNs.Value != 0
+                ? Math.Max(1, (int)(1000u * seg.Brp / seg.TqNs.Value))
+                : 80;
+            string s = $"f_clock_mhz={fmhz}, nom_brp={seg.Brp}, nom_tseg1={seg.Tseg1}, nom_tseg2={seg.Tseg2}, nom_sjw={seg.Sjw}, " +
+                       $"data_brp={seg.Brp}, data_tseg1={seg.Tseg1}, data_tseg2={seg.Tseg2}, data_sjw={seg.Sjw}";
+            return new BitrateFD(s);
+        }
+
+        var abit = timing.Fd?.Nominal.Bitrate ?? 500_000u;
+        var dbit = timing.Fd?.Data.Bitrate ?? 2_000_000u;
 
         // Common 80MHz-based presets from PCAN documentation
         if (abit == 500_000 && dbit == 2_000_000)

@@ -27,7 +27,7 @@ public sealed class SocketCanProvider : ICanModelProvider
         var options = new SocketCanBusOptions(this)
         {
             ChannelIndex = channelIndex,
-            BitTiming = new BitTiming(500_000),
+            BitTiming = new BitTiming(new CanTimingConfig(500_000), null),
             ProtocolMode = CanProtocolMode.Can20,
             WorkMode = ChannelWorkMode.Normal,
             InterfaceName = $"can{channelIndex}"

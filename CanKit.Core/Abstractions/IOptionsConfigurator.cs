@@ -200,6 +200,33 @@ public interface IBusInitOptionsConfigurator : ICanOptionsConfigurator
     IBusInitOptionsConfigurator Fd(uint abit, uint dbit);
 
     /// <summary>
+    /// Set classic timing with optional sample point and SJW.
+    /// ZH: 设置经典 CAN 位时序，可选采样点与 SJW。
+    /// </summary>
+    IBusInitOptionsConfigurator TimingClassic(uint bitrate, uint? samplePointPermille = null, uint? sjwTq = null);
+
+    /// <summary>
+    /// Set classic timing with a full timing config.
+    /// ZH: 设置经典 CAN 位时序（完整配置）。
+    /// </summary>
+    IBusInitOptionsConfigurator TimingClassic(CanTimingConfig timing);
+
+    /// <summary>
+    /// Set CAN FD timing with optional sample point/SJW per phase.
+    /// ZH: 设置 CAN FD 位时序（仲裁/数据相位，支持采样点/SJW）。
+    /// </summary>
+    IBusInitOptionsConfigurator TimingFd(uint abit, uint dbit,
+        uint? nominalSamplePointPermille = null, uint? nominalSjwTq = null,
+        uint? dataSamplePointPermille = null, uint? dataSjwTq = null);
+
+    /// <summary>
+    /// Set CAN FD timing with a full timing config.
+    /// ZH: 设置 CAN FD 位时序（完整配置）。
+    /// </summary>
+    IBusInitOptionsConfigurator TimingFd(CanFdTimingConfig timing);
+
+
+    /// <summary>
     /// Enable bus usage measurement (启用总线占用率统计)。
     /// </summary>
     /// <param name="periodMs">Period in ms (统计周期毫秒)。</param>
