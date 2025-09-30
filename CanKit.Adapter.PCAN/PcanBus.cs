@@ -55,7 +55,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
         }
         else
         {
-            throw new CanFeatureNotSupportedException(CanFeature.MergeReceive, Options.Features);
+            //TODO:
         }
 
         // Apply initial options (filters etc.)
@@ -331,9 +331,15 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
         }
     }
 
-    private static Bitrate MapClassicBaud(BitTiming timing)
+    private static Bitrate MapClassicBaud(CanBusTiming timing)
     {
-        var b = timing.Classic?.Bitrate ?? 500_000u;
+        if (!timing.Classic!.Value.Nominal.IsTarget)
+        {
+            //TODO: 异常处理
+            throw new Exception();
+        }
+
+        var b = timing.Classic.Value.Nominal.Bitrate!.Value;
         return b switch
         {
             1_000_000 => Bitrate.Pcan1000,
@@ -354,34 +360,61 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
         };
     }
 
-    private static BitrateFD MapFdBitrate(BitTiming timing)
+    private static BitrateFD MapFdBitrate(CanBusTiming timing)
     {
+
+        var (nomial, data, clockTmp) = timing.Fd!.Value;
+        var clock = clockTmp ?? 80;
         // If advanced override is provided, build a custom FD string using same segments for both phases.
-        if (timing.OverrideSegments is { } seg)
+        BitrateFD.BitrateSegment nominalSeg = new BitrateFD.BitrateSegment();
+        BitrateFD.BitrateSegment dataSeg = new BitrateFD.BitrateSegment();
+
+        if (!Enum.IsDefined(typeof(BitrateFD.BitrateSegment), clock * 1_000_000))
         {
-            var fmhz = seg.TqNs.HasValue && seg.TqNs.Value != 0
-                ? Math.Max(1, (int)(1000u * seg.Brp / seg.TqNs.Value))
-                : 80;
-            string s = $"f_clock_mhz={fmhz}, nom_brp={seg.Brp}, nom_tseg1={seg.Tseg1}, nom_tseg2={seg.Tseg2}, nom_sjw={seg.Sjw}, " +
-                       $"data_brp={seg.Brp}, data_tseg1={seg.Tseg1}, data_tseg2={seg.Tseg2}, data_sjw={seg.Sjw}";
-            return new BitrateFD(s);
+            //TODO:异常处理
         }
 
-        var abit = timing.Fd?.Nominal.Bitrate ?? 500_000u;
-        var dbit = timing.Fd?.Data.Bitrate ?? 2_000_000u;
+        if (nomial.Segments is { } seg)
+        {
+            nominalSeg.Tseg1 = seg.Tseg1;
+            nominalSeg.Tseg2 = seg.Tseg2;
+            nominalSeg.Brp = seg.Brp;
+            nominalSeg.Mode = BitrateFD.BitrateType.ArbitrationPhase;
+            nominalSeg.Sjw = seg.Sjw;
 
-        // Common 80MHz-based presets from PCAN documentation
-        if (abit == 500_000 && dbit == 2_000_000)
-            return new BitrateFD("f_clock_mhz=80, nom_brp=4, nom_tseg1=63, nom_tseg2=16, nom_sjw=16, data_brp=2, data_tseg1=16, data_tseg2=7, data_sjw=7");
-        if (abit == 500_000 && dbit == 1_000_000)
-            return new BitrateFD("f_clock_mhz=80, nom_brp=4, nom_tseg1=63, nom_tseg2=16, nom_sjw=16, data_brp=4, data_tseg1=16, data_tseg2=7, data_sjw=7");
-        if (abit == 250_000 && dbit == 2_000_000)
-            return new BitrateFD("f_clock_mhz=80, nom_brp=8, nom_tseg1=63, nom_tseg2=16, nom_sjw=16, data_brp=2, data_tseg1=16, data_tseg2=7, data_sjw=7");
-        if (abit == 250_000 && dbit == 1_000_000)
-            return new BitrateFD("f_clock_mhz=80, nom_brp=8, nom_tseg1=63, nom_tseg2=16, nom_sjw=16, data_brp=4, data_tseg1=16, data_tseg2=7, data_sjw=7");
+        }
+        else
+        {
+            var bit = timing.Fd.Value.Nominal.Bitrate!.Value;
+            var samplePoint = timing.Fd.Value.Nominal.SamplePointPermille ?? 800;
+            var segment = BitTimingSolver.FromSamplePoint(clock, bit, samplePoint);
+            nominalSeg.Tseg1 = segment.Tseg1;
+            nominalSeg.Tseg2 = segment.Tseg2;
+            nominalSeg.Brp = segment.Brp;
+            nominalSeg.Mode = BitrateFD.BitrateType.ArbitrationPhase;
+            nominalSeg.Sjw = segment.Sjw;
+        }
 
-        // Fallback to a safe default
-        return new BitrateFD("f_clock_mhz=80, nom_brp=4, nom_tseg1=63, nom_tseg2=16, nom_sjw=16, data_brp=2, data_tseg1=16, data_tseg2=7, data_sjw=7");
+        if (data.Segments is { } seg1)
+        {
+            dataSeg.Tseg1 = seg1.Tseg1;
+            dataSeg.Tseg2 = seg1.Tseg2;
+            dataSeg.Brp = seg1.Brp;
+            dataSeg.Mode = BitrateFD.BitrateType.DataPhase;
+            dataSeg.Sjw = seg1.Sjw;
+        }
+        else
+        {
+            var bit = timing.Fd.Value.Nominal.Bitrate!.Value;
+            var samplePoint = timing.Fd.Value.Nominal.SamplePointPermille ?? 800;
+            var segment = BitTimingSolver.FromSamplePoint(clock, bit, samplePoint);
+            dataSeg.Tseg1 = segment.Tseg1;
+            dataSeg.Tseg2 = segment.Tseg2;
+            dataSeg.Brp = segment.Brp;
+            dataSeg.Mode = BitrateFD.BitrateType.ArbitrationPhase;
+            dataSeg.Sjw = segment.Sjw;
+        }
+        return new BitrateFD((BitrateFD.ClockFrequency)(clock * 1_000_000), nominalSeg, dataSeg);
     }
 
     private static PcanChannel ParseHandle(string channel)

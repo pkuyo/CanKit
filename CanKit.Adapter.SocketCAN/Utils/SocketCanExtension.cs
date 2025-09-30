@@ -5,6 +5,31 @@ namespace CanKit.Adapter.SocketCAN.Utils;
 
 internal static class SocketCanExtension
 {
+
+    public static LibSocketCan.can_bittiming ToCanBitTiming(this CanPhaseTiming timing, uint clock)
+    {
+        if (timing.IsTarget)
+        {
+            return new LibSocketCan.can_bittiming
+            {
+                bitrate = timing.Bitrate!.Value,
+                sample_point = timing.SamplePointPermille ?? 0
+            };
+        }
+        else
+        {
+            var seg = timing.Segments!.Value;
+            return new LibSocketCan.can_bittiming
+            {
+                tq = (1_000 * seg.Brp) / clock,
+                prop_seg = Math.Max(1, seg.Tseg1 / 2),
+                phase_seg1 = seg.Tseg1 - Math.Max(1, seg.Tseg1 / 2),
+                phase_seg2 = seg.Tseg2,
+                sjw = seg.Sjw
+            };
+        }
+    }
+
     public static Libc.can_frame ToCanFrame(this CanClassicFrame cf)
     {
         var frame = new Libc.can_frame

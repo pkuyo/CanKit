@@ -86,44 +86,48 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, ICanApplier, I
     }
 
     private static void ConfigureBitrate(int handle, KvaserBusOptions opt)
-    { ;
+    {
         if (handle < 0) return;
 
         if (opt.ProtocolMode == CanProtocolMode.Can20)
         {
+            var classic = opt.BitTiming.Classic!.Value;
             // Map common bitrates to predefined constants if available; otherwise, attempt a generic setup
-            var baud = opt.BitTiming.Classic?.Bitrate ?? 500_000u;
-            var adv = opt.BitTiming.OverrideSegments;
-            if (adv is { } seg)
+            if (classic.Nominal.Segments is { } seg)
             {
-                _ = Canlib.canSetBusParams(handle, (int)baud, (int)seg.Tseg1, (int)seg.Tseg2, (int)seg.Sjw, 1);
+                _ = Canlib.canSetBusParams(handle, (int)seg.BitRate(80),
+                    (int)seg.Tseg1, (int)seg.Tseg2, (int)seg.Sjw, 1);
             }
             else
             {
-                _ = Canlib.canSetBusParams(handle, (int)baud, 0, 0, 0, 0);
+                _ = Canlib.canSetBusParams(handle, (int)classic.Nominal.Bitrate!.Value, 0, 0, 0, 0);
             }
         }
         else if (opt.ProtocolMode == CanProtocolMode.CanFd)
         {
-            var abit = opt.BitTiming.Fd?.Nominal.Bitrate ?? 500_000u;
-            var dbit = opt.BitTiming.Fd?.Data.Bitrate ?? 2_000_000u;
-            // Try set FD params using built-in presets where possible
-            // If not exact match, at least set arbitration to a common preset
-            var adv = opt.BitTiming.OverrideSegments;
-            if (adv is { } seg)
+            var fd = opt.BitTiming.Fd!.Value;
+            if (fd.Nominal.Segments is { } seg)
             {
-                _ = Canlib.canSetBusParams(handle, (int)abit, (int)seg.Tseg1, (int)seg.Tseg2, (int)seg.Sjw, 1);
-                _ = Canlib.canSetBusParamsFd(handle, (int)dbit, (int)seg.Tseg1, (int)seg.Tseg2, (int)seg.Sjw);
+                _ = Canlib.canSetBusParams(handle, (int)seg.BitRate(80),
+                    (int)seg.Tseg1, (int)seg.Tseg2, (int)seg.Sjw, 1);
             }
             else
             {
-                _ = Canlib.canSetBusParams(handle, (int)abit, 0, 0, 0, 0);
-                _ = Canlib.canSetBusParamsFd(handle, (int)dbit, 0, 0, 0);
+                _ = Canlib.canSetBusParams(handle, (int)fd.Nominal.Bitrate!.Value, 0, 0, 0, 0);
+            }
+            if (fd.Nominal.Segments is { } seg1)
+            {
+                _ = Canlib.canSetBusParamsFd(handle, (int)seg1.BitRate(80),
+                    (int)seg1.Tseg1, (int)seg1.Tseg2, (int)seg1.Sjw);
+            }
+            else
+            {
+                _ = Canlib.canSetBusParamsFd(handle, (int)fd.Nominal.Bitrate!.Value, 0, 0, 0);
             }
         }
         else
         {
-            throw new CanFeatureNotSupportedException(CanFeature.MergeReceive, CanFeature.CanClassic);
+            //TODO:
         }
     }
 
@@ -166,7 +170,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, ICanApplier, I
     public CanErrorCounters ErrorCounters()
     {
         ThrowIfDisposed();
-        _ =Canlib.canReadErrorCounters(_handle, out var tx, out var rx, out _);
+        _ = Canlib.canReadErrorCounters(_handle, out var tx, out var rx, out _);
         return new CanErrorCounters()
         {
             TransmitErrorCounter = tx,

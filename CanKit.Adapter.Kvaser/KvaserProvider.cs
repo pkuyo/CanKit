@@ -26,7 +26,7 @@ public sealed class KvaserProvider : ICanModelProvider
         var options = new KvaserBusOptions(this)
         {
             ChannelIndex = channelIndex,
-            BitTiming = new BitTiming(new CanTimingConfig(500_000), null),
+            BitTiming = CanBusTiming.ClassicDefault(),
             ProtocolMode = CanProtocolMode.Can20,
             WorkMode = ChannelWorkMode.Normal,
             ChannelNumber = channelIndex

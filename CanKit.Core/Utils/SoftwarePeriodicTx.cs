@@ -74,7 +74,7 @@ public sealed class SoftwarePeriodicTx : IPeriodicTx
     {
         lock (_gate)
         {
-            if (frame is not null) _frame = frame;
+            if (frame is not null) _frame = frame.Value;
             if (period.HasValue && period.Value > TimeSpan.Zero) _period = period.Value;
             if (repeatCount.HasValue)
             {

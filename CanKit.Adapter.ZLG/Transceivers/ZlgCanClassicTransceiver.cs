@@ -31,7 +31,7 @@ namespace CanKit.Adapter.ZLG.Transceivers
 
             return data.Take((int)recCount).Select(i => new CanReceiveData(i.frame.FromReceiveData())
             {
-                recvTimestamp = i.timestamp
+                RecvTimestamp = i.timestamp
             });
         }
 

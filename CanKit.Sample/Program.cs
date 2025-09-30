@@ -22,7 +22,7 @@ namespace CanKit.Sample
             // 2. Subscribe RX and error events
             listenChannel.FrameReceived += (sender, data) =>
             {
-                Console.Write($"[{data.SystemTimestamp}] [{data.recvTimestamp / 1000f}ms] 0x{data.CanFrame.ID:X}, {data.CanFrame.Dlc}");
+                Console.Write($"[{data.SystemTimestamp}] [{data.RecvTimestamp / 1000f}ms] 0x{data.CanFrame.ID:X}, {data.CanFrame.Dlc}");
                 foreach (var by in data.CanFrame.Data.Span)
                     Console.Write($" {by:X2}");
                 Console.WriteLine();

@@ -108,7 +108,7 @@ public sealed class SocketCanClassicTransceiver : ITransceiver
 
             if (tsTicks == 0) tsTicks = (ulong)DateTime.UtcNow.Ticks;
             result.Add(new CanReceiveData(new CanClassicFrame(frame->can_id, data2))
-            { recvTimestamp = tsTicks });
+            { RecvTimestamp = tsTicks });
         }
         return result;
     }

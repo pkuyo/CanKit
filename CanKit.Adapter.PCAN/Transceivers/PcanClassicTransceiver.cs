@@ -88,7 +88,7 @@ public sealed class PcanClassicTransceiver : ITransceiver
 
             // Assume PCAN timestamp is in microseconds. Convert to ticks (100ns)
             var ticks = ts * 10UL;
-            list.Add(new CanReceiveData(frame) { recvTimestamp = ticks });
+            list.Add(new CanReceiveData(frame) { RecvTimestamp = ticks });
         }
         return list;
     }

@@ -101,7 +101,9 @@ public sealed class BCMPeriodicTx : IPeriodicTx
             newCount = RemainingCount;
         }
         if (frame is not null)
-            _frame = frame.CanFrame;
+        {
+            _frame = frame.Value.CanFrame;
+        }
 
         var flags = 0u;
         if (period is not null) flags |= Libc.SETTIMER; // update timers
@@ -128,15 +130,15 @@ public sealed class BCMPeriodicTx : IPeriodicTx
         unsafe
         {
             var buf = stackalloc byte[bufSize];
-            if (frame is not null)
+            if (frame is { } fr)
             {
-                if (frame.CanFrame is CanClassicFrame classic)
+                if (fr.CanFrame is CanClassicFrame classic)
                 {
                     var size = Marshal.SizeOf<Libc.can_frame>();
                     var frameData = classic.ToCanFrame();
                     Buffer.MemoryCopy(&frameData, buf + headSize, size, size);
                 }
-                else if (frame.CanFrame is CanFdFrame fd)
+                else if (fr.CanFrame is CanFdFrame fd)
                 {
                     var size = Marshal.SizeOf<Libc.canfd_frame>();
                     var frameData = fd.ToCanFrame();

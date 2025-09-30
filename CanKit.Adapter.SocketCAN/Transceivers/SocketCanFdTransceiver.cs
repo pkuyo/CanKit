@@ -116,7 +116,7 @@ public sealed class SocketCanFdTransceiver : ITransceiver
             bool esi = (frame->flags & Libc.CANFD_ESI) != 0;
             if (tsTicks == 0) tsTicks = (ulong)DateTime.UtcNow.Ticks;
             result.Add(new CanReceiveData(new CanFdFrame(frame->can_id, data, brs, esi))
-            { recvTimestamp = tsTicks });
+            { RecvTimestamp = tsTicks });
         }
 
         return result;

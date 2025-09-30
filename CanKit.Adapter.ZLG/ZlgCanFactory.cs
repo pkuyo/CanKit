@@ -34,11 +34,11 @@ public sealed class ZlgCanFactory : ICanFactory
     {
         if (configurator.Provider is not ZlgCanProvider provider)
             throw new CanProviderMismatchException(typeof(ZlgCanProvider), configurator.Provider?.GetType() ?? typeof(ICanModelProvider));
-
+        /*
         if (busOptions.ProtocolMode == CanProtocolMode.Merged &&
             (configurator.Features & CanFeature.MergeReceive) != 0U)
             return new ZlgMergeTransceiver();
-
+        */
         if (busOptions.ProtocolMode == CanProtocolMode.Can20
             && (uint)(configurator.Features & CanFeature.CanClassic) != 0U)
             return new ZlgCanClassicTransceiver();
@@ -51,7 +51,6 @@ public sealed class ZlgCanFactory : ICanFactory
         {
             CanProtocolMode.Can20 => CanFeature.CanClassic,
             CanProtocolMode.CanFd => CanFeature.CanFd,
-            CanProtocolMode.Merged => CanFeature.MergeReceive,
             _ => default
         };
 

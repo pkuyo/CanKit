@@ -23,7 +23,7 @@ public sealed class KvaserFdTransceiver : ITransceiver
                 if (fd.BitRateSwitch) flags |= Canlib.canFDMSG_BRS;
                 if (fd.ErrorStateIndicator) flags |= Canlib.canFDMSG_ESI;
             }
-            else if(item.CanFrame is CanClassicFrame classic)
+            else if (item.CanFrame is CanClassicFrame classic)
             {
                 if (classic.IsExtendedFrame) flags |= (uint)Canlib.canMSG_EXT;
                 if (classic.IsRemoteFrame) flags |= (uint)Canlib.canMSG_RTR;
@@ -82,7 +82,7 @@ public sealed class KvaserFdTransceiver : ITransceiver
                 }
 
                 var ticks = (ulong)time * 10_000UL;
-                list.Add(new CanReceiveData(frame) { recvTimestamp = ticks });
+                list.Add(new CanReceiveData(frame) { RecvTimestamp = ticks });
             }
             else if (st == Canlib.canStatus.canERR_NOMSG)
             {

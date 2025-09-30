@@ -23,17 +23,14 @@ public sealed class SocketCanFactory : ICanFactory
 
     public ITransceiver CreateTransceivers(IDeviceRTOptionsConfigurator deviceOptions, IBusInitOptionsConfigurator busOptions)
     {
-        // SocketCAN supports classic + FD; no merged receive abstraction.
+        // SocketCAN supports classic + FD;
         return busOptions.ProtocolMode switch
         {
             CanProtocolMode.Can20 => new SocketCanClassicTransceiver(),
             CanProtocolMode.CanFd => new SocketCanFdTransceiver(),
-            _ => throw new CanFeatureNotSupportedException(CanFeature.MergeReceive, CanFeature.CanClassic | CanFeature.CanFd)
+            _ => throw new Exception() //TODO:异常处理（目前不可达分支）
         };
     }
 
-    public bool Support(DeviceType deviceType)
-    {
-        return deviceType.Equals(LinuxDeviceType.SocketCAN);
-    }
+    public bool Support(DeviceType deviceType) => deviceType.Equals(LinuxDeviceType.SocketCAN);
 }

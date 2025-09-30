@@ -11,7 +11,7 @@ public sealed class SocketCanBusOptions(ICanModelProvider provider) : IBusOption
     public ICanModelProvider Provider { get; } = provider;
 
     public int ChannelIndex { get; set; }
-    public BitTiming BitTiming { get; set; } = new(new CanTimingConfig(500_000), null);
+    public CanBusTiming BitTiming { get; set; } = CanBusTiming.ClassicDefault();
     public bool InternalResistance { get; set; }
     public bool BusUsageEnabled { get; set; }
     public uint BusUsagePeriodTime { get; set; } = 1000U;

@@ -8,6 +8,29 @@ using static CanKit.Adapter.ZLG.Native.ZLGCAN;
 
 namespace CanKit.Adapter.ZLG.Utils
 {
+    internal enum ZlgBaudRate
+    {
+        ZLG_1M = 1_000_000,
+        ZLG_800K = 800_000,
+        ZLG_500K = 500_000,
+        ZLG_250K = 250_000,
+        ZLG_125K = 125_000,
+        ZLG_100K = 100_000,
+        ZLG_50K = 50_000,
+    }
+
+    internal enum ZlgDataDaudRate
+    {
+        ZLG_5M = 5_000_000,
+        ZLG_4M = 4_000_000,
+        ZLG_2M = 2_000_000,
+        ZLG_1M = 1_000_000,
+        ZLG_800K = 800_000,
+        ZLG_500K = 500_000,
+        ZLG_250K = 250_000,
+        ZLG_125K = 125_000,
+        ZLG_100K = 100_000,
+    }
     internal static class ZlgNativeExtension
     {
         internal static IEnumerable<CanReceiveData> RecvCanFrames(ZCANDataObj[] recvData, int receiveCount)
@@ -18,12 +41,12 @@ namespace CanKit.Adapter.ZLG.Utils
             for (int i = 0; i < count; i++)
             {
                 var item = TryParseCan(recvData[i]); // 包含 unsafe 的解析函数
-                if (item != null) list.Add(item);
+                if (item != null) list.Add(item.Value);
             }
             return list;
         }
 
-        private static CanReceiveData? TryParseCan(in ZCANDataObj recData) // 这个函数里再用 unsafe
+        private static CanReceiveData? TryParseCan(in ZCANDataObj recData)
         {
             var typeFlag = GetFrameType(recData.dataType);
 
@@ -40,7 +63,7 @@ namespace CanKit.Adapter.ZLG.Utils
                         return new CanReceiveData(
                             new CanFdFrame(data.frame.can_id, ToArray(data.frame.data, data.frame.len)))
                         {
-                            recvTimestamp = data.timeStamp,
+                            RecvTimestamp = data.timeStamp,
                         };
                     }
                     else
@@ -48,7 +71,7 @@ namespace CanKit.Adapter.ZLG.Utils
                         return new CanReceiveData(
                             new CanClassicFrame(data.frame.can_id, ToArray(data.frame.data, data.frame.len)))
                         {
-                            recvTimestamp = data.timeStamp,
+                            RecvTimestamp = data.timeStamp,
                         };
                     }
                 }

@@ -10,7 +10,7 @@ public sealed class USBCANFDProvider(DeviceType deviceType) : ZlgCanProvider
     public override DeviceType DeviceType => deviceType;
 
     public override CanFeature StaticFeatures => base.StaticFeatures | CanFeature.BusUsage | CanFeature.CyclicTx |
-                                                 CanFeature.CanFd | CanFeature.MergeReceive;
+                                                 CanFeature.CanFd;
 
     public override ZlgFeature ZlgFeature => ZlgFeature.RangeFilter;
 }

@@ -82,7 +82,7 @@ public sealed class PcanFdTransceiver : ITransceiver
             var frame = new CanFdFrame(pmsg.ID, data, brs, esi) { IsExtendedFrame = isExt, IsErrorFrame = isErr };
 
             var ticks = ts * 10UL;
-            list.Add(new CanReceiveData(frame) { recvTimestamp = ticks });
+            list.Add(new CanReceiveData(frame) { RecvTimestamp = ticks });
         }
         return list;
     }

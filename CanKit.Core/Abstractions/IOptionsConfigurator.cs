@@ -52,7 +52,7 @@ public interface IBusRTOptionsConfigurator : ICanOptionsConfigurator
     /// <summary>
     /// Bit timing (位时序)。
     /// </summary>
-    BitTiming BitTiming { get; }
+    CanBusTiming BitTiming { get; }
 
     /// <summary>
     /// TX retry policy (发送重试策略)。
@@ -137,7 +137,7 @@ public interface IBusInitOptionsConfigurator : ICanOptionsConfigurator
     /// <summary>
     /// Bit timing (位时序)。
     /// </summary>
-    BitTiming BitTiming { get; }
+    CanBusTiming BitTiming { get; }
 
     /// <summary>
     /// TX retry policy (发送重试策略)。
@@ -188,42 +188,37 @@ public interface IBusInitOptionsConfigurator : ICanOptionsConfigurator
     /// Set channel bitrate (设置通道波特率)。
     /// </summary>
     /// <param name="baud">Bitrate in bps (比特率)。</param>
+    /// <param name="samplePointPermille"></param>
     /// <returns>Configurator (配置器本身)。</returns>
-    IBusInitOptionsConfigurator Baud(uint baud);
+    IBusInitOptionsConfigurator Baud(uint baud,
+        uint? clockMHz = null,
+        ushort? samplePointPermille = null);
 
     /// <summary>
     /// Set CAN FD arbitration/data bitrates (设置 CAN FD 仲裁/数据位率)。
     /// </summary>
     /// <param name="abit">Arbitration bitrate (仲裁位率)。</param>
     /// <param name="dbit">Data bitrate (数据位率)。</param>
+    /// <param name="nominalSamplePointPermille"></param>
+    /// <param name="dataSamplePointPermille"></param>
     /// <returns>Configurator (配置器本身)。</returns>
-    IBusInitOptionsConfigurator Fd(uint abit, uint dbit);
-
-    /// <summary>
-    /// Set classic timing with optional sample point and SJW.
-    /// ZH: 设置经典 CAN 位时序，可选采样点与 SJW。
-    /// </summary>
-    IBusInitOptionsConfigurator TimingClassic(uint bitrate, uint? samplePointPermille = null, uint? sjwTq = null);
+    IBusInitOptionsConfigurator Fd(uint abit, uint dbit,
+        uint? clockMHz = null,
+        ushort? nominalSamplePointPermille = null,
+        ushort? dataSamplePointPermille = null);
 
     /// <summary>
     /// Set classic timing with a full timing config.
     /// ZH: 设置经典 CAN 位时序（完整配置）。
     /// </summary>
-    IBusInitOptionsConfigurator TimingClassic(CanTimingConfig timing);
+    IBusInitOptionsConfigurator TimingClassic(CanClassicTiming timing);
 
-    /// <summary>
-    /// Set CAN FD timing with optional sample point/SJW per phase.
-    /// ZH: 设置 CAN FD 位时序（仲裁/数据相位，支持采样点/SJW）。
-    /// </summary>
-    IBusInitOptionsConfigurator TimingFd(uint abit, uint dbit,
-        uint? nominalSamplePointPermille = null, uint? nominalSjwTq = null,
-        uint? dataSamplePointPermille = null, uint? dataSjwTq = null);
 
     /// <summary>
     /// Set CAN FD timing with a full timing config.
     /// ZH: 设置 CAN FD 位时序（完整配置）。
     /// </summary>
-    IBusInitOptionsConfigurator TimingFd(CanFdTimingConfig timing);
+    IBusInitOptionsConfigurator TimingFd(CanFdTiming timing);
 
 
     /// <summary>

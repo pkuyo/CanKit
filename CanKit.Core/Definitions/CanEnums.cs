@@ -65,8 +65,7 @@ namespace CanKit.Core.Definitions
     public enum CanProtocolMode
     {
         Can20 = 0,
-        CanFd = 1,
-        Merged = 2
+        CanFd = 1
     }
 
     /// <summary>
@@ -77,14 +76,13 @@ namespace CanKit.Core.Definitions
     {
         CanClassic = 1 << 0,
         CanFd = 1 << 1,
-        MergeReceive = 1 << 2,
 
-        Filters = 1 << 3,
+        Filters = 1 << 2,
 
-        CyclicTx = 1 << 4,
-        BusUsage = 1 << 5,
-        ErrorCounters = 1 << 6,
-        ErrorFrame = 1 << 7,
+        CyclicTx = 1 << 3,
+        BusUsage = 1 << 4,
+        ErrorCounters = 1 << 5,
+        ErrorFrame = 1 << 6,
     }
 
     /// <summary>

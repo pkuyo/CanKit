@@ -169,9 +169,6 @@ namespace CanKit.Adapter.SocketCAN.Native
         public static extern int can_set_canfd_bittiming(string name, in can_bittiming bt, in can_bittiming dbt);
 
         [DllImport("socketcan", SetLastError = true, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
-        public static extern int can_set_fd_bitrates(string name, UInt32 bitrate, UInt32 dbitrate);
-
-        [DllImport("socketcan", SetLastError = true, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
         public static extern int can_set_ctrlmode(string name, in can_ctrlmode cm);
 
         [DllImport("socketcan", SetLastError = true, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
@@ -205,6 +202,6 @@ namespace CanKit.Adapter.SocketCAN.Native
         public static extern int can_get_device_stats(string name, out can_device_stats cds);
 
         [DllImport("socketcan", SetLastError = true, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
-        public static extern unsafe int can_get_link_stats(string name, out rtnl_link_stats64 rls);
+        public static unsafe extern int can_get_link_stats(string name, out rtnl_link_stats64 rls);
     }
 }

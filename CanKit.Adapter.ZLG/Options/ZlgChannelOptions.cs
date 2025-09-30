@@ -19,7 +19,7 @@ namespace CanKit.Adapter.ZLG.Options
 
         public int ChannelIndex { get; set; }
 
-        public BitTiming BitTiming { get; set; }
+        public CanBusTiming BitTiming { get; set; }
 
         public ChannelWorkMode WorkMode { get; set; }
 

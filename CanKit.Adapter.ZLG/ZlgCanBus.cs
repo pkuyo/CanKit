@@ -8,6 +8,7 @@ using CanKit.Adapter.ZLG.Diagnostics;
 using CanKit.Adapter.ZLG.Native;
 using CanKit.Adapter.ZLG.Options;
 using CanKit.Adapter.ZLG.Transceivers;
+using CanKit.Adapter.ZLG.Utils;
 using CanKit.Core.Abstractions;
 using CanKit.Core.Definitions;
 using CanKit.Core.Diagnostics;
@@ -78,7 +79,7 @@ namespace CanKit.Adapter.ZLG
             Reset();
 
             if (transceiver is not IZlgTransceiver zlg)
-                throw new CanTransceiverMismatchException(typeof(IZlgTransceiver), transceiver?.GetType() ?? typeof(ITransceiver));
+                throw new CanTransceiverMismatchException(typeof(IZlgTransceiver), transceiver.GetType());
             _transceiver = zlg;
 
         }
@@ -177,7 +178,7 @@ namespace CanKit.Adapter.ZLG
 
             var zlgFilterType = Options.ProtocolMode switch
             {
-                CanProtocolMode.Merged => ZlgFrameType.Any,
+                //CanProtocolMode.Merged => ZlgFrameType.Any,
                 CanProtocolMode.CanFd => ZlgFrameType.CanFd,
                 _ => ZlgFrameType.CanClassic
             };
@@ -233,16 +234,23 @@ namespace CanKit.Adapter.ZLG
                 throw new CanOptionTypeMismatchException(
                     CanKitErrorCode.ChannelOptionTypeMismatch,
                     typeof(ZlgBusOptions),
-                    options?.GetType() ?? typeof(IBusOptions),
+                    options.GetType(),
                     $"channel {Options.ChannelIndex}");
             }
 
-            if (zlgOption.ProtocolMode != CanProtocolMode.Can20)
+            if (zlgOption.ProtocolMode == CanProtocolMode.CanFd)
             {
                 var arbitrationRate = zlgOption.BitTiming.Fd?.Nominal.Bitrate
                                   ?? throw new CanChannelConfigurationException("Arbitration bitrate must be specified when configuring CAN FD timing.");
                 var dataRate = zlgOption.BitTiming.Fd?.Data.Bitrate
                                ?? throw new CanChannelConfigurationException("Data bitrate must be specified when configuring CAN FD timing.");
+
+                if (!Enum.IsDefined(typeof(ZlgBaudRate), arbitrationRate) ||
+                    !Enum.IsDefined(typeof(ZlgDataDaudRate), dataRate))
+                {
+                    //TODO:异常处理，不支持的波特率设置
+                }
+
                 ZlgErr.ThrowIfError(
                     ZLGCAN.ZCAN_SetValue(
                         _devicePtr,
@@ -259,8 +267,13 @@ namespace CanKit.Adapter.ZLG
             }
             else
             {
-                var bitRate = zlgOption.BitTiming.Classic?.Bitrate
+                var bitRate = zlgOption.BitTiming.Classic?.Nominal.Bitrate
                                       ?? throw new CanChannelConfigurationException("Bitrate must be specified when configuring classic CAN timing.");
+
+                if (!Enum.IsDefined(typeof(ZlgBaudRate), bitRate))
+                {
+                    //TODO:异常处理，不支持的波特率设置
+                }
                 ZlgErr.ThrowIfError(
                     ZLGCAN.ZCAN_SetValue(
                         _devicePtr,
@@ -386,7 +399,7 @@ namespace CanKit.Adapter.ZLG
                     var count = GetReceiveCount();
                     if (count > 0)
                     {
-                        var frames = Receive(Math.Min(count, batch), 0);
+                        var frames = Receive(Math.Min(count, batch));
                         var useSw = (Options.EnabledSoftwareFallbackE & CanFeature.Filters) != 0
                                     && Options.Filter.SoftwareFilterRules.Count > 0;
                         var pred = useSw ? FilterRule.Build(Options.Filter.SoftwareFilterRules) : null;
@@ -447,7 +460,6 @@ namespace CanKit.Adapter.ZLG
                 }
             }
         }
-
 
         public ZlgChannelHandle NativeHandle => _nativeHandle;
 

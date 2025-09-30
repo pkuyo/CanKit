@@ -66,7 +66,7 @@ public sealed class KvaserClassicTransceiver : ITransceiver
                 var frame = new CanClassicFrame((uint)id, buf, isExt) { IsRemoteFrame = isRtr, IsErrorFrame = isErr };
                 // Kvaser timestamp is in milliseconds from start of driver; convert to ticks (100ns)
                 var ticks = (ulong)time * 10_000UL;
-                list.Add(new CanReceiveData(frame) { recvTimestamp = ticks });
+                list.Add(new CanReceiveData(frame) { RecvTimestamp = ticks });
             }
             else if (st == Canlib.canStatus.canERR_NOMSG)
             {

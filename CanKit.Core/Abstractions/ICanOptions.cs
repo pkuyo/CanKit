@@ -88,7 +88,7 @@ namespace CanKit.Core.Abstractions
         /// <summary>
         /// Bit timing (位时序)。
         /// </summary>
-        BitTiming BitTiming { get; set; }
+        CanBusTiming BitTiming { get; set; }
 
         /// <summary>
         /// Whether internal termination is enabled (是否启用内部终端电阻)。
