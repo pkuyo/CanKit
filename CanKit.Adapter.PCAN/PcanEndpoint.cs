@@ -3,6 +3,11 @@ using CanKit.Core;
 using CanKit.Core.Abstractions;
 using CanKit.Core.Attributes;
 using CanKit.Core.Endpoints;
+using System;
+using System.Collections.Generic;
+using System.Reflection;
+using Peak.Can.Basic;
+using Peak.Can.Basic.BackwardCompatibility;
 
 namespace CanKit.Adapter.PCAN;
 
@@ -16,7 +21,7 @@ namespace CanKit.Adapter.PCAN;
 [CanEndPoint("pcan")]
 internal static class PcanEndpoint
 {
-    private static ICanBus Open(CanEndpoint ep, Action<IBusInitOptionsConfigurator>? configure)
+    public static ICanBus Open(CanEndpoint ep, Action<IBusInitOptionsConfigurator>? configure)
     {
         string ch = ep.Path;
         if (string.IsNullOrWhiteSpace(ch))
@@ -42,5 +47,29 @@ internal static class PcanEndpoint
                 configure?.Invoke(cfg);
             });
     }
-}
 
+    /// <summary>
+    /// Enumerate available PCAN channels using PCAN-Basic, if present. Fails safe to empty.
+    /// ZH: 通过 PCAN-Basic 枚举可用通道；失败则返回空列表。
+    /// </summary>
+    public static IEnumerable<BusEndpointInfo> Enumerate()
+    {
+        var sts = Api.GetAttachedChannels(out PcanChannelInformation[] chans);
+        if (sts != PcanStatus.OK)
+            yield break;
+        foreach (var chan in chans)
+        {
+            yield return new BusEndpointInfo
+            {
+                DeviceType = PcanDeviceType.PCANBasic,
+                Endpoint = $"pcan://{chan.ChannelHandle}",
+                Title = $"{chan.DeviceName} {chan.ChannelHandle} (PCAN)",
+                Meta = new Dictionary<string, string>
+                {
+                    { "name", chan.DeviceName },
+                    { "type", chan.DeviceType.ToString() },
+                }
+            };
+        }
+    }
+}

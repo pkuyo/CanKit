@@ -82,8 +82,11 @@ namespace CanKit.Adapter.ZLG.Definitions
 
     public sealed record ZlgDeviceType : DeviceType
     {
-        public ZlgDeviceType(string id, int meta) : base($"ZLG.{id}", meta)
+        public int Code { get; }
+
+        public ZlgDeviceType(string id, int code) : base($"ZLG.{id}")
         {
+            Code = code;
         }
 
         public static readonly ZlgDeviceType ZCAN_PCI9810 = new ZlgDeviceType(nameof(ZCAN_PCI9810), (int)ZlgDeviceKind.ZCAN_PCI9810);

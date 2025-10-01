@@ -2,6 +2,7 @@ using System;
 using System.Threading;
 using CanKit.Core;
 using CanKit.Core.Definitions;
+using CanKit.Core.Endpoints;
 
 namespace CanKit.Sample
 {
@@ -9,6 +10,11 @@ namespace CanKit.Sample
     {
         static void Main(string[] args)
         {
+            var re = BusEndpointEntry.Enumerate("pcan","kvaser");
+            foreach (var info in re)
+            {
+                Console.WriteLine(info.Endpoint);
+            }
             // 1. Open two buses via endpoint
             using var sendChannel = CanBus.Open("zlg://ZCAN_USBCANFD_200U?index=0#ch1", cfg =>
                 cfg.Baud(500_000)
@@ -19,7 +25,6 @@ namespace CanKit.Sample
                 cfg.Baud(500_000)
                     .InternalRes(true)
                     .SetProtocolMode(CanProtocolMode.Can20));
-
             // 2. Subscribe RX and error events
             listenChannel.FrameReceived += (sender, data) =>
             {

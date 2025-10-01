@@ -422,12 +422,15 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
 
     private static PcanChannel ParseHandle(string channel)
     {
+
         if (string.IsNullOrWhiteSpace(channel))
         {
             throw new CanBusCreationException("PCAN channel must not be empty.");
         }
 
         var s = channel.Trim();
+        if (s.Equals("PCAN_NONEBUS", StringComparison.OrdinalIgnoreCase) || s == "NONEBUS" || s == "0")
+            return (PcanChannel)0;
 
         // If given as integer code (e.g., 1281), try direct parse
         if (int.TryParse(s, out var raw) && Enum.IsDefined(typeof(PcanChannel), raw))

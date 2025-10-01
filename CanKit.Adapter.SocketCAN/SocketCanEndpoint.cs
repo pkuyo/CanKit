@@ -1,4 +1,8 @@
 using CanKit.Adapter.SocketCAN.Definitions;
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Runtime.InteropServices;
 using CanKit.Core;
 using CanKit.Core.Abstractions;
 using CanKit.Core.Attributes;
@@ -39,5 +43,34 @@ internal static class SocketCanEndpoint
                 cfg.UseInterface(iface);
                 configure?.Invoke(cfg);
             });
+    }
+
+    /// <summary>
+    /// Enumerate available SocketCAN interfaces on Linux.
+    /// ZH: 在 Linux 上枚举可用的 SocketCAN 接口。
+    /// </summary>
+    public static IEnumerable<BusEndpointInfo> Enumerate()
+    {
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Linux)) yield break;
+        var sys = "/sys/class/net";
+        if (!Directory.Exists(sys)) yield break;
+
+        foreach (var dir in Directory.EnumerateDirectories(sys))
+        {
+            string name = Path.GetFileName(dir);
+            if (string.IsNullOrWhiteSpace(name)) continue;
+            if (name.StartsWith("can", StringComparison.OrdinalIgnoreCase) ||
+                name.StartsWith("vcan", StringComparison.OrdinalIgnoreCase))
+            {
+                yield return new BusEndpointInfo
+                {
+                    Scheme = "socketcan",
+                    Endpoint = $"socketcan://{name}",
+                    Title = $"{name} (SocketCAN)",
+                    DeviceType = LinuxDeviceType.SocketCAN,
+                    Meta = new Dictionary<string, string> { { "iface", name } }
+                };
+            }
+        }
     }
 }

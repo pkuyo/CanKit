@@ -23,6 +23,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\CanKit.Adapter.Kvaser\CanKit.Adapter.Kvaser.csproj" />
     <ProjectReference Include="..\CanKit.Adapter.PCAN\CanKit.Adapter.PCAN.csproj" />
     <ProjectReference Include="..\CanKit.Adapter.SocketCAN\CanKit.Adapter.SocketCAN.csproj" />
     <ProjectReference Include="..\CanKit.Adapter.ZLG\CanKit.Adapter.ZLG.csproj" />

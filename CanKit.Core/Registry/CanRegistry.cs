@@ -222,6 +222,28 @@ public partial class CanRegistry
                         typeof(Func<CanEndpoint, Action<IBusInitOptionsConfigurator>?, ICanBus>)));
                 CanKitLogger.LogInformation(
                     $"Registered endpoint. Scheme='{attr.Scheme}', Type='{type.AssemblyQualifiedName}'");
+
+                // Optional: discover enumerator method: public static IEnumerable<BusEndpointInfo> Enumerate()
+                try
+                {
+                    var enumMethod = type.GetMethod(
+                        "Enumerate",
+                        BindingFlags.Public | BindingFlags.Static,
+                        null,
+                        Type.EmptyTypes,
+                        null);
+
+                    if (enumMethod != null && typeof(IEnumerable<BusEndpointInfo>).IsAssignableFrom(enumMethod.ReturnType))
+                    {
+                        var del = (Func<IEnumerable<BusEndpointInfo>>)enumMethod.CreateDelegate(typeof(Func<IEnumerable<BusEndpointInfo>>));
+                        _enumerators[attr.Scheme] = del;
+                        CanKitLogger.LogInformation($"Registered endpoint enumerator. Scheme='{attr.Scheme}', Type='{type.AssemblyQualifiedName}'");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    CanKitLogger.LogWarning($"Endpoint enumerator registration failed. Scheme='{attr.Scheme}', Type='{type.AssemblyQualifiedName}'", ex);
+                }
             }
             catch (AmbiguousMatchException ex)
             {
@@ -396,5 +418,39 @@ public partial class CanRegistry
 
     private readonly Dictionary<string, Func<CanEndpoint, Action<IBusInitOptionsConfigurator>?, ICanBus>> _handlers =
         new(StringComparer.OrdinalIgnoreCase);
+
+    private readonly Dictionary<string, Func<IEnumerable<Endpoints.BusEndpointInfo>>> _enumerators =
+        new(StringComparer.OrdinalIgnoreCase);
 }
 
+public partial class CanRegistry
+{
+    /// <summary>
+    /// Enumerate discoverable endpoints. When schemes is null/empty, include all registered schemes.
+    /// ZH: 枚举可发现的端点；若未指定 scheme，则合并所有 scheme 的结果。
+    /// </summary>
+    public IEnumerable<Endpoints.BusEndpointInfo> EnumerateEndPoints(IEnumerable<string>? schemes)
+    {
+        if (schemes is null)
+        {
+            foreach (var e in _enumerators.Values)
+            {
+                IEnumerable<Endpoints.BusEndpointInfo> items;
+                try { items = e() ?? Array.Empty<Endpoints.BusEndpointInfo>(); }
+                catch { items = Array.Empty<Endpoints.BusEndpointInfo>(); }
+                foreach (var it in items) yield return it;
+            }
+            yield break;
+        }
+
+        var set = new HashSet<string>(schemes, StringComparer.OrdinalIgnoreCase);
+        foreach (var kv in _enumerators)
+        {
+            if (!set.Contains(kv.Key)) continue;
+            IEnumerable<Endpoints.BusEndpointInfo> items;
+            try { items = kv.Value() ?? Array.Empty<Endpoints.BusEndpointInfo>(); }
+            catch { items = Array.Empty<Endpoints.BusEndpointInfo>(); }
+            foreach (var it in items) yield return it;
+        }
+    }
+}
