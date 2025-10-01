@@ -1,3 +1,4 @@
+using System;
 using CanKit.Core.Abstractions;
 using CanKit.Core.Definitions;
 using Peak.Can.Basic;
@@ -33,13 +34,20 @@ public sealed class PcanClassicTransceiver : ITransceiver
             byte[] payload;
             if ((type & MessageType.RemoteRequest) != 0)
             {
-                payload = [];
+                payload = Array.Empty<byte>();
             }
             else
             {
-                payload = cf.Data.ToArray();
-                if (payload.Length > dlc)
-                    Array.Resize(ref payload, dlc);
+                if (dlc == 0)
+                {
+                    payload = Array.Empty<byte>();
+                }
+                else
+                {
+                    payload = new byte[dlc];
+                    var src = cf.Data.Span;
+                    src.Slice(0, dlc).CopyTo(payload);
+                }
             }
 
             var msg = new PcanMessage(cf.ID, type, dlc, payload, extendedDataLength: false);
@@ -78,13 +86,10 @@ public sealed class PcanClassicTransceiver : ITransceiver
             var isRtr = (pmsg.MsgType & MessageType.RemoteRequest) != 0;
             var isErr = (pmsg.MsgType & MessageType.Error) != 0;
 
-            byte[] data = pmsg.Data;
-            if (data.Length > pmsg.DLC)
-            {
-                Array.Resize(ref data, pmsg.DLC);
-            }
-
-            var frame = new CanClassicFrame(pmsg.ID, data, isExt) { IsRemoteFrame = isRtr, IsErrorFrame = isErr };
+            byte[] arr = pmsg.Data;
+            var len = Math.Min(arr.Length, pmsg.DLC);
+            var slice = len == 0 ? ReadOnlyMemory<byte>.Empty : new ReadOnlyMemory<byte>(arr, 0, len);
+            var frame = new CanClassicFrame(pmsg.ID, slice, isExt) { IsRemoteFrame = isRtr, IsErrorFrame = isErr };
 
             // Assume PCAN timestamp is in microseconds. Convert to ticks (100ns)
             var ticks = ts * 10UL;

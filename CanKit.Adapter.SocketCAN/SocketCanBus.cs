@@ -259,6 +259,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
         var startTime = Environment.TickCount;
         var pollFd = new Libc.pollfd { fd = _fd, events = Libc.POLLOUT };
         using var enumerator = frames.GetEnumerator();
+        var single = new CanTransmitData[1];
         if (!enumerator.MoveNext())
             return 0;
 
@@ -280,9 +281,8 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
             {
                 break; // timeout
             }
-
-
-            if (_transceiver.Transmit(this, [enumerator.Current]) == 1)
+            single[0] = enumerator.Current;
+            if (_transceiver.Transmit(this, single) == 1)
             {
                 sendCount++;
                 if (!enumerator.MoveNext())
@@ -477,6 +477,13 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
             // Clear filters to receive all
             _ = Libc.setsockopt(_fd, Libc.SOL_CAN_RAW, Libc.CAN_RAW_FILTER, IntPtr.Zero, 0);
         }
+
+        // Cache software filter predicate for event loop
+        _useSoftwareFilter = (Options.EnabledSoftwareFallbackE & CanFeature.Filters) != 0
+                              && Options.Filter.SoftwareFilterRules.Count > 0;
+        _softwareFilterPredicate = _useSoftwareFilter
+            ? FilterRule.Build(Options.Filter.SoftwareFilterRules)
+            : null;
     }
 
     public CanOptionType ApplierStatus => _fd >= 0 ? CanOptionType.Runtime : CanOptionType.Init;
@@ -554,9 +561,8 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
 
                         // receive one frame via transceiver
                         // Build software predicate once per drain cycle if needed
-                        var useSw = (Options.EnabledSoftwareFallbackE & CanFeature.Filters) != 0
-                                    && Options.Filter.SoftwareFilterRules.Count > 0;
-                        var pred = useSw ? FilterRule.Build(Options.Filter.SoftwareFilterRules) : null;
+                        var useSw = _useSoftwareFilter;
+                        var pred = _softwareFilterPredicate;
                         foreach (var rec in _transceiver.Receive(this))
                         {
                             var frame = rec.CanFrame;
@@ -696,4 +702,8 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
     {
         _owner = owner;
     }
+
+    // Cached software filter predicate to avoid rebuilding per-iteration
+    private Func<ICanFrame, bool>? _softwareFilterPredicate;
+    private bool _useSoftwareFilter;
 }

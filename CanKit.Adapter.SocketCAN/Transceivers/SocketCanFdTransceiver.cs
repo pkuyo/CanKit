@@ -1,3 +1,4 @@
+using System;
 using System.Runtime.InteropServices;
 using CanKit.Adapter.SocketCAN.Native;
 using CanKit.Adapter.SocketCAN.Utils;
@@ -15,10 +16,13 @@ public sealed class SocketCanFdTransceiver : ITransceiver
     {
         unsafe
         {
-            if (frames.Single().CanFrame is not CanFdFrame ff)
-            {
+            using var e = frames.GetEnumerator();
+            if (!e.MoveNext()) return 0;
+            var first = e.Current;
+            if (e.MoveNext())
+                throw new InvalidOperationException("SocketCanFdTransceiver expects a single frame per call");
+            if (first.CanFrame is not CanFdFrame ff)
                 throw new InvalidOperationException("SocketCanFdTransceiver requires CanFdFrame for transmission");
-            }
 
             var frame = ff.ToCanFrame();
             var size = Marshal.SizeOf<Libc.canfd_frame>();
@@ -109,7 +113,7 @@ public sealed class SocketCanFdTransceiver : ITransceiver
             }
 
             int dataLen = frame->len;
-            var data = new byte[dataLen];
+            var data = dataLen == 0 ? Array.Empty<byte>() : new byte[dataLen];
             for (int i = 0; i < dataLen && i < 64; i++) data[i] = frame->data[i];
 
             bool brs = (frame->flags & Libc.CANFD_BRS) != 0;
@@ -118,7 +122,6 @@ public sealed class SocketCanFdTransceiver : ITransceiver
             result.Add(new CanReceiveData(new CanFdFrame(frame->can_id, data, brs, esi))
             { RecvTimestamp = tsTicks });
         }
-
         return result;
     }
 }

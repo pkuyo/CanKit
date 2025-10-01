@@ -1,3 +1,4 @@
+using System;
 using CanKit.Core.Abstractions;
 using CanKit.Core.Definitions;
 using Peak.Can.Basic;
@@ -33,7 +34,7 @@ public sealed class PcanFdTransceiver : ITransceiver
                 type |= MessageType.ErrorStateIndicator;
             }
 
-            var payload = fd.Data.ToArray();
+            var payload = fd.Data.Length == 0 ? Array.Empty<byte>() : fd.Data.ToArray();
             var msg = new PcanMessage(fd.ID, type, fd.Dlc, payload, extendedDataLength: true);
 
             var st = Api.Write(ch.Handle, msg);
@@ -73,13 +74,10 @@ public sealed class PcanFdTransceiver : ITransceiver
             var esi = (pmsg.MsgType & MessageType.ErrorStateIndicator) != 0;
             var isErr = (pmsg.MsgType & MessageType.Error) != 0;
 
-            byte[] data = pmsg.Data;
-            if (data.Length > CanFdFrame.DlcToLen(pmsg.DLC))
-            {
-                Array.Resize(ref data, CanFdFrame.DlcToLen(pmsg.DLC));
-            }
-
-            var frame = new CanFdFrame(pmsg.ID, data, brs, esi) { IsExtendedFrame = isExt, IsErrorFrame = isErr };
+            byte[] arr = pmsg.Data;
+            var len = Math.Min(arr.Length, CanFdFrame.DlcToLen(pmsg.DLC));
+            var slice = len == 0 ? ReadOnlyMemory<byte>.Empty : new ReadOnlyMemory<byte>(arr, 0, len);
+            var frame = new CanFdFrame(pmsg.ID, slice, brs, esi) { IsExtendedFrame = isExt, IsErrorFrame = isErr };
 
             var ticks = ts * 10UL;
             list.Add(new CanReceiveData(frame) { RecvTimestamp = ticks });

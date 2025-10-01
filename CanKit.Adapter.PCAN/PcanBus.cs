@@ -197,6 +197,13 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
         {
             Api.SetValue(_handle, PcanParameter.AllowErrorFrames, ParameterValue.Activation.On);
         }
+
+        // Cache software filter predicate for polling loop
+        _useSoftwareFilter = (Options.EnabledSoftwareFallbackE & CanFeature.Filters) != 0
+                              && Options.Filter.SoftwareFilterRules.Count > 0;
+        _softwareFilterPredicate = _useSoftwareFilter
+            ? FilterRule.Build(Options.Filter.SoftwareFilterRules)
+            : null;
     }
 
     public CanOptionType ApplierStatus => CanOptionType.Runtime;
@@ -319,13 +326,9 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
             _recEvent.WaitOne();
             foreach (var rec in _transceiver.Receive(this, 16))
             {
-                var useSw = (Options.EnabledSoftwareFallbackE & CanFeature.Filters) != 0
-                            && Options.Filter.SoftwareFilterRules.Count > 0;
-                if (useSw)
-                {
-                    var pred = FilterRule.Build(Options.Filter.SoftwareFilterRules);
-                    if (!pred(rec.CanFrame)) continue;
-                }
+                var useSw = _useSoftwareFilter;
+                var pred = _softwareFilterPredicate;
+                if (useSw && pred is not null && !pred(rec.CanFrame)) continue;
                 _frameReceived?.Invoke(this, rec);
             }
         }
@@ -510,4 +513,8 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
     internal PcanChannel Handle => _handle;
 
     private readonly PcanChannel _handle;
+
+    // Cached software filter predicate to avoid rebuilding on each poll
+    private Func<ICanFrame, bool>? _softwareFilterPredicate;
+    private bool _useSoftwareFilter;
 }

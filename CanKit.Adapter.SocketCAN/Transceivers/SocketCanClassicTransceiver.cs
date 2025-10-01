@@ -1,3 +1,4 @@
+using System;
 using System.Runtime.InteropServices;
 using CanKit.Adapter.SocketCAN.Native;
 using CanKit.Adapter.SocketCAN.Utils;
@@ -11,8 +12,13 @@ public sealed class SocketCanClassicTransceiver : ITransceiver
 {
     public uint Transmit(ICanBus<IBusRTOptionsConfigurator> channel, IEnumerable<CanTransmitData> frames, int _ = 0)
     {
-        if (frames.Single().CanFrame is not CanClassicFrame cf)
-            throw new InvalidOperationException("SocketCanTransceiver requires CanClassicFrame for transmission");
+        using var e = frames.GetEnumerator();
+        if (!e.MoveNext()) return 0;
+        var first = e.Current;
+        if (e.MoveNext())
+            throw new InvalidOperationException("SocketCanClassicTransceiver expects a single frame per call");
+        if (first.CanFrame is not CanClassicFrame cf)
+            throw new InvalidOperationException("SocketCanClassicTransceiver requires CanClassicFrame for transmission");
         unsafe
         {
             var frame = cf.ToCanFrame();
@@ -103,7 +109,7 @@ public sealed class SocketCanClassicTransceiver : ITransceiver
             }
 
             int dataLen = frame->can_dlc;
-            var data2 = new byte[dataLen];
+            var data2 = dataLen == 0 ? Array.Empty<byte>() : new byte[dataLen];
             for (int i = 0; i < dataLen && i < 8; i++) data2[i] = frame->data[i];
 
             if (tsTicks == 0) tsTicks = (ulong)DateTime.UtcNow.Ticks;

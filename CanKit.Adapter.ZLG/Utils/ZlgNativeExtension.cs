@@ -116,6 +116,7 @@ namespace CanKit.Adapter.ZLG.Utils
 
         internal static unsafe byte[] ToArray(byte* data, int length)
         {
+            if (length <= 0) return Array.Empty<byte>();
             var arr = new byte[length];
             Marshal.Copy((IntPtr)data, arr, 0, length);
 

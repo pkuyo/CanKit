@@ -375,6 +375,13 @@ namespace CanKit.Adapter.ZLG
                     Options.InternalResistance ? "1" : "0"),
                 "ZCAN_SetValue(initenal_resistance)");
 
+            // Cache software filter predicate for polling loop
+            _useSoftwareFilter = (Options.EnabledSoftwareFallbackE & CanFeature.Filters) != 0
+                                  && Options.Filter.SoftwareFilterRules.Count > 0;
+            _softwareFilterPredicate = _useSoftwareFilter
+                ? FilterRule.Build(Options.Filter.SoftwareFilterRules)
+                : null;
+
         }
 
         private void StartPollingIfNeeded()
@@ -614,5 +621,7 @@ namespace CanKit.Adapter.ZLG
         {
             _owner = owner;
         }
+        private Func<ICanFrame, bool>? _softwareFilterPredicate;
+        private bool _useSoftwareFilter;
     }
 }
