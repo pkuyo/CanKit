@@ -9,11 +9,10 @@ namespace CanKit.Adapter.ZLG
 
     public abstract class ZlgCanProvider : ICanModelProvider
     {
+        public virtual ZlgFeature ZlgFeature => ZlgFeature.None;
         public abstract DeviceType DeviceType { get; }
 
         public virtual CanFeature StaticFeatures => CanFeature.CanClassic | CanFeature.Filters | CanFeature.ErrorCounters;
-
-        public virtual ZlgFeature ZlgFeature => ZlgFeature.None;
 
         public ICanFactory Factory => CanRegistry.Registry.Factory("Zlg");
 

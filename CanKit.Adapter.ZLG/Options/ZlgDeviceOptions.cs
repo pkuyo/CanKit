@@ -7,12 +7,6 @@ namespace CanKit.Adapter.ZLG.Options
     [CanOption]
     public sealed partial class ZlgDeviceOptions(ICanModelProvider provider) : IDeviceOptions
     {
-        public ICanModelProvider Provider => provider;
-
-        public DeviceType DeviceType => provider.DeviceType;
-
-        public partial void Apply(ICanApplier applier, bool force = false);
-
         [CanOptionItem("device_index", CanOptionType.Init, "0U")]
         public uint DeviceIndex
         {
@@ -26,5 +20,11 @@ namespace CanKit.Adapter.ZLG.Options
             get => Get_MergeReceive();
             set => Set_MergeReceive(value);
         }
+
+        public ICanModelProvider Provider => provider;
+
+        public DeviceType DeviceType => provider.DeviceType;
+
+        public partial void Apply(ICanApplier applier, bool force = false);
     }
 }

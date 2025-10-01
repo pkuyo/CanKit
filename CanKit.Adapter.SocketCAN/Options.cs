@@ -8,6 +8,8 @@ namespace CanKit.Adapter.SocketCAN;
 
 public sealed class SocketCanBusOptions(ICanModelProvider provider) : IBusOptions
 {
+    // Prefer kernel-provided timestamps (hardware if available, fallback to software)
+    public bool PreferKernelTimestamp { get; set; } = true;
     public ICanModelProvider Provider { get; } = provider;
 
     public int ChannelIndex { get; set; }
@@ -22,9 +24,6 @@ public sealed class SocketCanBusOptions(ICanModelProvider provider) : IBusOption
     public CanFilter Filter { get; set; } = new();
     public CanFeature EnabledSoftwareFallback { get; set; }
     public bool AllowErrorInfo { get; set; }
-
-    // Prefer kernel-provided timestamps (hardware if available, fallback to software)
-    public bool PreferKernelTimestamp { get; set; } = true;
     public void Apply(ICanApplier applier, bool force = false) => applier.Apply(this);
 }
 

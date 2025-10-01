@@ -8,14 +8,14 @@ namespace CanKit.Core.Definitions
     /// </summary>
     public abstract record DeviceType
     {
-        /// <summary>
-        /// Unique device type id (设备类型 Id)
-        /// </summary>
-        public string Id { get; }
-
         private static readonly Dictionary<string, DeviceType> _byId = new(StringComparer.OrdinalIgnoreCase);
         private static readonly List<DeviceType> _all = new();
         private static readonly object _gate = new();
+
+        /// <summary>
+        /// Placeholder for unknown device (未知设备占位类型)
+        /// </summary>
+        public static readonly DeviceType Unknown = new Generic("unknown");
 
         /// <summary>
         /// Construct and register device type (构造并完成注册)
@@ -35,6 +35,15 @@ namespace CanKit.Core.Definitions
                 _all.Add(this);
             }
         }
+
+        /// <summary>
+        /// Unique device type id (设备类型 Id)
+        /// </summary>
+        public string Id { get; }
+
+        /// <inheritdoc />
+        public virtual bool Equals(DeviceType? other) =>
+            other is not null && string.Equals(Id, other.Id, StringComparison.OrdinalIgnoreCase);
 
         /// <summary>
         /// Try get registered type by Id (按 Id 获取，失败返回 false)
@@ -60,19 +69,10 @@ namespace CanKit.Core.Definitions
         }
 
         /// <inheritdoc />
-        public virtual bool Equals(DeviceType? other) =>
-            other is not null && string.Equals(Id, other.Id, StringComparison.OrdinalIgnoreCase);
-
-        /// <inheritdoc />
         public override int GetHashCode() => StringComparer.OrdinalIgnoreCase.GetHashCode(Id);
 
         /// <inheritdoc />
         public override string ToString() => Id;
-
-        /// <summary>
-        /// Placeholder for unknown device (未知设备占位类型)
-        /// </summary>
-        public static readonly DeviceType Unknown = new Generic("unknown");
 
         /// <summary>
         /// Register a new device type (注册新设备类型)

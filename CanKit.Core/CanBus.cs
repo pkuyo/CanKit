@@ -22,6 +22,7 @@ public static class CanBus
             return bus;
         throw new CanFactoryException(CanKitErrorCode.DeviceCreationFailed, $"No endpoint handler registered for '{endpoint}'.");
     }
+
     /// <summary>
     /// Open a bus by DeviceType + index (以设备类型+索引打开总线)，返回已打开的总线并托管设备生命周期。
     /// </summary>

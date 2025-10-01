@@ -11,6 +11,25 @@ namespace CanKit.Adapter.PCAN;
 
 public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusOwnership
 {
+    private readonly object _evtGate = new();
+
+    private readonly PcanChannel _handle;
+
+    private readonly ITransceiver _transceiver;
+    private EventHandler<CanReceiveData>? _frameReceived;
+    private bool _isDisposed;
+
+    private IDisposable? _owner;
+    private CancellationTokenSource? _pollCts;
+    private Task? _pollTask;
+    private EventWaitHandle _recEvent;
+
+    // Cached software filter predicate to avoid rebuilding on each poll
+    private Func<ICanFrame, bool>? _softwareFilterPredicate;
+    //private EventHandler<ICanErrorInfo>? _errorOccurred;
+
+    private int _subscriberCount;
+    private bool _useSoftwareFilter;
 
 
     internal PcanBus(IBusOptions options, ITransceiver transceiver)
@@ -91,6 +110,61 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
     }
 
 
+    public PcanStatus PCanState => Api.GetStatus(_handle);
+
+    internal PcanChannel Handle => _handle;
+
+    public void AttachOwner(IDisposable owner)
+    {
+        _owner = owner;
+    }
+
+    public void Apply(ICanOptions options)
+    {
+        if (options is not PcanBusOptions pc)
+            return;
+
+        var rules = pc.Filter.filterRules;
+        if (rules.Count > 0)
+        {
+            foreach (var r in rules)
+            {
+                if (r is FilterRule.Range rg)
+                {
+                    var mode = rg.FilterIdType == CanFilterIDType.Extend
+                        ? FilterMode.Extended
+                        : FilterMode.Standard;
+                    _ = Api.FilterMessages(_handle, rg.From, rg.To, mode);
+                }
+                else
+                {
+                    if (pc.SoftwareFilterEnabled)
+                    {
+                        pc.Filter.softwareFilter.Add(r);
+                    }
+                    else
+                    {
+                        throw new CanFilterConfigurationException("PCAN only supports range filters.");
+                    }
+                }
+            }
+        }
+        if (pc.AllowErrorInfo)
+        {
+            Api.SetValue(_handle, PcanParameter.AllowErrorFrames, ParameterValue.Activation.On);
+        }
+
+        // Cache software filter predicate for polling loop
+        _useSoftwareFilter = (Options.EnabledSoftwareFallbackE & CanFeature.Filters) != 0
+                              && Options.Filter.SoftwareFilterRules.Count > 0;
+        _softwareFilterPredicate = _useSoftwareFilter
+            ? FilterRule.Build(Options.Filter.SoftwareFilterRules)
+            : null;
+    }
+
+    public CanOptionType ApplierStatus => CanOptionType.Runtime;
+
+
     public void Reset()
     {
         ThrowIfDisposed();
@@ -162,51 +236,6 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
         }
     }
 
-    public void Apply(ICanOptions options)
-    {
-        if (options is not PcanBusOptions pc)
-            return;
-
-        var rules = pc.Filter.filterRules;
-        if (rules.Count > 0)
-        {
-            foreach (var r in rules)
-            {
-                if (r is FilterRule.Range rg)
-                {
-                    var mode = rg.FilterIdType == CanFilterIDType.Extend
-                        ? FilterMode.Extended
-                        : FilterMode.Standard;
-                    _ = Api.FilterMessages(_handle, rg.From, rg.To, mode);
-                }
-                else
-                {
-                    if (pc.SoftwareFilterEnabled)
-                    {
-                        pc.Filter.softwareFilter.Add(r);
-                    }
-                    else
-                    {
-                        throw new CanFilterConfigurationException("PCAN only supports range filters.");
-                    }
-                }
-            }
-        }
-        if (pc.AllowErrorInfo)
-        {
-            Api.SetValue(_handle, PcanParameter.AllowErrorFrames, ParameterValue.Activation.On);
-        }
-
-        // Cache software filter predicate for polling loop
-        _useSoftwareFilter = (Options.EnabledSoftwareFallbackE & CanFeature.Filters) != 0
-                              && Options.Filter.SoftwareFilterRules.Count > 0;
-        _softwareFilterPredicate = _useSoftwareFilter
-            ? FilterRule.Build(Options.Filter.SoftwareFilterRules)
-            : null;
-    }
-
-    public CanOptionType ApplierStatus => CanOptionType.Runtime;
-
     public event EventHandler<CanReceiveData>? FrameReceived
     {
         add
@@ -251,9 +280,6 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
         }
 
     }
-
-
-    public PcanStatus PCanState => Api.GetStatus(_handle);
 
     private void ThrowIfDisposed()
     {
@@ -503,30 +529,4 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
             Options.UpdateDynamicFeatures(CanFeature.CanClassic | CanFeature.Filters);
         }
     }
-
-    public void AttachOwner(IDisposable owner)
-    {
-        _owner = owner;
-    }
-
-    private readonly ITransceiver _transceiver;
-    private bool _isDisposed;
-    private readonly object _evtGate = new();
-    private EventHandler<CanReceiveData>? _frameReceived;
-    //private EventHandler<ICanErrorInfo>? _errorOccurred;
-
-    private int _subscriberCount;
-    private CancellationTokenSource? _pollCts;
-    private Task? _pollTask;
-    private EventWaitHandle _recEvent;
-
-    private IDisposable? _owner;
-
-    internal PcanChannel Handle => _handle;
-
-    private readonly PcanChannel _handle;
-
-    // Cached software filter predicate to avoid rebuilding on each poll
-    private Func<ICanFrame, bool>? _softwareFilterPredicate;
-    private bool _useSoftwareFilter;
 }

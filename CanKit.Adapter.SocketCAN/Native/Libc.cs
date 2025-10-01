@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 using CanKit.Core.Exceptions;
-
+// @formatter:off
 namespace CanKit.Adapter.SocketCAN.Native;
 #nullable disable
 #pragma warning disable IDE0055

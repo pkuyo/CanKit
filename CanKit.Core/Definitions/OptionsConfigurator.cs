@@ -14,7 +14,6 @@ namespace CanKit.Core.Definitions
         public ICanModelProvider Provider => Options.Provider;
         public CanFeature Features => _feature;
         public DeviceType DeviceType => Options.DeviceType;
-
     }
 
 
@@ -56,8 +55,6 @@ namespace CanKit.Core.Definitions
         public ICanModelProvider Provider => Options.Provider;
         public CanFeature Features => _feature;
         public DeviceType DeviceType => Options.DeviceType;
-
-
     }
 
     public class BusInitOptionsConfigurator<TChannelOptions, TSelf>
@@ -66,7 +63,6 @@ namespace CanKit.Core.Definitions
       where TChannelOptions : class, IBusOptions
       where TSelf : BusInitOptionsConfigurator<TChannelOptions, TSelf>
     {
-
         public ICanModelProvider Provider => Options.Provider;
         public CanFeature Features => _feature;
         public int ChannelIndex => Options.ChannelIndex;
@@ -83,6 +79,58 @@ namespace CanKit.Core.Definitions
         public CanFeature EnabledSoftwareFallback => Options.EnabledSoftwareFallback;
 
         public bool AllowErrorInfo => Options.AllowErrorInfo;
+
+        IBusInitOptionsConfigurator IBusInitOptionsConfigurator.Baud(uint baud, uint? clockMHz, ushort? samplePointPermille)
+            => Baud(baud, samplePointPermille);
+
+        IBusInitOptionsConfigurator IBusInitOptionsConfigurator.Fd(uint abit, uint dbit,
+            uint? clockMHz,
+            ushort? nominalSamplePointPermille,
+            ushort? dataSamplePointPermille)
+            => Fd(abit, dbit, nominalSamplePointPermille, dataSamplePointPermille);
+
+        IBusInitOptionsConfigurator IBusInitOptionsConfigurator.TimingClassic(CanClassicTiming timing)
+            => TimingClassic(timing);
+
+        IBusInitOptionsConfigurator IBusInitOptionsConfigurator.TimingFd(CanFdTiming timing)
+            => TimingFd(timing);
+
+        IBusInitOptionsConfigurator IBusInitOptionsConfigurator.BusUsage(uint periodMs)
+            => BusUsage(periodMs);
+
+        IBusInitOptionsConfigurator IBusInitOptionsConfigurator.SetTxRetryPolicy(TxRetryPolicy retryPolicy)
+            => SetTxRetryPolicy(retryPolicy);
+
+        IBusInitOptionsConfigurator IBusInitOptionsConfigurator.SetWorkMode(ChannelWorkMode mode)
+            => SetWorkMode(mode);
+
+        IBusInitOptionsConfigurator IBusInitOptionsConfigurator.InternalRes(bool enabled)
+            => InternalRes(enabled);
+
+        IBusInitOptionsConfigurator IBusInitOptionsConfigurator.SetProtocolMode(CanProtocolMode mode)
+            => SetProtocolMode(mode);
+
+        IBusInitOptionsConfigurator IBusInitOptionsConfigurator.SetFilter(CanFilter filter)
+            => SetFilter(filter);
+
+        IBusInitOptionsConfigurator IBusInitOptionsConfigurator.SoftwareFeaturesFallBack(CanFeature features)
+            => SoftwareFeaturesFallBack(features);
+
+
+        IBusInitOptionsConfigurator IBusInitOptionsConfigurator.RangeFilter(uint min, uint max, CanFilterIDType idType)
+            => RangeFilter(min, max, idType);
+
+        IBusInitOptionsConfigurator IBusInitOptionsConfigurator.AccMask(uint accCode, uint accMask, CanFilterIDType idType)
+            => AccMask(accCode, accMask, idType);
+
+        IBusInitOptionsConfigurator IBusInitOptionsConfigurator.EnableErrorInfo()
+            => EnableErrorInfo();
+
+        IBusInitOptionsConfigurator IBusInitOptionsConfigurator.UseChannelIndex(int index)
+            => UseChannelIndex(index);
+
+        IBusInitOptionsConfigurator IBusInitOptionsConfigurator.UseChannelName(string name)
+            => UseChannelName(name);
 
         public virtual TSelf UseChannelIndex(int index)
         {
@@ -117,7 +165,6 @@ namespace CanKit.Core.Definitions
                     CanPhaseTiming.Target(dbit, dataSamplePointPermille), clockMHz));
             return (TSelf)this;
         }
-
 
 
         public virtual TSelf TimingClassic(CanClassicTiming timing)
@@ -213,57 +260,6 @@ namespace CanKit.Core.Definitions
             Options.AllowErrorInfo = true;
             return (TSelf)this;
         }
-
-        IBusInitOptionsConfigurator IBusInitOptionsConfigurator.Baud(uint baud, uint? clockMHz, ushort? samplePointPermille)
-            => Baud(baud, samplePointPermille);
-        IBusInitOptionsConfigurator IBusInitOptionsConfigurator.Fd(uint abit, uint dbit,
-            uint? clockMHz,
-            ushort? nominalSamplePointPermille,
-            ushort? dataSamplePointPermille)
-            => Fd(abit, dbit, nominalSamplePointPermille, dataSamplePointPermille);
-
-        IBusInitOptionsConfigurator IBusInitOptionsConfigurator.TimingClassic(CanClassicTiming timing)
-            => TimingClassic(timing);
-
-        IBusInitOptionsConfigurator IBusInitOptionsConfigurator.TimingFd(CanFdTiming timing)
-            => TimingFd(timing);
-
-        IBusInitOptionsConfigurator IBusInitOptionsConfigurator.BusUsage(uint periodMs)
-            => BusUsage(periodMs);
-
-        IBusInitOptionsConfigurator IBusInitOptionsConfigurator.SetTxRetryPolicy(TxRetryPolicy retryPolicy)
-            => SetTxRetryPolicy(retryPolicy);
-
-        IBusInitOptionsConfigurator IBusInitOptionsConfigurator.SetWorkMode(ChannelWorkMode mode)
-            => SetWorkMode(mode);
-
-        IBusInitOptionsConfigurator IBusInitOptionsConfigurator.InternalRes(bool enabled)
-            => InternalRes(enabled);
-
-        IBusInitOptionsConfigurator IBusInitOptionsConfigurator.SetProtocolMode(CanProtocolMode mode)
-            => SetProtocolMode(mode);
-
-        IBusInitOptionsConfigurator IBusInitOptionsConfigurator.SetFilter(CanFilter filter)
-            => SetFilter(filter);
-
-        IBusInitOptionsConfigurator IBusInitOptionsConfigurator.SoftwareFeaturesFallBack(CanFeature features)
-            => SoftwareFeaturesFallBack(features);
-
-
-        IBusInitOptionsConfigurator IBusInitOptionsConfigurator.RangeFilter(uint min, uint max, CanFilterIDType idType)
-            => RangeFilter(min, max, idType);
-
-        IBusInitOptionsConfigurator IBusInitOptionsConfigurator.AccMask(uint accCode, uint accMask, CanFilterIDType idType)
-            => AccMask(accCode, accMask, idType);
-
-        IBusInitOptionsConfigurator IBusInitOptionsConfigurator.EnableErrorInfo()
-            => EnableErrorInfo();
-
-        IBusInitOptionsConfigurator IBusInitOptionsConfigurator.UseChannelIndex(int index)
-            => UseChannelIndex(index);
-
-        IBusInitOptionsConfigurator IBusInitOptionsConfigurator.UseChannelName(string name)
-            => UseChannelName(name);
     }
 
 }

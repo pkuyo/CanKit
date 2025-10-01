@@ -8,19 +8,12 @@ namespace CanKit.Core.Definitions;
 /// </summary>
 public readonly record struct CanPhaseTiming
 {
-
     private CanPhaseTiming(uint bitrate, ushort? samplePointPermille, BitTimingSegments? segments)
     {
         Bitrate = bitrate == 0 ? null : bitrate;
         SamplePointPermille = samplePointPermille;
         Segments = segments;
     }
-
-    public static CanPhaseTiming Target(uint bitrate, ushort? samplePointPermille = null)
-        => new(bitrate, samplePointPermille, null);
-
-    public static CanPhaseTiming FromSegments(BitTimingSegments segments)
-        => new(0, null, segments);
 
     public bool IsTarget => Bitrate.HasValue;
     public bool IsSegment => Segments != null;
@@ -32,6 +25,12 @@ public readonly record struct CanPhaseTiming
     public ushort? SamplePointPermille { get; init; }
 
     public BitTimingSegments? Segments { get; init; }
+
+    public static CanPhaseTiming Target(uint bitrate, ushort? samplePointPermille = null)
+        => new(bitrate, samplePointPermille, null);
+
+    public static CanPhaseTiming FromSegments(BitTimingSegments segments)
+        => new(0, null, segments);
 }
 
 /// <summary>
@@ -57,19 +56,18 @@ public readonly record struct BitTimingSegments(
     uint Tseg2,
     uint Sjw)
 {
+    public uint Ntq => 1 + Tseg1 + Tseg2;
+
+    public uint SamplePointPermille => (1 + Tseg1) * 1000 / Ntq;
+
     public override string ToString() =>
         $"BRP={Brp}, TSEG1={Tseg1}, TSEG2={Tseg2}, SJW={Sjw}";
 
     public uint BitRate(uint clockMHz) => (uint)(clockMHz * 1_000_000 / (Brp * Ntq));
-
-    public uint Ntq => 1 + Tseg1 + Tseg2;
-
-    public uint SamplePointPermille => (1 + Tseg1) * 1000 / Ntq;
 }
 
 public sealed record BitTimingLimits
 {
-
     public int NtqMin { get; init; } = 8;
     public int NtqMax { get; init; } = 40;
 
@@ -94,17 +92,18 @@ public sealed record BitTimingLimits
 /// </summary>
 public readonly record struct CanBusTiming
 {
-    public static CanBusTiming ClassicDefault(uint bitRate = 500_000)
-        => new(new CanClassicTiming(CanPhaseTiming.Target(bitRate), null));
-
-    public static CanBusTiming FdDefault(uint bitRate = 500_000, uint dBitRate = 500_000)
-        => new(new CanFdTiming(CanPhaseTiming.Target(bitRate), CanPhaseTiming.Target(dBitRate), null));
     public CanBusTiming(CanClassicTiming classic) => Classic = classic;
 
     public CanBusTiming(CanFdTiming fd) => Fd = fd;
 
     public CanClassicTiming? Classic { get; init; }
     public CanFdTiming? Fd { get; init; }
+
+    public static CanBusTiming ClassicDefault(uint bitRate = 500_000)
+        => new(new CanClassicTiming(CanPhaseTiming.Target(bitRate), null));
+
+    public static CanBusTiming FdDefault(uint bitRate = 500_000, uint dBitRate = 500_000)
+        => new(new CanFdTiming(CanPhaseTiming.Target(bitRate), CanPhaseTiming.Target(dBitRate), null));
 }
 
 /// <summary>

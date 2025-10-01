@@ -13,6 +13,12 @@ namespace CanKit.Adapter.ZLG.Options
             Double = 1
         }
 
+        public bool SoftwareFilterEnabled { get; set; }
+
+        public int PollingInterval { get; set; } = 20;
+
+        public MaskFilterType FilterType { get; set; }
+
         public ICanModelProvider Provider => provider;
 
         public partial void Apply(ICanApplier applier, bool force = false);
@@ -28,12 +34,7 @@ namespace CanKit.Adapter.ZLG.Options
 
         public CanFilter Filter { get; set; } = new();
         public CanFeature EnabledSoftwareFallback { get; set; }
-        public bool SoftwareFilterEnabled { get; set; }
         public bool AllowErrorInfo { get; set; }
-
-        public int PollingInterval { get; set; } = 20;
-
-        public MaskFilterType FilterType { get; set; }
 
         public bool InternalResistance { get; set; }
 
@@ -58,7 +59,5 @@ namespace CanKit.Adapter.ZLG.Options
             get => Get_TxRetryPolicy();
             set => Set_TxRetryPolicy(value);
         }
-
-
     }
 }

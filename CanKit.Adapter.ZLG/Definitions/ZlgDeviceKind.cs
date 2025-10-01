@@ -82,13 +82,6 @@ namespace CanKit.Adapter.ZLG.Definitions
 
     public sealed record ZlgDeviceType : DeviceType
     {
-        public int Code { get; }
-
-        public ZlgDeviceType(string id, int code) : base($"ZLG.{id}")
-        {
-            Code = code;
-        }
-
         public static readonly ZlgDeviceType ZCAN_PCI9810 = new ZlgDeviceType(nameof(ZCAN_PCI9810), (int)ZlgDeviceKind.ZCAN_PCI9810);
         public static readonly ZlgDeviceType ZCAN_USBCAN1 = new ZlgDeviceType(nameof(ZCAN_USBCAN1), (int)ZlgDeviceKind.ZCAN_USBCAN1);
         public static readonly ZlgDeviceType ZCAN_USBCAN2 = new ZlgDeviceType(nameof(ZCAN_USBCAN2), (int)ZlgDeviceKind.ZCAN_USBCAN2);
@@ -162,5 +155,12 @@ namespace CanKit.Adapter.ZLG.Definitions
         public static readonly ZlgDeviceType ZCAN_PCIE_CANFD_1200U = new ZlgDeviceType(nameof(ZCAN_PCIE_CANFD_1200U), (int)ZlgDeviceKind.ZCAN_PCIE_CANFD_1200U);
         public static readonly ZlgDeviceType ZCAN_MINI_PCIE_CANFD = new ZlgDeviceType(nameof(ZCAN_MINI_PCIE_CANFD), (int)ZlgDeviceKind.ZCAN_MINI_PCIE_CANFD);
         public static readonly ZlgDeviceType ZCAN_USBCANFD_800H = new ZlgDeviceType(nameof(ZCAN_USBCANFD_800H), (int)ZlgDeviceKind.ZCAN_USBCANFD_800H);
+
+        public ZlgDeviceType(string id, int code) : base($"ZLG.{id}")
+        {
+            Code = code;
+        }
+
+        public int Code { get; }
     }
 }

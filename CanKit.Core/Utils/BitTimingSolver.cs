@@ -85,6 +85,7 @@ public static class BitTimingSolver
         if (value.CompareTo(max) > 0) return max;
         return value;
     }
+
     /// <summary>
     /// CAN-FD 的快捷封装：分别为 Nominal/Data 求解。
     /// dataNtqMax 默认更小（高速相位常用更少的 NTQ）

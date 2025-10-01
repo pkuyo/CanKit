@@ -15,6 +15,13 @@ namespace CanKit.Core.Abstractions
     public interface ICanBus : IDisposable
     {
         /// <summary>
+        /// Real-time options configurator (运行时通道选项配置器)。
+        /// </summary>
+        IBusRTOptionsConfigurator Options { get; }
+
+        public BusState BusState { get; }
+
+        /// <summary>
         /// Reset the channel to initial state (复位通道到初始状态)。
         /// </summary>
         void Reset();
@@ -69,11 +76,6 @@ namespace CanKit.Core.Abstractions
         bool ReadErrorInfo(out ICanErrorInfo? errorInfo);
 
         /// <summary>
-        /// Real-time options configurator (运行时通道选项配置器)。
-        /// </summary>
-        IBusRTOptionsConfigurator Options { get; }
-
-        /// <summary>
         /// Raised when a new CAN frame is received (接收到新 CAN 帧时触发)。
         /// </summary>
         event EventHandler<CanReceiveData> FrameReceived;
@@ -82,8 +84,6 @@ namespace CanKit.Core.Abstractions
         /// Raised when a channel error occurs (通道发生错误时触发)。
         /// </summary>
         event EventHandler<ICanErrorInfo> ErrorOccurred;
-
-        public BusState BusState { get; }
     }
 
 

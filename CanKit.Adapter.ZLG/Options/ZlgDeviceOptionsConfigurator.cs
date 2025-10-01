@@ -20,7 +20,6 @@ public sealed class ZlgDeviceRTOptionsConfigurator
     : DeviceRTOptionsConfigurator<ZlgDeviceOptions>
 {
     public uint DeviceIndex => Options.DeviceIndex;
-
 }
 
 public sealed class ZlgBusInitConfigurator
@@ -82,8 +81,6 @@ public sealed class ZlgBusInitConfigurator
 
         return base.RangeFilter(min, max, idType);
     }
-
-
 }
 
 public sealed class ZlgBusRtConfigurator
@@ -106,5 +103,4 @@ public sealed class ZlgBusRtConfigurator
         Options.PollingInterval = newPollingInterval;
         return this;
     }
-
 }

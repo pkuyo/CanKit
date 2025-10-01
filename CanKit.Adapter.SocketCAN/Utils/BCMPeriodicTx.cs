@@ -11,6 +11,15 @@ namespace CanKit.Adapter.SocketCAN.Utils;
 
 public sealed class BCMPeriodicTx : IPeriodicTx
 {
+    private readonly object _evtGate = new();
+    private EventHandler? _completed;
+    private IBusRTOptionsConfigurator _configurator;
+    private int _fd;
+
+    private ICanFrame _frame;
+    private CancellationTokenSource? _readCts;
+    private Task? _readTask;
+
     public BCMPeriodicTx(ICanBus bus, CanTransmitData frame, PeriodicTxOptions options, SocketCanBusRtConfigurator configurator)
     {
         _configurator = configurator;
@@ -375,13 +384,4 @@ public sealed class BCMPeriodicTx : IPeriodicTx
             }
         }
     }
-
-    private ICanFrame _frame;
-    private int _fd;
-    private IBusRTOptionsConfigurator _configurator;
-
-    private readonly object _evtGate = new();
-    private EventHandler? _completed;
-    private CancellationTokenSource? _readCts;
-    private Task? _readTask;
 }

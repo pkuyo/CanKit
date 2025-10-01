@@ -8,7 +8,6 @@ namespace CanKit.Core.Endpoints;
 
 public static class BusEndpointEntry
 {
-
     /// <summary>
     /// Try open bus by endpoint (按 endpoint 尝试打开总线)。
     /// </summary>

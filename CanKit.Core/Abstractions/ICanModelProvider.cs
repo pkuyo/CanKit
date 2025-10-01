@@ -35,7 +35,6 @@ namespace CanKit.Core.Abstractions
         /// </summary>
         /// <returns>Tuple of options and configurator (选项与配置器)。</returns>
         (IBusOptions, IBusInitOptionsConfigurator) GetChannelOptions();
-
     }
 
     /// <summary>

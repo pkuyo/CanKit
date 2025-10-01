@@ -11,17 +11,6 @@ namespace CanKit.Adapter.ZLG;
 /// </summary>
 internal static class ZlgDeviceMultiplexer
 {
-    private sealed class Entry
-    {
-        public Entry(ICanDevice device)
-        {
-            Device = device;
-            RefCount = 1;
-        }
-        public ICanDevice Device { get; }
-        public int RefCount;
-    }
-
     private static readonly ConcurrentDictionary<string, Entry> _map = new(StringComparer.OrdinalIgnoreCase);
 
     private static string Key(DeviceType dt, uint index) => $"{dt.Id}|{index}";
@@ -57,11 +46,25 @@ internal static class ZlgDeviceMultiplexer
         }
     }
 
+    private sealed class Entry
+    {
+        public int RefCount;
+
+        public Entry(ICanDevice device)
+        {
+            Device = device;
+            RefCount = 1;
+        }
+
+        public ICanDevice Device { get; }
+    }
+
     private sealed class DeviceLease : IDisposable
     {
         private readonly string _key;
         private Entry? _entry;
         public DeviceLease(string key, Entry entry) { _key = key; _entry = entry; }
+
         public void Dispose()
         {
             var e = Interlocked.Exchange(ref _entry, null);
@@ -74,6 +77,5 @@ internal static class ZlgDeviceMultiplexer
                 try { e.Device.Dispose(); } catch { }
             }
         }
-
     }
 }

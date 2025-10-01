@@ -26,7 +26,6 @@ public interface ICanOptionsConfigurator
 /// </summary>
 public interface IDeviceRTOptionsConfigurator : ICanOptionsConfigurator
 {
-
     /// <summary>
     /// Device type (设备类型)。
     /// </summary>
@@ -116,7 +115,6 @@ public interface IDeviceInitOptionsConfigurator : ICanOptionsConfigurator
 /// </summary>
 public interface IBusInitOptionsConfigurator : ICanOptionsConfigurator
 {
-
     /// <summary>
     /// Channel index (通道索引)。
     /// </summary>
@@ -287,7 +285,6 @@ public interface IBusInitOptionsConfigurator : ICanOptionsConfigurator
     IBusInitOptionsConfigurator UseChannelIndex(int index);
 
     IBusInitOptionsConfigurator UseChannelName(string name);
-
 }
 
 
@@ -298,9 +295,13 @@ public abstract class CallOptionsConfigurator<TOption, TSelf>
     where TOption : class, ICanOptions
     where TSelf : CallOptionsConfigurator<TOption, TSelf>
 {
-    protected TOption? _options;
     protected CanFeature _feature;
+    protected TOption? _options;
     private CanFeature _softwareFeature;
+
+    protected TOption Options => _options ?? throw new InvalidOperationException("Options have not been initialized.");
+    protected TSelf Self => (TSelf)this;
+
     public virtual TSelf Init(TOption options)
     {
         _options = options;
@@ -308,8 +309,6 @@ public abstract class CallOptionsConfigurator<TOption, TSelf>
         _feature = options.Provider.StaticFeatures;
         return (TSelf)this;
     }
-
-    protected TOption Options => _options ?? throw new InvalidOperationException("Options have not been initialized.");
 
 
     /// <summary>
@@ -334,5 +333,4 @@ public abstract class CallOptionsConfigurator<TOption, TSelf>
         _feature |= softwareFeatures;
         return (TSelf)this;
     }
-    protected TSelf Self => (TSelf)this;
 }

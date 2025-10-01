@@ -11,6 +11,15 @@ namespace CanKit.Adapter.ZLG.Utils;
 
 public sealed class ZlgPeriodicTx : IPeriodicTx
 {
+    private static int s_indexSeed;
+
+    private readonly ZlgCanBus _bus;
+    private readonly object _evtGate = new();
+    private ICanFrame _frame;
+    private ushort _index;
+    private volatile int _remaining;
+    private bool _stopped;
+
     public ZlgPeriodicTx(ZlgCanBus bus, CanTransmitData frame, PeriodicTxOptions options)
     {
         _bus = bus ?? throw new ArgumentNullException(nameof(bus));
@@ -20,6 +29,7 @@ public sealed class ZlgPeriodicTx : IPeriodicTx
         {
             //TODO:异常，不支持有限个数发送
         }
+
         // Validate frame type vs channel
         if (frame.CanFrame is CanClassicFrame && bus.Options.ProtocolMode != CanProtocolMode.Can20)
             throw new CanFeatureNotSupportedException(CanFeature.CanClassic, bus.Options.Features);
@@ -37,7 +47,14 @@ public sealed class ZlgPeriodicTx : IPeriodicTx
         // Fire once immediately if requested
         if (options.FireImmediately)
         {
-            try { _ = _bus.Transmit(new[] { frame }, 0); } catch { }
+            try
+            {
+                _ = _bus.Transmit(new[] { frame }, 0);
+            }
+            catch
+            {
+            }
+
             if (_remaining >= 0) _remaining = Math.Max(0, _remaining - 1);
         }
 
@@ -57,7 +74,10 @@ public sealed class ZlgPeriodicTx : IPeriodicTx
         {
             StopHardware();
             _bus.FreeAutoSendIndex(_index);
-        } catch { }
+        }
+        catch
+        {
+        }
     }
 
     public void Update(CanTransmitData? frame = null, TimeSpan? period = null, int? repeatCount = null)
@@ -91,7 +111,7 @@ public sealed class ZlgPeriodicTx : IPeriodicTx
     private void StopHardware()
     {
         ZlgErr.ThrowIfError(ZLGCAN.ZCAN_SetValue(_bus.NativeHandle.DeviceHandle,
-                $"{_bus.Options.ChannelIndex}/clear_auto_send","0"),
+                $"{_bus.Options.ChannelIndex}/clear_auto_send", "0"),
             "ZCAN_SetValue(apply_auto_send)", _bus.NativeHandle);
     }
 
@@ -136,17 +156,5 @@ public sealed class ZlgPeriodicTx : IPeriodicTx
 
         ZlgErr.ThrowIfError(ZLGCAN.ZCAN_SetValue(_bus.NativeHandle.DeviceHandle, $"{chan}/apply_auto_send", "0"),
             "ZCAN_SetValue(apply_auto_send)", _bus.NativeHandle);
-
-
     }
-
-    private readonly ZlgCanBus _bus;
-    private ICanFrame _frame;
-    private ushort _index;
-    private volatile int _remaining;
-    private bool _stopped;
-    private readonly object _evtGate = new();
-
-    private static int s_indexSeed;
 }
-

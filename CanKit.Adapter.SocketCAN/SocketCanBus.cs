@@ -11,6 +11,30 @@ namespace CanKit.Adapter.SocketCAN;
 
 public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanApplier, IBusOwnership
 {
+    private readonly object _evtGate = new();
+
+    private readonly IBusOptions _options;
+
+    private readonly ITransceiver _transceiver;
+    private int _epfd = -1;
+    private CancellationTokenSource? _epollCts;
+    private Task? _epollTask;
+    private EventHandler<ICanErrorInfo>? _errorOccurred;
+    private Libc.epoll_event[] _events = new Libc.epoll_event[8];
+    private int _fd;
+    private EventHandler<CanReceiveData>? _frameReceived;
+    private uint _ifIndex;
+
+    private string _ifName;
+    private bool _isDisposed;
+
+    private IDisposable? _owner;
+
+    // Cached software filter predicate to avoid rebuilding per-iteration
+    private Func<ICanFrame, bool>? _softwareFilterPredicate;
+    private int _subscriberCount;
+    private bool _useSoftwareFilter;
+
     internal SocketCanBus(IBusOptions options, ITransceiver transceiver)
     {
         Options = new SocketCanBusRtConfigurator();
@@ -28,6 +52,335 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
         // Apply initial options (filters etc.)
         _options.Apply(this, true);
         CanKitLogger.LogDebug("SocketCAN: Initial options applied.");
+    }
+
+    internal int FileDescriptor => _fd;
+
+    public void AttachOwner(IDisposable owner)
+    {
+        _owner = owner;
+    }
+
+    public void Apply(ICanOptions options)
+    {
+        if (options is not SocketCanBusOptions sc)
+        {
+            throw new CanOptionTypeMismatchException(
+                CanKitErrorCode.ChannelOptionTypeMismatch,
+                typeof(SocketCanBusOptions),
+                options.GetType(),
+                $"channel {Options.ChannelIndex}");
+        }
+
+        // Protocol: enable FD is handled at creation time.
+
+        // Build filter array from mask rules; respect Standard/Extended frames.
+        var rules = sc.Filter.FilterRules;
+        var filters = new List<Libc.can_filter>();
+        if (rules.Count > 0)
+        {
+            foreach (var r in rules)
+            {
+                if (r is FilterRule.Mask m)
+                {
+                    uint canId, canMask;
+                    if (m.FilterIdType == CanFilterIDType.Extend)
+                    {
+                        canId = (m.AccCode & Libc.CAN_EFF_MASK) | Libc.CAN_EFF_FLAG;
+                        canMask = (m.AccMask & Libc.CAN_EFF_MASK) | Libc.CAN_EFF_FLAG;
+                    }
+                    else
+                    {
+                        canId = (m.AccCode & Libc.CAN_SFF_MASK);
+                        canMask = (m.AccMask & Libc.CAN_SFF_MASK) | Libc.CAN_EFF_FLAG; // match only standard frames
+                    }
+
+                    filters.Add(new Libc.can_filter { can_id = canId, can_mask = canMask });
+                }
+                else
+                {
+                    sc.Filter.softwareFilter.Add(r);
+                }
+            }
+        }
+
+        if (filters.Count > 0)
+        {
+            var elem = Marshal.SizeOf<Libc.can_filter>();
+            var total = elem * filters.Count;
+            var arr = filters.ToArray();
+            var handle = GCHandle.Alloc(arr, GCHandleType.Pinned);
+            try
+            {
+                var ptr = handle.AddrOfPinnedObject();
+                if (Libc.setsockopt(_fd, Libc.SOL_CAN_RAW, Libc.CAN_RAW_FILTER, ptr, (uint)total) != 0)
+                {
+                    throw new CanChannelConfigurationException("setsockopt(CAN_RAW_FILTER) failed.");
+                }
+            }
+            finally { handle.Free(); }
+        }
+        else
+        {
+            // Clear filters to receive all
+            _ = Libc.setsockopt(_fd, Libc.SOL_CAN_RAW, Libc.CAN_RAW_FILTER, IntPtr.Zero, 0);
+        }
+
+        // Cache software filter predicate for event loop
+        _useSoftwareFilter = (Options.EnabledSoftwareFallbackE & CanFeature.Filters) != 0
+                              && Options.Filter.SoftwareFilterRules.Count > 0;
+        _softwareFilterPredicate = _useSoftwareFilter
+            ? FilterRule.Build(Options.Filter.SoftwareFilterRules)
+            : null;
+    }
+
+    public CanOptionType ApplierStatus => _fd >= 0 ? CanOptionType.Runtime : CanOptionType.Init;
+
+    public void Reset()
+    {
+        ThrowIfDisposed();
+        if (LibSocketCan.can_do_restart(_ifName) != Libc.OK)
+        {
+            Libc.ThrowErrno("can_do_restart", $"Failed to restart interface '{_ifName}'");
+        }
+    }
+
+
+    public uint Transmit(IEnumerable<CanTransmitData> frames, int timeOut = 0)
+    {
+        ThrowIfDisposed();
+
+        uint sendCount = 0;
+        var startTime = Environment.TickCount;
+        var pollFd = new Libc.pollfd { fd = _fd, events = Libc.POLLOUT };
+        using var enumerator = frames.GetEnumerator();
+        var single = new CanTransmitData[1];
+        if (!enumerator.MoveNext())
+            return 0;
+
+        do
+        {
+            var remainingTime = timeOut > 0
+                ? Math.Max(0, timeOut - (Environment.TickCount - startTime))
+                : timeOut;
+
+            if (timeOut > 0 && remainingTime <= 0)
+                break;
+
+            var pr = Libc.poll(ref pollFd, 1, remainingTime);
+            if (pr < 0)
+            {
+                Libc.ThrowErrno("poll(POLLOUT)", "Polling for writable socket failed");
+            }
+            if (pr == 0)
+            {
+                break; // timeout
+            }
+            single[0] = enumerator.Current;
+            if (_transceiver.Transmit(this, single) == 1)
+            {
+                sendCount++;
+                if (!enumerator.MoveNext())
+                {
+                    break;
+                }
+            }
+        } while (true);
+
+        return sendCount;
+    }
+
+    public IEnumerable<CanReceiveData> Receive(uint count = 1, int timeOut = 0)
+    {
+        ThrowIfDisposed();
+
+        if (timeOut > 0)
+        {
+            var pollFd = new Libc.pollfd { fd = _fd, events = Libc.POLLIN };
+            var pr = Libc.poll(ref pollFd, 1, timeOut);
+            if (pr == -1)
+            {
+                Libc.ThrowErrno("poll(POLLIN)", "Polling for readable socket failed");
+            }
+        }
+
+        return _transceiver.Receive(this, count);
+    }
+
+    public void ClearBuffer()
+    {
+        ThrowIfDisposed();
+        // Drain any pending frames from the socket RX queue
+        var pollFd = new Libc.pollfd { fd = _fd, events = Libc.POLLIN };
+        int iterations = 0;
+        int maxIterations = 64;
+        int readSize = Options.ProtocolMode == CanProtocolMode.CanFd
+            ? Marshal.SizeOf<Libc.canfd_frame>()
+            : Marshal.SizeOf<Libc.can_frame>();
+        unsafe
+        {
+            if (Options.ProtocolMode == CanProtocolMode.CanFd)
+            {
+                Libc.canfd_frame* buf = stackalloc Libc.canfd_frame[1]; // 只分配一次
+                while (iterations++ < maxIterations)
+                {
+                    var pr = Libc.poll(ref pollFd, 1, 0);
+                    if (pr <= 0) break;
+                    var n = Libc.read(_fd, buf, (ulong)readSize);
+                    if (n <= 0)
+                    {
+                        //TODO:错误输出
+                        break;
+                    }
+                }
+            }
+            else
+            {
+                Libc.can_frame* buf = stackalloc Libc.can_frame[1]; // 只分配一次
+                while (iterations++ < maxIterations)
+                {
+                    var pr = Libc.poll(ref pollFd, 1, 0);
+                    if (pr <= 0) break;
+                    var n = Libc.read(_fd, buf, (ulong)readSize);
+                    if (n <= 0)
+                    {
+                        //TODO:错误输出
+                        break;
+                    }
+                }
+            }
+        }
+        CanKitLogger.LogDebug("SocketCAN: RX buffer drained.");
+    }
+
+    public float BusUsage()
+    {
+        throw new CanFeatureNotSupportedException(CanFeature.BusUsage, Options.Features);
+    }
+
+    public CanErrorCounters ErrorCounters()
+    {
+        if (LibSocketCan.can_get_berr_counter(_ifName, out var counter) == Libc.OK)
+        {
+            return new CanErrorCounters()
+            {
+                ReceiveErrorCounter = counter.rxerr,
+                TransmitErrorCounter = counter.txerr
+            };
+        }
+        return Libc.ThrowErrno<CanErrorCounters>("can_get_berr_counter",
+            $"Failed to get error counters for '{_ifName}'");
+    }
+
+    public IPeriodicTx TransmitPeriodic(CanTransmitData frame, PeriodicTxOptions options)
+    {
+        ThrowIfDisposed();
+        return new BCMPeriodicTx(this, frame, options, Options);
+    }
+
+    public bool ReadErrorInfo(out ICanErrorInfo? errorInfo)
+    {
+        // SocketCAN via raw socket does not expose detailed error info here
+        errorInfo = null;
+        return false;
+    }
+
+
+    public void Dispose()
+    {
+        if (_isDisposed) return;
+        try
+        {
+            StopPolling();
+            if (_fd >= 0)
+                Libc.close(_fd);
+        }
+        finally
+        {
+            _fd = -1;
+            _isDisposed = true;
+            try { _owner?.Dispose(); } catch { }
+            _owner = null;
+        }
+    }
+
+    public SocketCanBusRtConfigurator Options { get; }
+
+    IBusRTOptionsConfigurator ICanBus.Options => Options;
+
+    public event EventHandler<CanReceiveData> FrameReceived
+    {
+        add
+        {
+            lock (_evtGate)
+            {
+                _frameReceived += value;
+                _subscriberCount++;
+                StartPollingIfNeeded();
+            }
+        }
+        remove
+        {
+            lock (_evtGate)
+            {
+                _frameReceived -= value;
+                _subscriberCount = Math.Max(0, _subscriberCount - 1);
+                if (_subscriberCount == 0) StopPolling();
+            }
+        }
+    }
+
+    public event EventHandler<ICanErrorInfo> ErrorOccurred
+    {
+        add
+        {
+            if (!Options.AllowErrorInfo)
+            {
+                throw new CanChannelConfigurationException("ErrorOccurred subscription requires AllowErrorInfo=true in options.");
+            }
+            //TODO:在未启用时抛出异常
+            lock (_evtGate)
+            {
+                _errorOccurred += value;
+                _subscriberCount++;
+                StartPollingIfNeeded();
+            }
+        }
+        remove
+        {
+            lock (_evtGate)
+            {
+                _errorOccurred -= value;
+                _subscriberCount = Math.Max(0, _subscriberCount - 1);
+                if (_subscriberCount == 0) StopPolling();
+            }
+        }
+    }
+
+    public BusState BusState
+    {
+        get
+        {
+            ThrowIfDisposed();
+            if (LibSocketCan.can_get_state(_ifName, out var i) == Libc.OK)
+            {
+                var state = (LibSocketCan.can_state)i;
+                return state switch
+                {
+                    LibSocketCan.can_state.CAN_STATE_BUS_OFF => BusState.BusOff,
+                    LibSocketCan.can_state.CAN_STATE_ERROR_PASSIVE => BusState.ErrPassive,
+                    LibSocketCan.can_state.CAN_STATE_ERROR_WARNING => BusState.ErrWarning,
+                    LibSocketCan.can_state.CAN_STATE_ERROR_ACTIVE => BusState.ErrActive,
+                    _ => BusState.None
+                };
+            }
+            else
+            {
+                var errno = (uint)Marshal.GetLastWin32Error();
+                CanKitLogger.LogWarning($"SocketCAN: can_get_state failed for '{_ifName}', errno={errno}.");
+                return BusState.Unknown;
+            }
+        }
     }
 
     private int CreateAndBind(string? ifName,int ifIndex, CanProtocolMode mode, bool preferKernelTs)
@@ -258,253 +611,10 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
         }
     }
 
-    public void Reset()
-    {
-        ThrowIfDisposed();
-        if (LibSocketCan.can_do_restart(_ifName) != Libc.OK)
-        {
-            Libc.ThrowErrno("can_do_restart", $"Failed to restart interface '{_ifName}'");
-        }
-    }
-
-
-
-    public uint Transmit(IEnumerable<CanTransmitData> frames, int timeOut = 0)
-    {
-        ThrowIfDisposed();
-
-        uint sendCount = 0;
-        var startTime = Environment.TickCount;
-        var pollFd = new Libc.pollfd { fd = _fd, events = Libc.POLLOUT };
-        using var enumerator = frames.GetEnumerator();
-        var single = new CanTransmitData[1];
-        if (!enumerator.MoveNext())
-            return 0;
-
-        do
-        {
-            var remainingTime = timeOut > 0
-                ? Math.Max(0, timeOut - (Environment.TickCount - startTime))
-                : timeOut;
-
-            if (timeOut > 0 && remainingTime <= 0)
-                break;
-
-            var pr = Libc.poll(ref pollFd, 1, remainingTime);
-            if (pr < 0)
-            {
-                Libc.ThrowErrno("poll(POLLOUT)", "Polling for writable socket failed");
-            }
-            if (pr == 0)
-            {
-                break; // timeout
-            }
-            single[0] = enumerator.Current;
-            if (_transceiver.Transmit(this, single) == 1)
-            {
-                sendCount++;
-                if (!enumerator.MoveNext())
-                {
-                    break;
-                }
-            }
-        } while (true);
-
-        return sendCount;
-    }
-
-    public IEnumerable<CanReceiveData> Receive(uint count = 1, int timeOut = 0)
-    {
-        ThrowIfDisposed();
-
-        if (timeOut > 0)
-        {
-            var pollFd = new Libc.pollfd { fd = _fd, events = Libc.POLLIN };
-            var pr = Libc.poll(ref pollFd, 1, timeOut);
-            if (pr == -1)
-            {
-                Libc.ThrowErrno("poll(POLLIN)", "Polling for readable socket failed");
-            }
-        }
-
-        return _transceiver.Receive(this, count);
-    }
-
-    public void ClearBuffer()
-    {
-        ThrowIfDisposed();
-        // Drain any pending frames from the socket RX queue
-        var pollFd = new Libc.pollfd { fd = _fd, events = Libc.POLLIN };
-        int iterations = 0;
-        int maxIterations = 64;
-        int readSize = Options.ProtocolMode == CanProtocolMode.CanFd
-            ? Marshal.SizeOf<Libc.canfd_frame>()
-            : Marshal.SizeOf<Libc.can_frame>();
-        unsafe
-        {
-            if (Options.ProtocolMode == CanProtocolMode.CanFd)
-            {
-                Libc.canfd_frame* buf = stackalloc Libc.canfd_frame[1]; // 只分配一次
-                while (iterations++ < maxIterations)
-                {
-                    var pr = Libc.poll(ref pollFd, 1, 0);
-                    if (pr <= 0) break;
-                    var n = Libc.read(_fd, buf, (ulong)readSize);
-                    if (n <= 0)
-                    {
-                        //TODO:错误输出
-                        break;
-                    }
-                }
-            }
-            else
-            {
-                Libc.can_frame* buf = stackalloc Libc.can_frame[1]; // 只分配一次
-                while (iterations++ < maxIterations)
-                {
-                    var pr = Libc.poll(ref pollFd, 1, 0);
-                    if (pr <= 0) break;
-                    var n = Libc.read(_fd, buf, (ulong)readSize);
-                    if (n <= 0)
-                    {
-                        //TODO:错误输出
-                        break;
-                    }
-                }
-            }
-        }
-        CanKitLogger.LogDebug("SocketCAN: RX buffer drained.");
-    }
-    public float BusUsage()
-    {
-        throw new CanFeatureNotSupportedException(CanFeature.BusUsage, Options.Features);
-    }
-
-    public CanErrorCounters ErrorCounters()
-    {
-        if (LibSocketCan.can_get_berr_counter(_ifName, out var counter) == Libc.OK)
-        {
-            return new CanErrorCounters()
-            {
-                ReceiveErrorCounter = counter.rxerr,
-                TransmitErrorCounter = counter.txerr
-            };
-        }
-        return Libc.ThrowErrno<CanErrorCounters>("can_get_berr_counter",
-            $"Failed to get error counters for '{_ifName}'");
-    }
-
-    public IPeriodicTx TransmitPeriodic(CanTransmitData frame, PeriodicTxOptions options)
-    {
-        ThrowIfDisposed();
-        return new BCMPeriodicTx(this, frame, options, Options);
-    }
-
-    public bool ReadErrorInfo(out ICanErrorInfo? errorInfo)
-    {
-        // SocketCAN via raw socket does not expose detailed error info here
-        errorInfo = null;
-        return false;
-    }
-
-
-    public void Dispose()
-    {
-        if (_isDisposed) return;
-        try
-        {
-            StopPolling();
-            if (_fd >= 0)
-                Libc.close(_fd);
-        }
-        finally
-        {
-            _fd = -1;
-            _isDisposed = true;
-            try { _owner?.Dispose(); } catch { }
-            _owner = null;
-        }
-    }
-
     private void ThrowIfDisposed()
     {
         if (_isDisposed) throw new CanBusDisposedException();
     }
-
-    public void Apply(ICanOptions options)
-    {
-        if (options is not SocketCanBusOptions sc)
-        {
-            throw new CanOptionTypeMismatchException(
-                CanKitErrorCode.ChannelOptionTypeMismatch,
-                typeof(SocketCanBusOptions),
-                options.GetType(),
-                $"channel {Options.ChannelIndex}");
-        }
-
-        // Protocol: enable FD is handled at creation time.
-
-        // Build filter array from mask rules; respect Standard/Extended frames.
-        var rules = sc.Filter.FilterRules;
-        var filters = new List<Libc.can_filter>();
-        if (rules.Count > 0)
-        {
-            foreach (var r in rules)
-            {
-                if (r is FilterRule.Mask m)
-                {
-                    uint canId, canMask;
-                    if (m.FilterIdType == CanFilterIDType.Extend)
-                    {
-                        canId = (m.AccCode & Libc.CAN_EFF_MASK) | Libc.CAN_EFF_FLAG;
-                        canMask = (m.AccMask & Libc.CAN_EFF_MASK) | Libc.CAN_EFF_FLAG;
-                    }
-                    else
-                    {
-                        canId = (m.AccCode & Libc.CAN_SFF_MASK);
-                        canMask = (m.AccMask & Libc.CAN_SFF_MASK) | Libc.CAN_EFF_FLAG; // match only standard frames
-                    }
-
-                    filters.Add(new Libc.can_filter { can_id = canId, can_mask = canMask });
-                }
-                else
-                {
-                    sc.Filter.softwareFilter.Add(r);
-                }
-            }
-        }
-
-        if (filters.Count > 0)
-        {
-            var elem = Marshal.SizeOf<Libc.can_filter>();
-            var total = elem * filters.Count;
-            var arr = filters.ToArray();
-            var handle = GCHandle.Alloc(arr, GCHandleType.Pinned);
-            try
-            {
-                var ptr = handle.AddrOfPinnedObject();
-                if (Libc.setsockopt(_fd, Libc.SOL_CAN_RAW, Libc.CAN_RAW_FILTER, ptr, (uint)total) != 0)
-                {
-                    throw new CanChannelConfigurationException("setsockopt(CAN_RAW_FILTER) failed.");
-                }
-            }
-            finally { handle.Free(); }
-        }
-        else
-        {
-            // Clear filters to receive all
-            _ = Libc.setsockopt(_fd, Libc.SOL_CAN_RAW, Libc.CAN_RAW_FILTER, IntPtr.Zero, 0);
-        }
-
-        // Cache software filter predicate for event loop
-        _useSoftwareFilter = (Options.EnabledSoftwareFallbackE & CanFeature.Filters) != 0
-                              && Options.Filter.SoftwareFilterRules.Count > 0;
-        _softwareFilterPredicate = _useSoftwareFilter
-            ? FilterRule.Build(Options.Filter.SoftwareFilterRules)
-            : null;
-    }
-
-    public CanOptionType ApplierStatus => _fd >= 0 ? CanOptionType.Runtime : CanOptionType.Init;
 
 
     private void StartPollingIfNeeded()
@@ -616,115 +726,4 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
             }
         }
     }
-
-    public SocketCanBusRtConfigurator Options { get; }
-
-    IBusRTOptionsConfigurator ICanBus.Options => Options;
-
-    public event EventHandler<CanReceiveData> FrameReceived
-    {
-        add
-        {
-            lock (_evtGate)
-            {
-                _frameReceived += value;
-                _subscriberCount++;
-                StartPollingIfNeeded();
-            }
-        }
-        remove
-        {
-            lock (_evtGate)
-            {
-                _frameReceived -= value;
-                _subscriberCount = Math.Max(0, _subscriberCount - 1);
-                if (_subscriberCount == 0) StopPolling();
-            }
-        }
-    }
-
-    public event EventHandler<ICanErrorInfo> ErrorOccurred
-    {
-        add
-        {
-            if (!Options.AllowErrorInfo)
-            {
-                throw new CanChannelConfigurationException("ErrorOccurred subscription requires AllowErrorInfo=true in options.");
-            }
-            //TODO:在未启用时抛出异常
-            lock (_evtGate)
-            {
-                _errorOccurred += value;
-                _subscriberCount++;
-                StartPollingIfNeeded();
-            }
-        }
-        remove
-        {
-            lock (_evtGate)
-            {
-                _errorOccurred -= value;
-                _subscriberCount = Math.Max(0, _subscriberCount - 1);
-                if (_subscriberCount == 0) StopPolling();
-            }
-        }
-    }
-
-    public BusState BusState
-    {
-        get
-        {
-            ThrowIfDisposed();
-            if (LibSocketCan.can_get_state(_ifName, out var i) == Libc.OK)
-            {
-                var state = (LibSocketCan.can_state)i;
-                return state switch
-                {
-                    LibSocketCan.can_state.CAN_STATE_BUS_OFF => BusState.BusOff,
-                    LibSocketCan.can_state.CAN_STATE_ERROR_PASSIVE => BusState.ErrPassive,
-                    LibSocketCan.can_state.CAN_STATE_ERROR_WARNING => BusState.ErrWarning,
-                    LibSocketCan.can_state.CAN_STATE_ERROR_ACTIVE => BusState.ErrActive,
-                    _ => BusState.None
-                };
-            }
-            else
-            {
-                var errno = (uint)Marshal.GetLastWin32Error();
-                CanKitLogger.LogWarning($"SocketCAN: can_get_state failed for '{_ifName}', errno={errno}.");
-                return BusState.Unknown;
-            }
-        }
-    }
-
-    internal int FileDescriptor => _fd;
-
-    private readonly ITransceiver _transceiver;
-    private bool _isDisposed;
-    private int _fd;
-
-    private readonly IBusOptions _options;
-
-
-    private readonly object _evtGate = new();
-    private EventHandler<CanReceiveData>? _frameReceived;
-    private EventHandler<ICanErrorInfo>? _errorOccurred;
-    private int _subscriberCount;
-    private CancellationTokenSource? _epollCts;
-    private Task? _epollTask;
-    private int _epfd = -1;
-    private Libc.epoll_event[] _events = new Libc.epoll_event[8];
-
-    private IDisposable? _owner;
-
-    private string _ifName;
-    private uint _ifIndex;
-
-    public void AttachOwner(IDisposable owner)
-    {
-        _owner = owner;
-    }
-
-    // Cached software filter predicate to avoid rebuilding per-iteration
-    private Func<ICanFrame, bool>? _softwareFilterPredicate;
-    private bool _useSoftwareFilter;
 }

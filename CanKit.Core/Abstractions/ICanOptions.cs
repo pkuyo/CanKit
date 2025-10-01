@@ -8,6 +8,10 @@ namespace CanKit.Core.Abstractions
     /// </summary>
     public interface ICanApplier
     {
+        /// <summary>
+        /// Applier capability/type (应用器当前状态/类型)。
+        /// </summary>
+        CanOptionType ApplierStatus { get; }
 
 
         /// <summary>
@@ -15,11 +19,6 @@ namespace CanKit.Core.Abstractions
         /// </summary>
         /// <param name="options">Options to apply (要应用的选项对象)。</param>
         void Apply(ICanOptions options);
-
-        /// <summary>
-        /// Applier capability/type (应用器当前状态/类型)。
-        /// </summary>
-        CanOptionType ApplierStatus { get; }
     }
 
 
@@ -74,7 +73,6 @@ namespace CanKit.Core.Abstractions
     /// </summary>
     public interface IBusOptions : ICanOptions
     {
-
         /// <summary>
         /// Channel index (通道索引)。
         /// </summary>
@@ -132,6 +130,5 @@ namespace CanKit.Core.Abstractions
         /// Enable error information monitoring  (启用错误信息监听)。
         /// </summary>
         bool AllowErrorInfo { get; set; }
-
     }
 }

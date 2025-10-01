@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+// @formatter:off
 #nullable disable
 #pragma warning disable IDE0055
 #pragma warning disable CS8981

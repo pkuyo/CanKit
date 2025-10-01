@@ -16,12 +16,6 @@ public record ZlgErrorInfo : ICanErrorInfo
     {
         RawErrorCode = rawErrorCode;
     }
-    /// <inheritdoc />
-    public FrameErrorKind Kind { get; init; }
-    /// <inheritdoc />
-    public DateTime SystemTimestamp { get; init; }
-    /// <inheritdoc />
-    public uint RawErrorCode { get; init; }
 
     /// <summary>
     /// Convert raw code to ZLG error flags (将原始错误码转为 ZLG 错误标志)。
@@ -29,9 +23,20 @@ public record ZlgErrorInfo : ICanErrorInfo
     public ZlgErrorFlag ErrorCode => (ZlgErrorFlag)RawErrorCode;
 
     /// <inheritdoc />
+    public FrameErrorKind Kind { get; init; }
+
+    /// <inheritdoc />
+    public DateTime SystemTimestamp { get; init; }
+
+    /// <inheritdoc />
+    public uint RawErrorCode { get; init; }
+
+    /// <inheritdoc />
     public ulong? TimeOffset { get; init; }
+
     /// <inheritdoc />
     public FrameDirection Direction { get; init; }
+
     /// <inheritdoc />
     public ICanFrame? Frame { get; init; }
 }

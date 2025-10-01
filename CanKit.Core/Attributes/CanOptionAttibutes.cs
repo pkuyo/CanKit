@@ -5,9 +5,7 @@ namespace CanKit.Core.Attributes;
 
 [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct)]
 public sealed class CanOptionAttribute : Attribute
-{
-
-}
+{}
 
 [AttributeUsage(AttributeTargets.Property)]
 public sealed class CanOptionItemAttribute(object optionId, CanOptionType type, string? defaultValue = null) : Attribute

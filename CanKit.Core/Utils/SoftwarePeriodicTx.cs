@@ -14,12 +14,20 @@ namespace CanKit.Core.Utils
     /// </summary>
     public sealed class SoftwarePeriodicTx : IPeriodicTx, IDisposable
     {
-        public static IPeriodicTx Start(ICanBus bus, CanTransmitData frame, PeriodicTxOptions options)
-        {
-            var h = new SoftwarePeriodicTx(bus, frame, options);
-            h.Start();
-            return h;
-        }
+        // —— 字段 ——
+        private readonly ICanBus _bus;
+        private readonly CancellationTokenSource _cts = new();
+        private readonly bool _fireImmediately;
+        private readonly object _gate = new();
+
+        private CanTransmitData _frame;
+
+        private long _jitterMin, _jitterMax, _jitterLastNs, _jitterSumNs, _jitterCount;
+        private TimeSpan _period;
+        private int _remaining; // -1 为无限
+        private int _repeat;
+        private volatile bool _running;
+        private Task? _task;
 
         private SoftwarePeriodicTx(ICanBus bus, CanTransmitData frame, PeriodicTxOptions options)
         {
@@ -41,14 +49,6 @@ namespace CanKit.Core.Utils
         public int RemainingCount => _remaining;
 
         public event EventHandler? Completed;
-
-        public void Start()
-        {
-            if (_task != null) return;
-            _running = true;
-            _task = Task.Factory.StartNew(Loop, _cts.Token,
-                TaskCreationOptions.LongRunning, TaskScheduler.Default);
-        }
 
         public void Stop()
         {
@@ -82,6 +82,21 @@ namespace CanKit.Core.Utils
         {
             Stop();
             _cts.Dispose();
+        }
+
+        public static IPeriodicTx Start(ICanBus bus, CanTransmitData frame, PeriodicTxOptions options)
+        {
+            var h = new SoftwarePeriodicTx(bus, frame, options);
+            h.Start();
+            return h;
+        }
+
+        public void Start()
+        {
+            if (_task != null) return;
+            _running = true;
+            _task = Task.Factory.StartNew(Loop, _cts.Token,
+                TaskCreationOptions.LongRunning, TaskScheduler.Default);
         }
 
         private void Loop()
@@ -225,21 +240,6 @@ namespace CanKit.Core.Utils
             }
             catch { }
         }
-
-        // —— 字段 ——
-        private readonly ICanBus _bus;
-        private readonly CancellationTokenSource _cts = new();
-        private readonly object _gate = new();
-        private Task? _task;
-
-        private CanTransmitData _frame;
-        private TimeSpan _period;
-        private int _remaining; // -1 为无限
-        private readonly bool _fireImmediately;
-        private volatile bool _running;
-        private int _repeat;
-
-        private long _jitterMin, _jitterMax, _jitterLastNs, _jitterSumNs, _jitterCount;
     }
 
     internal static class InterlockedExtensions

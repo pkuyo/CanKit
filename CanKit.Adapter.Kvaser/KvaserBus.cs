@@ -12,6 +12,19 @@ namespace CanKit.Adapter.Kvaser;
 
 public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, ICanApplier, IBusOwnership
 {
+    private readonly object _evtGate = new();
+
+    private readonly int _handle;
+    private readonly List<IDisposable> _owners = new();
+
+    private readonly ITransceiver _transceiver;
+    private int _drainRunning;
+    private EventHandler<CanReceiveData>? _frameReceived;
+    private bool _isDisposed;
+    private Canlib.kvCallbackDelegate? _kvCallback;
+    private bool _notifyActive;
+    private int _subscriberCount;
+
     internal KvaserBus(IBusOptions options, ITransceiver transceiver)
     {
         Options = new KvaserBusRtConfigurator();
@@ -40,6 +53,165 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, ICanApplier, I
         // Apply initial options (filters, error options)
         options.Apply(this, true);
         CanKitLogger.LogDebug("Kvaser: Initial options applied.");
+    }
+
+    public int Handle => _handle;
+
+    public void AttachOwner(IDisposable owner)
+    {
+        _owners.Add(owner);
+    }
+
+    public void Apply(ICanOptions options)
+    {
+        if (options is not KvaserBusOptions kc) return;
+
+        // Set filter rules
+        var rules = kc.Filter.filterRules;
+        if (rules.Count > 0)
+        {
+            foreach (var r in rules)
+            {
+                if (r is FilterRule.Mask mask)
+                {
+                    // Kvaser uses mask-based filters via canAccept
+                    int ext = mask.FilterIdType == CanFilterIDType.Extend ? 1 : 0;
+                    _ = Canlib.canSetAcceptanceFilter(_handle, (int)mask.AccCode, (int)mask.AccMask, ext);
+                }
+                else
+                {
+                    // If software filter fallback enabled, push to software list; otherwise throw
+                    if ((kc.EnabledSoftwareFallback & CanFeature.Filters) != 0)
+                    {
+                        kc.Filter.softwareFilter.Add(r);
+                    }
+                    else
+                    {
+                        throw new CanFilterConfigurationException("Kvaser CANlib only supports mask filters via canAccept.");
+                    }
+                }
+            }
+        }
+    }
+
+    public CanOptionType ApplierStatus => CanOptionType.Runtime;
+
+
+    public void Reset()
+    {
+        ThrowIfDisposed();
+        _ = Canlib.canBusOff(_handle);
+        _ = Canlib.canBusOn(_handle);
+        CanKitLogger.LogDebug("Kvaser: Channel reset issued.");
+    }
+
+    public void ClearBuffer()
+    {
+        ThrowIfDisposed();
+        object? obj = null;
+        _ = Canlib.canIoCtl(_handle, Canlib.canIOCTL_FLUSH_RX_BUFFER, ref obj);
+        _ = Canlib.canIoCtl(_handle, Canlib.canIOCTL_FLUSH_TX_BUFFER, ref obj);
+    }
+
+    public uint Transmit(IEnumerable<CanTransmitData> frames, int timeOut = 0)
+    {
+        ThrowIfDisposed();
+        return _transceiver.Transmit(this, frames, timeOut);
+    }
+
+    public IPeriodicTx TransmitPeriodic(CanTransmitData frame, PeriodicTxOptions options)
+    {
+        ThrowIfDisposed();
+        if ((Options.EnabledSoftwareFallbackE & CanFeature.CyclicTx) != 0)
+            return SoftwarePeriodicTx.Start(this, frame, options);
+        else
+            throw new CanFeatureNotSupportedException(CanFeature.CyclicTx, Options.Features);
+    }
+
+    public float BusUsage() => throw new CanFeatureNotSupportedException(CanFeature.BusUsage, Options.Features);
+
+    public CanErrorCounters ErrorCounters()
+    {
+        ThrowIfDisposed();
+        _ = Canlib.canReadErrorCounters(_handle, out var tx, out var rx, out _);
+        return new CanErrorCounters()
+        {
+            TransmitErrorCounter = tx,
+            ReceiveErrorCounter = rx
+        };
+    }
+
+    public IEnumerable<CanReceiveData> Receive(uint count = 1, int timeOut = 0)
+    {
+        ThrowIfDisposed();
+        return _transceiver.Receive(this, count, timeOut);
+    }
+
+    public bool ReadErrorInfo(out ICanErrorInfo? errorInfo)
+    {
+        // Kvaser can report error frames in stream; surface as ErrorOccurred not implemented
+        errorInfo = null;
+        return false;
+    }
+
+    IBusRTOptionsConfigurator ICanBus.Options => Options;
+
+    public KvaserBusRtConfigurator Options { get; }
+
+    public event EventHandler<CanReceiveData>? FrameReceived
+    {
+        add
+        {
+            lock (_evtGate)
+            {
+                _frameReceived += value;
+                _subscriberCount++;
+                StartNotifyIfNeeded();
+            }
+        }
+        remove
+        {
+            lock (_evtGate)
+            {
+                _frameReceived -= value;
+                _subscriberCount = Math.Max(0, _subscriberCount - 1);
+                if (_subscriberCount == 0) StopNotify();
+            }
+        }
+    }
+
+    public event EventHandler<ICanErrorInfo>? ErrorOccurred
+    {
+        add => throw new CanFeatureNotSupportedException(CanFeature.ErrorFrame, Options.Features);
+        remove => throw new CanFeatureNotSupportedException(CanFeature.ErrorFrame, Options.Features);
+    }
+
+    public BusState BusState
+    {
+        get
+        {
+            ThrowIfDisposed();
+            var st = Canlib.canReadStatus(_handle, out var status);
+            if (st != Canlib.canStatus.canOK) return BusState.None;
+
+            if ((status & Canlib.canSTAT_BUS_OFF) != 0) return BusState.BusOff;
+            if ((status & Canlib.canSTAT_ERROR_PASSIVE) != 0) return BusState.ErrPassive;
+            if ((status & Canlib.canSTAT_ERROR_WARNING) != 0) return BusState.ErrWarning;
+            if ((status & Canlib.canSTAT_ERROR_ACTIVE) != 0) return BusState.ErrActive;
+            return BusState.None;
+        }
+    }
+
+    public void Dispose()
+    {
+        if (_isDisposed) return;
+        _isDisposed = true;
+        StopNotify();
+        try { _ = Canlib.canBusOff(_handle); } catch { }
+        try { _ = Canlib.canClose(_handle); } catch { }
+        foreach (var o in _owners) { try { o.Dispose(); } catch { } }
+        _owners.Clear();
+        GC.SuppressFinalize(this);
     }
 
     private static void EnsureLibInitialized()
@@ -125,150 +297,6 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, ICanApplier, I
             //TODO:
         }
     }
-
-
-
-
-    public void Reset()
-    {
-        ThrowIfDisposed();
-        _ = Canlib.canBusOff(_handle);
-        _ = Canlib.canBusOn(_handle);
-        CanKitLogger.LogDebug("Kvaser: Channel reset issued.");
-    }
-
-    public void ClearBuffer()
-    {
-        ThrowIfDisposed();
-        object? obj = null;
-        _ = Canlib.canIoCtl(_handle, Canlib.canIOCTL_FLUSH_RX_BUFFER, ref obj);
-        _ = Canlib.canIoCtl(_handle, Canlib.canIOCTL_FLUSH_TX_BUFFER, ref obj);
-    }
-
-    public uint Transmit(IEnumerable<CanTransmitData> frames, int timeOut = 0)
-    {
-        ThrowIfDisposed();
-        return _transceiver.Transmit(this, frames, timeOut);
-    }
-
-    public IPeriodicTx TransmitPeriodic(CanTransmitData frame, PeriodicTxOptions options)
-    {
-        ThrowIfDisposed();
-        if ((Options.EnabledSoftwareFallbackE & CanFeature.CyclicTx) != 0)
-            return SoftwarePeriodicTx.Start(this, frame, options);
-        else
-            throw new CanFeatureNotSupportedException(CanFeature.CyclicTx, Options.Features);
-    }
-
-    public float BusUsage() => throw new CanFeatureNotSupportedException(CanFeature.BusUsage, Options.Features);
-
-    public CanErrorCounters ErrorCounters()
-    {
-        ThrowIfDisposed();
-        _ = Canlib.canReadErrorCounters(_handle, out var tx, out var rx, out _);
-        return new CanErrorCounters()
-        {
-            TransmitErrorCounter = tx,
-            ReceiveErrorCounter = rx
-        };
-    }
-
-    public IEnumerable<CanReceiveData> Receive(uint count = 1, int timeOut = 0)
-    {
-        ThrowIfDisposed();
-        return _transceiver.Receive(this, count, timeOut);
-    }
-
-    public bool ReadErrorInfo(out ICanErrorInfo? errorInfo)
-    {
-        // Kvaser can report error frames in stream; surface as ErrorOccurred not implemented
-        errorInfo = null;
-        return false;
-    }
-
-    IBusRTOptionsConfigurator ICanBus.Options => Options;
-
-    public KvaserBusRtConfigurator Options { get; }
-
-    public void Apply(ICanOptions options)
-    {
-        if (options is not KvaserBusOptions kc) return;
-
-        // Set filter rules
-        var rules = kc.Filter.filterRules;
-        if (rules.Count > 0)
-        {
-            foreach (var r in rules)
-            {
-                if (r is FilterRule.Mask mask)
-                {
-                    // Kvaser uses mask-based filters via canAccept
-                    int ext = mask.FilterIdType == CanFilterIDType.Extend ? 1 : 0;
-                    _ = Canlib.canSetAcceptanceFilter(_handle, (int)mask.AccCode, (int)mask.AccMask, ext);
-                }
-                else
-                {
-                    // If software filter fallback enabled, push to software list; otherwise throw
-                    if ((kc.EnabledSoftwareFallback & CanFeature.Filters) != 0)
-                    {
-                        kc.Filter.softwareFilter.Add(r);
-                    }
-                    else
-                    {
-                        throw new CanFilterConfigurationException("Kvaser CANlib only supports mask filters via canAccept.");
-                    }
-                }
-            }
-        }
-    }
-
-    public CanOptionType ApplierStatus => CanOptionType.Runtime;
-
-    public event EventHandler<CanReceiveData>? FrameReceived
-    {
-        add
-        {
-            lock (_evtGate)
-            {
-                _frameReceived += value;
-                _subscriberCount++;
-                StartNotifyIfNeeded();
-            }
-        }
-        remove
-        {
-            lock (_evtGate)
-            {
-                _frameReceived -= value;
-                _subscriberCount = Math.Max(0, _subscriberCount - 1);
-                if (_subscriberCount == 0) StopNotify();
-            }
-        }
-    }
-
-    public event EventHandler<ICanErrorInfo>? ErrorOccurred
-    {
-        add => throw new CanFeatureNotSupportedException(CanFeature.ErrorFrame, Options.Features);
-        remove => throw new CanFeatureNotSupportedException(CanFeature.ErrorFrame, Options.Features);
-    }
-
-    public BusState BusState
-    {
-        get
-        {
-            ThrowIfDisposed();
-            var st = Canlib.canReadStatus(_handle, out var status);
-            if (st != Canlib.canStatus.canOK) return BusState.None;
-
-            if ((status & Canlib.canSTAT_BUS_OFF) != 0) return BusState.BusOff;
-            if ((status & Canlib.canSTAT_ERROR_PASSIVE) != 0) return BusState.ErrPassive;
-            if ((status & Canlib.canSTAT_ERROR_WARNING) != 0) return BusState.ErrWarning;
-            if ((status & Canlib.canSTAT_ERROR_ACTIVE) != 0) return BusState.ErrActive;
-            return BusState.None;
-        }
-    }
-
-    public int Handle => _handle;
 
     private void ThrowIfDisposed()
     {
@@ -359,33 +387,4 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, ICanApplier, I
             if (!any) break;
         }
     }
-
-    public void AttachOwner(IDisposable owner)
-    {
-        _owners.Add(owner);
-    }
-
-    public void Dispose()
-    {
-        if (_isDisposed) return;
-        _isDisposed = true;
-        StopNotify();
-        try { _ = Canlib.canBusOff(_handle); } catch { }
-        try { _ = Canlib.canClose(_handle); } catch { }
-        foreach (var o in _owners) { try { o.Dispose(); } catch { } }
-        _owners.Clear();
-        GC.SuppressFinalize(this);
-    }
-
-    private readonly ITransceiver _transceiver;
-    private readonly List<IDisposable> _owners = new();
-    private EventHandler<CanReceiveData>? _frameReceived;
-    private readonly object _evtGate = new();
-    private int _subscriberCount;
-    private bool _notifyActive;
-    private Canlib.kvCallbackDelegate? _kvCallback;
-    private int _drainRunning;
-    private bool _isDisposed;
-
-    private readonly int _handle;
 }

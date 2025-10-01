@@ -17,7 +17,6 @@ namespace CanKit.Core.Registry;
 /// </summary>
 public partial class CanRegistry
 {
-
     /// <summary>
     /// Gets the singleton instance of the CAN registry. (获取CAN注册表的单例实例)
     /// </summary>
@@ -127,8 +126,32 @@ public partial class CanRegistry
 
 public partial class CanRegistry
 {
-
     private const string DefaultPrefix = "CanKit";
+
+    private static readonly Lazy<CanRegistry> _registry =
+        new(BuildRegistry, LazyThreadSafetyMode.ExecutionAndPublication);
+
+    private readonly Dictionary<string, Func<IEnumerable<Endpoints.BusEndpointInfo>>> _enumerators =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    private readonly Dictionary<string, ICanFactory> _factories = new();
+
+    private readonly Dictionary<string, Func<CanEndpoint, Action<IBusInitOptionsConfigurator>?, ICanBus>> _handlers =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    private readonly Dictionary<DeviceType, ICanModelProvider> _providers = new();
+
+    internal CanRegistry(params Assembly[] assembliesToScan)
+    {
+        var assemblies = assembliesToScan.Length == 0 ? [Assembly.GetExecutingAssembly()] : assembliesToScan;
+
+        foreach (var asm in assemblies)
+        {
+            RegisterFactory(asm);
+            RegisterProvider(asm);
+            RegisterEndPoint(asm);
+        }
+    }
 
     private static CanRegistry BuildRegistry()
     {
@@ -165,18 +188,6 @@ public partial class CanRegistry
 
         }
         catch { /* 忽略非托管/不兼容/重复加载等 */ }
-    }
-
-    internal CanRegistry(params Assembly[] assembliesToScan)
-    {
-        var assemblies = assembliesToScan.Length == 0 ? [Assembly.GetExecutingAssembly()] : assembliesToScan;
-
-        foreach (var asm in assemblies)
-        {
-            RegisterFactory(asm);
-            RegisterProvider(asm);
-            RegisterEndPoint(asm);
-        }
     }
 
     private void RegisterEndPoint(Assembly asm)
@@ -408,19 +419,6 @@ public partial class CanRegistry
             }
         }
     }
-
-    private static readonly Lazy<CanRegistry> _registry =
-        new(BuildRegistry, LazyThreadSafetyMode.ExecutionAndPublication);
-
-    private readonly Dictionary<DeviceType, ICanModelProvider> _providers = new();
-
-    private readonly Dictionary<string, ICanFactory> _factories = new();
-
-    private readonly Dictionary<string, Func<CanEndpoint, Action<IBusInitOptionsConfigurator>?, ICanBus>> _handlers =
-        new(StringComparer.OrdinalIgnoreCase);
-
-    private readonly Dictionary<string, Func<IEnumerable<Endpoints.BusEndpointInfo>>> _enumerators =
-        new(StringComparer.OrdinalIgnoreCase);
 }
 
 public partial class CanRegistry

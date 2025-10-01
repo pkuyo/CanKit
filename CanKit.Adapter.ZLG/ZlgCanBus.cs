@@ -19,6 +19,33 @@ namespace CanKit.Adapter.ZLG
 
     public sealed class ZlgCanBus : ICanBus<ZlgBusRtConfigurator>, INamedCanApplier, IBusOwnership
     {
+        private readonly HashSet<int> _autoSendIndexes = new();
+
+        private readonly IntPtr _devicePtr;
+
+        private readonly object _evtGate = new();
+
+        private readonly ZlgChannelHandle _nativeHandle;
+
+        private readonly IZlgTransceiver _transceiver;
+
+        private EventHandler<ICanErrorInfo>? _errorOccurred;
+
+        private EventHandler<CanReceiveData>? _frameReceived;
+
+        private int _freeAutoSendIndex;
+
+        private bool _isDisposed;
+
+        private IDisposable? _owner;
+
+        private CancellationTokenSource? _pollCts;
+
+        private System.Threading.Tasks.Task? _pollTask;
+        private Func<ICanFrame, bool>? _softwareFilterPredicate;
+
+        private int _subscriberCount;
+        private bool _useSoftwareFilter;
 
         internal ZlgCanBus(ZlgCanDevice device, IBusOptions options, ITransceiver transceiver)
         {
@@ -80,6 +107,13 @@ namespace CanKit.Adapter.ZLG
                 throw new CanTransceiverMismatchException(typeof(IZlgTransceiver), transceiver.GetType());
             _transceiver = zlg;
 
+        }
+
+        public ZlgChannelHandle NativeHandle => _nativeHandle;
+
+        public void AttachOwner(IDisposable owner)
+        {
+            _owner = owner;
         }
 
 
@@ -170,21 +204,6 @@ namespace CanKit.Adapter.ZLG
         }
 
 
-        public uint GetReceiveCount()
-        {
-            ThrowIfDisposed();
-
-            var zlgFilterType = Options.ProtocolMode switch
-            {
-                //CanProtocolMode.Merged => ZlgFrameType.Any,
-                CanProtocolMode.CanFd => ZlgFrameType.CanFd,
-                _ => ZlgFrameType.CanClassic
-            };
-
-            return ZLGCAN.ZCAN_GetReceiveNum(_nativeHandle, (byte)zlgFilterType);
-        }
-
-
         public void Dispose()
         {
             if (_isDisposed)
@@ -213,10 +232,73 @@ namespace CanKit.Adapter.ZLG
 
         }
 
-        private void ThrowIfDisposed()
+        public ZlgBusRtConfigurator Options { get; }
+
+        IBusRTOptionsConfigurator ICanBus.Options => Options;
+
+        public event EventHandler<CanReceiveData> FrameReceived
         {
-            if (_isDisposed)
-                throw new CanBusDisposedException();
+            add
+            {
+                lock (_evtGate)
+                {
+                    _frameReceived += value;
+                    _subscriberCount++;
+                    CheckSubscribers(true);
+                }
+            }
+            remove
+            {
+                lock (_evtGate)
+                {
+                    _frameReceived -= value;
+                    _subscriberCount = Math.Max(0, _subscriberCount - 1);
+                    CheckSubscribers(false);
+                }
+            }
+        }
+
+        public event EventHandler<ICanErrorInfo> ErrorOccurred
+        {
+            add
+            {
+                lock (_evtGate)
+                {
+                    _errorOccurred += value;
+                    _subscriberCount++;
+                    CheckSubscribers(true);
+                }
+
+            }
+            remove
+            {
+                lock (_evtGate)
+                {
+                    _errorOccurred -= value;
+                    _subscriberCount--;
+                    CheckSubscribers(false);
+                }
+            }
+        }
+
+        public BusState BusState
+        {
+            get
+            {
+                ThrowIfDisposed();
+                if (ReadErrorInfo(out var info) && info is not null)
+                {
+                    if ((info.Kind & FrameErrorKind.BusOff) != 0)
+                        return BusState.BusOff;
+                    if ((info.Kind & FrameErrorKind.Passive) != 0)
+                        return BusState.ErrPassive;
+                    if ((info.Kind & FrameErrorKind.Warning) != 0)
+                        return BusState.ErrWarning;
+                    return BusState.None;
+                }
+
+                return BusState.Unknown;
+            }
         }
 
         public bool ApplyOne<T>(object id, T value)
@@ -384,6 +466,31 @@ namespace CanKit.Adapter.ZLG
 
         }
 
+        public CanOptionType ApplierStatus => _nativeHandle is { IsInvalid: false, IsClosed: false } ?
+            CanOptionType.Runtime :
+            CanOptionType.Init;
+
+
+        public uint GetReceiveCount()
+        {
+            ThrowIfDisposed();
+
+            var zlgFilterType = Options.ProtocolMode switch
+            {
+                //CanProtocolMode.Merged => ZlgFrameType.Any,
+                CanProtocolMode.CanFd => ZlgFrameType.CanFd,
+                _ => ZlgFrameType.CanClassic
+            };
+
+            return ZLGCAN.ZCAN_GetReceiveNum(_nativeHandle, (byte)zlgFilterType);
+        }
+
+        private void ThrowIfDisposed()
+        {
+            if (_isDisposed)
+                throw new CanBusDisposedException();
+        }
+
         private void StartPollingIfNeeded()
         {
             if (_pollTask is { IsCompleted: false }) return;
@@ -492,82 +599,6 @@ namespace CanKit.Adapter.ZLG
             }
         }
 
-        public ZlgChannelHandle NativeHandle => _nativeHandle;
-
-        public ZlgBusRtConfigurator Options { get; }
-
-        IBusRTOptionsConfigurator ICanBus.Options => Options;
-
-        public CanOptionType ApplierStatus => _nativeHandle is { IsInvalid: false, IsClosed: false } ?
-            CanOptionType.Runtime :
-            CanOptionType.Init;
-
-        public event EventHandler<CanReceiveData> FrameReceived
-        {
-            add
-            {
-                lock (_evtGate)
-                {
-                    _frameReceived += value;
-                    _subscriberCount++;
-                    CheckSubscribers(true);
-                }
-            }
-            remove
-            {
-                lock (_evtGate)
-                {
-                    _frameReceived -= value;
-                    _subscriberCount = Math.Max(0, _subscriberCount - 1);
-                    CheckSubscribers(false);
-                }
-            }
-        }
-
-        public event EventHandler<ICanErrorInfo> ErrorOccurred
-        {
-            add
-            {
-                lock (_evtGate)
-                {
-                    _errorOccurred += value;
-                    _subscriberCount++;
-                    CheckSubscribers(true);
-                }
-
-            }
-            remove
-            {
-                lock (_evtGate)
-                {
-                    _errorOccurred -= value;
-                    _subscriberCount--;
-                    CheckSubscribers(false);
-                }
-            }
-        }
-
-        public BusState BusState
-        {
-            get
-            {
-                ThrowIfDisposed();
-                if (ReadErrorInfo(out var info) && info is not null)
-                {
-                    if ((info.Kind & FrameErrorKind.BusOff) != 0)
-                        return BusState.BusOff;
-                    if ((info.Kind & FrameErrorKind.Passive) != 0)
-                        return BusState.ErrPassive;
-                    if ((info.Kind & FrameErrorKind.Warning) != 0)
-                        return BusState.ErrWarning;
-                    return BusState.None;
-                }
-
-                return BusState.Unknown;
-            }
-        }
-
-
 
         internal int GetAutoSendIndex()
         {
@@ -589,39 +620,5 @@ namespace CanKit.Adapter.ZLG
             ThrowIfDisposed();
             return _autoSendIndexes.Remove(index);
         }
-
-
-        private readonly HashSet<int> _autoSendIndexes = new();
-
-        private readonly ZlgChannelHandle _nativeHandle;
-
-        private readonly IntPtr _devicePtr;
-
-        private int _freeAutoSendIndex;
-
-        private readonly IZlgTransceiver _transceiver;
-
-        private bool _isDisposed;
-
-        private readonly object _evtGate = new();
-
-        private EventHandler<CanReceiveData>? _frameReceived;
-
-        private EventHandler<ICanErrorInfo>? _errorOccurred;
-
-        private int _subscriberCount;
-
-        private CancellationTokenSource? _pollCts;
-
-        private System.Threading.Tasks.Task? _pollTask;
-
-        private IDisposable? _owner;
-
-        public void AttachOwner(IDisposable owner)
-        {
-            _owner = owner;
-        }
-        private Func<ICanFrame, bool>? _softwareFilterPredicate;
-        private bool _useSoftwareFilter;
     }
 }

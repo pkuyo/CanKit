@@ -63,5 +63,4 @@ public sealed class ZlgCanFactory : ICanFactory
 
         throw new CanFeatureNotSupportedException(requiredFeature, configurator.Features);
     }
-
 }

@@ -5,7 +5,6 @@ namespace CanKit.Adapter.SocketCAN.Utils;
 
 internal static class SocketCanExtension
 {
-
     public static LibSocketCan.can_bittiming ToCanBitTiming(this CanPhaseTiming timing, uint clock)
     {
         if (timing.IsTarget)

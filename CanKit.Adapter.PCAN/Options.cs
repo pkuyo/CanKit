@@ -5,6 +5,7 @@ namespace CanKit.Adapter.PCAN;
 
 public sealed class PcanBusOptions(ICanModelProvider provider) : IBusOptions
 {
+    public bool SoftwareFilterEnabled { get; set; }
     public ICanModelProvider Provider { get; } = provider;
 
     public int ChannelIndex { get; set; }
@@ -18,7 +19,6 @@ public sealed class PcanBusOptions(ICanModelProvider provider) : IBusOptions
     public CanProtocolMode ProtocolMode { get; set; } = CanProtocolMode.Can20;
     public CanFilter Filter { get; set; } = new();
     public CanFeature EnabledSoftwareFallback { get; set; }
-    public bool SoftwareFilterEnabled { get; set; }
     public bool AllowErrorInfo { get; set; }
 
     public void Apply(ICanApplier applier, bool force = false) => applier.Apply(this);
@@ -26,10 +26,8 @@ public sealed class PcanBusOptions(ICanModelProvider provider) : IBusOptions
 
 public sealed class PcanBusInitConfigurator
     : BusInitOptionsConfigurator<PcanBusOptions, PcanBusInitConfigurator>
-{
-}
+{}
 
 public sealed class PcanBusRtConfigurator
     : BusRtOptionsConfigurator<PcanBusOptions>
-{
-}
+{}

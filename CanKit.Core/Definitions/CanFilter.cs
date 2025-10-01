@@ -114,6 +114,16 @@ namespace CanKit.Core.Definitions
     public class CanFilter : ICanFilter
     {
         /// <summary>
+        /// Internal list storing actual hardware-intended rules (硬件过滤器规则列表)
+        /// </summary>
+        public List<FilterRule> filterRules = new();
+
+        /// <summary>
+        /// Software-only filter rules (软过滤规则，用于硬件不支持的类型)
+        /// </summary>
+        public List<FilterRule> softwareFilter = new();
+
+        /// <summary>
         /// Get the list of active filter rules (获取活动过滤规则列表)
         /// </summary>
         public IReadOnlyList<FilterRule> FilterRules => filterRules;
@@ -122,16 +132,6 @@ namespace CanKit.Core.Definitions
         /// Exposes software-only filter rules as read-only list.
         /// </summary>
         public IReadOnlyList<FilterRule> SoftwareFilterRules => softwareFilter;
-
-        /// <summary>
-        /// Software-only filter rules (软过滤规则，用于硬件不支持的类型)
-        /// </summary>
-        public List<FilterRule> softwareFilter = new();
-
-        /// <summary>
-        /// Internal list storing actual hardware-intended rules (硬件过滤器规则列表)
-        /// </summary>
-        public List<FilterRule> filterRules = new();
     }
 
 }

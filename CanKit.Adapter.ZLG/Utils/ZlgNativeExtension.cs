@@ -77,6 +77,7 @@ namespace CanKit.Adapter.ZLG.Utils
                 }
             }
         }
+
         internal static ZCANDataObj[] TransmitCanFrames(IEnumerable<CanTransmitData> canFrames, byte channelId)
         {
             List<ZCANDataObj> transmitData = new List<ZCANDataObj>();
@@ -88,7 +89,6 @@ namespace CanKit.Adapter.ZLG.Utils
             }
             return transmitData.ToArray();
         }
-
 
 
         internal static CanFrameType GetFrameType(uint dataType)
@@ -122,10 +122,12 @@ namespace CanKit.Adapter.ZLG.Utils
 
             return arr;
         }
+
         internal static unsafe T ByteArrayToStruct<T>(byte* data) where T : unmanaged
         {
             return *(T*)data;
         }
+
         internal static unsafe void StructCopyToBuffer<T>(T src, byte* dst, uint count) where T : unmanaged
         {
             Unsafe.CopyBlockUnaligned(&src, dst, count);
@@ -164,6 +166,7 @@ namespace CanKit.Adapter.ZLG.Utils
             }
             return data;
         }
+
         internal static unsafe ZCAN_TransmitFD_Data ToTransmitData(this CanFdFrame frame)
         {
             ZCAN_TransmitFD_Data data = new ZCAN_TransmitFD_Data();
@@ -177,12 +180,14 @@ namespace CanKit.Adapter.ZLG.Utils
             }
             return data;
         }
+
         internal static ZLGCAN.ZCANDataObj ToZCANObj(this ICanFrame frame, byte channelID)
         {
             if (frame is CanClassicFrame classicFrame)
                 return classicFrame.ToZCANObj(channelID);
             throw new NotSupportedException("Unsupported frame type for ZLGCAN");
         }
+
         internal static unsafe ZLGCAN.ZCANDataObj ToZCANObj(this CanClassicFrame frame, byte channelID)
         {
             ZLGCAN.ZCANDataObj obj = new ZLGCAN.ZCANDataObj
@@ -209,6 +214,5 @@ namespace CanKit.Adapter.ZLG.Utils
             }
             return obj;
         }
-
     }
 }

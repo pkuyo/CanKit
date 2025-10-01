@@ -5,6 +5,8 @@ namespace CanKit.Adapter.Kvaser;
 
 public sealed class KvaserBusOptions(ICanModelProvider provider) : IBusOptions
 {
+    // Kvaser specific
+    public bool AcceptVirtual { get; set; } = true;
     public ICanModelProvider Provider { get; } = provider;
 
     public int ChannelIndex { get; set; }
@@ -19,9 +21,6 @@ public sealed class KvaserBusOptions(ICanModelProvider provider) : IBusOptions
     public CanFilter Filter { get; set; } = new();
     public CanFeature EnabledSoftwareFallback { get; set; }
     public bool AllowErrorInfo { get; set; }
-
-    // Kvaser specific
-    public bool AcceptVirtual { get; set; } = true;
 
     public void Apply(ICanApplier applier, bool force = false) => applier.Apply(this);
 }

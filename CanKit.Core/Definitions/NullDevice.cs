@@ -10,6 +10,10 @@ namespace CanKit.Core.Definitions;
 public sealed class NullDevice<TOptions> : ICanDevice<DeviceRTOptionsConfigurator<TOptions>>, ICanApplier
     where TOptions : class, IDeviceOptions
 {
+    private readonly TOptions _options;
+
+    private bool _isOpen;
+
     public NullDevice(IDeviceOptions options)
     {
         if (options is not TOptions typed)
@@ -18,6 +22,13 @@ public sealed class NullDevice<TOptions> : ICanDevice<DeviceRTOptionsConfigurato
         Options.Init(typed);
         _options = typed;
     }
+
+    public void Apply(ICanOptions options)
+    {
+        // no-op for null device
+    }
+
+    public CanOptionType ApplierStatus => IsDeviceOpen ? CanOptionType.Runtime : CanOptionType.Init;
 
     public void OpenDevice()
     {
@@ -39,32 +50,21 @@ public sealed class NullDevice<TOptions> : ICanDevice<DeviceRTOptionsConfigurato
     {
         _isOpen = false;
     }
-
-    public void Apply(ICanOptions options)
-    {
-        // no-op for null device
-    }
-
-    public CanOptionType ApplierStatus => IsDeviceOpen ? CanOptionType.Runtime : CanOptionType.Init;
-
-    private bool _isOpen;
-    private readonly TOptions _options;
 }
 
 
 public sealed class NullDeviceInitOptionsConfigurator
     : DeviceInitOptionsConfigurator<NullDeviceOptions, NullDeviceInitOptionsConfigurator>
-{
-}
+{}
 
 public sealed class NullDeviceRTOptionsConfigurator
     : DeviceRTOptionsConfigurator<NullDeviceOptions>
-{ }
+{}
 
 public sealed class NullDeviceOptions(ICanModelProvider provider) : IDeviceOptions
 {
+    public uint TxTimeOut { get; set; } = 100U;
     public ICanModelProvider Provider { get; } = provider;
     public DeviceType DeviceType => Provider.DeviceType;
-    public uint TxTimeOut { get; set; } = 100U;
     public void Apply(ICanApplier applier, bool force = false) => applier.Apply(this);
 }

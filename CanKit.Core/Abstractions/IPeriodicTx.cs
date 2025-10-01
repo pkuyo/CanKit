@@ -9,7 +9,6 @@ namespace CanKit.Core.Abstractions;
 /// </summary>
 public interface IPeriodicTx : IDisposable
 {
-
     /// <summary>
     /// Current period between transmits.
     /// 当前发送周期。

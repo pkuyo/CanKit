@@ -12,18 +12,22 @@ namespace CanKit.Core.Definitions
         /// 获取帧的类型，例如经典 CAN 或 CAN FD。
         /// </summary>
         CanFrameType FrameKind { get; }
+
         /// <summary>
         /// 获取或初始化包含所有标志位的原始 ID。
         /// </summary>
         uint RawID { get; init; }
+
         /// <summary>
         /// 获取或初始化帧数据。
         /// </summary>
         ReadOnlyMemory<byte> Data { get; init; }
+
         /// <summary>
         /// 获取帧的 DLC 值。
         /// </summary>
         byte Dlc { get; }
+
         /// <summary>
         /// 获取或初始化剔除标志位后的实际 ID。
         /// </summary>
@@ -44,18 +48,22 @@ namespace CanKit.Core.Definitions
         /// 获取系统时间戳。
         /// </summary>
         DateTime SystemTimestamp { get; init; }
+
         /// <summary>
         /// 获取原始错误码。
         /// </summary>
         uint RawErrorCode { get; init; }
+
         /// <summary>
         /// 获取设备时间偏移量。
         /// </summary>
         ulong? TimeOffset { get; init; }
+
         /// <summary>
         /// 获取错误帧的方向。
         /// </summary>
         FrameDirection Direction { get; init; }
+
         /// <summary>
         /// 获取相关的原始帧。
         /// </summary>
@@ -76,12 +84,14 @@ namespace CanKit.Core.Definitions
         /// 获取去掉标志位后的 ID。
         /// </summary>
         public static uint GetId(uint raw) => raw & ID_MASK;
+
         /// <summary>
         /// 将 ID 写入原始值中。
         /// </summary>
         public static uint SetId(uint raw, uint id) => (raw & ~ID_MASK) | (id & ID_MASK);
 
         public static bool Get(uint raw, int bit) => (raw & (1u << bit)) != 0;
+
         public static uint Set(uint raw, int bit, bool v)
             => v ? (raw | (1u << bit)) : (raw & ~(1u << bit));
 
@@ -98,13 +108,7 @@ namespace CanKit.Core.Definitions
     /// </summary>
     public readonly record struct CanClassicFrame : ICanFrame
     {
-        /// <summary>
-        /// 允许直接将经典帧用作发送数据结构。
-        /// </summary>
-        public static implicit operator CanTransmitData(CanClassicFrame value)
-        {
-            return new CanTransmitData(value);
-        }
+        private readonly ReadOnlyMemory<byte> _data;
 
         /// <summary>
         /// 通过原始 ID 和数据创建经典帧。
@@ -127,6 +131,25 @@ namespace CanKit.Core.Definitions
             IsExtendedFrame = isExtendedFrame;
             _data = dataInit;
         }
+
+        public bool IsExtendedFrame
+        {
+            get => CanIdBits.IsExtended(RawID);
+            init => RawID = CanIdBits.WithExtended(RawID, value);
+        }
+
+        public bool IsRemoteFrame
+        {
+            get => CanIdBits.IsRemote(RawID);
+            init => RawID = CanIdBits.WithRemote(RawID, value);
+        }
+
+        public bool IsErrorFrame
+        {
+            get => CanIdBits.IsError(RawID);
+            init => RawID = CanIdBits.WithError(RawID, value);
+        }
+
         public CanFrameType FrameKind => CanFrameType.Can20;
 
         public uint RawID { get; init; }
@@ -135,22 +158,6 @@ namespace CanKit.Core.Definitions
         {
             get => CanIdBits.GetId(RawID);
             init => RawID = CanIdBits.SetId(RawID, value);
-        }
-
-        public bool IsExtendedFrame
-        {
-            get => CanIdBits.IsExtended(RawID);
-            init => RawID = CanIdBits.WithExtended(RawID, value);
-        }
-        public bool IsRemoteFrame
-        {
-            get => CanIdBits.IsRemote(RawID);
-            init => RawID = CanIdBits.WithRemote(RawID, value);
-        }
-        public bool IsErrorFrame
-        {
-            get => CanIdBits.IsError(RawID);
-            init => RawID = CanIdBits.WithError(RawID, value);
         }
 
         /// <summary>
@@ -166,6 +173,14 @@ namespace CanKit.Core.Definitions
         public byte Dlc => (byte)Data.Length;
 
         /// <summary>
+        /// 允许直接将经典帧用作发送数据结构。
+        /// </summary>
+        public static implicit operator CanTransmitData(CanClassicFrame value)
+        {
+            return new CanTransmitData(value);
+        }
+
+        /// <summary>
         /// 校验经典帧数据长度不超过 8 字节。
         /// </summary>
         private static ReadOnlyMemory<byte> Validate(ReadOnlyMemory<byte> src)
@@ -174,8 +189,6 @@ namespace CanKit.Core.Definitions
                 "Classic CAN frame data length cannot exceed 8 bytes.");
             return src;
         }
-
-        private readonly ReadOnlyMemory<byte> _data;
     }
 
 
@@ -295,7 +308,5 @@ namespace CanKit.Core.Definitions
         ulong? TimeOffset,
         FrameDirection Direction,
         ICanFrame? Frame) : ICanErrorInfo
-    {
-
-    }
+    {}
 }

@@ -1,3 +1,4 @@
+// @formatter:off
 #nullable disable
 #pragma warning disable IDE0055
 using System;
