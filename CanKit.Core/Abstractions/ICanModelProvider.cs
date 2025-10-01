@@ -33,9 +33,8 @@ namespace CanKit.Core.Abstractions
         /// <summary>
         /// Get channel options and initializer for index (为指定通道索引获取选项与初始化器)。
         /// </summary>
-        /// <param name="channelIndex">Channel index (通道索引)。</param>
         /// <returns>Tuple of options and configurator (选项与配置器)。</returns>
-        (IBusOptions, IBusInitOptionsConfigurator) GetChannelOptions(int channelIndex);
+        (IBusOptions, IBusInitOptionsConfigurator) GetChannelOptions();
 
     }
 

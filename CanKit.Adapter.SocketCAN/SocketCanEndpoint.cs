@@ -37,10 +37,9 @@ internal static class SocketCanEndpoint
 
         return CanBus.Open<SocketCanBus, SocketCanBusOptions, SocketCanBusInitConfigurator>(
             LinuxDeviceType.SocketCAN,
-            index,
             cfg =>
             {
-                cfg.UseInterface(iface);
+                cfg.UseChannelName(iface);
                 configure?.Invoke(cfg);
             });
     }

@@ -47,7 +47,7 @@ internal static class ZlgEndpoint
             _ = int.TryParse(frag, NumberStyles.Integer, CultureInfo.InvariantCulture, out chIndex);
         }
 
-        var (chOpt, chCfg) = provider.GetChannelOptions(chIndex);
+        var (chOpt, chCfg) = provider.GetChannelOptions();
         configure?.Invoke(chCfg);
 
         // 获取设备租约（同设备的多个通道共享）

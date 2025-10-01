@@ -288,6 +288,10 @@ internal static class Libc
     [DllImport("libc", SetLastError = true, CharSet = CharSet.Ansi)]
     public static extern uint if_nametoindex(string ifname);
 
+
+    [DllImport("libc", SetLastError = true, CharSet = CharSet.Ansi)]
+    public static extern IntPtr if_indextoname(uint index, byte[] ifname);
+
     public static void ThrowErrno(string operation, string message)
     {
         var err = (uint)Marshal.GetLastWin32Error();

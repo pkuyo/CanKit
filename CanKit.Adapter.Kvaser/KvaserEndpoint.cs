@@ -36,10 +36,9 @@ internal static class KvaserEndpoint
 
         return CanBus.Open<KvaserBus, KvaserBusOptions, KvaserBusInitConfigurator>(
             KvaserDeviceType.CANlib,
-            0,
             cfg =>
             {
-                cfg.UseChannelNumber(channel);
+                cfg.UseChannelIndex(channel);
                 configure?.Invoke(cfg);
             });
     }

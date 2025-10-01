@@ -25,12 +25,9 @@ namespace CanKit.Adapter.ZLG
             return (option, cfg);
         }
 
-        public (IBusOptions, IBusInitOptionsConfigurator) GetChannelOptions(int channelIndex)
+        public (IBusOptions, IBusInitOptionsConfigurator) GetChannelOptions()
         {
-            var option = new ZlgBusOptions(this)
-            {
-                ChannelIndex = channelIndex
-            };
+            var option = new ZlgBusOptions(this);
             var cfg = new ZlgBusInitConfigurator();
             cfg.Init(option);
             return (option, cfg);

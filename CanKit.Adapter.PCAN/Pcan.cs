@@ -12,12 +12,10 @@ public static class Pcan
     {
         return CanBus.Open<PcanBus, PcanBusOptions, PcanBusInitConfigurator>(
             PcanDeviceType.PCANBasic,
-            0,
             cfg =>
             {
-                cfg.UseChannel(channel);
+                cfg.UseChannelName(channel);
                 configure?.Invoke(cfg);
             });
     }
 }
-

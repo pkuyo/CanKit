@@ -27,6 +27,7 @@ namespace CanKit.Core.Definitions
         public ICanModelProvider Provider => Options.Provider;
         public CanFeature Features => _feature;
         public int ChannelIndex => Options.ChannelIndex;
+        public string? ChannelName => Options.ChannelName;
         public CanBusTiming BitTiming => Options.BitTiming;
         public TxRetryPolicy TxRetryPolicy => Options.TxRetryPolicy;
         public bool BusUsageEnabled => Options.BusUsageEnabled;
@@ -69,6 +70,7 @@ namespace CanKit.Core.Definitions
         public ICanModelProvider Provider => Options.Provider;
         public CanFeature Features => _feature;
         public int ChannelIndex => Options.ChannelIndex;
+        public string? ChannelName => Options.ChannelName;
         public CanBusTiming BitTiming => Options.BitTiming;
         public TxRetryPolicy TxRetryPolicy => Options.TxRetryPolicy;
         public bool BusUsageEnabled => Options.BusUsageEnabled;
@@ -81,6 +83,18 @@ namespace CanKit.Core.Definitions
         public CanFeature EnabledSoftwareFallback => Options.EnabledSoftwareFallback;
 
         public bool AllowErrorInfo => Options.AllowErrorInfo;
+
+        public virtual TSelf UseChannelIndex(int index)
+        {
+            Options.ChannelIndex = index;
+            return (TSelf)this;
+        }
+
+        public virtual TSelf UseChannelName(string name)
+        {
+            Options.ChannelName = name;
+            return (TSelf)this;
+        }
 
 
         public virtual TSelf Baud(uint baud,
@@ -244,6 +258,12 @@ namespace CanKit.Core.Definitions
 
         IBusInitOptionsConfigurator IBusInitOptionsConfigurator.EnableErrorInfo()
             => EnableErrorInfo();
+
+        IBusInitOptionsConfigurator IBusInitOptionsConfigurator.UseChannelIndex(int index)
+            => UseChannelIndex(index);
+
+        IBusInitOptionsConfigurator IBusInitOptionsConfigurator.UseChannelName(string name)
+            => UseChannelName(name);
     }
 
 }

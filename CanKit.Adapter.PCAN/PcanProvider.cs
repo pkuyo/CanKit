@@ -22,15 +22,14 @@ public sealed class PcanProvider : ICanModelProvider
         return (options, cfg);
     }
 
-    public (IBusOptions, IBusInitOptionsConfigurator) GetChannelOptions(int channelIndex)
+    public (IBusOptions, IBusInitOptionsConfigurator) GetChannelOptions()
     {
         var options = new PcanBusOptions(this)
         {
-            ChannelIndex = channelIndex,
             BitTiming = CanBusTiming.ClassicDefault(),
             ProtocolMode = CanProtocolMode.Can20,
             WorkMode = ChannelWorkMode.Normal,
-            Channel = $"PCAN_USBBUS{Math.Max(1, channelIndex + 1)}"
+            ChannelName = $"PCAN_USBBUS1"
         };
         var cfg = new PcanBusInitConfigurator();
         cfg.Init(options);

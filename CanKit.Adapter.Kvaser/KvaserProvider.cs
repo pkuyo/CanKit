@@ -21,15 +21,13 @@ public sealed class KvaserProvider : ICanModelProvider
         return (options, cfg);
     }
 
-    public (IBusOptions, IBusInitOptionsConfigurator) GetChannelOptions(int channelIndex)
+    public (IBusOptions, IBusInitOptionsConfigurator) GetChannelOptions()
     {
         var options = new KvaserBusOptions(this)
         {
-            ChannelIndex = channelIndex,
             BitTiming = CanBusTiming.ClassicDefault(),
             ProtocolMode = CanProtocolMode.Can20,
-            WorkMode = ChannelWorkMode.Normal,
-            ChannelNumber = channelIndex
+            WorkMode = ChannelWorkMode.Normal
         };
         var cfg = new KvaserBusInitConfigurator();
         cfg.Init(options);

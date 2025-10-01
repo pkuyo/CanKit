@@ -53,11 +53,6 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, ICanApplier, I
     {
         int flags = 0;
         if (opt.AcceptVirtual) flags |= (int)Canlib.canOPEN_ACCEPT_VIRTUAL;
-        // Convert index preference: ChannelNumber overrides ChannelIndex
-        if (opt.ChannelNumber.HasValue)
-        {
-            return Canlib.canOpenChannel(opt.ChannelNumber.Value, flags);
-        }
         // Try name lookup if provided
         if (!string.IsNullOrWhiteSpace(opt.ChannelName))
         {

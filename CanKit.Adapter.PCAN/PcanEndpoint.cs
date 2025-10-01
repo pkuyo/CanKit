@@ -40,10 +40,9 @@ internal static class PcanEndpoint
 
         return CanBus.Open<PcanBus, PcanBusOptions, PcanBusInitConfigurator>(
             PcanDeviceType.PCANBasic,
-            0,
             cfg =>
             {
-                cfg.UseChannel(ch);
+                cfg.UseChannelName(ch);
                 configure?.Invoke(cfg);
             });
     }

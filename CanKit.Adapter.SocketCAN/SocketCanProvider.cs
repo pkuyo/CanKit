@@ -22,15 +22,14 @@ public sealed class SocketCanProvider : ICanModelProvider
         return (options, cfg);
     }
 
-    public (IBusOptions, IBusInitOptionsConfigurator) GetChannelOptions(int channelIndex)
+    public (IBusOptions, IBusInitOptionsConfigurator) GetChannelOptions()
     {
         var options = new SocketCanBusOptions(this)
         {
-            ChannelIndex = channelIndex,
             BitTiming = CanBusTiming.ClassicDefault(),
             ProtocolMode = CanProtocolMode.Can20,
             WorkMode = ChannelWorkMode.Normal,
-            InterfaceName = $"can{channelIndex}"
+            ChannelName = $"can0"
         };
         var cfg = new SocketCanBusInitConfigurator();
         cfg.Init(options);

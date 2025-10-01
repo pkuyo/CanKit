@@ -11,6 +11,7 @@ public sealed class SocketCanBusOptions(ICanModelProvider provider) : IBusOption
     public ICanModelProvider Provider { get; } = provider;
 
     public int ChannelIndex { get; set; }
+    public string? ChannelName { get; set; } = "can0";
     public CanBusTiming BitTiming { get; set; } = CanBusTiming.ClassicDefault();
     public bool InternalResistance { get; set; }
     public bool BusUsageEnabled { get; set; }
@@ -22,9 +23,6 @@ public sealed class SocketCanBusOptions(ICanModelProvider provider) : IBusOption
     public CanFeature EnabledSoftwareFallback { get; set; }
     public bool AllowErrorInfo { get; set; }
 
-    // SocketCAN specific: interface name, e.g. "can0", "vcan0" etc.
-    public string InterfaceName { get; set; } = "can0";
-
     // Prefer kernel-provided timestamps (hardware if available, fallback to software)
     public bool PreferKernelTimestamp { get; set; } = true;
     public void Apply(ICanApplier applier, bool force = false) => applier.Apply(this);
@@ -34,12 +32,6 @@ public sealed class SocketCanBusOptions(ICanModelProvider provider) : IBusOption
 public sealed class SocketCanBusInitConfigurator
     : BusInitOptionsConfigurator<SocketCanBusOptions, SocketCanBusInitConfigurator>
 {
-    public SocketCanBusInitConfigurator UseInterface(string name)
-    {
-        Options.InterfaceName = name;
-        return this;
-    }
-
     public SocketCanBusInitConfigurator PreferKernelTimestamp(bool enable = true)
     {
         Options.PreferKernelTimestamp = enable;
@@ -59,6 +51,5 @@ public sealed class SocketCanBusInitConfigurator
 public sealed class SocketCanBusRtConfigurator
     : BusRtOptionsConfigurator<SocketCanBusOptions>
 {
-    public string InterfaceName => Options.InterfaceName;
     public bool PreferKernelTimestamp => Options.PreferKernelTimestamp;
 }

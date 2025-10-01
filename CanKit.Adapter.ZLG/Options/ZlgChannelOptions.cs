@@ -18,6 +18,7 @@ namespace CanKit.Adapter.ZLG.Options
         public partial void Apply(ICanApplier applier, bool force = false);
 
         public int ChannelIndex { get; set; }
+        public string? ChannelName { get; set; }
 
         public CanBusTiming BitTiming { get; set; }
 

@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Text;
 using CanKit.Adapter.SocketCAN.Native;
 using CanKit.Adapter.SocketCAN.Utils;
 using CanKit.Core.Abstractions;
@@ -18,18 +19,18 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
         _transceiver = transceiver;
 
         // Init socket configs
-        CanKitLogger.LogInformation($"SocketCAN: Initializing interface '{Options.InterfaceName}', Mode={Options.ProtocolMode}...");
+        CanKitLogger.LogInformation($"SocketCAN: Initializing interface '{Options.ChannelName?? Options.ChannelIndex.ToString()}', Mode={Options.ProtocolMode}...");
         InitSocketCanConfig();
 
         // Create socket & bind
-        _fd = CreateAndBind(Options.InterfaceName, Options.ProtocolMode, Options.PreferKernelTimestamp);
+        _fd = CreateAndBind(Options.ChannelName, Options.ChannelIndex, Options.ProtocolMode, Options.PreferKernelTimestamp);
 
         // Apply initial options (filters etc.)
         _options.Apply(this, true);
         CanKitLogger.LogDebug("SocketCAN: Initial options applied.");
     }
 
-    private int CreateAndBind(string ifName, CanProtocolMode mode, bool preferKernelTs)
+    private int CreateAndBind(string? ifName,int ifIndex, CanProtocolMode mode, bool preferKernelTs)
     {
         // create raw socket
         var fd = Libc.socket(Libc.AF_CAN, Libc.SOCK_RAW, Libc.CAN_RAW);
@@ -127,15 +128,32 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
     private void InitSocketCanConfig()
     {
         // bind to interface
-        var ifName = Options.InterfaceName;
-        var ifIndex = Libc.if_nametoindex(ifName);
+        var ifName = Options.ChannelName;
+        var ifIndex = (uint)Options.ChannelIndex;
+        if (ifName != null)
+        {
+            ifIndex = Libc.if_nametoindex(ifName);
+        }
+        else
+        {
+            var name = new byte[16];
+            if (Libc.if_indextoname(ifIndex, name) == IntPtr.Zero)
+            {
+                Libc.ThrowErrno("if_indextoname", "Failed to get ifname");
+            }
+            ifName = Encoding.ASCII.GetString(name);
+        }
         if (ifIndex == 0)
         {
             throw new CanBusCreationException($"Interface '{ifName}' not found.");
         }
+
+        _ifName = ifName;
+        _ifIndex = ifIndex;
+
         _options.ChannelIndex = unchecked((int)ifIndex);
 
-        if (LibSocketCan.can_get_ctrlmode(Options.InterfaceName, out var ctrlMode) != Libc.OK)
+        if (LibSocketCan.can_get_ctrlmode(ifName, out var ctrlMode) != Libc.OK)
         {
             Libc.ThrowErrno("can_get_ctrlmode", $"Failed to get ctrlmode for '{ifName}'");
         }
@@ -221,9 +239,9 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
             ctrlMode.flags &= ~LibSocketCan.CAN_CTRLMODE_BERR_REPORTING;
         }
 
-        if (LibSocketCan.can_set_ctrlmode(Options.InterfaceName, ctrlMode) != Libc.OK)
+        if (LibSocketCan.can_set_ctrlmode(ifName, ctrlMode) != Libc.OK)
         {
-            Libc.ThrowErrno("can_set_ctrlmode", $"Failed to set ctrlmode on '{Options.InterfaceName}'");
+            Libc.ThrowErrno("can_set_ctrlmode", $"Failed to set ctrlmode on '{ifName}'");
         }
 
         //start device
@@ -243,9 +261,9 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
     public void Reset()
     {
         ThrowIfDisposed();
-        if (LibSocketCan.can_do_restart(Options.InterfaceName) != Libc.OK)
+        if (LibSocketCan.can_do_restart(_ifName) != Libc.OK)
         {
-            Libc.ThrowErrno("can_do_restart", $"Failed to restart interface '{Options.InterfaceName}'");
+            Libc.ThrowErrno("can_do_restart", $"Failed to restart interface '{_ifName}'");
         }
     }
 
@@ -364,7 +382,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
 
     public CanErrorCounters ErrorCounters()
     {
-        if (LibSocketCan.can_get_berr_counter(Options.InterfaceName, out var counter) == Libc.OK)
+        if (LibSocketCan.can_get_berr_counter(_ifName, out var counter) == Libc.OK)
         {
             return new CanErrorCounters()
             {
@@ -373,7 +391,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
             };
         }
         return Libc.ThrowErrno<CanErrorCounters>("can_get_berr_counter",
-            $"Failed to get error counters for '{Options.InterfaceName}'");
+            $"Failed to get error counters for '{_ifName}'");
     }
 
     public IPeriodicTx TransmitPeriodic(CanTransmitData frame, PeriodicTxOptions options)
@@ -657,7 +675,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
         get
         {
             ThrowIfDisposed();
-            if (LibSocketCan.can_get_state(Options.InterfaceName, out var i) == Libc.OK)
+            if (LibSocketCan.can_get_state(_ifName, out var i) == Libc.OK)
             {
                 var state = (LibSocketCan.can_state)i;
                 return state switch
@@ -672,7 +690,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
             else
             {
                 var errno = (uint)Marshal.GetLastWin32Error();
-                CanKitLogger.LogWarning($"SocketCAN: can_get_state failed for '{Options.InterfaceName}', errno={errno}.");
+                CanKitLogger.LogWarning($"SocketCAN: can_get_state failed for '{_ifName}', errno={errno}.");
                 return BusState.Unknown;
             }
         }
@@ -697,6 +715,9 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
     private Libc.epoll_event[] _events = new Libc.epoll_event[8];
 
     private IDisposable? _owner;
+
+    private string _ifName;
+    private uint _ifIndex;
 
     public void AttachOwner(IDisposable owner)
     {

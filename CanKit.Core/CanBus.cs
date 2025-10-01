@@ -25,15 +25,15 @@ public static class CanBus
     /// <summary>
     /// Open a bus by DeviceType + index (以设备类型+索引打开总线)，返回已打开的总线并托管设备生命周期。
     /// </summary>
-    public static ICanBus Open(DeviceType deviceType, int channelIndex, Action<IBusInitOptionsConfigurator>? configure = null)
+    public static ICanBus Open(DeviceType deviceType, Action<IBusInitOptionsConfigurator>? configure = null)
     {
-        return Open<ICanBus, IBusOptions, IBusInitOptionsConfigurator>(deviceType, channelIndex, configure);
+        return Open<ICanBus, IBusOptions, IBusInitOptionsConfigurator>(deviceType, configure);
     }
 
     /// <summary>
     /// Open a typed bus (打开强类型总线)，返回已打开的实例并托管设备生命周期。
     /// </summary>
-    public static TBus Open<TBus, TBusOptions, TInitCfg>(DeviceType deviceType, int channelIndex,
+    public static TBus Open<TBus, TBusOptions, TInitCfg>(DeviceType deviceType,
         Action<TInitCfg>? configure = null)
         where TBus : class, ICanBus
         where TBusOptions : class, IBusOptions
@@ -42,7 +42,7 @@ public static class CanBus
         var provider = CanRegistry.Registry.Resolve(deviceType);
 
         var (deviceOptions, _) = provider.GetDeviceOptions();
-        var (chOptions, chInitCfg) = provider.GetChannelOptions(channelIndex);
+        var (chOptions, chInitCfg) = provider.GetChannelOptions();
 
         if (chOptions is not TBusOptions typedChOptions)
         {
@@ -50,7 +50,7 @@ public static class CanBus
                 CanKitErrorCode.ChannelOptionTypeMismatch,
                 typeof(TBusOptions),
                 chOptions?.GetType() ?? typeof(IBusOptions),
-                $"channel {channelIndex}");
+                $"channel");
         }
 
         if (chInitCfg is not TInitCfg typedInitCfg)
@@ -59,7 +59,7 @@ public static class CanBus
                 CanKitErrorCode.ChannelOptionTypeMismatch,
                 typeof(TInitCfg),
                 chInitCfg?.GetType() ?? typeof(IBusInitOptionsConfigurator),
-                $"channel {channelIndex} configurator");
+                $"channel configurator");
         }
 
         configure?.Invoke(typedInitCfg);

@@ -45,6 +45,11 @@ public interface IBusRTOptionsConfigurator : ICanOptionsConfigurator
     int ChannelIndex { get; }
 
     /// <summary>
+    /// Channel name (通道名称)。
+    /// </summary>
+    string? ChannelName { get; }
+
+    /// <summary>
     /// Bit timing (位时序)。
     /// </summary>
     CanBusTiming BitTiming { get; }
@@ -116,6 +121,11 @@ public interface IBusInitOptionsConfigurator : ICanOptionsConfigurator
     /// Channel index (通道索引)。
     /// </summary>
     int ChannelIndex { get; }
+
+    /// <summary>
+    /// Channel name (通道名称)。
+    /// </summary>
+    string? ChannelName { get; }
 
     /// <summary>
     /// Bit timing (位时序)。
@@ -273,6 +283,10 @@ public interface IBusInitOptionsConfigurator : ICanOptionsConfigurator
     /// </summary>
     /// <returns>Configurator (配置器本身)。</returns>
     IBusInitOptionsConfigurator EnableErrorInfo();
+
+    IBusInitOptionsConfigurator UseChannelIndex(int index);
+
+    IBusInitOptionsConfigurator UseChannelName(string name);
 
 }
 

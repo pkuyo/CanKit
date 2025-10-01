@@ -80,6 +80,8 @@ namespace CanKit.Core.Abstractions
         /// </summary>
         int ChannelIndex { get; set; }
 
+        string? ChannelName { get; set; }
+
         /// <summary>
         /// Bit timing (位时序)。
         /// </summary>

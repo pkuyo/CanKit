@@ -17,25 +17,24 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
     {
         Options = new PcanBusRtConfigurator();
         Options.Init((PcanBusOptions)options);
-        var options1 = (PcanBusOptions)options;
         _transceiver = transceiver;
 
-        _handle = ParseHandle(options1.Channel);
+        _handle = ParseHandle();
 
         // Discover runtime capabilities (e.g., FD) and merge to dynamic features
         SniffDynamicFeatures();
-        CanKitLogger.LogInformation($"PCAN: Initializing on '{options1.Channel}', Mode={Options.ProtocolMode}, Features={Options.Features}");
+        CanKitLogger.LogInformation($"PCAN: Initializing on '{options.ChannelName}', Mode={options.ProtocolMode}, Features={Options.Features}");
 
         // If requested FD but not supported at runtime, fail early
-        if (Options.ProtocolMode == CanProtocolMode.CanFd && (Options.Features & CanFeature.CanFd) == 0)
+        if (options.ProtocolMode == CanProtocolMode.CanFd && (Options.Features & CanFeature.CanFd) == 0)
         {
             throw new CanFeatureNotSupportedException(CanFeature.CanFd, Options.Features);
         }
 
         // Initialize according to selected protocol mode
-        if (Options.ProtocolMode == CanProtocolMode.CanFd)
+        if (options.ProtocolMode == CanProtocolMode.CanFd)
         {
-            var fd = MapFdBitrate(Options.BitTiming);
+            var fd = MapFdBitrate(options.BitTiming);
             var st = Api.Initialize(_handle, fd);
             if (st != PcanStatus.OK)
             {
@@ -43,9 +42,9 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
             }
             CanKitLogger.LogInformation("PCAN: InitializeFD succeeded.");
         }
-        else if (Options.ProtocolMode == CanProtocolMode.Can20)
+        else if (options.ProtocolMode == CanProtocolMode.Can20)
         {
-            var baud = MapClassicBaud(Options.BitTiming);
+            var baud = MapClassicBaud(options.BitTiming);
             var st = Api.Initialize(_handle, baud);
             if (st != PcanStatus.OK)
             {
@@ -59,7 +58,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
         }
 
         // Apply initial options (filters etc.)
-        options1.Apply(this, true);
+        options.Apply(this, true);
         CanKitLogger.LogDebug("PCAN: Initial options applied.");
 #if NETSTANDARD2_0
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
@@ -420,58 +419,68 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
         return new BitrateFD((BitrateFD.ClockFrequency)(clock * 1_000_000), nominalSeg, dataSeg);
     }
 
-    private static PcanChannel ParseHandle(string channel)
+    private PcanChannel ParseHandle()
     {
-
-        if (string.IsNullOrWhiteSpace(channel))
+        var s = Options.ChannelName?.Trim();
+        if (string.IsNullOrWhiteSpace(s))
         {
             throw new CanBusCreationException("PCAN channel must not be empty.");
         }
 
-        var s = channel.Trim();
-        if (s.Equals("PCAN_NONEBUS", StringComparison.OrdinalIgnoreCase) || s == "NONEBUS" || s == "0")
-            return (PcanChannel)0;
+        // NONE / 0
+        if (s.Equals("PCAN_NONEBUS", StringComparison.OrdinalIgnoreCase) ||
+            s.Equals("NONEBUS", StringComparison.OrdinalIgnoreCase) ||
+            s.Equals("NONE", StringComparison.OrdinalIgnoreCase) ||
+            s == "0")
+            return 0; // PcanChannel.NoneBus
 
         // If given as integer code (e.g., 1281), try direct parse
-        if (int.TryParse(s, out var raw) && Enum.IsDefined(typeof(PcanChannel), raw))
+        if (IsAllDigits(s))
         {
-            return (PcanChannel)raw;
+            if (int.TryParse(s, out var raw) && Enum.IsDefined(typeof(PcanChannel), raw))
+                return (PcanChannel)raw;
+            throw new CanBusCreationException($"Unknown PCAN channel value '{s}'.");
         }
+
+        // Accept already-enum-like names, e.g., Usb01, Pci02
+        if (Enum.TryParse<PcanChannel>(s, ignoreCase: true, out var named))
+            return named;
 
         // Normalize common PCAN names: PCAN_USBBUSn, PCAN_PCIBUSn, PCAN_LANBUSn
         var upper = s.ToUpperInvariant();
 
-        PcanChannel FromIndex(string kind, int index)
+        PcanChannel FromIndex(string kind, int idx)
         {
-            var name = kind + index.ToString("00");
+            if (idx <= 0)
+                throw new CanBusCreationException($"Channel index must start from 1 for {kind} (got {idx}).");
+            var name = kind + idx.ToString("00"); // Usb01 / Pci02 / Lan12
             if (Enum.TryParse<PcanChannel>(name, ignoreCase: true, out var ch))
                 return ch;
-            throw new CanBusCreationException($"Unknown PCAN channel '{channel}'.");
+            throw new CanBusCreationException($"Unknown PCAN channel '{s}'.");
         }
 
-        var m = System.Text.RegularExpressions.Regex.Match(upper, @"^(PCAN_)?USB(BUS)?(?<n>\d+)$");
-        if (m.Success && int.TryParse(m.Groups["n"].Value, out var usbIdx))
+        var m = System.Text.RegularExpressions.Regex.Match(upper, @"^(?:PCAN_)?USB(?:BUS)?(?<n>\d+)$");
+        if (m.Success && int.TryParse(m.Groups["n"].Value, out var usbN))
+            return FromIndex("Usb", usbN);
+
+        m = System.Text.RegularExpressions.Regex.Match(upper, @"^(?:PCAN_)?PCI(?:BUS)?(?<n>\d+)$");
+        if (m.Success && int.TryParse(m.Groups["n"].Value, out var pciN))
+            return FromIndex("Pci", pciN);
+
+        m = System.Text.RegularExpressions.Regex.Match(upper, @"^(?:PCAN_)?LAN(?:BUS)?(?<n>\d+)$");
+        if (m.Success && int.TryParse(m.Groups["n"].Value, out var lanN))
+            return FromIndex("Lan", lanN);
+
+        throw new CanBusCreationException($"Unknown PCAN channel '{s}'.");
+
+        static bool IsAllDigits(string t)
         {
-            return FromIndex("Usb", Math.Max(1, usbIdx));
+            if (t.Any(ch => ch is < '0' or > '9'))
+            {
+                return false;
+            }
+            return t.Length > 0;
         }
-
-        m = System.Text.RegularExpressions.Regex.Match(upper, @"^(PCAN_)?PCI(BUS)?(?<n>\d+)$");
-        if (m.Success && int.TryParse(m.Groups["n"].Value, out var pciIdx))
-        {
-            return FromIndex("Pci", Math.Max(1, pciIdx));
-        }
-
-        m = System.Text.RegularExpressions.Regex.Match(upper, @"^(PCAN_)?LAN(BUS)?(?<n>\d+)$");
-        if (m.Success && int.TryParse(m.Groups["n"].Value, out var lanIdx))
-        {
-            return FromIndex("Lan", Math.Max(1, lanIdx));
-        }
-
-        // Accept already-enum-like names, e.g., Usb01, Pci02
-        if (Enum.TryParse<PcanChannel>(s, ignoreCase: true, out var parsed))
-            return parsed;
-
-        throw new CanBusCreationException($"Unknown PCAN channel '{channel}'.");
     }
 
     private void SniffDynamicFeatures()

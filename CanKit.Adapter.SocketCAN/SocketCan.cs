@@ -14,10 +14,9 @@ public static class SocketCan
     {
         return CanBus.Open<SocketCanBus, SocketCanBusOptions, SocketCanBusInitConfigurator>(
             LinuxDeviceType.SocketCAN,
-            0,
             cfg =>
             {
-                cfg.UseInterface(interfaceName);
+                cfg.UseChannelName(interfaceName);
                 configure?.Invoke(cfg);
             });
     }

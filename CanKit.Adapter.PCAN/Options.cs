@@ -8,6 +8,7 @@ public sealed class PcanBusOptions(ICanModelProvider provider) : IBusOptions
     public ICanModelProvider Provider { get; } = provider;
 
     public int ChannelIndex { get; set; }
+    public string? ChannelName { get; set; } = "PCAN_USBBUS1";
     public CanBusTiming BitTiming { get; set; } = CanBusTiming.ClassicDefault();
     public bool InternalResistance { get; set; }
     public bool BusUsageEnabled { get; set; }
@@ -20,25 +21,15 @@ public sealed class PcanBusOptions(ICanModelProvider provider) : IBusOptions
     public bool SoftwareFilterEnabled { get; set; }
     public bool AllowErrorInfo { get; set; }
 
-    // PCAN specific: channel name, e.g. "PCAN_USBBUS1", "PCAN_PCIBUS1", etc.
-    public string Channel { get; set; } = "PCAN_USBBUS1";
-
     public void Apply(ICanApplier applier, bool force = false) => applier.Apply(this);
 }
 
 public sealed class PcanBusInitConfigurator
     : BusInitOptionsConfigurator<PcanBusOptions, PcanBusInitConfigurator>
 {
-    public PcanBusInitConfigurator UseChannel(string channel)
-    {
-        Options.Channel = channel;
-        return this;
-    }
-
 }
 
 public sealed class PcanBusRtConfigurator
     : BusRtOptionsConfigurator<PcanBusOptions>
 {
-    public string Channel => Options.Channel;
 }
