@@ -14,7 +14,6 @@ namespace CanKit.Core.Definitions
         public ICanModelProvider Provider => Options.Provider;
         public CanFeature Features => _feature;
         public DeviceType DeviceType => Options.DeviceType;
-        public uint TxTimeOut => Options.TxTimeOut;
 
     }
 
@@ -56,18 +55,7 @@ namespace CanKit.Core.Definitions
         public ICanModelProvider Provider => Options.Provider;
         public CanFeature Features => _feature;
         public DeviceType DeviceType => Options.DeviceType;
-        public uint TxTimeOutTime => Options.TxTimeOut;
 
-        public virtual TSelf TxTimeOut(uint ms)
-        {
-            Options.TxTimeOut = ms;
-            return (TSelf)this;
-        }
-
-
-
-        IDeviceInitOptionsConfigurator IDeviceInitOptionsConfigurator.TxTimeOut(uint ms)
-            => TxTimeOut(ms);
 
     }
 

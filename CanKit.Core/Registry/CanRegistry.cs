@@ -350,12 +350,9 @@ public partial class CanRegistry
                 continue;
             }
 
-
             try
             {
-                var factory = Activator.CreateInstance(t) as ICanFactory;
-
-                if (factory is null)
+                if (Activator.CreateInstance(t) is not ICanFactory factory)
                 {
                     CanKitLogger.LogError(
                         $"CanFactory create instance failed. Type='{t.AssemblyQualifiedName}'");

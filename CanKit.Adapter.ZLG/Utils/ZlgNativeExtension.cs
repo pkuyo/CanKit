@@ -8,7 +8,7 @@ using static CanKit.Adapter.ZLG.Native.ZLGCAN;
 
 namespace CanKit.Adapter.ZLG.Utils
 {
-    internal enum ZlgBaudRate
+    internal enum ZlgBaudRate : uint
     {
         ZLG_1M = 1_000_000,
         ZLG_800K = 800_000,
@@ -19,7 +19,7 @@ namespace CanKit.Adapter.ZLG.Utils
         ZLG_50K = 50_000,
     }
 
-    internal enum ZlgDataDaudRate
+    internal enum ZlgDataDaudRate : uint
     {
         ZLG_5M = 5_000_000,
         ZLG_4M = 4_000_000,

@@ -67,11 +67,6 @@ namespace CanKit.Core.Abstractions
         /// Device type (设备类型)。
         /// </summary>
         DeviceType DeviceType { get; }
-
-        /// <summary>
-        /// TX timeout in milliseconds (发送超时时间，毫秒)。
-        /// </summary>
-        uint TxTimeOut { get; set; }
     }
 
     /// <summary>

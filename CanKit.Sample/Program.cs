@@ -1,4 +1,5 @@
 using System;
+using System.Threading;
 using CanKit.Core;
 using CanKit.Core.Definitions;
 
@@ -8,15 +9,15 @@ namespace CanKit.Sample
     {
         static void Main(string[] args)
         {
-            // 1. Open two buses via endpoint (equivalent to ch0/ch1)
-            using var sendChannel = CanBus.Open("socketcan://vxcan0", cfg =>
+            // 1. Open two buses via endpoint
+            using var sendChannel = CanBus.Open("zlg://ZCAN_USBCANFD_200U?index=0#ch1", cfg =>
                 cfg.Baud(500_000)
+                    .InternalRes(true)
                     .SetProtocolMode(CanProtocolMode.Can20));
 
-            using var listenChannel = CanBus.Open("socketcan://vxcan1", cfg =>
+            using var listenChannel = CanBus.Open("zlg://ZCAN_USBCANFD_200U?index=0#ch0", cfg =>
                 cfg.Baud(500_000)
-                    .AccMask(0X78, 0xFFFFFF87, CanFilterIDType.Extend)
-                    .SetWorkMode(ChannelWorkMode.ListenOnly)
+                    .InternalRes(true)
                     .SetProtocolMode(CanProtocolMode.Can20));
 
             // 2. Subscribe RX and error events
@@ -33,11 +34,14 @@ namespace CanKit.Sample
                 Console.WriteLine(
                     $"[{frame.SystemTimestamp}] Error Kind: {frame.Kind}, Direction:{frame.Direction}");
             };
+
             var frame1 = new CanTransmitData(new CanClassicFrame(0x1824080F, new ReadOnlyMemory<byte>([0xAA, 0xBB, 0xCC, 0xDD]), true));
             var frame2 = new CanTransmitData(new CanClassicFrame(0x18240801, new ReadOnlyMemory<byte>([0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF]), true));
 
             using var periodicTx1 = sendChannel.TransmitPeriodic(frame1, new PeriodicTxOptions(TimeSpan.FromMilliseconds(200), 100));
             using var periodicTx2 = sendChannel.TransmitPeriodic(frame2, new PeriodicTxOptions(TimeSpan.FromMilliseconds(200), 100));
+
+            Thread.Sleep(5000);
         }
     }
 }

@@ -30,16 +30,11 @@ namespace CanKit.Adapter.ZLG.Options
         public bool SoftwareFilterEnabled { get; set; }
         public bool AllowErrorInfo { get; set; }
 
-        public int PollingInterval { get; set; }
+        public int PollingInterval { get; set; } = 20;
 
         public MaskFilterType FilterType { get; set; }
 
-        [CanOptionItem("/initenal_resistance", CanOptionType.Init, "true")]
-        public bool InternalResistance
-        {
-            get => Get_InternalResistance();
-            set => Set_InternalResistance(value);
-        }
+        public bool InternalResistance { get; set; }
 
         [CanOptionItem("/set_bus_usage_enable", CanOptionType.Init, "false")]
         public bool BusUsageEnabled

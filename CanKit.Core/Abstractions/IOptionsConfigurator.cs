@@ -31,11 +31,6 @@ public interface IDeviceRTOptionsConfigurator : ICanOptionsConfigurator
     /// Device type (设备类型)。
     /// </summary>
     DeviceType DeviceType { get; }
-
-    /// <summary>
-    /// TX timeout in ms (发送超时，毫秒)。
-    /// </summary>
-    uint TxTimeOut { get; }
 }
 
 
@@ -109,18 +104,6 @@ public interface IDeviceInitOptionsConfigurator : ICanOptionsConfigurator
     /// Device type (设备类型)。
     /// </summary>
     DeviceType DeviceType { get; }
-
-    /// <summary>
-    /// Default TX timeout in ms (发送超时默认值，毫秒)。
-    /// </summary>
-    uint TxTimeOutTime { get; }
-
-    /// <summary>
-    /// Set TX timeout (设置发送超时)。
-    /// </summary>
-    /// <param name="ms">Timeout in ms (超时毫秒)。</param>
-    /// <returns>Configurator (配置器本身)。</returns>
-    IDeviceInitOptionsConfigurator TxTimeOut(uint ms);
 }
 
 /// <summary>

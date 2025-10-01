@@ -20,7 +20,7 @@ namespace CanKit.Adapter.ZLG
         public void OpenDevice()
         {
             ThrowIfDisposed();
-            var ptr = ZLGCAN.ZCAN_OpenDevice(Options.DeviceIndex, 0, 0);
+            var ptr = ZLGCAN.ZCAN_OpenDevice((uint)(int)Options.DeviceType.Metadata, Options.DeviceIndex, 0);
             var handle = new ZlgDeviceHandle(ptr);
             if (handle is { IsInvalid: false })
             {

@@ -17,7 +17,7 @@ namespace CanKit.Adapter.ZLG;
 [CanEndPoint("zlg")]
 internal static class ZlgEndpoint
 {
-    private static ICanBus Open(CanEndpoint ep, Action<IBusInitOptionsConfigurator>? configure)
+    public static ICanBus Open(CanEndpoint ep, Action<IBusInitOptionsConfigurator>? configure)
     {
         // 路径匹配 DeviceType.Id 或其去前缀的尾部，例如：
         //   zlg://ZLG.ZCAN_USBCANFD_200U?index=0#ch1
@@ -36,8 +36,6 @@ internal static class ZlgEndpoint
 
         // 设备选项可能与 Provider 相关；若可用则尝试写入 index/tx_timeout/merge
         TrySetDeviceIndex(devOpt, devIndex);
-        TrySetDeviceTimeout(devOpt, ep);
-        TrySetDeviceMerge(devOpt, ep);
 
         // 从片段解析通道索引（支持 '#chX' 或 '#X'）
         int chIndex = 0;
@@ -110,44 +108,5 @@ internal static class ZlgEndpoint
         {
             // best effort; ignore
         }
-    }
-
-    private static void TrySetDeviceTimeout(IDeviceOptions devOpt, CanEndpoint ep)
-    {
-        try
-        {
-            string? s = null;
-            if (!(ep.TryGet("tx", out s) || ep.TryGet("tx_timeout", out s) || ep.TryGet("txTimeout", out s)))
-                return;
-            if (string.IsNullOrWhiteSpace(s)) return;
-            if (!uint.TryParse(s, NumberStyles.Integer, CultureInfo.InvariantCulture, out var v)) return;
-            var prop = devOpt.GetType().GetProperty("TxTimeOut");
-            if (prop != null && prop.CanWrite)
-            {
-                object boxed = Convert.ChangeType(v, prop.PropertyType, CultureInfo.InvariantCulture);
-                prop.SetValue(devOpt, boxed);
-            }
-        }
-        catch { }
-    }
-
-    private static void TrySetDeviceMerge(IDeviceOptions devOpt, CanEndpoint ep)
-    {
-        try
-        {
-            string? s = null;
-            if (!(ep.TryGet("merge", out s) || ep.TryGet("merge_receive", out s) || ep.TryGet("mergeReceive", out s)))
-                return;
-            if (string.IsNullOrWhiteSpace(s)) return;
-            bool v;
-            if (s == "1") v = true; else if (s == "0") v = false; else if (!bool.TryParse(s, out v)) return;
-            var prop = devOpt.GetType().GetProperty("MergeReceive");
-            if (prop != null && prop.CanWrite)
-            {
-                object boxed = Convert.ChangeType(v, prop.PropertyType, CultureInfo.InvariantCulture);
-                prop.SetValue(devOpt, boxed);
-            }
-        }
-        catch { }
     }
 }

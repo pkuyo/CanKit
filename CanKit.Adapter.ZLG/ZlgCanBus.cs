@@ -34,11 +34,9 @@ namespace CanKit.Adapter.ZLG
             {
                 can_type = options.ProtocolMode == CanProtocolMode.Can20 ? 0U : 1U,
             };
+            config.config.can.mode = (byte)options.WorkMode;
             if (options.ProtocolMode == CanProtocolMode.Can20)
             {
-                config.config.can.mode = (byte)options.WorkMode;
-
-
             }
             else
             {
@@ -77,7 +75,7 @@ namespace CanKit.Adapter.ZLG
             _nativeHandle = handle;
 
             Reset();
-
+            ZlgErr.ThrowIfError(ZLGCAN.ZCAN_StartCAN(_nativeHandle), nameof(ZLGCAN.ZCAN_StartCAN), _nativeHandle);
             if (transceiver is not IZlgTransceiver zlg)
                 throw new CanTransceiverMismatchException(typeof(IZlgTransceiver), transceiver.GetType());
             _transceiver = zlg;
@@ -103,8 +101,7 @@ namespace CanKit.Adapter.ZLG
         public uint Transmit(IEnumerable<CanTransmitData> frames, int timeOut = 0)
         {
             ThrowIfDisposed();
-
-            var list = frames.ToList();
+            var list = frames.ToArray();
             bool isFirst = true;
             uint result = 0;
             var startTime = Environment.TickCount;
@@ -115,8 +112,10 @@ namespace CanKit.Adapter.ZLG
                 else
                     Thread.Sleep(Math.Min(Environment.TickCount - startTime, Options.PollingInterval));
 
-                result += _transceiver.Transmit(this, list);
-            } while (result < list.Count && Environment.TickCount - startTime <= timeOut);
+                var count = _transceiver.Transmit(this, new ArraySegment<CanTransmitData>(list,(int)result,list.Length - (int)result));
+                result += count;
+                ;
+            } while (result < list.Length && Environment.TickCount - startTime <= timeOut);
 
             return result;
         }
@@ -124,8 +123,7 @@ namespace CanKit.Adapter.ZLG
         public IPeriodicTx TransmitPeriodic(CanTransmitData frame, PeriodicTxOptions options)
         {
             ThrowIfDisposed();
-            //TODO:定时发送
-            throw new NotImplementedException();
+            return new ZlgPeriodicTx(this, frame, options);
         }
 
         public float BusUsage()
@@ -268,17 +266,30 @@ namespace CanKit.Adapter.ZLG
             else
             {
                 var bitRate = zlgOption.BitTiming.Classic?.Nominal.Bitrate
-                                      ?? throw new CanChannelConfigurationException("Bitrate must be specified when configuring classic CAN timing.");
+                              ?? throw new CanChannelConfigurationException(
+                                  "Bitrate must be specified when configuring classic CAN timing.");
 
                 if (!Enum.IsDefined(typeof(ZlgBaudRate), bitRate))
                 {
                     //TODO:异常处理，不支持的波特率设置
                 }
-                ZlgErr.ThrowIfError(
-                    ZLGCAN.ZCAN_SetValue(
-                        _devicePtr,
-                        Options.ChannelIndex + "/baud_rate", bitRate.ToString()),
-                    "ZCAN_SetValue(baud_rate)");
+
+                if ((Options.Features & CanFeature.CanFd) != 0)
+                {
+                    ZlgErr.ThrowIfError(
+                        ZLGCAN.ZCAN_SetValue(
+                            _devicePtr,
+                            Options.ChannelIndex + "/canfd_abit_baud_rate", bitRate.ToString()),
+                        "ZCAN_SetValue(canfd_abit_baud_rate)");
+                }
+                else
+                {
+                    ZlgErr.ThrowIfError(
+                        ZLGCAN.ZCAN_SetValue(
+                            _devicePtr,
+                            Options.ChannelIndex + "/baud_rate", bitRate.ToString()),
+                        "ZCAN_SetValue(baud_rate)");
+                }
             }
 
             ZlgErr.ThrowIfError(
@@ -351,6 +362,19 @@ namespace CanKit.Adapter.ZLG
                         "ZCAN_SetValue(filter_ack)");
                 }
             }
+            ZlgErr.ThrowIfError(
+                ZLGCAN.ZCAN_SetValue(
+                    _devicePtr,
+                    Options.ChannelIndex + "/filter_ack",
+                    "1"),
+                "ZCAN_SetValue(filter_ack)");
+            ZlgErr.ThrowIfError(
+                ZLGCAN.ZCAN_SetValue(
+                    _devicePtr,
+                    Options.ChannelIndex + "/initenal_resistance",
+                    Options.InternalResistance ? "1" : "0"),
+                "ZCAN_SetValue(initenal_resistance)");
+
         }
 
         private void StartPollingIfNeeded()
@@ -535,9 +559,38 @@ namespace CanKit.Adapter.ZLG
                 return BusState.Unknown;
             }
         }
+
+
+
+        internal int GetAutoSendIndex()
+        {
+            ThrowIfDisposed();
+            int x = 0;
+            while (true)
+            {
+                if (!_autoSendIndexes.Contains(x))
+                    break;
+                x++;
+            }
+
+            _autoSendIndexes.Add(x);
+            return x;
+        }
+
+        internal bool FreeAutoSendIndex(int index)
+        {
+            ThrowIfDisposed();
+            return _autoSendIndexes.Remove(index);
+        }
+
+
+        private readonly HashSet<int> _autoSendIndexes = new();
+
         private readonly ZlgChannelHandle _nativeHandle;
 
         private readonly IntPtr _devicePtr;
+
+        private int _freeAutoSendIndex;
 
         private readonly IZlgTransceiver _transceiver;
 

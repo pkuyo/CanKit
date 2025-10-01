@@ -20,13 +20,6 @@ namespace CanKit.Adapter.ZLG.Options
             set => Set_DeviceIndex(value);
         }
 
-        [CanOptionItem("/tx_timeout", CanOptionType.Init, "100U")]
-        public uint TxTimeOut
-        {
-            get => Get_TxTimeOut();
-            set => Set_TxTimeOut(value);
-        }
-
         [CanOptionItem("/set_device_recv_merge", CanOptionType.Init, "true")]
         public bool MergeReceive
         {
