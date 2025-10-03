@@ -109,8 +109,6 @@ namespace CanKit.Adapter.ZLG.Utils
                 return 1;
             if ((type & CanFrameType.CanFd) != 0)
                 return 1;
-            if ((type & CanFrameType.Error) != 0)
-                return 2;
             return 0;
         }
 

@@ -71,6 +71,7 @@ internal static class Libc
     public const uint CAN_ERR_BUSOFF     = 0x00000040U; // bus off
     public const uint CAN_ERR_BUSERROR   = 0x00000080U; // bus error (may be set with CAN_ERR_PROT)
     public const uint CAN_ERR_RESTARTED  = 0x00000100U; // controller restarted
+    public const uint CAN_ERR_CNT        = 0x00000200U; // error counters
 
     // Controller state details (error.h - CAN_ERR_CRTL)
     public const byte CAN_ERR_CRTL_RX_OVERFLOW = 0x01;
@@ -90,6 +91,18 @@ internal static class Libc
     public const byte CAN_ERR_PROT_OVERLOAD = 0x20;
     public const byte CAN_ERR_PROT_ACTIVE   = 0x40;
     public const byte CAN_ERR_PROT_TX       = 0x80;
+
+    // Transceiver status details (error.h - CAN_ERR_TRX in data[4])
+    public const byte CAN_ERR_TRX_UNSPEC            = 0x00;
+    public const byte CAN_ERR_TRX_CANH_NO_WIRE      = 0x04;
+    public const byte CAN_ERR_TRX_CANH_SHORT_TO_BAT = 0x05;
+    public const byte CAN_ERR_TRX_CANH_SHORT_TO_VCC = 0x06;
+    public const byte CAN_ERR_TRX_CANH_SHORT_TO_GND = 0x07;
+    public const byte CAN_ERR_TRX_CANL_NO_WIRE      = 0x40;
+    public const byte CAN_ERR_TRX_CANL_SHORT_TO_BAT = 0x50;
+    public const byte CAN_ERR_TRX_CANL_SHORT_TO_VCC = 0x60;
+    public const byte CAN_ERR_TRX_CANL_SHORT_TO_GND = 0x70;
+    public const byte CAN_ERR_TRX_CANL_SHORT_TO_CANH= 0x80;
 
     // ioctls
     public const uint SIOCGIFINDEX = 0x8933; // ifreq.ifr_ifindex

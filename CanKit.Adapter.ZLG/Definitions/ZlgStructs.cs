@@ -23,7 +23,16 @@ public record ZlgErrorInfo : ICanErrorInfo
     public ZlgErrorFlag ErrorCode => (ZlgErrorFlag)RawErrorCode;
 
     /// <inheritdoc />
-    public FrameErrorKind Kind { get; init; }
+    public FrameErrorType Type { get; init; }
+
+    /// <inheritdoc />
+    public CanControllerStatus ControllerStatus { get; init; }
+
+    /// <inheritdoc />
+    public CanProtocolViolationType ProtocolViolation { get; init; }
+
+    /// <inheritdoc />
+    public FrameErrorLocation ProtocolViolationLocation { get; init; }
 
     /// <inheritdoc />
     public DateTime SystemTimestamp { get; init; }
@@ -36,6 +45,13 @@ public record ZlgErrorInfo : ICanErrorInfo
 
     /// <inheritdoc />
     public FrameDirection Direction { get; init; }
+
+    /// <inheritdoc />
+
+    public CanErrorCounters? ErrorCounters { get; init; }
+
+    /// <inheritdoc />
+    public CanTransceiverStatus TransceiverStatus { get; init; }
 
     /// <inheritdoc />
     public ICanFrame? Frame { get; init; }

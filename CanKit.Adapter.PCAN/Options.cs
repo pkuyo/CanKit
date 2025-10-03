@@ -25,9 +25,7 @@ public sealed class PcanBusOptions(ICanModelProvider provider) : IBusOptions
 }
 
 public sealed class PcanBusInitConfigurator
-    : BusInitOptionsConfigurator<PcanBusOptions, PcanBusInitConfigurator>
-{}
+    : BusInitOptionsConfigurator<PcanBusOptions, PcanBusInitConfigurator>;
 
 public sealed class PcanBusRtConfigurator
-    : BusRtOptionsConfigurator<PcanBusOptions>
-{}
+    : BusRtOptionsConfigurator<PcanBusOptions>;

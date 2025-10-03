@@ -33,8 +33,6 @@ namespace CanKit.Adapter.ZLG
 
         private EventHandler<CanReceiveData>? _frameReceived;
 
-        private int _freeAutoSendIndex;
-
         private bool _isDisposed;
 
         private IDisposable? _owner;
@@ -146,9 +144,8 @@ namespace CanKit.Adapter.ZLG
                 else
                     Thread.Sleep(Math.Min(Environment.TickCount - startTime, Options.PollingInterval));
 
-                var count = _transceiver.Transmit(this, new ArraySegment<CanTransmitData>(list,(int)result,list.Length - (int)result));
+                var count = _transceiver.Transmit(this, new ArraySegment<CanTransmitData>(list, (int)result, list.Length - (int)result));
                 result += count;
-                ;
             } while (result < list.Length && Environment.TickCount - startTime <= timeOut);
 
             return result;
@@ -262,6 +259,7 @@ namespace CanKit.Adapter.ZLG
         {
             add
             {
+                //TODO:未启用故障帧时的异常
                 lock (_evtGate)
                 {
                     _errorOccurred += value;
@@ -272,6 +270,7 @@ namespace CanKit.Adapter.ZLG
             }
             remove
             {
+                //TODO:未启用故障帧时的异常
                 lock (_evtGate)
                 {
                     _errorOccurred -= value;
@@ -288,11 +287,12 @@ namespace CanKit.Adapter.ZLG
                 ThrowIfDisposed();
                 if (ReadErrorInfo(out var info) && info is not null)
                 {
-                    if ((info.Kind & FrameErrorKind.BusOff) != 0)
+                    if ((info.Type & FrameErrorType.BusOff) != 0)
                         return BusState.BusOff;
-                    if ((info.Kind & FrameErrorKind.Passive) != 0)
+                    var cs = info.ControllerStatus;
+                    if ((cs & (CanControllerStatus.RxPassive | CanControllerStatus.TxPassive)) != 0)
                         return BusState.ErrPassive;
-                    if ((info.Kind & FrameErrorKind.Warning) != 0)
+                    if ((cs & (CanControllerStatus.RxWarning | CanControllerStatus.TxWarning)) != 0)
                         return BusState.ErrWarning;
                     return BusState.None;
                 }
@@ -458,7 +458,7 @@ namespace CanKit.Adapter.ZLG
                 "ZCAN_SetValue(initenal_resistance)");
 
             // Cache software filter predicate for polling loop
-            _useSoftwareFilter = (Options.EnabledSoftwareFallbackE & CanFeature.Filters) != 0
+            _useSoftwareFilter = (Options.EnabledSoftwareFallback & CanFeature.Filters) != 0
                                   && Options.Filter.SoftwareFilterRules.Count > 0;
             _softwareFilterPredicate = _useSoftwareFilter
                 ? FilterRule.Build(Options.Filter.SoftwareFilterRules)
@@ -538,7 +538,7 @@ namespace CanKit.Adapter.ZLG
                     if (count > 0)
                     {
                         var frames = Receive(Math.Min(count, batch));
-                        var useSw = (Options.EnabledSoftwareFallbackE & CanFeature.Filters) != 0
+                        var useSw = (Options.EnabledSoftwareFallback & CanFeature.Filters) != 0
                                     && Options.Filter.SoftwareFilterRules.Count > 0;
                         var pred = useSw ? FilterRule.Build(Options.Filter.SoftwareFilterRules) : null;
                         foreach (var frame in frames)

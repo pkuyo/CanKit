@@ -32,6 +32,11 @@ namespace CanKit.Core.Definitions
         /// 获取或初始化剔除标志位后的实际 ID。
         /// </summary>
         uint ID { get; init; }
+
+        /// <summary>
+        /// 是否时错误帧
+        /// </summary>
+        public bool IsErrorFrame { get; }
     }
 
     /// <summary>
@@ -42,7 +47,27 @@ namespace CanKit.Core.Definitions
         /// <summary>
         /// 获取错误类型。
         /// </summary>
-        FrameErrorKind Kind { get; init; }
+        FrameErrorType Type { get; init; }
+
+        /// <summary>
+        /// 控制器状态（来自错误帧 data[1] 或驱动报告）。
+        /// </summary>
+        CanControllerStatus ControllerStatus { get; init; }
+
+        /// <summary>
+        /// 协议违规类型（来自错误帧 data[2]）。
+        /// </summary>
+        CanProtocolViolationType ProtocolViolation { get; init; }
+
+        /// <summary>
+        /// 协议违规发生位置（来自错误帧 data[3]）。
+        /// </summary>
+        FrameErrorLocation ProtocolViolationLocation { get; init; }
+
+        /// <summary>
+        /// 收发器状态（来自错误帧 data[4]）。
+        /// </summary>
+        CanTransceiverStatus TransceiverStatus { get; init; }
 
         /// <summary>
         /// 获取系统时间戳。
@@ -63,6 +88,12 @@ namespace CanKit.Core.Definitions
         /// 获取错误帧的方向。
         /// </summary>
         FrameDirection Direction { get; init; }
+
+
+        /// <summary>
+        /// 总线错误计数
+        /// </summary>
+        CanErrorCounters? ErrorCounters { get; init; }
 
         /// <summary>
         /// 获取相关的原始帧。
@@ -99,8 +130,6 @@ namespace CanKit.Core.Definitions
         public static uint WithExtended(uint raw, bool v) => Set(raw, EXT_BIT, v);
         public static bool IsRemote(uint raw) => Get(raw, RTR_BIT);
         public static uint WithRemote(uint raw, bool v) => Set(raw, RTR_BIT, v);
-        public static bool IsError(uint raw) => Get(raw, ERR_BIT);
-        public static uint WithError(uint raw, bool v) => Set(raw, ERR_BIT, v);
     }
 
     /// <summary>
@@ -144,11 +173,7 @@ namespace CanKit.Core.Definitions
             init => RawID = CanIdBits.WithRemote(RawID, value);
         }
 
-        public bool IsErrorFrame
-        {
-            get => CanIdBits.IsError(RawID);
-            init => RawID = CanIdBits.WithError(RawID, value);
-        }
+        public bool IsErrorFrame { get; init; }
 
         public CanFrameType FrameKind => CanFrameType.Can20;
 
@@ -228,11 +253,7 @@ namespace CanKit.Core.Definitions
             get => CanIdBits.IsRemote(RawID);
             init => RawID = CanIdBits.WithRemote(RawID, value);
         }
-        public bool IsErrorFrame
-        {
-            get => CanIdBits.IsError(RawID);
-            init => RawID = CanIdBits.WithError(RawID, value);
-        }
+        public bool IsErrorFrame { get; init; }
 
         /// <summary>
         /// 指示该帧在数据阶段是否启用了速率切换 (BRS)。
@@ -302,11 +323,15 @@ namespace CanKit.Core.Definitions
     /// 默认的错误信息实现，直接复用接口定义的字段。
     /// </summary>
     public record DefaultCanErrorInfo(
-        FrameErrorKind Kind,
+        FrameErrorType Type,
+        CanControllerStatus ControllerStatus,
+        CanProtocolViolationType ProtocolViolation,
+        FrameErrorLocation ProtocolViolationLocation,
         DateTime SystemTimestamp,
         uint RawErrorCode,
         ulong? TimeOffset,
         FrameDirection Direction,
-        ICanFrame? Frame) : ICanErrorInfo
-    {}
+        CanTransceiverStatus TransceiverStatus,
+        CanErrorCounters? ErrorCounters,
+        ICanFrame? Frame) : ICanErrorInfo;
 }

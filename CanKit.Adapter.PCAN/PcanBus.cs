@@ -1,4 +1,7 @@
+
+#if NETSTANDARD2_0
 using System.Runtime.InteropServices;
+#endif
 using CanKit.Core.Abstractions;
 using CanKit.Core.Definitions;
 using CanKit.Core.Diagnostics;
@@ -17,6 +20,8 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
 
     private readonly ITransceiver _transceiver;
     private EventHandler<CanReceiveData>? _frameReceived;
+    private EventHandler<ICanErrorInfo>? _errorOccured;
+
     private bool _isDisposed;
 
     private IDisposable? _owner;
@@ -155,7 +160,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
         }
 
         // Cache software filter predicate for polling loop
-        _useSoftwareFilter = (Options.EnabledSoftwareFallbackE & CanFeature.Filters) != 0
+        _useSoftwareFilter = (Options.EnabledSoftwareFallback & CanFeature.Filters) != 0
                               && Options.Filter.SoftwareFilterRules.Count > 0;
         _softwareFilterPredicate = _useSoftwareFilter
             ? FilterRule.Build(Options.Filter.SoftwareFilterRules)
@@ -190,7 +195,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
     public IPeriodicTx TransmitPeriodic(CanTransmitData frame, PeriodicTxOptions options)
     {
         ThrowIfDisposed();
-        if ((Options.EnabledSoftwareFallbackE & CanFeature.CyclicTx) != 0)
+        if ((Options.EnabledSoftwareFallback & CanFeature.CyclicTx) != 0)
             return SoftwarePeriodicTx.Start(this, frame, options);
         else
             throw new CanFeatureNotSupportedException(CanFeature.CyclicTx, Options.Features);
@@ -260,8 +265,26 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
 
     public event EventHandler<ICanErrorInfo>? ErrorOccurred
     {
-        add => throw new CanFeatureNotSupportedException(CanFeature.ErrorFrame, Options.Features);
-        remove => throw new CanFeatureNotSupportedException(CanFeature.ErrorFrame, Options.Features);
+        add
+        {
+            lock (_evtGate)
+            {
+                //TODO:未启用故障帧时的异常
+                _errorOccured += value;
+                _subscriberCount++;
+                StartPollingIfNeeded();
+            }
+        }
+        remove
+        {
+            lock (_evtGate)
+            {
+                //TODO:未启用故障帧时的异常
+                _errorOccured -= value;
+                _subscriberCount = Math.Max(0, _subscriberCount - 1);
+                if (_subscriberCount == 0) StopPolling();
+            }
+        }
     }
 
     public BusState BusState
@@ -342,19 +365,45 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
 
     private void PollLoop(CancellationToken token)
     {
+        var handles = new[] { _recEvent, token.WaitHandle };
         while (!token.IsCancellationRequested)
         {
             if (Volatile.Read(ref _subscriberCount) <= 0)
             {
                 break;
             }
-            _recEvent.WaitOne();
+            var signaled = WaitHandle.WaitAny(handles, 250); // 250ms
+            if (signaled == 1)
+            {
+                break;
+            }
+
             foreach (var rec in _transceiver.Receive(this, 16))
             {
-                var useSw = _useSoftwareFilter;
+                if (rec.CanFrame.IsErrorFrame)
+                {
+                    var raw = rec.CanFrame.RawID;
+                    var span = rec.CanFrame.Data.Span;
+                    var info = new DefaultCanErrorInfo(
+                        PcanErr.ToFrameErrorType(raw, span),
+                        CanKitExtension.ToControllerStatus(span[2], span[3]),
+                        PcanErr.ToProtocolViolationType(raw, span),
+                        PcanErr.ToErrorLocation(span),
+                        DateTime.Now,
+                        raw,
+                        rec.RecvTimestamp,
+                        PcanErr.ToDirection(span),
+                        PcanErr.ToTransceiverStatus(span),
+                        PcanErr.ToErrorCounters(span),
+                        rec.CanFrame);
+                    _errorOccured?.Invoke(this, info);
+                    continue;
+                }
                 var pred = _softwareFilterPredicate;
-                if (useSw && pred is not null && !pred(rec.CanFrame)) continue;
-                _frameReceived?.Invoke(this, rec);
+                if (!_useSoftwareFilter || pred is null || !pred(rec.CanFrame))
+                {
+                    _frameReceived?.Invoke(this, rec);
+                }
             }
         }
     }
@@ -454,7 +503,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
         }
 
         // NONE / 0
-        if (s.Equals("PCAN_NONEBUS", StringComparison.OrdinalIgnoreCase) ||
+        if (s!.Equals("PCAN_NONEBUS", StringComparison.OrdinalIgnoreCase) ||
             s.Equals("NONEBUS", StringComparison.OrdinalIgnoreCase) ||
             s.Equals("NONE", StringComparison.OrdinalIgnoreCase) ||
             s == "0")

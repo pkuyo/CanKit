@@ -91,7 +91,7 @@ public interface IBusRTOptionsConfigurator : ICanOptionsConfigurator
     /// <summary>
     /// Software fallback enabled (是否启用软件替代)
     /// </summary>
-    CanFeature EnabledSoftwareFallbackE { get; set; }
+    CanFeature EnabledSoftwareFallback { get; }
 
     /// <summary>
     /// Enable error information monitoring  (启用错误信息监听)。

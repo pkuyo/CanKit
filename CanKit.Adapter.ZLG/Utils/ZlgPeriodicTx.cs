@@ -11,8 +11,6 @@ namespace CanKit.Adapter.ZLG.Utils;
 
 public sealed class ZlgPeriodicTx : IPeriodicTx
 {
-    private static int s_indexSeed;
-
     private readonly ZlgCanBus _bus;
     private readonly object _evtGate = new();
     private ICanFrame _frame;

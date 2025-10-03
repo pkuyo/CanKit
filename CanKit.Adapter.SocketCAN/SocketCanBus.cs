@@ -23,7 +23,6 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
     private Libc.epoll_event[] _events = new Libc.epoll_event[8];
     private int _fd;
     private EventHandler<CanReceiveData>? _frameReceived;
-    private uint _ifIndex;
 
     private string _ifName;
     private bool _isDisposed;
@@ -41,6 +40,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
         Options.Init((SocketCanBusOptions)options);
         _options = options;
         _transceiver = transceiver;
+        _ifName = string.Empty;
 
         // Init socket configs
         CanKitLogger.LogInformation($"SocketCAN: Initializing interface '{Options.ChannelName?? Options.ChannelIndex.ToString()}', Mode={Options.ProtocolMode}...");
@@ -127,7 +127,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
         }
 
         // Cache software filter predicate for event loop
-        _useSoftwareFilter = (Options.EnabledSoftwareFallbackE & CanFeature.Filters) != 0
+        _useSoftwareFilter = (Options.EnabledSoftwareFallback & CanFeature.Filters) != 0
                               && Options.Filter.SoftwareFilterRules.Count > 0;
         _softwareFilterPredicate = _useSoftwareFilter
             ? FilterRule.Build(Options.Filter.SoftwareFilterRules)
@@ -299,7 +299,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
         {
             _fd = -1;
             _isDisposed = true;
-            try { _owner?.Dispose(); } catch { }
+            try { _owner?.Dispose(); } catch { /*ignore for dispose*/ }
             _owner = null;
         }
     }
@@ -383,7 +383,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
         }
     }
 
-    private int CreateAndBind(string? ifName,int ifIndex, CanProtocolMode mode, bool preferKernelTs)
+    private int CreateAndBind(string? ifName, int ifIndex, CanProtocolMode mode, bool preferKernelTs)
     {
         // create raw socket
         var fd = Libc.socket(Libc.AF_CAN, Libc.SOCK_RAW, Libc.CAN_RAW);
@@ -502,7 +502,6 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
         }
 
         _ifName = ifName;
-        _ifIndex = ifIndex;
 
         _options.ChannelIndex = unchecked((int)ifIndex);
 
@@ -701,17 +700,23 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
                             {
                                 uint raw = frame.RawID;
                                 uint err = raw & Libc.CAN_ERR_MASK;
-                                var kind = SocketCanErrors.MapToKind(err, frame.Data);
+                                var span = frame.Data.Span;
                                 var sysTs = Options.PreferKernelTimestamp && rec.RecvTimestamp != 0
                                     ? new DateTime((long)rec.RecvTimestamp, DateTimeKind.Utc)
                                     : DateTime.Now;
                                 var info = new DefaultCanErrorInfo(
-                                    kind,
+                                    SocketCanErr.ToFrameErrorType(err, span),
+                                    SocketCanErr.ToControllerStatus(span),
+                                    SocketCanErr.ToProtocolViolationType(span),
+                                    SocketCanErr.ToErrorLocation(span),
                                     sysTs,
                                     err,
                                     rec.RecvTimestamp,
-                                    FrameDirection.Rx,
+                                    SocketCanErr.InferFrameDirection(err, span),
+                                    SocketCanErr.ToTransceiverStatus(span),
+                                    SocketCanErr.ToErrorCounters(err, span),
                                     frame);
+
                                 _errorOccurred?.Invoke(this, info);
                             }
                             else

@@ -36,7 +36,7 @@ namespace CanKit.Core.Definitions
         public CanProtocolMode ProtocolMode => Options.ProtocolMode;
         public ICanFilter Filter => Options.Filter;
 
-        public CanFeature EnabledSoftwareFallbackE { get; set; }
+        public CanFeature EnabledSoftwareFallback => Options.EnabledSoftwareFallback;
         public bool AllowErrorInfo => Options.AllowErrorInfo;
 
         public virtual BusRtOptionsConfigurator<TChannelOptions> SetInternalResistance(bool enabled)

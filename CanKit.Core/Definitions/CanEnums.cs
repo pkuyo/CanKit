@@ -1,39 +1,126 @@
 using System;
-
+#pragma warning disable IDE0055
 namespace CanKit.Core.Definitions
 {
     /// <summary>
-    /// Frame error kinds that may occur (帧可能发生的错误类型)
+    /// Frame error types (错误类型，支持按位组合)
     /// </summary>
     [Flags]
-    public enum FrameErrorKind : uint
+    public enum FrameErrorType : uint
     {
-        None = 0,            // no error / 无错误
-        BitError = 1,            // bit error / 位错误
-        StuffError = 1 << 1,       // stuff error / 填充位错误
-        CrcError = 1 << 2,       // crc error / CRC 校验错误
-        FormError = 1 << 3,       // form error / 帧格式错误
-        AckError = 1 << 4,       // missing ACK / 未收到 ACK
-        Controller = 1 << 5,       // generic controller error / 控制器通用错误
-        Warning = 1 << 6,       // error warning state / 错误报警
-        Passive = 1 << 7,       // error passive state / 错误被动
-        Overload = 1 << 8,       // bus overload / 总线过载
-        RxOverflow = 1 << 9,       // receive overflow / 接收溢出
-        TxOverflow = 1 << 10,      // transmit overflow / 发送溢出
-        ArbitrationLost = 1 << 11,      // arbitration lost / 仲裁丢失
-        BusError = 1 << 12,      // bus error / 总线错误
-        BusOff = 1 << 13,      // bus off / 总线关闭
-        TxTimeout = 1 << 14,      // transmit timeout / 发送超时
-        Restarted = 1 << 15,      // controller restarted / 控制器重启
-        TransceiverError = 1 << 16,      // transceiver error / 收发器错误
-        DeviceError = 1 << 17,      // device error / 设备错误
-        DriverError = 1 << 18,      // driver error / 驱动错误
-        ResourceError = 1 << 19,      // resource exhausted / 资源不足
-        CommandFailed = 1 << 20,      // command failed / 命令失败
+        None = 0,
 
-        Unknown = 1 << 30
+        // Top-level categories aligned with SocketCAN CAN_ERR_* classes
+        // 这些位对应 arbitration_id 上的 CAN_ERR_FLAG 类别；更细节见其它字段
+        TxTimeout         = 1 << 0, // CAN_ERR_TX_TIMEOUT
+        ArbitrationLost   = 1 << 1, // CAN_ERR_LOSTARB
+        Controller        = 1 << 2, // CAN_ERR_CRTL（细节见 CanControllerStatus）
+        ProtocolViolation = 1 << 3, // CAN_ERR_PROT（细节见 CanProtocolViolationType / FrameErrorLocation）
+        TransceiverError  = 1 << 4, // CAN_ERR_TRX（细节见 CanTransceiverStatus）
+        AckError          = 1 << 5, // CAN_ERR_ACK
+        BusOff            = 1 << 6, // CAN_ERR_BUSOFF
+        BusError          = 1 << 7, // CAN_ERR_BUSERROR
+        Restarted         = 1 << 8, // CAN_ERR_RESTARTED
 
+        // 非错误帧（设备/驱动）级别错误，保留用于设备报告
+        DeviceError       = 1 << 17,
+        DriverError       = 1 << 18,
+        ResourceError     = 1 << 19,
+        CommandFailed     = 1 << 20,
+
+        Unknown           = 1u << 30,
     }
+
+    /// <summary>
+    /// Controller status details (控制器状态，来源于设备/驱动或错误帧 Data[1])
+    /// </summary>
+    [Flags]
+    public enum CanControllerStatus : byte
+    {
+        None = 0,
+        RxOverflow = 1 << 0,
+        TxOverflow = 1 << 1,
+        RxWarning  = 1 << 2,
+        TxWarning  = 1 << 3,
+        RxPassive  = 1 << 4,
+        TxPassive  = 1 << 5,
+        Active     = 1 << 6,
+        Unknown    = 1 << 7,
+    }
+
+    /// <summary>
+    /// Protocol violation type
+    /// </summary>
+    [Flags]
+    public enum CanProtocolViolationType : UInt16
+    {
+        None    = 0,
+        Bit     = 1 << 0,
+        Form    = 1 << 1,
+        Stuff   = 1 << 2,
+        Bit0    = 1 << 3,
+        Bit1    = 1 << 4,
+        Overload= 1 << 5,
+        Active  = 1 << 6,
+        Tx      = 1 << 7,
+        Unknown = 1 << 8,
+    }
+
+    /// <summary>
+    /// Error location within a CAN frame (错误发生的位置)
+    /// </summary>
+    public enum FrameErrorLocation : byte
+    {
+        // 0..31:
+        Unspecified          = 0,
+        StartOfFrame         = 1,
+        Identifier           = 2,
+        SRTR                 = 3,
+        IDE                  = 4,
+        RTR                  = 5,
+        DLC                  = 6,
+        DataField            = 7,
+        CRCSequence          = 8,
+        CRCDelimiter         = 9,
+        AckSlot              = 10,
+        AckDelimiter         = 11,
+        EndOfFrame           = 12,
+        Intermission         = 13,
+
+        // 32..63:
+        ActiveErrorFlag      = 32,
+        PassiveErrorFlag     = 33,
+        ErrorDelimiter       = 34,
+        OverloadFlag         = 35,
+        TolerateDominantBits = 36,
+
+        // 240..255:
+        Unrecognized         = 248,   // 合法范围内但未收录
+        Reserved             = 249,       // 规范保留值
+        VendorSpecific       = 250,
+
+        Invalid              = 255,
+    }
+
+    /// <summary>
+    /// Transceiver status code
+    /// </summary>
+    public enum CanTransceiverStatus : byte
+    {
+        Unspecified           = 0x00,
+        CanHNoWire            = 0x04,
+        CanHShortToBat        = 0x05,
+        CanHShortToVcc        = 0x06,
+        CanHShortToGnd        = 0x07,
+        CanLNoWire            = 0x40,
+        CanLShortToBat        = 0x50,
+        CanLShortToVcc        = 0x60,
+        CanLShortToGnd        = 0x70,
+        CanLShortToCanH       = 0x80,
+
+        Unknown               = 0xFF,
+    }
+
     /// <summary>
     /// Frame direction: Tx or Rx (帧方向：发送或接收)
     /// </summary>
@@ -53,10 +140,9 @@ namespace CanKit.Core.Definitions
     public enum CanFrameType : uint
     {
         Invalid = 0,
-        Can20 = 1 << 0,
-        CanFd = 1 << 1,
-        Error = 1 << 2,
-        Any = int.MaxValue
+        Can20   = 1 << 0,
+        CanFd   = 1 << 1,
+        Any     = int.MaxValue
     }
 
     /// <summary>
@@ -74,15 +160,13 @@ namespace CanKit.Core.Definitions
     [Flags]
     public enum CanFeature
     {
-        CanClassic = 1 << 0,
-        CanFd = 1 << 1,
-
-        Filters = 1 << 2,
-
-        CyclicTx = 1 << 3,
-        BusUsage = 1 << 4,
+        CanClassic    = 1 << 0,
+        CanFd         = 1 << 1,
+        Filters       = 1 << 2,
+        CyclicTx      = 1 << 3,
+        BusUsage      = 1 << 4,
         ErrorCounters = 1 << 5,
-        ErrorFrame = 1 << 6,
+        ErrorFrame    = 1 << 6,
     }
 
     /// <summary>
@@ -90,7 +174,7 @@ namespace CanKit.Core.Definitions
     /// </summary>
     public enum CanOptionType
     {
-        Init = 1,
+        Init    = 1,
         Runtime = 2
     }
 
@@ -99,7 +183,7 @@ namespace CanKit.Core.Definitions
     /// </summary>
     public enum TxRetryPolicy : byte
     {
-        NoRetry = 1,
+        NoRetry     = 1,
         AlwaysRetry = 2,
     }
 
@@ -108,9 +192,9 @@ namespace CanKit.Core.Definitions
     /// </summary>
     public enum ChannelWorkMode : byte
     {
-        Normal = 0,
+        Normal     = 0,
         ListenOnly = 1,
-        Echo = 2,
+        Echo       = 2,
     }
 
     /// <summary>
@@ -127,14 +211,12 @@ namespace CanKit.Core.Definitions
     /// </summary>
     public enum BusState
     {
-        None = 0,
-        ErrActive = 1,
+        None       = 0,
+        ErrActive  = 1,
         ErrWarning = 2,
         ErrPassive = 3,
-        BusOff = 4,
+        BusOff     = 4,
 
-        Unknown = int.MaxValue
+        Unknown     = int.MaxValue
     }
 }
-
-

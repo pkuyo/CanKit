@@ -34,13 +34,13 @@ public sealed class PcanClassicTransceiver : ITransceiver
             byte[] payload;
             if ((type & MessageType.RemoteRequest) != 0)
             {
-                payload = Array.Empty<byte>();
+                payload = [];
             }
             else
             {
                 if (dlc == 0)
                 {
-                    payload = Array.Empty<byte>();
+                    payload = [];
                 }
                 else
                 {

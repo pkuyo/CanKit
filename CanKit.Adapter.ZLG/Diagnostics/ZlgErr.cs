@@ -5,6 +5,7 @@ using CanKit.Adapter.ZLG.Exceptions;
 using CanKit.Adapter.ZLG.Native;
 using CanKit.Core.Definitions;
 using CanKit.Core.Diagnostics;
+using CanKit.Core.Utils;
 
 namespace CanKit.Adapter.ZLG.Diagnostics
 {
@@ -47,14 +48,8 @@ namespace CanKit.Adapter.ZLG.Diagnostics
             byte eccDirBit = (byte)((rawEcc >> 5) & 0x01);  // 0=Tx, 1=Rx
             byte eccLoc = (byte)(rawEcc & 0x1F);
 
-            FrameErrorKind eccKind = eccType switch
-            {
-                0 => FrameErrorKind.BitError,
-                1 => FrameErrorKind.FormError,
-                2 => FrameErrorKind.StuffError,
-                3 => InferOtherKindByLocation(eccLoc),
-                _ => FrameErrorKind.Unknown
-            };
+            int rec = errInfo.passive_ErrData[1];
+            int tec = errInfo.passive_ErrData[2];
 
             var dir = eccDirBit switch
             {
@@ -63,54 +58,121 @@ namespace CanKit.Adapter.ZLG.Diagnostics
                 _ => FrameDirection.Unknown
             };
 
-            // Map ZLG error flags to more granular kinds
+            // Map ZLG error flags to top-level classes
             var flags = (ZlgErrorFlag)errInfo.error_code;
-            var kind = MapZlgFlagsToKind(flags, eccKind);
+            var type = MapZlgFlagsToType(flags);
+            var loc = MapZlgEccLocToLocation(eccLoc);
+
+            var ctrl = MapZlgFlagsToController(flags) | CanKitExtension.ToControllerStatus(rec, tec);
+            var prot = MapEccTypeToProt(eccType);
+
+            // Protocol violation presence inferred from ECC type; if ECC indicates ACK location in "Other",
+            // surface it as AckError (top-level) instead of ProtocolViolation.
+            if (eccType == 3)
+            {
+                if (loc == FrameErrorLocation.AckSlot || loc == FrameErrorLocation.AckDelimiter)
+                    type |= FrameErrorType.AckError;
+                else
+                    type |= FrameErrorType.ProtocolViolation;
+            }
+            else if (prot != CanProtocolViolationType.None)
+            {
+                type |= FrameErrorType.ProtocolViolation;
+            }
 
             return new ZlgErrorInfo(errInfo.error_code)
             {
-                Kind = kind,
+                Type = type,
+                ControllerStatus = ctrl,
+                ProtocolViolation = prot,
+                ProtocolViolationLocation = loc,
                 Direction = dir,
-                SystemTimestamp = DateTime.Now
+                TransceiverStatus = CanTransceiverStatus.Unspecified,
+                SystemTimestamp = DateTime.Now,
+                ErrorCounters = new CanErrorCounters()
+                {
+                    TransmitErrorCounter = tec,
+                    ReceiveErrorCounter = rec,
+                }
             };
 
-            static FrameErrorKind InferOtherKindByLocation(byte loc) => loc switch
+            static FrameErrorLocation MapZlgEccLocToLocation(byte loc) => loc switch
             {
-                0x08 or 0x09 => FrameErrorKind.CrcError,
-                0x19 or 0x1A => FrameErrorKind.AckError,
-                _ => FrameErrorKind.Controller
+                0x00 => FrameErrorLocation.Unspecified,
+                0x03 => FrameErrorLocation.StartOfFrame,
+                0x02 or 0x06 or 0x07 or 0x0E or 0x0F => FrameErrorLocation.Identifier,
+                0x04 => FrameErrorLocation.SRTR,
+                0x05 => FrameErrorLocation.IDE,
+                0x0C => FrameErrorLocation.RTR,
+                0x0B => FrameErrorLocation.DLC,
+                0x0A => FrameErrorLocation.DataField,
+                0x08 => FrameErrorLocation.CRCSequence,
+
+                0x18 => FrameErrorLocation.CRCDelimiter,
+                0x19 => FrameErrorLocation.AckSlot,
+                0x1B => FrameErrorLocation.AckDelimiter,
+                0x1A => FrameErrorLocation.EndOfFrame,
+                0x12 => FrameErrorLocation.Intermission,
+
+                0x11 => FrameErrorLocation.ActiveErrorFlag,
+                0x16 => FrameErrorLocation.PassiveErrorFlag,
+                0x17 => FrameErrorLocation.ErrorDelimiter,
+                0x1C => FrameErrorLocation.OverloadFlag,
+                0x13 => FrameErrorLocation.TolerateDominantBits,
+
+                0x09 or 0x0D => FrameErrorLocation.Reserved,
+
+                <= 0x1F => FrameErrorLocation.Unrecognized,
+                _ => FrameErrorLocation.Invalid
             };
 
-            static FrameErrorKind MapZlgFlagsToKind(ZlgErrorFlag flags, FrameErrorKind fallback)
+            static FrameErrorType MapZlgFlagsToType(ZlgErrorFlag flags)
             {
-                if (flags == ZlgErrorFlag.None)
-                    return fallback;
+                var t = FrameErrorType.None;
 
                 // Channel/bus states
                 if ((flags & ZlgErrorFlag.BusOff) != 0)
-                    fallback |= FrameErrorKind.BusOff;
+                    t |= FrameErrorType.BusOff;
                 if ((flags & ZlgErrorFlag.BusErr) != 0)
-                    fallback |= FrameErrorKind.BusError;
+                    t |= FrameErrorType.BusError;
                 if ((flags & ZlgErrorFlag.ArbitrationLost) != 0)
-                    fallback |= FrameErrorKind.ArbitrationLost;
-                if ((flags & (ZlgErrorFlag.FifoOverflow | ZlgErrorFlag.BufferOverflow | ZlgErrorFlag.DeviceBufferOverflow)) != 0)
-                    fallback |= FrameErrorKind.RxOverflow;
-                if ((flags & ZlgErrorFlag.ErrPassive) != 0)
-                    fallback |= FrameErrorKind.Passive;
-                if ((flags & ZlgErrorFlag.ErrAlarm) != 0)
-                    fallback |= FrameErrorKind.Warning;
+                    t |= FrameErrorType.ArbitrationLost;
+                if ((flags & (ZlgErrorFlag.FifoOverflow | ZlgErrorFlag.BufferOverflow | ZlgErrorFlag.DeviceBufferOverflow)) != 0
+                    || (flags & (ZlgErrorFlag.ErrPassive | ZlgErrorFlag.ErrAlarm)) != 0)
+                    t |= FrameErrorType.Controller;
 
                 // Device/system classes
                 if ((flags & (ZlgErrorFlag.DeviceOpenErr | ZlgErrorFlag.DeviceNotOpen | ZlgErrorFlag.DeviceNotExist)) != 0)
-                    fallback |= FrameErrorKind.DeviceError;
+                    t |= FrameErrorType.DeviceError;
                 if ((flags & ZlgErrorFlag.LoadKernelErr) != 0)
-                    fallback |= FrameErrorKind.DriverError;
+                    t |= FrameErrorType.DriverError;
                 if ((flags & ZlgErrorFlag.OutOfMemory) != 0)
-                    fallback |= FrameErrorKind.ResourceError;
+                    t |= FrameErrorType.ResourceError;
                 if ((flags & ZlgErrorFlag.CmdFailed) != 0)
-                    fallback |= FrameErrorKind.CommandFailed;
+                    t |= FrameErrorType.CommandFailed;
 
-                return fallback;
+                if (t == FrameErrorType.None)
+                    t = FrameErrorType.Unknown;
+                return t;
+            }
+
+            static CanControllerStatus MapZlgFlagsToController(ZlgErrorFlag flags)
+            {
+                var cs = CanControllerStatus.None;
+                if ((flags & (ZlgErrorFlag.FifoOverflow | ZlgErrorFlag.BufferOverflow | ZlgErrorFlag.DeviceBufferOverflow)) != 0)
+                    cs |= CanControllerStatus.RxOverflow;
+                return cs;
+            }
+
+            static CanProtocolViolationType MapEccTypeToProt(byte eccType)
+            {
+                return eccType switch
+                {
+                    0 => CanProtocolViolationType.Bit,
+                    1 => CanProtocolViolationType.Form,
+                    2 => CanProtocolViolationType.Stuff,
+                    _ => CanProtocolViolationType.None,
+                };
             }
         }
 
@@ -132,5 +194,3 @@ namespace CanKit.Adapter.ZLG.Diagnostics
         }
     }
 }
-
-

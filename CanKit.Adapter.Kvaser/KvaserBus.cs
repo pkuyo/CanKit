@@ -20,6 +20,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, ICanApplier, I
     private readonly ITransceiver _transceiver;
     private int _drainRunning;
     private EventHandler<CanReceiveData>? _frameReceived;
+    private EventHandler<ICanErrorInfo>? _errorOccured;
     private bool _isDisposed;
     private Canlib.kvCallbackDelegate? _kvCallback;
     private bool _notifyActive;
@@ -122,7 +123,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, ICanApplier, I
     public IPeriodicTx TransmitPeriodic(CanTransmitData frame, PeriodicTxOptions options)
     {
         ThrowIfDisposed();
-        if ((Options.EnabledSoftwareFallbackE & CanFeature.CyclicTx) != 0)
+        if ((Options.EnabledSoftwareFallback & CanFeature.CyclicTx) != 0)
             return SoftwarePeriodicTx.Start(this, frame, options);
         else
             throw new CanFeatureNotSupportedException(CanFeature.CyclicTx, Options.Features);
@@ -182,8 +183,24 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, ICanApplier, I
 
     public event EventHandler<ICanErrorInfo>? ErrorOccurred
     {
-        add => throw new CanFeatureNotSupportedException(CanFeature.ErrorFrame, Options.Features);
-        remove => throw new CanFeatureNotSupportedException(CanFeature.ErrorFrame, Options.Features);
+        add
+        {
+            lock (_evtGate)
+            {
+                _errorOccured += value;
+                _subscriberCount++;
+                StartNotifyIfNeeded();
+            }
+        }
+        remove
+        {
+            lock (_evtGate)
+            {
+                _errorOccured -= value;
+                _subscriberCount = Math.Max(0, _subscriberCount - 1);
+                if (_subscriberCount == 0) StopNotify();
+            }
+        }
     }
 
     public BusState BusState
@@ -308,8 +325,8 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, ICanApplier, I
         if (_notifyActive) return;
         try
         {
-            _kvCallback ??= new Canlib.kvCallbackDelegate(KvNotifyCallback);
-            var mask = (int)(Canlib.canNOTIFY_RX | Canlib.canNOTIFY_ERROR | Canlib.canNOTIFY_STATUS);
+            _kvCallback ??= KvNotifyCallback;
+            var mask = (Canlib.canNOTIFY_RX | Canlib.canNOTIFY_ERROR | Canlib.canNOTIFY_STATUS);
             var st = Canlib.kvSetNotifyCallback(_handle, _kvCallback, IntPtr.Zero, mask);
             if (st == Canlib.canStatus.canOK)
             {
@@ -318,12 +335,8 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, ICanApplier, I
             }
             else
             {
-                CanKitLogger.LogWarning($"Kvaser: kvSetNotifyCallback failed: {st}. Falling back to no-notify.");
+                CanKitLogger.LogError($"Kvaser: kvSetNotifyCallback failed: {st}. Falling back to no-notify.");
             }
-        }
-        catch (DllNotFoundException)
-        {
-            // Library not present at design-time; ignore
         }
         catch (EntryPointNotFoundException)
         {
@@ -331,7 +344,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, ICanApplier, I
         }
         catch (Exception ex)
         {
-            CanKitLogger.LogWarning("Kvaser: Failed to register notify callback.", ex);
+            CanKitLogger.LogError("Kvaser: Failed to register notify callback.", ex);
         }
     }
 
@@ -376,13 +389,36 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, ICanApplier, I
             foreach (var rec in _transceiver.Receive(this, 64, 0))
             {
                 any = true;
-                var useSw = (Options.EnabledSoftwareFallbackE & CanFeature.Filters) != 0 && Options.Filter.SoftwareFilterRules.Count > 0;
+
+                if (rec.CanFrame.IsErrorFrame)
+                {
+                    var errorCounters = ErrorCounters();
+                    _errorOccured?.Invoke(this, new DefaultCanErrorInfo(
+                        FrameErrorType.Unknown,
+                        CanKitExtension.ToControllerStatus(errorCounters.ReceiveErrorCounter, errorCounters.TransmitErrorCounter),
+                        CanProtocolViolationType.Unknown,
+                        FrameErrorLocation.Invalid,
+                        DateTime.Now,
+                        0,
+                        null,
+                        FrameDirection.Unknown,
+                        CanTransceiverStatus.Unknown,
+                        errorCounters,
+                        null
+                        ));
+                    continue;
+                }
+
+                var useSw = (Options.EnabledSoftwareFallback & CanFeature.Filters) != 0 && Options.Filter.SoftwareFilterRules.Count > 0;
                 if (useSw)
                 {
                     var pred = FilterRule.Build(Options.Filter.SoftwareFilterRules);
-                    if (!pred(rec.CanFrame)) continue;
+                    if (!pred(rec.CanFrame))
+                    {
+                        continue;
+                    }
                 }
-                try { _frameReceived?.Invoke(this, rec); } catch { /* user event errors ignored */ }
+                _frameReceived?.Invoke(this, rec);
             }
             if (!any) break;
         }

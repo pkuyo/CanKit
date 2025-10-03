@@ -6,22 +6,6 @@
 	  <RootNamespace>CanKit.Sample</RootNamespace>
   </PropertyGroup>
 
-  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|x64' ">
-    <Prefer32bit>true</Prefer32bit>
-  </PropertyGroup>
-
-  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|x86' ">
-    <Prefer32bit>true</Prefer32bit>
-  </PropertyGroup>
-
-  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|x64' ">
-    <Prefer32bit>true</Prefer32bit>
-  </PropertyGroup>
-
-  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|x86' ">
-    <Prefer32bit>true</Prefer32bit>
-  </PropertyGroup>
-
   <ItemGroup>
     <ProjectReference Include="..\CanKit.Adapter.Kvaser\CanKit.Adapter.Kvaser.csproj" />
     <ProjectReference Include="..\CanKit.Adapter.PCAN\CanKit.Adapter.PCAN.csproj" />

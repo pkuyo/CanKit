@@ -54,12 +54,10 @@ public sealed class NullDevice<TOptions> : ICanDevice<DeviceRTOptionsConfigurato
 
 
 public sealed class NullDeviceInitOptionsConfigurator
-    : DeviceInitOptionsConfigurator<NullDeviceOptions, NullDeviceInitOptionsConfigurator>
-{}
+    : DeviceInitOptionsConfigurator<NullDeviceOptions, NullDeviceInitOptionsConfigurator>;
 
 public sealed class NullDeviceRTOptionsConfigurator
-    : DeviceRTOptionsConfigurator<NullDeviceOptions>
-{}
+    : DeviceRTOptionsConfigurator<NullDeviceOptions>;
 
 public sealed class NullDeviceOptions(ICanModelProvider provider) : IDeviceOptions
 {
