@@ -49,7 +49,7 @@ internal static class ZlgEndpoint
 
         var (chOpt, chCfg) = provider.GetChannelOptions();
         configure?.Invoke(chCfg);
-
+        chCfg.UseChannelIndex(chIndex);
         // 获取设备租约（同设备的多个通道共享）
         var (device, lease) = ZlgDeviceMultiplexer.Acquire(dt, devIndex, () =>
         {

@@ -393,6 +393,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
                         raw,
                         rec.RecvTimestamp,
                         PcanErr.ToDirection(span),
+                        PcanErr.ToArbitrationLostBit(raw, span),
                         PcanErr.ToTransceiverStatus(span),
                         PcanErr.ToErrorCounters(span),
                         rec.CanFrame);

@@ -713,6 +713,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
                                     err,
                                     rec.RecvTimestamp,
                                     SocketCanErr.InferFrameDirection(err, span),
+                                    SocketCanErr.ToArbitrationLostBit(err, span),
                                     SocketCanErr.ToTransceiverStatus(span),
                                     SocketCanErr.ToErrorCounters(err, span),
                                     frame);

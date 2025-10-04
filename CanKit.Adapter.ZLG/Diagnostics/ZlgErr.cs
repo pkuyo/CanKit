@@ -26,8 +26,7 @@ namespace CanKit.Adapter.ZLG.Diagnostics
             {
                 try
                 {
-                    var nativeInfo = new ZLGCAN.ZCAN_CHANNEL_ERROR_INFO();
-                    ZLGCAN.ZCAN_ReadChannelErrInfo(handle, ref nativeInfo);
+                    ZLGCAN.ZCAN_ReadChannelErrInfo(handle, out var nativeInfo);
                     errorInfo = nativeInfo;
                 }
                 catch (Exception ex)
@@ -80,6 +79,9 @@ namespace CanKit.Adapter.ZLG.Diagnostics
                 type |= FrameErrorType.ProtocolViolation;
             }
 
+            byte? arbBit = ((flags & ZlgErrorFlag.ArbitrationLost) != 0 && errInfo.arLost_ErrData < 32)
+                ? errInfo.arLost_ErrData
+                : null;
             return new ZlgErrorInfo(errInfo.error_code)
             {
                 Type = type,
@@ -89,6 +91,7 @@ namespace CanKit.Adapter.ZLG.Diagnostics
                 Direction = dir,
                 TransceiverStatus = CanTransceiverStatus.Unspecified,
                 SystemTimestamp = DateTime.Now,
+                ArbitrationLostBit = arbBit,
                 ErrorCounters = new CanErrorCounters()
                 {
                     TransmitErrorCounter = tec,

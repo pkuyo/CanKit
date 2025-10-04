@@ -187,7 +187,10 @@ namespace CanKit.Adapter.ZLG.Native
         public static extern uint ZCAN_IsDeviceOnLine(ZlgDeviceHandle device_handle);
 
         [DllImport(DllName, CallingConvention = CallingConvention.StdCall, CharSet = CharSet.Ansi)]
-        public static extern uint ZCAN_ReadChannelErrInfo(ZlgChannelHandle channel_handle, ref ZCAN_CHANNEL_ERROR_INFO pErrInfo);
+        public static extern uint ZCAN_ReadChannelErrInfo(ZlgChannelHandle channel_handle, out ZCAN_CHANNEL_ERROR_INFO pErrInfo);
+
+           [DllImport(DllName, CallingConvention = CallingConvention.StdCall, CharSet = CharSet.Ansi)]
+        public static extern uint ZCAN_ReadChannelStatus(ZlgChannelHandle channel_handle, out ZCAN_CHANNEL_STATUS  pCANStatus);
         #endregion
 
         #region 结构体
@@ -285,6 +288,20 @@ namespace CanKit.Adapter.ZLG.Native
             public byte[] passive_ErrData;
             public byte arLost_ErrData;
         }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct ZCAN_CHANNEL_STATUS
+        {
+            public byte errInterrupt;
+            public byte regMode;
+            public byte regStatus;
+            public byte regALCapture;
+            public byte regECCapture;
+            public byte regEWLimit;
+            public byte regRECounter;
+            public byte regTECounter;
+            public uint Reserved;
+        }
         #endregion
 
         [StructLayout(LayoutKind.Sequential)]
@@ -344,6 +361,8 @@ namespace CanKit.Adapter.ZLG.Native
             [MarshalAs(UnmanagedType.ByValArray, SizeConst = 64)] public char[] key;
             [MarshalAs(UnmanagedType.ByValArray, SizeConst = 64)] public char[] value;
         }
+
+
 
         [StructLayout(LayoutKind.Sequential, Pack = 1)]
         public struct BusUsage

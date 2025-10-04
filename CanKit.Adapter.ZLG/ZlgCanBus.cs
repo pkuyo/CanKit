@@ -52,7 +52,7 @@ namespace CanKit.Adapter.ZLG
             Options = new ZlgBusRtConfigurator();
             Options.Init((ZlgBusOptions)options);
             options.Apply(this, true);
-
+            ZLGCAN.ZCAN_SetValue(_devicePtr, options.ChannelIndex+"clear_auto_send", "0");
             var provider = Options.Provider as ZlgCanProvider;
 
             ZLGCAN.ZCAN_CHANNEL_INIT_CONFIG config = new ZLGCAN.ZCAN_CHANNEL_INIT_CONFIG
@@ -171,8 +171,7 @@ namespace CanKit.Adapter.ZLG
             if ((Options.Features & CanFeature.ErrorCounters) == 0U)
                 throw new CanFeatureNotSupportedException(CanFeature.ErrorCounters, Options.Features);
 
-            var errInfo = new ZLGCAN.ZCAN_CHANNEL_ERROR_INFO();
-            ZLGCAN.ZCAN_ReadChannelErrInfo(_nativeHandle, ref errInfo);
+            ZLGCAN.ZCAN_ReadChannelErrInfo(_nativeHandle, out var errInfo);
             return new CanErrorCounters()
             {
                 TransmitErrorCounter = errInfo.passive_ErrData[1],
@@ -189,12 +188,9 @@ namespace CanKit.Adapter.ZLG
         public bool ReadErrorInfo(out ICanErrorInfo? errorInfo)
         {
             errorInfo = null;
-
-            var errInfo = new ZLGCAN.ZCAN_CHANNEL_ERROR_INFO();
-            if (ZLGCAN.ZCAN_ReadChannelErrInfo(_nativeHandle, ref errInfo) != ZlgErr.StatusOk ||
+            if (ZLGCAN.ZCAN_ReadChannelErrInfo(_nativeHandle, out var errInfo) != ZlgErr.StatusOk ||
                 errInfo.error_code == 0)
                 return false;
-
             errorInfo = ZlgErr.ToErrorInfo(errInfo);
             return true;
 
@@ -329,6 +325,7 @@ namespace CanKit.Adapter.ZLG
                     !Enum.IsDefined(typeof(ZlgDataDaudRate), dataRate))
                 {
                     //TODO:异常处理，不支持的波特率设置
+                    throw new Exception();
                 }
 
                 ZlgErr.ThrowIfError(
@@ -354,6 +351,7 @@ namespace CanKit.Adapter.ZLG
                 if (!Enum.IsDefined(typeof(ZlgBaudRate), bitRate))
                 {
                     //TODO:异常处理，不支持的波特率设置
+                    throw new Exception();
                 }
 
                 if ((Options.Features & CanFeature.CanFd) != 0)

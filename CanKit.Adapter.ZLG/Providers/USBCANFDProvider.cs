@@ -5,6 +5,9 @@ using CanKit.Core.Definitions;
 
 namespace CanKit.Adapter.ZLG.Providers;
 
+
+
+//USBCANFD不支持读取错误段信息
 public sealed class USBCANFDProvider(DeviceType deviceType) : ZlgCanProvider
 {
     public override DeviceType DeviceType => deviceType;

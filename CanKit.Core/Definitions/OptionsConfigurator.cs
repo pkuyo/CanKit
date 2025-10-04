@@ -211,12 +211,17 @@ namespace CanKit.Core.Definitions
         public virtual TSelf SetProtocolMode(CanProtocolMode mode)
         {
             Options.ProtocolMode = mode;
-            Options.BitTiming = mode switch
+            switch (mode)
             {
-                CanProtocolMode.Can20 => CanBusTiming.ClassicDefault(),
-                CanProtocolMode.CanFd => CanBusTiming.FdDefault(),
-                _ => throw new Exception() //TODO:异常处理
-            };
+                case CanProtocolMode.Can20:
+                    if (Options.BitTiming.Classic is null)
+                        Options.BitTiming = CanBusTiming.ClassicDefault();
+                    break;
+                case CanProtocolMode.CanFd:
+                    if (Options.BitTiming.Fd is null)
+                        Options.BitTiming = CanBusTiming.FdDefault();
+                    break;
+            }
             return (TSelf)this;
         }
 

@@ -54,5 +54,8 @@ public record ZlgErrorInfo : ICanErrorInfo
     public CanTransceiverStatus TransceiverStatus { get; init; }
 
     /// <inheritdoc />
+    public byte? ArbitrationLostBit { get; init; }
+
+    /// <inheritdoc />
     public ICanFrame? Frame { get; init; }
 }

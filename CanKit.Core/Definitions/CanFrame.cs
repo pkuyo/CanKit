@@ -89,6 +89,12 @@ namespace CanKit.Core.Definitions
         /// </summary>
         FrameDirection Direction { get; init; }
 
+        /// <summary>
+        /// 仲裁丢失位（0-31）。若未知则为 null。
+        /// Arbitration lost bit position (0-31). Null if unknown.
+        /// </summary>
+        byte? ArbitrationLostBit { get; init; }
+
 
         /// <summary>
         /// 总线错误计数
@@ -331,6 +337,7 @@ namespace CanKit.Core.Definitions
         uint RawErrorCode,
         ulong? TimeOffset,
         FrameDirection Direction,
+        byte? ArbitrationLostBit,
         CanTransceiverStatus TransceiverStatus,
         CanErrorCounters? ErrorCounters,
         ICanFrame? Frame) : ICanErrorInfo;

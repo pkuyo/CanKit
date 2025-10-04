@@ -173,5 +173,13 @@ internal static class SocketCanErr
         };
     }
 
+    public static byte? ToArbitrationLostBit(uint errMask, ReadOnlySpan<byte> data)
+    {
+        if ((errMask & Libc.CAN_ERR_LOSTARB) == 0 || data.Length < 6)
+            return null;
+        var pos = data[5];
+        return pos < 32 ? pos : null;
+    }
+
 
 }

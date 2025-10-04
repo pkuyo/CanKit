@@ -160,5 +160,7 @@ public readonly record struct CanErrorCounters
         TransmitErrorCounter = this.TransmitErrorCounter;
         ReceiveErrorCounter = this.ReceiveErrorCounter;
     }
+
+    public override string ToString() => $"TEC:{TransmitErrorCounter}, REC:{ReceiveErrorCounter}";
 }
 
