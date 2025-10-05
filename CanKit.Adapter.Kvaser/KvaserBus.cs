@@ -98,6 +98,40 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, ICanApplier, I
                 }
             }
         }
+
+        // Apply timer_scale if supported by CANlib
+        try
+        {
+            // Prefer kvSetTimerScale(handle, scale)
+            var mi = typeof(Canlib).GetMethod("kvSetTimerScale", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+            if (mi != null)
+            {
+                var stObj = mi.Invoke(null, new object[] { _handle, kc.TimerScaleMicroseconds });
+                if (stObj is Canlib.canStatus st1 && st1 != Canlib.canStatus.canOK)
+                {
+                    CanKitLogger.LogWarning($"Kvaser: kvSetTimerScale failed: {st1}");
+                }
+            }
+            else
+            {
+                // Fallback: canIoCtl with canIOCTL_SET_TIMER_SCALE
+                var fi = typeof(Canlib).GetField("canIOCTL_SET_TIMER_SCALE", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+                if (fi != null)
+                {
+                    var code = (int)(fi.GetValue(null) ?? 0);
+                    object val = kc.TimerScaleMicroseconds;
+                    var st2 = Canlib.canIoCtl(_handle, code, ref val);
+                    if (st2 != Canlib.canStatus.canOK)
+                    {
+                        CanKitLogger.LogWarning($"Kvaser: canIoCtl(SET_TIMER_SCALE) failed: {st2}");
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            CanKitLogger.LogDebug($"Kvaser: timer_scale not supported or failed to apply: {ex.Message}");
+        }
     }
 
     public CanOptionType ApplierStatus => CanOptionType.Runtime;

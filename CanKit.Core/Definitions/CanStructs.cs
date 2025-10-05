@@ -128,7 +128,7 @@ public readonly record struct CanReceiveData(ICanFrame CanFrame)
     /// Device-provided timestamp (usually hardware).
     /// ZH: 设备提供的时间戳（通常来自硬件）。
     /// </summary>
-    public UInt64 RecvTimestamp { get; init; }
+    public TimeSpan ReceiveTimestamp { get; init; }
 
     /// <summary>
     /// System time corresponding to the record.

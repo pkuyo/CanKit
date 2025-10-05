@@ -82,7 +82,7 @@ namespace CanKit.Core.Definitions
         /// <summary>
         /// 获取设备时间偏移量。
         /// </summary>
-        ulong? TimeOffset { get; init; }
+        TimeSpan? DeviceTimeSpan { get; init; }
 
         /// <summary>
         /// 获取错误帧的方向。
@@ -335,7 +335,7 @@ namespace CanKit.Core.Definitions
         FrameErrorLocation ProtocolViolationLocation,
         DateTime SystemTimestamp,
         uint RawErrorCode,
-        ulong? TimeOffset,
+        TimeSpan? DeviceTimeSpan,
         FrameDirection Direction,
         byte? ArbitrationLostBit,
         CanTransceiverStatus TransceiverStatus,

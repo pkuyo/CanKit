@@ -63,7 +63,8 @@ namespace CanKit.Adapter.ZLG.Utils
                         return new CanReceiveData(
                             new CanFdFrame(data.frame.can_id, ToArray(data.frame.data, data.frame.len)))
                         {
-                            RecvTimestamp = data.timeStamp,
+                            // ZLG timestamp is in microseconds
+                            ReceiveTimestamp = TimeSpan.FromTicks((long)data.timeStamp * 10),
                         };
                     }
                     else
@@ -71,11 +72,12 @@ namespace CanKit.Adapter.ZLG.Utils
                         return new CanReceiveData(
                             new CanClassicFrame(data.frame.can_id, ToArray(data.frame.data, data.frame.len)))
                         {
-                            RecvTimestamp = data.timeStamp,
+                            // ZLG timestamp is in microseconds
+                            ReceiveTimestamp = TimeSpan.FromTicks((long)data.timeStamp * 10),
                         };
-                    }
                 }
             }
+        }
         }
 
         internal static ZCANDataObj[] TransmitCanFrames(IEnumerable<CanTransmitData> canFrames, byte channelId)

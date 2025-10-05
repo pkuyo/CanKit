@@ -41,7 +41,7 @@ public record ZlgErrorInfo : ICanErrorInfo
     public uint RawErrorCode { get; init; }
 
     /// <inheritdoc />
-    public ulong? TimeOffset { get; init; }
+    public TimeSpan? DeviceTimeSpan { get; init; }
 
     /// <inheritdoc />
     public FrameDirection Direction { get; init; }

@@ -701,8 +701,9 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
                                 uint raw = frame.RawID;
                                 uint err = raw & Libc.CAN_ERR_MASK;
                                 var span = frame.Data.Span;
-                                var sysTs = Options.PreferKernelTimestamp && rec.RecvTimestamp != 0
-                                    ? new DateTime((long)rec.RecvTimestamp, DateTimeKind.Utc)
+                                var sysTs = Options.PreferKernelTimestamp && rec.ReceiveTimestamp != TimeSpan.Zero
+                                    ? new DateTimeOffset(new DateTime(1970,1,1,0,0,0, DateTimeKind.Utc))
+                                        .Add(rec.ReceiveTimestamp).UtcDateTime
                                     : DateTime.Now;
                                 var info = new DefaultCanErrorInfo(
                                     SocketCanErr.ToFrameErrorType(err, span),
@@ -711,7 +712,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
                                     SocketCanErr.ToErrorLocation(span),
                                     sysTs,
                                     err,
-                                    rec.RecvTimestamp,
+                                    rec.ReceiveTimestamp,
                                     SocketCanErr.InferFrameDirection(err, span),
                                     SocketCanErr.ToArbitrationLostBit(err, span),
                                     SocketCanErr.ToTransceiverStatus(span),

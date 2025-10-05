@@ -64,9 +64,10 @@ public sealed class KvaserClassicTransceiver : ITransceiver
                     Array.Resize(ref buf, dlc);
                 }
                 var frame = new CanClassicFrame((uint)id, buf, isExt) { IsRemoteFrame = isRtr, IsErrorFrame = isErr };
-                // Kvaser timestamp is in milliseconds from start of driver; convert to ticks (100ns)
-                var ticks = (ulong)time * 10_000UL;
-                list.Add(new CanReceiveData(frame) { RecvTimestamp = ticks });
+                // Convert using configured timer_scale (microseconds per unit)
+                var kch = (KvaserBus)channel;
+                var ticks = time * kch.Options.TimerScaleMicroseconds * 10L; // us -> ticks
+                list.Add(new CanReceiveData(frame) { ReceiveTimestamp = TimeSpan.FromTicks(ticks) });
             }
             else if (st == Canlib.canStatus.canERR_NOMSG)
             {

@@ -372,39 +372,54 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
             {
                 break;
             }
-            var signaled = WaitHandle.WaitAny(handles, 250); // 250ms
+            var signaled = WaitHandle.WaitAny(handles);
             if (signaled == 1)
             {
                 break;
             }
-
-            foreach (var rec in _transceiver.Receive(this, 16))
+            if (signaled != 0)
             {
-                if (rec.CanFrame.IsErrorFrame)
+                continue;
+            }
+
+            var n = 0;
+            while (true)
+            {
+                n = 0;
+                foreach (var rec in _transceiver.Receive(this, 16))
                 {
-                    var raw = rec.CanFrame.RawID;
-                    var span = rec.CanFrame.Data.Span;
-                    var info = new DefaultCanErrorInfo(
-                        PcanErr.ToFrameErrorType(raw, span),
-                        CanKitExtension.ToControllerStatus(span[2], span[3]),
-                        PcanErr.ToProtocolViolationType(raw, span),
-                        PcanErr.ToErrorLocation(span),
-                        DateTime.Now,
-                        raw,
-                        rec.RecvTimestamp,
-                        PcanErr.ToDirection(span),
-                        PcanErr.ToArbitrationLostBit(raw, span),
-                        PcanErr.ToTransceiverStatus(span),
-                        PcanErr.ToErrorCounters(span),
-                        rec.CanFrame);
-                    _errorOccured?.Invoke(this, info);
-                    continue;
+                    if (rec.CanFrame.IsErrorFrame)
+                    {
+                        var raw = rec.CanFrame.RawID;
+                        var span = rec.CanFrame.Data.Span;
+                        var info = new DefaultCanErrorInfo(
+                            PcanErr.ToFrameErrorType(raw, span),
+                            CanKitExtension.ToControllerStatus(span[2], span[3]),
+                            PcanErr.ToProtocolViolationType(raw, span),
+                            PcanErr.ToErrorLocation(span),
+                            DateTime.Now,
+                            raw,
+                            rec.ReceiveTimestamp,
+                            PcanErr.ToDirection(span),
+                            PcanErr.ToArbitrationLostBit(raw, span),
+                            PcanErr.ToTransceiverStatus(span),
+                            PcanErr.ToErrorCounters(span),
+                            rec.CanFrame);
+                        _errorOccured?.Invoke(this, info);
+                        continue;
+                    }
+
+                    var pred = _softwareFilterPredicate;
+                    if (!_useSoftwareFilter || pred is null || !pred(rec.CanFrame))
+                    {
+                        _frameReceived?.Invoke(this, rec);
+                    }
+
+                    n++;
                 }
-                var pred = _softwareFilterPredicate;
-                if (!_useSoftwareFilter || pred is null || !pred(rec.CanFrame))
-                {
-                    _frameReceived?.Invoke(this, rec);
-                }
+
+                if (n != 0)
+                    break;
             }
         }
     }

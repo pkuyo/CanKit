@@ -91,9 +91,9 @@ public sealed class PcanClassicTransceiver : ITransceiver
             var slice = len == 0 ? ReadOnlyMemory<byte>.Empty : new ReadOnlyMemory<byte>(arr, 0, len);
             var frame = new CanClassicFrame(pmsg.ID, slice, isExt) { IsRemoteFrame = isRtr, IsErrorFrame = isErr };
 
-            // Assume PCAN timestamp is in microseconds. Convert to ticks (100ns)
-            var ticks = ts * 10UL;
-            list.Add(new CanReceiveData(frame) { RecvTimestamp = ticks });
+            // Assume PCAN timestamp is in microseconds. Convert to TimeSpan
+            var ticks = ts * 10UL; // microseconds -> ticks (100ns)
+            list.Add(new CanReceiveData(frame) { ReceiveTimestamp = TimeSpan.FromTicks((long)ticks) });
         }
         return list;
     }

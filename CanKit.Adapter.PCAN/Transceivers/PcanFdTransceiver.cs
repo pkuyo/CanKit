@@ -79,8 +79,8 @@ public sealed class PcanFdTransceiver : ITransceiver
             var slice = len == 0 ? ReadOnlyMemory<byte>.Empty : new ReadOnlyMemory<byte>(arr, 0, len);
             var frame = new CanFdFrame(pmsg.ID, slice, brs, esi) { IsExtendedFrame = isExt, IsErrorFrame = isErr };
 
-            var ticks = ts * 10UL;
-            list.Add(new CanReceiveData(frame) { RecvTimestamp = ticks });
+            var ticks = ts * 10UL; // microseconds -> ticks (100ns)
+            list.Add(new CanReceiveData(frame) { ReceiveTimestamp = TimeSpan.FromTicks((long)ticks) });
         }
         return list;
     }

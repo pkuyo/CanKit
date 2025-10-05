@@ -9,14 +9,17 @@ using CanKit.Core.Definitions;
 
 namespace CanKit.Core.Utils
 {
-    public sealed class SoftwarePeriodicTx : IPeriodicTx
+    //最小限度2ms，小于2ms可靠性无法保证
+    public sealed class SoftwarePeriodicTx : IPeriodicTx, IDisposable
     {
         private readonly ICanBus _bus;
         private readonly CancellationTokenSource _cts = new();
         private readonly bool _fireImmediately;
         private readonly object _gate = new();
 
+
         private CanTransmitData _frame;
+        private readonly CanTransmitData[] _txBuf = new CanTransmitData[1];
 
         private long _jitterMin, _jitterMax, _jitterLastNs, _jitterSumNs, _jitterCount;
         private TimeSpan _period;
@@ -29,6 +32,10 @@ namespace CanKit.Core.Utils
 
         private SoftwarePeriodicTx(ICanBus bus, CanTransmitData frame, PeriodicTxOptions options)
         {
+            if (options.Period < TimeSpan.FromMilliseconds(2))
+            {
+                //TODO:输出警告信息，太短的间隔时间不稳定
+            }
             _bus = bus;
             _frame = frame;
             _period = options.Period <= TimeSpan.Zero ? TimeSpan.FromMilliseconds(1) : options.Period;
@@ -66,15 +73,13 @@ namespace CanKit.Core.Utils
             try
             {
                 _cts.Cancel();
-                // 避免在循环线程里自等导致死锁
                 if (_task != null && Task.CurrentId != _task.Id)
                     _task.Wait(200);
             }
-            catch { /*ignore exception when stop*/ }
+            catch { /*ignore*/ }
             finally
             {
                 _running = false;
-                // 释放平台资源
                 _sDispose(ref _ctx);
             }
         }
@@ -84,7 +89,14 @@ namespace CanKit.Core.Utils
             lock (_gate)
             {
                 if (frame is not null) _frame = frame.Value;
-                if (period.HasValue && period.Value > TimeSpan.Zero) _period = period.Value;
+                if (period.HasValue && period.Value > TimeSpan.Zero)
+                {
+                    if (period.Value < TimeSpan.FromMilliseconds(2))
+                    {
+                        //TODO:输出警告信息，太短的间隔时间不稳定
+                    }
+                    _period = period.Value;
+                }
                 if (repeatCount.HasValue)
                 {
                     _remaining = repeatCount.Value;
@@ -106,11 +118,10 @@ namespace CanKit.Core.Utils
             var token = _cts.Token;
             var sw = Stopwatch.StartNew();
 
-
             _sInit(ref _ctx);
-
-            // 将当前 Stopwatch 的 t0 记录进上下文，用于 Linux 折算到 CLOCK_MONOTONIC
-            _ctx.t0 = sw.Elapsed;
+            _ctx.t0 = sw.Elapsed;  // Stopwatch 基准
+            _ctx.lastPeriodApplied = TimeSpan.Zero;
+            _sUpdatePolicy(ref _ctx, _period); // 初次设置策略
 
             var t0 = _ctx.t0;
             long n = 1;
@@ -119,7 +130,6 @@ namespace CanKit.Core.Utils
             {
                 TrySendOnce();
                 if (DecreaseAndMaybeFinish()) { _running = false; return; }
-                // 即发：把起点移到现在，同时让平台更新它的锚点（Linux 需更新 MONOTONIC 基准）
                 t0 = sw.Elapsed;
                 _ctx.t0 = t0;
                 _sResetAnchor(ref _ctx);
@@ -128,20 +138,21 @@ namespace CanKit.Core.Utils
 
             while (!token.IsCancellationRequested)
             {
-                // 动态 period
                 TimeSpan period;
                 lock (_gate) period = _period;
+                if (period != _ctx.lastPeriodApplied)
+                {
+                    _sUpdatePolicy(ref _ctx, period);
+                }
 
-                // 绝对对齐：t0 + n*period
+
                 var target = t0 + TimeSpan.FromTicks(period.Ticks * n);
 
-                // 平台化的“到预自旋点”的等待 + 末段让出/自旋（热路径零分支）
                 _sPreWait(ref _ctx, sw, target, token);
 
                 // 发送
                 var sendStart = sw.Elapsed;
                 TrySendOnce();
-                //var sendEnd = sw.Elapsed;
 
                 RecordJitter(sendStart - target);
 
@@ -159,19 +170,20 @@ namespace CanKit.Core.Utils
         {
             try
             {
-                CanTransmitData frame;
-                lock (_gate) { frame = _frame; }
-                _ = _bus.Transmit(new[] { frame });
+                lock (_gate)
+                {
+                    _txBuf[0] = _frame;
+                    _ = _bus.Transmit(_txBuf);
+                }
             }
-            catch { /* 后台异常不炸循环 */ }
+            catch { /*ignore*/ }
         }
 
         private bool DecreaseAndMaybeFinish()
         {
             lock (_gate)
             {
-                if (_remaining == 0)
-                    return false;
+                if (_remaining == 0) return false;
                 if (_remaining > 0)
                 {
                     _remaining--;
@@ -211,24 +223,94 @@ namespace CanKit.Core.Utils
             try { Thread.CurrentThread.Priority = ThreadPriority.AboveNormal; } catch { /*Ignore*/ }
         }
 
-        // ========= 平台分派（静态绑定，热路径零分支） =========
+        // ========= 策略分级 =========
+        private enum PrecisionTier : byte { Ultra, Tight, Normal, Coarse }
 
-        // 平台上下文（实例级）：Windows 用 HTimer；Linux 用 T0Mono
+        private struct TimerPolicy
+        {
+            public PrecisionTier Tier;
+            public double GuardMs;        // 预等余量（Windows）
+            public int SpinBudgetUs;      // 尾段最多自旋
+            public int FineYieldUs;       // Yield 阈值
+            public uint TolerableDelayMs; // Windows 容差
+            public bool UseThreadSleep;   // 粗粒度直接 Sleep
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static TimerPolicy BuildPolicy(TimeSpan period)
+        {
+            // 你可按需要调参（此处默认：Ultra≤2ms, Tight≤10ms, Normal≤50ms, Coarse>50ms）
+            var ms = period.TotalMilliseconds;
+
+            if (ms <= 4)
+            {
+                return new TimerPolicy
+                {
+                    Tier = PrecisionTier.Ultra,
+                    GuardMs = 0.08,           // 80 µs
+                    SpinBudgetUs = 30,        // ≤30 µs 自旋
+                    FineYieldUs = 1500,       // >1.5 ms 才 yield
+                    TolerableDelayMs = 0,     // 尽量准
+                    UseThreadSleep = false
+                };
+            }
+            if (ms <= 15.0)
+            {
+                return new TimerPolicy
+                {
+                    Tier = PrecisionTier.Tight,
+                    GuardMs = 0.20,           // ~0.2 ms
+                    SpinBudgetUs = 15,        // 极小自旋
+                    FineYieldUs = 2000,       // >2 ms 才 yield
+                    TolerableDelayMs = (uint)Math.Min(ms * 0.25, 2.0), // 给内核一点合并空间
+                    UseThreadSleep = false
+                };
+            }
+            if (ms <= 50.0)
+            {
+                return new TimerPolicy
+                {
+                    Tier = PrecisionTier.Normal,
+                    GuardMs = 0.60,           // 0.6 ms
+                    SpinBudgetUs = 0,         // 不自旋
+                    FineYieldUs = 5000,       // >5 ms yield
+                    TolerableDelayMs = (uint)Math.Min(ms * 0.3, 5.0),
+                    UseThreadSleep = false
+                };
+            }
+            // Coarse：更省电，直接 Thread.Sleep + 末段轻让出
+            return new TimerPolicy
+            {
+                Tier = PrecisionTier.Coarse,
+                GuardMs = 1.00,              // 1 ms
+                SpinBudgetUs = 0,
+                FineYieldUs = 8000,
+                TolerableDelayMs = (uint)Math.Min(ms * 0.4, 10.0),
+                UseThreadSleep = true
+            };
+        }
+
+        // ========= 平台分派（静态绑定，热路径零分支） =========
         private struct PlatformContext
         {
-            public TimeSpan t0;                 // Stopwatch 基准（两平台通用）
+            public TimeSpan t0;                 // Stopwatch 基准
             public nint hTimer;                 // Windows: waitable timer 句柄
             public Posix.timespec t0Mono;       // Linux: CLOCK_MONOTONIC 基准
+            public TimerPolicy policy;          // 当前策略
+            public TimeSpan lastPeriodApplied;  // 已应用的周期
+            public bool winResAcquired;         // Windows: 是否已 Acquire(1)
         }
 
         private delegate void InitDelegate(ref PlatformContext ctx);
         private delegate void DisposeDelegate(ref PlatformContext ctx);
+        private delegate void UpdatePolicyDelegate(ref PlatformContext ctx, TimeSpan period);
         private delegate void PreWaitDelegate(ref PlatformContext ctx, Stopwatch sw, TimeSpan target, CancellationToken token);
         private delegate void ResetAnchorDelegate(ref PlatformContext ctx);
 
         private static readonly bool _sIsWindows = IsWindows();
         private static readonly InitDelegate _sInit = _sIsWindows ? Win_Init : Posix_Init;
         private static readonly DisposeDelegate _sDispose = _sIsWindows ? Win_Dispose : Posix_Dispose;
+        private static readonly UpdatePolicyDelegate _sUpdatePolicy = _sIsWindows ? Win_UpdatePolicy : Posix_UpdatePolicy;
         private static readonly PreWaitDelegate _sPreWait = _sIsWindows ? Win_PreWait : Posix_PreWait;
         private static readonly ResetAnchorDelegate _sResetAnchor =
             _sIsWindows ? ((ref PlatformContext _) => { }) : Posix_ResetAnchor;
@@ -245,29 +327,59 @@ namespace CanKit.Core.Utils
         // ===== Windows 实现 =====
         private static void Win_Init(ref PlatformContext ctx)
         {
-            // 引用计数化 timeBeginPeriod(1)（避免多实例反复开关）
-            WinTimerResolution.Acquire(1);
-
-            // Create Waitable Timer（优先高精度）
+            // 句柄先创建；是否 Acquire(1) 由策略决定
             ctx.hTimer = Win_CreateHiResTimer();
         }
 
         private static void Win_Dispose(ref PlatformContext ctx)
         {
+            if (ctx.winResAcquired)
+            {
+                try { WinTimerResolution.Release(); } catch { }
+                ctx.winResAcquired = false;
+            }
+
             if (ctx.hTimer != 0)
             {
                 try { Win32.CloseHandle(ctx.hTimer); } catch { /*Ignore*/ }
                 ctx.hTimer = 0;
             }
-            WinTimerResolution.Release();
+        }
+
+        private static void Win_UpdatePolicy(ref PlatformContext ctx, TimeSpan period)
+        {
+            var newPolicy = BuildPolicy(period);
+
+            // Ultra 档才打开 1ms 全局分辨率；其它档关闭
+            if (newPolicy.Tier == PrecisionTier.Ultra)
+            {
+                if (!ctx.winResAcquired)
+                {
+                    try { WinTimerResolution.Acquire(1); ctx.winResAcquired = true; } catch { }
+                }
+            }
+            else
+            {
+                if (ctx.winResAcquired)
+                {
+                    try { WinTimerResolution.Release(); ctx.winResAcquired = false; } catch { }
+                }
+            }
+
+            ctx.policy = newPolicy;
+            ctx.lastPeriodApplied = period;
         }
 
         private static void Win_PreWait(ref PlatformContext ctx, Stopwatch sw, TimeSpan target, CancellationToken token)
         {
-            // 策略：> (1ms + 0.5ms) 用 WaitableTimer 预等到 target-1ms；随后让出/自旋
-            const double guardMs = 1.0;      // 自旋前保留 1ms 余量
-            const int fineYieldUs = 1000;    // >1ms 让出
-            const int spinUs = 150;          // >150µs 轻量自旋
+            var policy = ctx.policy;
+
+            if (policy.UseThreadSleep)
+            {
+                SleepCoarse(sw, target, token, policy.GuardMs);
+                return;
+            }
+
 
             while (!token.IsCancellationRequested)
             {
@@ -277,36 +389,40 @@ namespace CanKit.Core.Utils
                 var remainMs = remain.TotalMilliseconds;
                 var remainUs = remainMs * 1000.0;
 
-                if (remainMs > guardMs + 0.5)
+                if (remainMs > policy.GuardMs + 0.1)
                 {
-                    var wait = TimeSpan.FromMilliseconds(remainMs - guardMs);
-                    Win_WaitRelativeHiRes(ctx.hTimer, wait);
+                    var wait = TimeSpan.FromMilliseconds(remainMs - policy.GuardMs);
+                    Win_WaitRelativeHiRes(ctx.hTimer, wait, policy.TolerableDelayMs);
                 }
-                else if (remainUs > fineYieldUs)
+                else if (remainUs > policy.FineYieldUs)
                 {
                     Thread.Yield();
                 }
-                else if (remainUs > spinUs)
+                else if (policy.SpinBudgetUs > 0 && remainUs > policy.SpinBudgetUs)
                 {
-                    Thread.SpinWait(128);
+                    Thread.SpinWait(64);
                 }
                 else
                 {
-                    while (!token.IsCancellationRequested && sw.Elapsed < target)
-                        Thread.SpinWait(16);
+                    if (policy.SpinBudgetUs > 0)
+                    {
+                        var spinUntil = target - FromMicroseconds(policy.SpinBudgetUs);
+                        while (!token.IsCancellationRequested && sw.Elapsed < target && sw.Elapsed < spinUntil)
+                            Thread.SpinWait(16);
+                    }
                     break;
                 }
             }
         }
 
-        private static void Win_WaitRelativeHiRes(nint hTimer, TimeSpan due)
+        private static void Win_WaitRelativeHiRes(nint hTimer, TimeSpan due, uint tolerableDelayMs)
         {
             if (due <= TimeSpan.Zero) return;
 
             if (hTimer != 0)
             {
-                long due100Ns = -(long)(due.TotalMilliseconds * 10_000.0); // 负数=相对时间
-                if (!Win32.SetWaitableTimerEx(hTimer, ref due100Ns, 0, 0, 0, 0, 0))
+                long due100Ns = -(long)(due.TotalMilliseconds * 10_000.0);
+                if (!Win32.SetWaitableTimerEx(hTimer, ref due100Ns, 0, 0, 0, 0, tolerableDelayMs))
                 {
                     Thread.Sleep(due); // 退化
                     return;
@@ -331,7 +447,7 @@ namespace CanKit.Core.Utils
             catch { return 0; }
         }
 
-        // 进程级 timeBeginPeriod(1) 引用计数
+
         private static class WinTimerResolution
         {
             private static int _sRef;
@@ -342,7 +458,7 @@ namespace CanKit.Core.Utils
                 if (Interlocked.Increment(ref _sRef) == 1)
                 {
                     _sMs = ms;
-                    try { Win32.timeBeginPeriod(ms); } catch {/*Ignore*/ }
+                    try { Win32.timeBeginPeriod(ms); } catch { }
                 }
             }
 
@@ -350,7 +466,7 @@ namespace CanKit.Core.Utils
             {
                 if (Interlocked.Decrement(ref _sRef) == 0)
                 {
-                    try { Win32.timeEndPeriod(_sMs); } catch {/*Ignore*/  }
+                    try { Win32.timeEndPeriod(_sMs); } catch { }
                     _sMs = 0;
                 }
             }
@@ -389,6 +505,12 @@ namespace CanKit.Core.Utils
             Posix.clock_gettime(Posix.CLOCK_MONOTONIC, out ctx.t0Mono);
         }
 
+        private static void Posix_UpdatePolicy(ref PlatformContext ctx, TimeSpan period)
+        {
+            ctx.policy = BuildPolicy(period);
+            ctx.lastPeriodApplied = period;
+        }
+
         private static void Posix_ResetAnchor(ref PlatformContext ctx)
         {
             Posix.clock_gettime(Posix.CLOCK_MONOTONIC, out ctx.t0Mono);
@@ -401,37 +523,34 @@ namespace CanKit.Core.Utils
 
         private static void Posix_PreWait(ref PlatformContext ctx, Stopwatch sw, TimeSpan target, CancellationToken token)
         {
-            // 先睡到 target-150us（单调时钟），再细让出/自旋到点
-            const long spinGuardNs = 150_000; // 150µs
-            const int fineYieldUs = 1000;     // 1ms
-            const int spinUs = 150;           // 150µs
+            var policy = ctx.policy;
 
-            // 折算出 CLOCK_MONOTONIC 的绝对目标时刻
+            if (policy.UseThreadSleep)
+            {
+                SleepCoarse(sw, target, token, policy.GuardMs);
+                return;
+            }
+
+            // 直接绝对睡到目标，末段仅做极小矫正（或不自旋）
             var deltaFromT0 = target - ctx.t0;
             var targetMono = Posix.Add(ctx.t0Mono, deltaFromT0);
-            var preSpin = Posix.Subtract(targetMono, spinGuardNs);
 
-            try { Posix.SleepUntilMonotonicAbs(preSpin); } catch { /* EINTR 可忽略 */ }
+            try { Posix.SleepUntilMonotonicAbs(targetMono); } catch { /*EINTR 可忽略*/ }
 
-            // 末段让出/自旋（以 Stopwatch 为准，避免多次 P/Invoke）
-            while (!token.IsCancellationRequested)
+            // 如果早醒且非常接近目标，再做一次极短自旋
+            if (policy.SpinBudgetUs > 0)
             {
                 var remain = target - sw.Elapsed;
-                if (remain <= TimeSpan.Zero) break;
-
                 var remainUs = remain.TotalMilliseconds * 1000.0;
-                if (remainUs > fineYieldUs)
-                    Thread.Yield();
-                else if (remainUs > spinUs)
-                    Thread.SpinWait(128);
-                else
+                if (remain > TimeSpan.Zero && remainUs <= policy.SpinBudgetUs)
                 {
-                    while (!token.IsCancellationRequested && sw.Elapsed < target)
+                    var spinUntil = target - FromMicroseconds(policy.SpinBudgetUs);
+                    while (!token.IsCancellationRequested && sw.Elapsed < target && sw.Elapsed < spinUntil)
                         Thread.SpinWait(16);
-                    break;
                 }
             }
         }
+
 #pragma warning disable IDE0055
 #pragma warning disable CS8981
         internal static class Posix
@@ -458,15 +577,6 @@ namespace CanKit.Core.Utils
                 return r;
             }
 
-            [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            internal static timespec Subtract(timespec a, long deltaNs)
-            {
-                long ns = a.tv_nsec - deltaNs;
-                long sec = a.tv_sec;
-                while (ns < 0) { ns += 1_000_000_000; sec--; }
-                return new timespec { tv_sec = sec, tv_nsec = ns };
-            }
-
             internal static void SleepUntilMonotonicAbs(timespec absTarget)
             {
                 int rc = clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, absTarget, 0);
@@ -476,6 +586,38 @@ namespace CanKit.Core.Utils
         }
 #pragma warning restore IDE0055
 #pragma warning restore CS8981
+
+        // ========= 共享小工具 =========
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static TimeSpan FromMicroseconds(int us) => TimeSpan.FromTicks(us * 10L);
+
+        // 粗粒度睡眠：先 Sleep 到 target-guard，再轻让出
+        private static void SleepCoarse(Stopwatch sw, TimeSpan target, CancellationToken token, double guardMs)
+        {
+            while (!token.IsCancellationRequested)
+            {
+                var remain = target - sw.Elapsed;
+                if (remain <= TimeSpan.Zero) break;
+
+                if (remain.TotalMilliseconds > guardMs + 1.0)
+                {
+                    var ms = remain.TotalMilliseconds - guardMs;
+                    // Thread.Sleep 只能到毫秒，做个保守下取整
+                    int sleepMs = (int)Math.Max(1, Math.Floor(ms));
+                    Thread.Sleep(sleepMs);
+                }
+                else if (remain.TotalMilliseconds > 1.5)
+                {
+                    Thread.Yield();
+                }
+                else
+                {
+                    // 最后阶段尽量不用自旋（Coarse/Normal 一般为 0）
+                    Thread.SpinWait(64);
+                    break;
+                }
+            }
+        }
     }
 
     // ========= 小工具 =========

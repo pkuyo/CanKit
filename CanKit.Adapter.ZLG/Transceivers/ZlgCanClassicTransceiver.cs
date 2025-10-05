@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using CanKit.Adapter.ZLG.Definitions;
@@ -31,7 +32,8 @@ namespace CanKit.Adapter.ZLG.Transceivers
 
             return data.Take((int)recCount).Select(i => new CanReceiveData(i.frame.FromReceiveData())
             {
-                RecvTimestamp = i.timestamp
+                // ZLG timestamp is in microseconds
+                ReceiveTimestamp = TimeSpan.FromTicks((long)i.timestamp * 10)
             });
         }
 

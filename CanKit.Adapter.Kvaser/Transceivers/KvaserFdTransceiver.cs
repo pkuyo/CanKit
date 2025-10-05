@@ -70,7 +70,7 @@ public sealed class KvaserFdTransceiver : ITransceiver
                 }
 
                 ICanFrame frame;
-                if (!isFd)
+                if (isFd)
                 {
                     frame = new CanFdFrame((uint)id, data, brs, esi)
                     { IsExtendedFrame = isExt, IsErrorFrame = isErr };
@@ -81,8 +81,10 @@ public sealed class KvaserFdTransceiver : ITransceiver
                     { IsExtendedFrame = isExt, IsErrorFrame = isErr, IsRemoteFrame = isRtr };
                 }
 
-                var ticks = (ulong)time * 10_000UL;
-                list.Add(new CanReceiveData(frame) { RecvTimestamp = ticks });
+                // Convert using configured timer_scale (microseconds per unit)
+                var kch = (KvaserBus)channel;
+                var ticks = (long)time * kch.Options.TimerScaleMicroseconds * 10L; // us -> ticks
+                list.Add(new CanReceiveData(frame) { ReceiveTimestamp = TimeSpan.FromTicks(ticks) });
             }
             else if (st == Canlib.canStatus.canERR_NOMSG)
             {

@@ -108,9 +108,9 @@ public sealed class ZlgPeriodicTx : IPeriodicTx
 
     private void StopHardware()
     {
-        ZlgErr.ThrowIfError(ZLGCAN.ZCAN_SetValue(_bus.NativeHandle.DeviceHandle,
-                $"{_bus.Options.ChannelIndex}/clear_auto_send", "0"),
-            "ZCAN_SetValue(apply_auto_send)", _bus.NativeHandle);
+        // Disable only this auto-send entry (by index) instead of clearing all
+        // entries on the channel, then apply the change.
+        ApplyHardware(false, _frame, Period);
     }
 
     private unsafe void ApplyHardware(bool enable, ICanFrame frame, TimeSpan period)

@@ -8,6 +8,11 @@ public sealed class KvaserBusOptions(ICanModelProvider provider) : IBusOptions
     // Kvaser specific
     public bool AcceptVirtual { get; set; } = true;
     public ICanModelProvider Provider { get; } = provider;
+    /// <summary>
+    /// Timer scale in microseconds per time unit returned by CANlib (kv timer_scale).
+    /// Default: 1000 (milliseconds).
+    /// </summary>
+    public int TimerScaleMicroseconds { get; set; } = 1000;
 
     public int ChannelIndex { get; set; }
     public string? ChannelName { get; set; }
@@ -33,10 +38,21 @@ public sealed class KvaserBusInitConfigurator
         Options.AcceptVirtual = enable;
         return this;
     }
+    public KvaserBusInitConfigurator TimerScaleMicroseconds(int microseconds)
+    {
+        Options.TimerScaleMicroseconds = microseconds;
+        return this;
+    }
 }
 
 public sealed class KvaserBusRtConfigurator
     : BusRtOptionsConfigurator<KvaserBusOptions>
 {
     public bool AcceptVirtual => Options.AcceptVirtual;
+    public int TimerScaleMicroseconds => Options.TimerScaleMicroseconds;
+    public KvaserBusRtConfigurator SetTimerScaleMicroseconds(int microseconds)
+    {
+        Options.TimerScaleMicroseconds = microseconds;
+        return this;
+    }
 }

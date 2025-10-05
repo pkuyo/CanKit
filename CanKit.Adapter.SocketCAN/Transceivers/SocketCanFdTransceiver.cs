@@ -47,7 +47,7 @@ public sealed class SocketCanFdTransceiver : ITransceiver
             var frame = stackalloc Libc.canfd_frame[1];
 
             long n;
-            ulong tsTicks = 0;
+            TimeSpan tsSpan = TimeSpan.Zero;
             if (preferTs)
             {
                 var iov = stackalloc Libc.iovec[1];
@@ -85,14 +85,16 @@ public sealed class SocketCanFdTransceiver : ITransceiver
                                 var sw = t[0];
                                 var use = (raw.tv_sec != 0 || raw.tv_nsec != 0) ? raw : sw;
                                 var dto = DateTimeOffset.FromUnixTimeSeconds(use.tv_sec).AddTicks(use.tv_nsec / 100);
-                                tsTicks = (ulong)dto.UtcDateTime.Ticks;
+                                var epoch = new DateTimeOffset(new DateTime(1970,1,1,0,0,0, DateTimeKind.Utc));
+                                tsSpan = dto - epoch;
                                 break;
                             }
                             else if (hdr->cmsg_type == Libc.SCM_TIMESTAMPNS)
                             {
                                 var t = *(Libc.timespec*)data2;
                                 var dto = DateTimeOffset.FromUnixTimeSeconds(t.tv_sec).AddTicks(t.tv_nsec / 100);
-                                tsTicks = (ulong)dto.UtcDateTime.Ticks;
+                                var epoch = new DateTimeOffset(new DateTime(1970,1,1,0,0,0, DateTimeKind.Utc));
+                                tsSpan = dto - epoch;
                                 break;
                             }
                         }
@@ -118,9 +120,14 @@ public sealed class SocketCanFdTransceiver : ITransceiver
 
             bool brs = (frame->flags & Libc.CANFD_BRS) != 0;
             bool esi = (frame->flags & Libc.CANFD_ESI) != 0;
-            if (tsTicks == 0) tsTicks = (ulong)DateTime.UtcNow.Ticks;
+            if (tsSpan == TimeSpan.Zero)
+            {
+                var now = DateTimeOffset.UtcNow;
+                var epoch = new DateTimeOffset(new DateTime(1970,1,1,0,0,0, DateTimeKind.Utc));
+                tsSpan = now - epoch;
+            }
             result.Add(new CanReceiveData(new CanFdFrame(frame->can_id, data, brs, esi))
-            { RecvTimestamp = tsTicks });
+            { ReceiveTimestamp = tsSpan });
         }
         return result;
     }
