@@ -75,9 +75,9 @@ namespace CanKit.Adapter.ZLG.Utils
                             // ZLG timestamp is in microseconds
                             ReceiveTimestamp = TimeSpan.FromTicks((long)data.timeStamp * 10),
                         };
+                    }
                 }
             }
-        }
         }
 
         internal static ZCANDataObj[] TransmitCanFrames(IEnumerable<CanTransmitData> canFrames, byte channelId)

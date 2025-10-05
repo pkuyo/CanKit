@@ -37,6 +37,8 @@ namespace CanKit.Adapter.ZLG.Options
         public bool AllowErrorInfo { get; set; }
 
         public bool InternalResistance { get; set; }
+        public int AsyncBufferCapacity { get; set; } = 0;
+        public int ReceiveLoopStopDelayMs { get; set; } = 200;
 
         [CanOptionItem("/set_bus_usage_enable", CanOptionType.Init, "false")]
         public bool BusUsageEnabled

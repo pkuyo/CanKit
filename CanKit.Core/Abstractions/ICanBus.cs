@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using CanKit.Core.Definitions;
 
 namespace CanKit.Core.Abstractions
@@ -40,6 +41,15 @@ namespace CanKit.Core.Abstractions
         uint Transmit(IEnumerable<CanTransmitData> frames, int timeOut = 0);
 
         /// <summary>
+        /// Asynchronously transmit one or more CAN frames (异步发送一个或多个 CAN 帧)
+        /// </summary>
+        /// <param name="frames">Frames to transmit (待发送帧集合)</param>
+        /// <param name="timeOut">Timeout in ms, -1 for infinite (超时毫秒，-1 表示无限等待)</param>
+        /// <param name="cancellationToken">Cancellation (取消令牌)</param>
+        /// <returns>Number of frames accepted by driver (被底层接受的帧数)</returns>
+        Task<uint> TransmitAsync(IEnumerable<CanTransmitData> frames, int timeOut = 0, System.Threading.CancellationToken cancellationToken = default);
+
+        /// <summary>
         /// Schedule a periodic transmit of a single CAN frame.
         /// 以固定周期定时发送同一帧。
         /// </summary>
@@ -69,11 +79,29 @@ namespace CanKit.Core.Abstractions
         IEnumerable<CanReceiveData> Receive(uint count = 1, int timeOut = 0);
 
         /// <summary>
+        /// Asynchronously receive one or more CAN frames (异步读取一个或多个 CAN 帧)
+        /// </summary>
+        /// <param name="count">Expected frame count (期望读取的帧数)</param>
+        /// <param name="timeOut">Timeout in ms, -1 for infinite (超时毫秒，-1 表示无限等待)</param>
+        /// <param name="cancellationToken">Cancellation (取消令牌)</param>
+        /// <returns>Received frames (收到的帧集合)。当达到期望数量或超时/取消时返回。</returns>
+        Task<IReadOnlyList<CanReceiveData>> ReceiveAsync(uint count = 1, int timeOut = 0, System.Threading.CancellationToken cancellationToken = default);
+
+        /// <summary>
         /// Try read channel error info (获取通道错误信息)。
         /// </summary>
         /// <param name="errorInfo">Error info if present, otherwise null (错误信息或 null)。</param>
         /// <returns>True if error exists (存在错误返回 true)。</returns>
         bool ReadErrorInfo(out ICanErrorInfo? errorInfo);
+
+#if NET8_0_OR_GREATER
+        /// <summary>
+        /// Stream received frames asynchronously (异步流式获取接收帧)
+        /// </summary>
+        /// <param name="cancellationToken">Cancellation (取消令牌)</param>
+        /// <returns>IAsyncEnumerable of frames</returns>
+        IAsyncEnumerable<CanReceiveData> GetFramesAsync(System.Threading.CancellationToken cancellationToken = default);
+#endif
 
         /// <summary>
         /// Raised when a new CAN frame is received (接收到新 CAN 帧时触发)。

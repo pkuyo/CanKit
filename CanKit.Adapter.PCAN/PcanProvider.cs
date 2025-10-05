@@ -10,7 +10,7 @@ public sealed class PcanProvider : ICanModelProvider
     public DeviceType DeviceType => PcanDeviceType.PCANBasic;
 
     // FD depends on hardware (sniffed at runtime).
-    public CanFeature StaticFeatures => CanFeature.CanClassic | CanFeature.Filters | CanFeature.ErrorCounters;
+    public CanFeature StaticFeatures => CanFeature.CanClassic | CanFeature.Filters;
 
     public ICanFactory Factory => CanRegistry.Registry.Factory("PCAN");
 

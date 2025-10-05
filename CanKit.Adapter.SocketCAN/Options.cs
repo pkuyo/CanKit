@@ -24,6 +24,10 @@ public sealed class SocketCanBusOptions(ICanModelProvider provider) : IBusOption
     public CanFilter Filter { get; set; } = new();
     public CanFeature EnabledSoftwareFallback { get; set; }
     public bool AllowErrorInfo { get; set; }
+    // Async buffering capacity (0 or negative = unbounded). Only used when async consumers exist.
+    public int AsyncBufferCapacity { get; set; } = 0;
+    // Delay in ms before stopping receive loop after last subscriber is gone.
+    public int ReceiveLoopStopDelayMs { get; set; } = 200;
     public void Apply(ICanApplier applier, bool force = false) => applier.Apply(this);
 }
 
@@ -51,4 +55,18 @@ public sealed class SocketCanBusRtConfigurator
     : BusRtOptionsConfigurator<SocketCanBusOptions>
 {
     public bool PreferKernelTimestamp => Options.PreferKernelTimestamp;
+    public int AsyncBufferCapacity => Options.AsyncBufferCapacity;
+    public int ReceiveLoopStopDelayMs => Options.ReceiveLoopStopDelayMs;
+
+    public SocketCanBusRtConfigurator SetAsyncBufferCapacity(int capacity)
+    {
+        Options.AsyncBufferCapacity = capacity;
+        return this;
+    }
+
+    public SocketCanBusRtConfigurator SetReceiveLoopStopDelay(int milliseconds)
+    {
+        Options.ReceiveLoopStopDelayMs = System.Math.Max(0, milliseconds);
+        return this;
+    }
 }

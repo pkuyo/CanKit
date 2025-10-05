@@ -6,6 +6,7 @@ using CanKit.Core.Abstractions;
 using CanKit.Core.Definitions;
 using CanKit.Core.Diagnostics;
 using CanKit.Core.Exceptions;
+using CanKit.Core.Utils;
 
 namespace CanKit.Adapter.SocketCAN;
 
@@ -33,6 +34,9 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
     private Func<ICanFrame, bool>? _softwareFilterPredicate;
     private int _subscriberCount;
     private bool _useSoftwareFilter;
+    private readonly AsyncFramePipe _asyncRx;
+    private int _asyncConsumerCount;
+    private CancellationTokenSource? _stopDelayCts;
 
     internal SocketCanBus(IBusOptions options, ITransceiver transceiver)
     {
@@ -41,13 +45,16 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
         _options = options;
         _transceiver = transceiver;
         _ifName = string.Empty;
+        // init async pipe with configured capacity
+        var cap = Options.AsyncBufferCapacity > 0 ? Options.AsyncBufferCapacity : (int?)null;
+        _asyncRx = new AsyncFramePipe(cap);
 
         // Init socket configs
         CanKitLogger.LogInformation($"SocketCAN: Initializing interface '{Options.ChannelName?? Options.ChannelIndex.ToString()}', Mode={Options.ProtocolMode}...");
         InitSocketCanConfig();
 
         // Create socket & bind
-        _fd = CreateAndBind(Options.ChannelName, Options.ChannelIndex, Options.ProtocolMode, Options.PreferKernelTimestamp);
+        _fd = CreateAndBind(Options.ChannelName, Options.ProtocolMode, Options.PreferKernelTimestamp);
 
         // Apply initial options (filters etc.)
         _options.Apply(this, true);
@@ -207,6 +214,48 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
         return _transceiver.Receive(this, count);
     }
 
+    public Task<uint> TransmitAsync(IEnumerable<CanTransmitData> frames, int timeOut = 0, CancellationToken cancellationToken = default)
+        => Task.Run(() => Transmit(frames, timeOut), cancellationToken);
+
+    public Task<IReadOnlyList<CanReceiveData>> ReceiveAsync(uint count = 1, int timeOut = 0, CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        Interlocked.Increment(ref _subscriberCount);
+        Interlocked.Increment(ref _asyncConsumerCount);
+        StartReceiveLoopIfNeeded();
+        return _asyncRx.ReceiveBatchAsync(count, timeOut, cancellationToken)
+            .ContinueWith(t =>
+            {
+                var remAsync = Interlocked.Decrement(ref _asyncConsumerCount);
+                var rem = Interlocked.Decrement(ref _subscriberCount);
+                if (rem == 0 && remAsync == 0) RequestStopReceiveLoop();
+                return t.Result;
+            }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+    }
+
+#if NET8_0_OR_GREATER
+    public async IAsyncEnumerable<CanReceiveData> GetFramesAsync([System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        Interlocked.Increment(ref _subscriberCount);
+        Interlocked.Increment(ref _asyncConsumerCount);
+        StartReceiveLoopIfNeeded();
+        try
+        {
+            await foreach (var item in _asyncRx.ReadAllAsync(cancellationToken))
+            {
+                yield return item;
+            }
+        }
+        finally
+        {
+            var remAsync = Interlocked.Decrement(ref _asyncConsumerCount);
+            var rem = Interlocked.Decrement(ref _subscriberCount);
+            if (rem == 0 && remAsync == 0) RequestStopReceiveLoop();
+        }
+    }
+#endif
+
     public void ClearBuffer()
     {
         ThrowIfDisposed();
@@ -291,7 +340,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
         if (_isDisposed) return;
         try
         {
-            StopPolling();
+            StopReceiveLoop();
             if (_fd >= 0)
                 Libc.close(_fd);
         }
@@ -312,21 +361,34 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
     {
         add
         {
+            bool needStart = false;
             lock (_evtGate)
             {
+                var before = _frameReceived;
                 _frameReceived += value;
-                _subscriberCount++;
-                StartPollingIfNeeded();
+                if (!ReferenceEquals(before, _frameReceived))
+                {
+                    Interlocked.Increment(ref _subscriberCount);
+                    needStart = (before == null) && Volatile.Read(ref _asyncConsumerCount) == 0;
+                }
             }
+            if (needStart) StartReceiveLoopIfNeeded();
         }
         remove
         {
+            bool needStop = false;
             lock (_evtGate)
             {
+                var before = _frameReceived;
                 _frameReceived -= value;
-                _subscriberCount = Math.Max(0, _subscriberCount - 1);
-                if (_subscriberCount == 0) StopPolling();
+                if (!ReferenceEquals(before, _frameReceived))
+                {
+                    var now = Interlocked.Decrement(ref _subscriberCount);
+                    if (now == 0 && Volatile.Read(ref _asyncConsumerCount) == 0)
+                        needStop = true;
+                }
             }
+            if (needStop) RequestStopReceiveLoop();
         }
     }
 
@@ -338,21 +400,33 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
             {
                 throw new CanChannelConfigurationException("ErrorOccurred subscription requires AllowErrorInfo=true in options.");
             }
+            bool needStart = false;
             //TODO:在未启用时抛出异常
             lock (_evtGate)
             {
+                var before = _errorOccurred;
                 _errorOccurred += value;
-                _subscriberCount++;
-                StartPollingIfNeeded();
+                if (!ReferenceEquals(before, _errorOccurred))
+                {
+                    Interlocked.Increment(ref _subscriberCount);
+                    if ((before == null) && Volatile.Read(ref _asyncConsumerCount) == 0)
+                        needStart = true;
+                }
             }
         }
         remove
         {
+            bool needStop = false;
             lock (_evtGate)
             {
+                var before = _errorOccurred;
                 _errorOccurred -= value;
-                _subscriberCount = Math.Max(0, _subscriberCount - 1);
-                if (_subscriberCount == 0) StopPolling();
+                if (!ReferenceEquals(before, _errorOccurred))
+                {
+                    var now = Interlocked.Decrement(ref _subscriberCount);
+                    if (now == 0 && Volatile.Read(ref _asyncConsumerCount) == 0)
+                        needStop = true;
+                }
             }
         }
     }
@@ -383,7 +457,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
         }
     }
 
-    private int CreateAndBind(string? ifName, int ifIndex, CanProtocolMode mode, bool preferKernelTs)
+    private int CreateAndBind(string? ifName, CanProtocolMode mode, bool preferKernelTs)
     {
         // create raw socket
         var fd = Libc.socket(Libc.AF_CAN, Libc.SOCK_RAW, Libc.CAN_RAW);
@@ -616,7 +690,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
     }
 
 
-    private void StartPollingIfNeeded()
+    private void StartReceiveLoopIfNeeded()
     {
         if (_epollTask is { IsCompleted: false } || _fd < 0)
             return;
@@ -626,9 +700,11 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
         {
             Libc.ThrowErrno("epoll_create1", "Failed to create epoll instance");
         }
-
+#if NET8_0_OR_GREATER
+        var ev = new Libc.epoll_event { events = Libc.EPOLLIN, data = _fd };
+#else
         var ev = new Libc.epoll_event { events = Libc.EPOLLIN, data = (IntPtr)_fd };
-
+#endif
         if (Libc.epoll_ctl(_epfd, Libc.EPOLL_CTL_ADD, _fd, ref ev) < 0)
         {
             Libc.ThrowErrno("epoll_ctl(EPOLL_CTL_ADD)", "failed to add fd to epoll instance");
@@ -643,7 +719,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
         CanKitLogger.LogDebug("SocketCAN: epoll loop started.");
     }
 
-    private void StopPolling()
+    private void StopReceiveLoop()
     {
         try
         {
@@ -666,6 +742,31 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
         }
     }
 
+    private void RequestStopReceiveLoop()
+    {
+        var delay = Options.ReceiveLoopStopDelayMs;
+        if (delay <= 0)
+        {
+            StopReceiveLoop();
+            return;
+        }
+        _stopDelayCts?.Cancel();
+        var cts = new CancellationTokenSource();
+        _stopDelayCts = cts;
+        Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(delay, cts.Token).ConfigureAwait(false);
+                if (Volatile.Read(ref _subscriberCount) == 0 && Volatile.Read(ref _asyncConsumerCount) == 0)
+                {
+                    StopReceiveLoop();
+                }
+            }
+            catch { /*Ignored*/ }
+        });
+    }
+
     private void EPollLoop(CancellationToken token)
     {
         while (!token.IsCancellationRequested)
@@ -685,52 +786,73 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
                         int bytes = 0;
                         if (Libc.ioctl(_fd, Libc.FIONREAD, ref bytes) != 0 || bytes <= 0)
                             break;
-
-                        // receive one frame via transceiver
-                        // Build software predicate once per drain cycle if needed
-                        var useSw = _useSoftwareFilter;
-                        var pred = _softwareFilterPredicate;
-                        foreach (var rec in _transceiver.Receive(this))
-                        {
-                            var frame = rec.CanFrame;
-                            bool isErr = frame is CanClassicFrame { IsErrorFrame: true } ||
-                                         frame is CanFdFrame { IsErrorFrame: true };
-
-                            if (isErr)
-                            {
-                                uint raw = frame.RawID;
-                                uint err = raw & Libc.CAN_ERR_MASK;
-                                var span = frame.Data.Span;
-                                var sysTs = Options.PreferKernelTimestamp && rec.ReceiveTimestamp != TimeSpan.Zero
-                                    ? new DateTimeOffset(new DateTime(1970,1,1,0,0,0, DateTimeKind.Utc))
-                                        .Add(rec.ReceiveTimestamp).UtcDateTime
-                                    : DateTime.Now;
-                                var info = new DefaultCanErrorInfo(
-                                    SocketCanErr.ToFrameErrorType(err, span),
-                                    SocketCanErr.ToControllerStatus(span),
-                                    SocketCanErr.ToProtocolViolationType(span),
-                                    SocketCanErr.ToErrorLocation(span),
-                                    sysTs,
-                                    err,
-                                    rec.ReceiveTimestamp,
-                                    SocketCanErr.InferFrameDirection(err, span),
-                                    SocketCanErr.ToArbitrationLostBit(err, span),
-                                    SocketCanErr.ToTransceiverStatus(span),
-                                    SocketCanErr.ToErrorCounters(err, span),
-                                    frame);
-
-                                _errorOccurred?.Invoke(this, info);
-                            }
-                            else
-                            {
-                                if (useSw && pred is not null && !pred(frame))
-                                    continue;
-                                _frameReceived?.Invoke(this, rec);
-                            }
-                        }
+                        DrainReceive();
                     }
                 }
             }
         }
     }
+
+    private void DrainReceive()
+    {
+        // receive one frame via transceiver
+        // Build software predicate once per drain cycle if needed
+        var useSw = _useSoftwareFilter;
+        var pred = _softwareFilterPredicate;
+
+        while (true)
+        {
+            bool any = false;
+            foreach (var rec in _transceiver.Receive(this, 16))
+            {
+                any = true;
+                var frame = rec.CanFrame;
+                bool isErr = frame is CanClassicFrame { IsErrorFrame: true } ||
+                             frame is CanFdFrame { IsErrorFrame: true };
+
+                if (isErr)
+                {
+                    uint raw = frame.RawID;
+                    uint err = raw & Libc.CAN_ERR_MASK;
+                    var span = frame.Data.Span;
+                    var sysTs = Options.PreferKernelTimestamp && rec.ReceiveTimestamp != TimeSpan.Zero
+                        ? new DateTimeOffset(new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc))
+                            .Add(rec.ReceiveTimestamp).UtcDateTime
+                        : DateTime.Now;
+                    var info = new DefaultCanErrorInfo(
+                        SocketCanErr.ToFrameErrorType(err, span),
+                        SocketCanErr.ToControllerStatus(span),
+                        SocketCanErr.ToProtocolViolationType(span),
+                        SocketCanErr.ToErrorLocation(span),
+                        sysTs,
+                        err,
+                        rec.ReceiveTimestamp,
+                        SocketCanErr.InferFrameDirection(err, span),
+                        SocketCanErr.ToArbitrationLostBit(err, span),
+                        SocketCanErr.ToTransceiverStatus(span),
+                        SocketCanErr.ToErrorCounters(err, span),
+                        frame);
+                    var errSnap = Volatile.Read(ref _errorOccurred);
+                    errSnap?.Invoke(this, info);
+                }
+                else
+                {
+                    if (useSw && pred is not null && !pred(frame))
+                        continue;
+                    var evSnap = Volatile.Read(ref _frameReceived);
+                    evSnap?.Invoke(this, rec);
+                    if (Volatile.Read(ref _asyncConsumerCount) > 0)
+                    {
+                        _asyncRx.Publish(rec);
+                    }
+                }
+            }
+
+            if (any)
+            {
+                break;
+            }
+        }
+    }
+
 }

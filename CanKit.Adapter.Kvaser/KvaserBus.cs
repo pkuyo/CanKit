@@ -19,6 +19,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, ICanApplier, I
     private readonly List<IDisposable> _owners = new();
 
     private readonly ITransceiver _transceiver;
+    private int _pending;
     private int _drainRunning;
     private EventHandler<CanReceiveData>? _frameReceived;
     private EventHandler<ICanErrorInfo>? _errorOccured;
@@ -26,12 +27,16 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, ICanApplier, I
     private Canlib.kvCallbackDelegate? _kvCallback;
     private bool _notifyActive;
     private int _subscriberCount;
+    private readonly AsyncFramePipe _asyncRx;
+    private int _asyncConsumerCount;
+    private CancellationTokenSource? _stopDelayCts;
 
     internal KvaserBus(IBusOptions options, ITransceiver transceiver)
     {
         Options = new KvaserBusRtConfigurator();
         Options.Init((KvaserBusOptions)options);
         _transceiver = transceiver;
+        _asyncRx = new AsyncFramePipe(Options.AsyncBufferCapacity > 0 ? Options.AsyncBufferCapacity : (int?)null);
 
         EnsureLibInitialized();
 
@@ -205,21 +210,34 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, ICanApplier, I
     {
         add
         {
+            bool needStart = false;
             lock (_evtGate)
             {
+                var before = _frameReceived;
                 _frameReceived += value;
-                _subscriberCount++;
-                StartNotifyIfNeeded();
+                if (!ReferenceEquals(before, _frameReceived))
+                {
+                    Interlocked.Increment(ref _subscriberCount);
+                    needStart = (before == null) && Volatile.Read(ref _asyncConsumerCount) == 0;
+                }
             }
+            if (needStart) StartReceiveLoopIfNeeded();
         }
         remove
         {
+            bool needStop = false;
             lock (_evtGate)
             {
+                var before = _frameReceived;
                 _frameReceived -= value;
-                _subscriberCount = Math.Max(0, _subscriberCount - 1);
-                if (_subscriberCount == 0) StopNotify();
+                if (!ReferenceEquals(before, _frameReceived))
+                {
+                    var now = Interlocked.Decrement(ref _subscriberCount);
+                    if (now == 0 && Volatile.Read(ref _asyncConsumerCount) == 0)
+                        needStop = true;
+                }
             }
+            if (needStop) RequestStopReceiveLoop();
         }
     }
 
@@ -227,21 +245,36 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, ICanApplier, I
     {
         add
         {
+            bool needStart = false;
             lock (_evtGate)
             {
+                //TODO:未启用故障帧时的异常
+                var before = _errorOccured;
                 _errorOccured += value;
-                _subscriberCount++;
-                StartNotifyIfNeeded();
+                if (!ReferenceEquals(before, _errorOccured))
+                {
+                    Interlocked.Increment(ref _subscriberCount);
+                    needStart = (before == null) && Volatile.Read(ref _asyncConsumerCount) == 0;
+                }
             }
+            if (needStart) StartReceiveLoopIfNeeded();
         }
         remove
         {
+            bool needStop = false;
             lock (_evtGate)
             {
+                //TODO:未启用故障帧时的异常
+                var before = _errorOccured;
                 _errorOccured -= value;
-                _subscriberCount = Math.Max(0, _subscriberCount - 1);
-                if (_subscriberCount == 0) StopNotify();
+                if (!ReferenceEquals(before, _errorOccured))
+                {
+                    var now = Interlocked.Decrement(ref _subscriberCount);
+                    if (now == 0 && Volatile.Read(ref _asyncConsumerCount) == 0)
+                        needStop = true;
+                }
             }
+            if (needStop) RequestStopReceiveLoop();
         }
     }
 
@@ -265,7 +298,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, ICanApplier, I
     {
         if (_isDisposed) return;
         _isDisposed = true;
-        StopNotify();
+        StopReceiveLoop();
         try { _ = Canlib.canBusOff(_handle); } catch { }
         try { _ = Canlib.canClose(_handle); } catch { }
         foreach (var o in _owners) { try { o.Dispose(); } catch { } }
@@ -402,7 +435,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, ICanApplier, I
         if (_isDisposed) throw new ObjectDisposedException(GetType().FullName);
     }
 
-    private void StartNotifyIfNeeded()
+    private void StartReceiveLoopIfNeeded()
     {
         if (_notifyActive) return;
         _kvCallback ??= KvNotifyCallback;
@@ -412,7 +445,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, ICanApplier, I
         _notifyActive = true;
     }
 
-    private void StopNotify()
+    private void StopReceiveLoop()
     {
         if (!_notifyActive) return;
         try
@@ -428,19 +461,64 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, ICanApplier, I
         }
     }
 
+    private void RequestStopReceiveLoop()
+    {
+        var delay = Options.ReceiveLoopStopDelayMs;
+        if (delay <= 0)
+        {
+            StopReceiveLoop();
+            return;
+        }
+        _stopDelayCts?.Cancel();
+        var cts = new CancellationTokenSource();
+        _stopDelayCts = cts;
+        Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(delay, cts.Token).ConfigureAwait(false);
+                if (Volatile.Read(ref _subscriberCount) == 0 && Volatile.Read(ref _asyncConsumerCount) == 0)
+                {
+                    StopReceiveLoop();
+                }
+            }
+            catch { }
+        });
+    }
+
     private void KvNotifyCallback(int handle, IntPtr context, int notifyEvent)
     {
-        // Sanity checks
         if (handle != _handle) return;
         if (Volatile.Read(ref _subscriberCount) <= 0) return;
 
-        // Debounce and drain on thread-pool to avoid heavy work in callback
+
+        Interlocked.Increment(ref _pending);
+
         if (Interlocked.Exchange(ref _drainRunning, 1) == 0)
         {
             Task.Run(() =>
             {
-                try { DrainReceive(); }
-                finally { Volatile.Write(ref _drainRunning, 0); }
+                try
+                {
+                    while (true)
+                    {
+                        Interlocked.Exchange(ref _pending, 0);
+                        DrainReceive();
+
+                        if (Interlocked.Exchange(ref _pending, 0) == 0)
+                            break;
+                    }
+                }
+                finally
+                {
+                    Volatile.Write(ref _drainRunning, 0);
+                    // 退出瞬间若又来了通知，确保能重新排程
+                    if (Volatile.Read(ref _pending) > 0 &&
+                        Interlocked.Exchange(ref _drainRunning, 1) == 0)
+                    {
+                        Task.Run(() => KvNotifyCallback(_handle, IntPtr.Zero, 0));
+                    }
+                }
             });
         }
     }
@@ -484,8 +562,52 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, ICanApplier, I
                     }
                 }
                 _frameReceived?.Invoke(this, rec);
+                if (Volatile.Read(ref _asyncConsumerCount) > 0)
+                    _asyncRx.Publish(rec);
             }
             if (!any) break;
         }
     }
+
+    public Task<uint> TransmitAsync(IEnumerable<CanTransmitData> frames, int timeOut = 0, CancellationToken cancellationToken = default)
+        => Task.Run(() => Transmit(frames, timeOut), cancellationToken);
+
+    public Task<IReadOnlyList<CanReceiveData>> ReceiveAsync(uint count = 1, int timeOut = 0, CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        Interlocked.Increment(ref _subscriberCount);
+        Interlocked.Increment(ref _asyncConsumerCount);
+        StartReceiveLoopIfNeeded();
+        return _asyncRx.ReceiveBatchAsync(count, timeOut, cancellationToken)
+            .ContinueWith(t =>
+            {
+                var remAsync = Interlocked.Decrement(ref _asyncConsumerCount);
+                var rem = Interlocked.Decrement(ref _subscriberCount);
+                if (rem == 0 && remAsync == 0) RequestStopReceiveLoop();
+                return t.Result;
+            }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+    }
+
+#if NET8_0_OR_GREATER
+    public async IAsyncEnumerable<CanReceiveData> GetFramesAsync([System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        Interlocked.Increment(ref _subscriberCount);
+        Interlocked.Increment(ref _asyncConsumerCount);
+        StartReceiveLoopIfNeeded();
+        try
+        {
+            await foreach (var item in _asyncRx.ReadAllAsync(cancellationToken))
+            {
+                yield return item;
+            }
+        }
+        finally
+        {
+            var remAsync = Interlocked.Decrement(ref _asyncConsumerCount);
+            var rem = Interlocked.Decrement(ref _subscriberCount);
+            if (rem == 0 && remAsync == 0) RequestStopReceiveLoop();
+        }
+    }
+#endif
 }

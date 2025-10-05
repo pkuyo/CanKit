@@ -35,6 +35,9 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
 
     private int _subscriberCount;
     private bool _useSoftwareFilter;
+    private readonly AsyncFramePipe _asyncRx;
+    private int _asyncConsumerCount;
+    private CancellationTokenSource? _stopDelayCts;
 
 
     internal PcanBus(IBusOptions options, ITransceiver transceiver)
@@ -42,6 +45,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
         Options = new PcanBusRtConfigurator();
         Options.Init((PcanBusOptions)options);
         _transceiver = transceiver;
+        _asyncRx = new AsyncFramePipe(Options.AsyncBufferCapacity > 0 ? Options.AsyncBufferCapacity : null);
 
         _handle = ParseHandle();
 
@@ -211,6 +215,48 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
         return _transceiver.Receive(this, count, timeOut);
     }
 
+    public Task<uint> TransmitAsync(IEnumerable<CanTransmitData> frames, int timeOut = 0, CancellationToken cancellationToken = default)
+        => Task.Run(() => Transmit(frames, timeOut), cancellationToken);
+
+    public Task<IReadOnlyList<CanReceiveData>> ReceiveAsync(uint count = 1, int timeOut = 0, CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        Interlocked.Increment(ref _subscriberCount);
+        Interlocked.Increment(ref _asyncConsumerCount);
+        StartReceiveLoopIfNeeded();
+        return _asyncRx.ReceiveBatchAsync(count, timeOut, cancellationToken)
+            .ContinueWith(t =>
+            {
+                var remAsync = Interlocked.Decrement(ref _asyncConsumerCount);
+                var rem = Interlocked.Decrement(ref _subscriberCount);
+                if (rem == 0 && remAsync == 0) RequestStopReceiveLoop();
+                return t.Result;
+            }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+    }
+
+#if NET8_0_OR_GREATER
+    public async IAsyncEnumerable<CanReceiveData> GetFramesAsync([System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        Interlocked.Increment(ref _subscriberCount);
+        Interlocked.Increment(ref _asyncConsumerCount);
+        StartReceiveLoopIfNeeded();
+        try
+        {
+            await foreach (var item in _asyncRx.ReadAllAsync(cancellationToken))
+            {
+                yield return item;
+            }
+        }
+        finally
+        {
+            var remAsync = Interlocked.Decrement(ref _asyncConsumerCount);
+            var rem = Interlocked.Decrement(ref _subscriberCount);
+            if (rem == 0 && remAsync == 0) RequestStopReceiveLoop();
+        }
+    }
+#endif
+
     public bool ReadErrorInfo(out ICanErrorInfo? errorInfo)
     {
         errorInfo = null;
@@ -231,7 +277,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
 
         try
         {
-            StopPolling();
+            StopReceiveLoop();
             _ = Api.Uninitialize(_handle);
         }
         finally
@@ -245,21 +291,34 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
     {
         add
         {
+            bool needStart = false;
             lock (_evtGate)
             {
+                var before = _frameReceived;
                 _frameReceived += value;
-                _subscriberCount++;
-                StartPollingIfNeeded();
+                if (!ReferenceEquals(before, _frameReceived))
+                {
+                    Interlocked.Increment(ref _subscriberCount);
+                    needStart = (before == null) && Volatile.Read(ref _asyncConsumerCount) == 0;
+                }
             }
+            if (needStart) StartReceiveLoopIfNeeded();
         }
         remove
         {
+            bool needStop = false;
             lock (_evtGate)
             {
+                var before = _frameReceived;
                 _frameReceived -= value;
-                _subscriberCount = Math.Max(0, _subscriberCount - 1);
-                if (_subscriberCount == 0) StopPolling();
+                if (!ReferenceEquals(before, _frameReceived))
+                {
+                    var now = Interlocked.Decrement(ref _subscriberCount);
+                    if (now == 0 && Volatile.Read(ref _asyncConsumerCount) == 0)
+                        needStop = true;
+                }
             }
+            if (needStop) RequestStopReceiveLoop();
         }
     }
 
@@ -267,23 +326,36 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
     {
         add
         {
+            bool needStart = false;
             lock (_evtGate)
             {
                 //TODO:未启用故障帧时的异常
+                var before = _errorOccured;
                 _errorOccured += value;
-                _subscriberCount++;
-                StartPollingIfNeeded();
+                if (!ReferenceEquals(before, _errorOccured))
+                {
+                    Interlocked.Increment(ref _subscriberCount);
+                    needStart = (before == null) && Volatile.Read(ref _asyncConsumerCount) == 0;
+                }
             }
+            if (needStart) StartReceiveLoopIfNeeded();
         }
         remove
         {
+            bool needStop = false;
             lock (_evtGate)
             {
                 //TODO:未启用故障帧时的异常
+                var before = _errorOccured;
                 _errorOccured -= value;
-                _subscriberCount = Math.Max(0, _subscriberCount - 1);
-                if (_subscriberCount == 0) StopPolling();
+                if (!ReferenceEquals(before, _errorOccured))
+                {
+                    var now = Interlocked.Decrement(ref _subscriberCount);
+                    if (now == 0 && Volatile.Read(ref _asyncConsumerCount) == 0)
+                        needStop = true;
+                }
             }
+            if (needStop) RequestStopReceiveLoop();
         }
     }
 
@@ -313,7 +385,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
     }
 
 
-    private void StartPollingIfNeeded()
+    private void StartReceiveLoopIfNeeded()
     {
         if (_pollTask != null) return;
         _pollCts = new CancellationTokenSource();
@@ -336,7 +408,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
         CanKitLogger.LogDebug("PCAN: Poll loop started.");
     }
 
-    private void StopPolling()
+    private void StopReceiveLoop()
     {
         try
         {
@@ -353,7 +425,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
             _pollCts?.Cancel();
             _pollTask?.Wait(200);
         }
-        catch { }
+        catch { /*ignore*/ }
         finally
         {
             _pollTask = null;
@@ -361,6 +433,31 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
             _pollCts = null;
             CanKitLogger.LogDebug("PCAN: Poll loop stopped.");
         }
+    }
+
+    private void RequestStopReceiveLoop()
+    {
+        var delay = Options.ReceiveLoopStopDelayMs;
+        if (delay <= 0)
+        {
+            StopReceiveLoop();
+            return;
+        }
+        _stopDelayCts?.Cancel();
+        var cts = new CancellationTokenSource();
+        _stopDelayCts = cts;
+        Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(delay, cts.Token).ConfigureAwait(false);
+                if (Volatile.Read(ref _subscriberCount) == 0 && Volatile.Read(ref _asyncConsumerCount) == 0)
+                {
+                    StopReceiveLoop();
+                }
+            }
+            catch { /*ignore*/ }
+        });
     }
 
     private void PollLoop(CancellationToken token)
@@ -382,45 +479,50 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
                 continue;
             }
 
-            var n = 0;
-            while (true)
+            DrainReceive();
+        }
+    }
+
+
+    private void DrainReceive()
+    {
+        while (true)
+        {
+            bool any = false;
+            foreach (var rec in _transceiver.Receive(this, 16))
             {
-                n = 0;
-                foreach (var rec in _transceiver.Receive(this, 16))
+                any = true;
+                if (rec.CanFrame.IsErrorFrame)
                 {
-                    if (rec.CanFrame.IsErrorFrame)
-                    {
-                        var raw = rec.CanFrame.RawID;
-                        var span = rec.CanFrame.Data.Span;
-                        var info = new DefaultCanErrorInfo(
-                            PcanErr.ToFrameErrorType(raw, span),
-                            CanKitExtension.ToControllerStatus(span[2], span[3]),
-                            PcanErr.ToProtocolViolationType(raw, span),
-                            PcanErr.ToErrorLocation(span),
-                            DateTime.Now,
-                            raw,
-                            rec.ReceiveTimestamp,
-                            PcanErr.ToDirection(span),
-                            PcanErr.ToArbitrationLostBit(raw, span),
-                            PcanErr.ToTransceiverStatus(span),
-                            PcanErr.ToErrorCounters(span),
-                            rec.CanFrame);
-                        _errorOccured?.Invoke(this, info);
-                        continue;
-                    }
-
-                    var pred = _softwareFilterPredicate;
-                    if (!_useSoftwareFilter || pred is null || !pred(rec.CanFrame))
-                    {
-                        _frameReceived?.Invoke(this, rec);
-                    }
-
-                    n++;
+                    var raw = rec.CanFrame.RawID;
+                    var span = rec.CanFrame.Data.Span;
+                    var info = new DefaultCanErrorInfo(
+                        PcanErr.ToFrameErrorType(raw, span),
+                        CanKitExtension.ToControllerStatus(span[2], span[3]),
+                        PcanErr.ToProtocolViolationType(raw, span),
+                        PcanErr.ToErrorLocation(span),
+                        DateTime.Now,
+                        raw,
+                        rec.ReceiveTimestamp,
+                        PcanErr.ToDirection(span),
+                        PcanErr.ToArbitrationLostBit(raw, span),
+                        PcanErr.ToTransceiverStatus(span),
+                        PcanErr.ToErrorCounters(span),
+                        rec.CanFrame);
+                    _errorOccured?.Invoke(this, info);
+                    continue;
                 }
 
-                if (n != 0)
-                    break;
+                var pred = _softwareFilterPredicate;
+                if (!_useSoftwareFilter || pred is null || !pred(rec.CanFrame))
+                {
+                    _frameReceived?.Invoke(this, rec);
+                    if (Volatile.Read(ref _asyncConsumerCount) > 0)
+                        _asyncRx.Publish(rec);
+                }
             }
+
+            if (!any) break;
         }
     }
 
@@ -512,14 +614,14 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
 
     private PcanChannel ParseHandle()
     {
-        var s = Options.ChannelName?.Trim();
+        var s = Options.ChannelName!.Trim();
         if (string.IsNullOrWhiteSpace(s))
         {
             throw new CanBusCreationException("PCAN channel must not be empty.");
         }
 
         // NONE / 0
-        if (s!.Equals("PCAN_NONEBUS", StringComparison.OrdinalIgnoreCase) ||
+        if (s.Equals("PCAN_NONEBUS", StringComparison.OrdinalIgnoreCase) ||
             s.Equals("NONEBUS", StringComparison.OrdinalIgnoreCase) ||
             s.Equals("NONE", StringComparison.OrdinalIgnoreCase) ||
             s == "0")

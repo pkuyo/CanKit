@@ -26,6 +26,8 @@ public sealed class KvaserBusOptions(ICanModelProvider provider) : IBusOptions
     public CanFilter Filter { get; set; } = new();
     public CanFeature EnabledSoftwareFallback { get; set; }
     public bool AllowErrorInfo { get; set; }
+    public int AsyncBufferCapacity { get; set; } = 0;
+    public int ReceiveLoopStopDelayMs { get; set; } = 200;
 
     public void Apply(ICanApplier applier, bool force = false) => applier.Apply(this);
 }
@@ -50,9 +52,19 @@ public sealed class KvaserBusRtConfigurator
 {
     public bool AcceptVirtual => Options.AcceptVirtual;
     public int TimerScaleMicroseconds => Options.TimerScaleMicroseconds;
+    public int AsyncBufferCapacity => Options.AsyncBufferCapacity;
+    public int ReceiveLoopStopDelayMs => Options.ReceiveLoopStopDelayMs;
     public KvaserBusRtConfigurator SetTimerScaleMicroseconds(int microseconds)
     {
         Options.TimerScaleMicroseconds = microseconds;
         return this;
+    }
+    public KvaserBusRtConfigurator SetAsyncBufferCapacity(int capacity)
+    {
+        Options.AsyncBufferCapacity = capacity; return this;
+    }
+    public KvaserBusRtConfigurator SetReceiveLoopStopDelay(int milliseconds)
+    {
+        Options.ReceiveLoopStopDelayMs = System.Math.Max(0, milliseconds); return this;
     }
 }

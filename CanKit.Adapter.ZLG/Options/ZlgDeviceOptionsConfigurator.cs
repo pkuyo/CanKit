@@ -103,4 +103,15 @@ public sealed class ZlgBusRtConfigurator
         Options.PollingInterval = newPollingInterval;
         return this;
     }
+
+    public int AsyncBufferCapacity => Options.AsyncBufferCapacity;
+    public int ReceiveLoopStopDelayMs => Options.ReceiveLoopStopDelayMs;
+    public ZlgBusRtConfigurator SetAsyncBufferCapacity(int capacity)
+    {
+        Options.AsyncBufferCapacity = capacity; return this;
+    }
+    public ZlgBusRtConfigurator SetReceiveLoopStopDelay(int milliseconds)
+    {
+        Options.ReceiveLoopStopDelayMs = System.Math.Max(0, milliseconds); return this;
+    }
 }

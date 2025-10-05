@@ -20,6 +20,8 @@ public sealed class PcanBusOptions(ICanModelProvider provider) : IBusOptions
     public CanFilter Filter { get; set; } = new();
     public CanFeature EnabledSoftwareFallback { get; set; }
     public bool AllowErrorInfo { get; set; }
+    public int AsyncBufferCapacity { get; set; } = 0;
+    public int ReceiveLoopStopDelayMs { get; set; } = 200;
 
     public void Apply(ICanApplier applier, bool force = false) => applier.Apply(this);
 }
@@ -28,4 +30,16 @@ public sealed class PcanBusInitConfigurator
     : BusInitOptionsConfigurator<PcanBusOptions, PcanBusInitConfigurator>;
 
 public sealed class PcanBusRtConfigurator
-    : BusRtOptionsConfigurator<PcanBusOptions>;
+    : BusRtOptionsConfigurator<PcanBusOptions>
+{
+    public int AsyncBufferCapacity => Options.AsyncBufferCapacity;
+    public int ReceiveLoopStopDelayMs => Options.ReceiveLoopStopDelayMs;
+    public PcanBusRtConfigurator SetAsyncBufferCapacity(int capacity)
+    {
+        Options.AsyncBufferCapacity = capacity; return this;
+    }
+    public PcanBusRtConfigurator SetReceiveLoopStopDelay(int milliseconds)
+    {
+        Options.ReceiveLoopStopDelayMs = System.Math.Max(0, milliseconds); return this;
+    }
+}

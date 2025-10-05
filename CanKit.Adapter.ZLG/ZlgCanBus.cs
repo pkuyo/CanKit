@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
+using System.Threading.Tasks;
 using CanKit.Adapter.ZLG.Definitions;
 using CanKit.Adapter.ZLG.Diagnostics;
 using CanKit.Adapter.ZLG.Native;
@@ -13,6 +14,7 @@ using CanKit.Core.Abstractions;
 using CanKit.Core.Definitions;
 using CanKit.Core.Diagnostics;
 using CanKit.Core.Exceptions;
+using CanKit.Core.Utils;
 
 namespace CanKit.Adapter.ZLG
 {
@@ -44,6 +46,9 @@ namespace CanKit.Adapter.ZLG
 
         private int _subscriberCount;
         private bool _useSoftwareFilter;
+        private readonly AsyncFramePipe _asyncRx;
+        private int _asyncConsumerCount;
+        private CancellationTokenSource? _stopDelayCts;
 
         internal ZlgCanBus(ZlgCanDevice device, IBusOptions options, ITransceiver transceiver)
         {
@@ -51,6 +56,7 @@ namespace CanKit.Adapter.ZLG
 
             Options = new ZlgBusRtConfigurator();
             Options.Init((ZlgBusOptions)options);
+            _asyncRx = new AsyncFramePipe(Options.AsyncBufferCapacity > 0 ? Options.AsyncBufferCapacity : (int?)null);
             options.Apply(this, true);
             ZLGCAN.ZCAN_SetValue(_devicePtr, options.ChannelIndex+"clear_auto_send", "0");
             var provider = Options.Provider as ZlgCanProvider;
@@ -219,7 +225,7 @@ namespace CanKit.Adapter.ZLG
             finally
             {
                 _isDisposed = true;
-                try { _owner?.Dispose(); } catch { }
+                try { _owner?.Dispose(); } catch { /*Ignored*/ }
                 _owner = null;
             }
 
@@ -233,21 +239,34 @@ namespace CanKit.Adapter.ZLG
         {
             add
             {
+                bool needStart = false;
                 lock (_evtGate)
                 {
+                    var before = _frameReceived;
                     _frameReceived += value;
-                    _subscriberCount++;
-                    CheckSubscribers(true);
+                    if (!ReferenceEquals(before, _frameReceived))
+                    {
+                        Interlocked.Increment(ref _subscriberCount);
+                        needStart = (before == null) && Volatile.Read(ref _asyncConsumerCount) == 0;
+                    }
                 }
+                if (needStart) StartReceiveLoopIfNeeded();
             }
             remove
             {
+                bool needStop = false;
                 lock (_evtGate)
                 {
+                    var before = _frameReceived;
                     _frameReceived -= value;
-                    _subscriberCount = Math.Max(0, _subscriberCount - 1);
-                    CheckSubscribers(false);
+                    if (!ReferenceEquals(before, _frameReceived))
+                    {
+                        var now = Interlocked.Decrement(ref _subscriberCount);
+                        if (now == 0 && Volatile.Read(ref _asyncConsumerCount) == 0)
+                            needStop = true;
+                    }
                 }
+                if (needStop) RequestStopReceiveLoop();
             }
         }
 
@@ -256,23 +275,35 @@ namespace CanKit.Adapter.ZLG
             add
             {
                 //TODO:未启用故障帧时的异常
+                bool needStart = false;
                 lock (_evtGate)
                 {
+                    var before = _errorOccurred;
                     _errorOccurred += value;
-                    _subscriberCount++;
-                    CheckSubscribers(true);
+                    if (!ReferenceEquals(before, _errorOccurred))
+                    {
+                        Interlocked.Increment(ref _subscriberCount);
+                        needStart = (before == null) && Volatile.Read(ref _asyncConsumerCount) == 0;
+                    }
                 }
-
+                if (needStart) StartReceiveLoopIfNeeded();
             }
             remove
             {
                 //TODO:未启用故障帧时的异常
+                bool needStop = false;
                 lock (_evtGate)
                 {
+                    var before = _errorOccurred;
                     _errorOccurred -= value;
-                    _subscriberCount--;
-                    CheckSubscribers(false);
+                    if (!ReferenceEquals(before, _errorOccurred))
+                    {
+                        var now = Interlocked.Decrement(ref _subscriberCount);
+                        if (now == 0 && Volatile.Read(ref _asyncConsumerCount) == 0)
+                            needStop = true;
+                    }
                 }
+                if (needStop) RequestStopReceiveLoop();
             }
         }
 
@@ -489,22 +520,22 @@ namespace CanKit.Adapter.ZLG
                 throw new CanBusDisposedException();
         }
 
-        private void StartPollingIfNeeded()
+        private void StartReceiveLoopIfNeeded()
         {
             if (_pollTask is { IsCompleted: false }) return;
 
             _pollCts = new CancellationTokenSource();
             var token = _pollCts.Token;
 
-            _pollTask = System.Threading.Tasks.Task.Factory.StartNew(
+            _pollTask = Task.Factory.StartNew(
                 () => PollLoop(token),
                 token,
-                System.Threading.Tasks.TaskCreationOptions.LongRunning,
-                System.Threading.Tasks.TaskScheduler.Default
+                TaskCreationOptions.LongRunning,
+                TaskScheduler.Default
             );
         }
 
-        private void StopPolling()
+        private void StopReceiveLoop()
         {
             try
             {
@@ -518,6 +549,31 @@ namespace CanKit.Adapter.ZLG
                 _pollCts?.Dispose();
                 _pollCts = null;
             }
+        }
+
+        private void RequestStopReceiveLoop()
+        {
+            var delay = Options.ReceiveLoopStopDelayMs;
+            if (delay <= 0)
+            {
+                StopReceiveLoop();
+                return;
+            }
+            _stopDelayCts?.Cancel();
+            var cts = new CancellationTokenSource();
+            _stopDelayCts = cts;
+            Task.Run(async () =>
+            {
+                try
+                {
+                    await Task.Delay(delay, cts.Token).ConfigureAwait(false);
+                    if (Volatile.Read(ref _subscriberCount) == 0 && Volatile.Read(ref _asyncConsumerCount) == 0)
+                    {
+                        StopReceiveLoop();
+                    }
+                }
+                catch { /*Ignored*/ }
+            });
         }
 
         private void PollLoop(CancellationToken token)
@@ -547,7 +603,12 @@ namespace CanKit.Adapter.ZLG
                                 {
                                     continue;
                                 }
-                                _frameReceived?.Invoke(this, frame);
+
+                                var evSnap = Volatile.Read(ref _frameReceived);
+                                evSnap?.Invoke(this, frame);
+
+                                if (Volatile.Read(ref _asyncConsumerCount) > 0)
+                                    _asyncRx.Publish(frame);
                             }
                             catch (Exception ex)
                             {
@@ -559,10 +620,10 @@ namespace CanKit.Adapter.ZLG
                     {
                         Thread.Sleep(Options.PollingInterval);
                     }
-
-                    if (_errorOccurred != null && ReadErrorInfo(out var errInfo))
+                    var errSnap = Volatile.Read(ref _errorOccurred);
+                    if (errSnap != null && ReadErrorInfo(out var errInfo))
                     {
-                        _errorOccurred.Invoke(this, errInfo!);
+                        errSnap.Invoke(this, errInfo!);
                     }
                 }
                 catch (ObjectDisposedException)
@@ -579,20 +640,85 @@ namespace CanKit.Adapter.ZLG
             }
         }
 
-        private void CheckSubscribers(bool isIncrease)
+        public Task<uint> TransmitAsync(IEnumerable<CanTransmitData> frames, int timeOut = 0, System.Threading.CancellationToken cancellationToken = default)
+            => Task.Run(() => Transmit(frames, timeOut), cancellationToken);
+
+        public Task<IReadOnlyList<CanReceiveData>> ReceiveAsync(uint count = 1, int timeOut = 0, System.Threading.CancellationToken cancellationToken = default)
         {
-            if (isIncrease)
-            {
-                if (_subscriberCount == 1)
+            ThrowIfDisposed();
+            Interlocked.Increment(ref _subscriberCount);
+            Interlocked.Increment(ref _asyncConsumerCount);
+            CheckSubscribers(true);
+            return _asyncRx.ReceiveBatchAsync(count, timeOut, cancellationToken)
+                .ContinueWith(t =>
                 {
-                    StartPollingIfNeeded();
+                    var remAsync = Interlocked.Decrement(ref _asyncConsumerCount);
+                    CheckSubscribers(false, true);
+                    return t.Result;
+                }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+        }
+
+#if NET8_0_OR_GREATER
+        public async IAsyncEnumerable<CanReceiveData> GetFramesAsync([System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            ThrowIfDisposed();
+            Interlocked.Increment(ref _asyncConsumerCount);
+            CheckSubscribers(true, true);
+            try
+            {
+                await foreach (var item in _asyncRx.ReadAllAsync(cancellationToken))
+                {
+                    yield return item;
+                }
+            }
+            finally
+            {
+                var remAsync = Interlocked.Decrement(ref _asyncConsumerCount);
+                var rem = Interlocked.Decrement(ref _subscriberCount);
+                CheckSubscribers(false);
+            }
+        }
+#endif
+
+        private void CheckSubscribers(bool isIncrease, bool step = false)
+        {
+            if (step)
+            {
+                if (isIncrease)
+                {
+                    if (Interlocked.Increment(ref _subscriberCount) == 1)
+                    {
+                        StartReceiveLoopIfNeeded();
+                    }
+                }
+                else
+                {
+                    var now = Interlocked.Decrement(ref _subscriberCount);
+                    if (now < 0)
+                    {
+                        Interlocked.Exchange(ref _subscriberCount, 0);
+                        now = 0;
+                    }
+
+                    if (now == 0 && Volatile.Read(ref _asyncConsumerCount) == 0)
+                        RequestStopReceiveLoop();
                 }
             }
             else
             {
-                if (_subscriberCount == 0)
+                if (isIncrease)
                 {
-                    StopPolling();
+                    if (Volatile.Read(ref _subscriberCount) == 1)
+                    {
+                        StartReceiveLoopIfNeeded();
+                    }
+                }
+                else
+                {
+                    if (Volatile.Read(ref _subscriberCount) == 0 && Volatile.Read(ref _asyncConsumerCount) == 0)
+                    {
+                        RequestStopReceiveLoop();
+                    }
                 }
             }
         }
