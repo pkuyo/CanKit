@@ -1,3 +1,4 @@
+using CanKit.Adapter.Kvaser.Definitions;
 using CanKit.Core.Abstractions;
 using CanKit.Core.Attributes;
 using CanKit.Core.Definitions;
@@ -24,10 +25,10 @@ public sealed class KvaserFactory : ICanFactory
         {
             CanProtocolMode.Can20 => new Transceivers.KvaserClassicTransceiver(),
             CanProtocolMode.CanFd => new Transceivers.KvaserFdTransceiver(),
-            _ => throw new CanFeatureNotSupportedException(CanFeature.CanFd, CanFeature.CanClassic)
+            _ => throw new Exception() //TODO:返回更适合的错误类型
         };
     }
 
-    public bool Support(DeviceType deviceType) => true;
+    public bool Support(DeviceType deviceType) => deviceType.Equals(KvaserDeviceType.CANlib);
 }
 

@@ -53,7 +53,7 @@ internal static class KvaserEndpoint
         try { Canlib.canInitializeLibrary(); } catch { }
         try
         {
-            if (Canlib.canGetNumberOfChannels(out int n) == Canlib.canStatus.canOK)
+            if (Canlib.canGetNumberOfChannels(out var n) == Canlib.canStatus.canOK)
             {
                 for (int i = 0; i < n; i++)
                 {

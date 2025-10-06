@@ -48,23 +48,9 @@ public sealed class KvaserBusInitConfigurator
 }
 
 public sealed class KvaserBusRtConfigurator
-    : BusRtOptionsConfigurator<KvaserBusOptions>
+    : BusRtOptionsConfigurator<KvaserBusOptions, KvaserBusRtConfigurator>
 {
     public bool AcceptVirtual => Options.AcceptVirtual;
     public int TimerScaleMicroseconds => Options.TimerScaleMicroseconds;
-    public int AsyncBufferCapacity => Options.AsyncBufferCapacity;
-    public int ReceiveLoopStopDelayMs => Options.ReceiveLoopStopDelayMs;
-    public KvaserBusRtConfigurator SetTimerScaleMicroseconds(int microseconds)
-    {
-        Options.TimerScaleMicroseconds = microseconds;
-        return this;
-    }
-    public KvaserBusRtConfigurator SetAsyncBufferCapacity(int capacity)
-    {
-        Options.AsyncBufferCapacity = capacity; return this;
-    }
-    public KvaserBusRtConfigurator SetReceiveLoopStopDelay(int milliseconds)
-    {
-        Options.ReceiveLoopStopDelayMs = System.Math.Max(0, milliseconds); return this;
-    }
+
 }

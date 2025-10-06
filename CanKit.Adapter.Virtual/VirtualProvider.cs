@@ -1,18 +1,18 @@
-using CanKit.Adapter.PCAN.Definitions;
+using CanKit.Adapter.Virtual.Definitions;
 using CanKit.Core.Abstractions;
 using CanKit.Core.Definitions;
 using CanKit.Core.Registry;
 
-namespace CanKit.Adapter.PCAN;
+namespace CanKit.Adapter.Virtual;
 
-public sealed class PcanProvider : ICanModelProvider
+public sealed class VirtualProvider : ICanModelProvider
 {
-    public DeviceType DeviceType => PcanDeviceType.PCANBasic;
+    public DeviceType DeviceType => VirtualDeviceType.Virtual;
 
-    // FD depends on hardware (sniffed at runtime).
-    public CanFeature StaticFeatures => CanFeature.CanClassic | CanFeature.CanFd | CanFeature.Filters;
+    public CanFeature StaticFeatures => CanFeature.CanClassic | CanFeature.CanFd | CanFeature.Filters |
+                                        CanFeature.ErrorFrame | CanFeature.ErrorCounters | CanFeature.CyclicTx;
 
-    public ICanFactory Factory => CanRegistry.Registry.Factory("PCAN");
+    public ICanFactory Factory => CanRegistry.Registry.Factory("Virtual");
 
     public (IDeviceOptions, IDeviceInitOptionsConfigurator) GetDeviceOptions()
     {
@@ -24,15 +24,16 @@ public sealed class PcanProvider : ICanModelProvider
 
     public (IBusOptions, IBusInitOptionsConfigurator) GetChannelOptions()
     {
-        var options = new PcanBusOptions(this)
+        var options = new VirtualBusOptions(this)
         {
             BitTiming = CanBusTiming.ClassicDefault(),
             ProtocolMode = CanProtocolMode.Can20,
             WorkMode = ChannelWorkMode.Normal,
-            ChannelName = $"PCAN_USBBUS1"
+            ChannelName = $"virtual0"
         };
-        var cfg = new PcanBusInitConfigurator();
+        var cfg = new VirtualBusInitConfigurator();
         cfg.Init(options);
         return (options, cfg);
     }
 }
+

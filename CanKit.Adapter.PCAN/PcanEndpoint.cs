@@ -30,14 +30,6 @@ internal static class PcanEndpoint
                 ch = v!;
         }
 
-        if (string.IsNullOrWhiteSpace(ch))
-        {
-            // fallback to index -> USBBUS{index+1}
-            int index = 0;
-            if (int.TryParse(ep.Path, out var idx)) index = idx;
-            ch = $"PCAN_USBBUS{Math.Max(1, index + 1)}";
-        }
-
         return CanBus.Open<PcanBus, PcanBusOptions, PcanBusInitConfigurator>(
             PcanDeviceType.PCANBasic,
             cfg =>

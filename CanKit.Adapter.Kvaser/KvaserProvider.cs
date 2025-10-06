@@ -9,7 +9,7 @@ public sealed class KvaserProvider : ICanModelProvider
 {
     public DeviceType DeviceType => KvaserDeviceType.CANlib;
 
-    public CanFeature StaticFeatures => CanFeature.CanClassic | CanFeature.Filters | CanFeature.ErrorCounters;
+    public CanFeature StaticFeatures => CanFeature.CanClassic | CanFeature.CanFd | CanFeature.Filters | CanFeature.ErrorCounters;
 
     public ICanFactory Factory => CanRegistry.Registry.Factory("KVASER");
 

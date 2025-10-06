@@ -130,5 +130,12 @@ namespace CanKit.Core.Abstractions
         /// Enable error information monitoring  (启用错误信息监听)。
         /// </summary>
         bool AllowErrorInfo { get; set; }
+
+
+        //TODO:注释
+        int AsyncBufferCapacity { get; set; }
+
+        //TODO:注释
+        int ReceiveLoopStopDelayMs { get; set; }
     }
 }

@@ -6,10 +6,8 @@ namespace CanKit.Adapter.SocketCAN;
 internal static class SocketCanErr
 {
 
-    public static uint RawSocketCanErrMask(this ICanErrorInfo e)
-        => (e?.Frame is null) ? 0u : (e.Frame.RawID & Libc.CAN_ERR_MASK);
 
-    public static FrameErrorType ToFrameErrorType(uint errMask, ReadOnlySpan<byte> data)
+    public static FrameErrorType ToFrameErrorType(uint errMask)
     {
         FrameErrorType t = FrameErrorType.None;
 

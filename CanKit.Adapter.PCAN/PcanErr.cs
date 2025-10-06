@@ -102,11 +102,4 @@ public static class PcanErr
             ReceiveErrorCounter = data[3]
         };
     }
-
-    public static byte? ToArbitrationLostBit(uint id, ReadOnlySpan<byte> data)
-    {
-        // PCAN Basic does not provide arbitration lost bit position in this mapping
-        // Return null to indicate unknown
-        return null;
-    }
 }

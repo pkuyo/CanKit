@@ -132,7 +132,6 @@ namespace CanKit.Adapter.ZLG
         public void ClearBuffer()
         {
             ThrowIfDisposed();
-
             ZlgErr.ThrowIfError(ZLGCAN.ZCAN_ClearBuffer(_nativeHandle), nameof(ZLGCAN.ZCAN_ClearBuffer), _nativeHandle);
         }
 
@@ -573,7 +572,7 @@ namespace CanKit.Adapter.ZLG
                     }
                 }
                 catch { /*Ignored*/ }
-            });
+            }, cts.Token);
         }
 
         private void PollLoop(CancellationToken token)

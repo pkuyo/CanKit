@@ -36,7 +36,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, ICanApplier, I
         Options = new KvaserBusRtConfigurator();
         Options.Init((KvaserBusOptions)options);
         _transceiver = transceiver;
-        _asyncRx = new AsyncFramePipe(Options.AsyncBufferCapacity > 0 ? Options.AsyncBufferCapacity : (int?)null);
+        _asyncRx = new AsyncFramePipe(Options.AsyncBufferCapacity > 0 ? Options.AsyncBufferCapacity : null);
 
         EnsureLibInitialized();
 
@@ -111,7 +111,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, ICanApplier, I
             var mi = typeof(Canlib).GetMethod("kvSetTimerScale", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
             if (mi != null)
             {
-                var stObj = mi.Invoke(null, new object[] { _handle, kc.TimerScaleMicroseconds });
+                var stObj = mi.Invoke(null, [_handle, kc.TimerScaleMicroseconds]);
                 if (stObj is Canlib.canStatus st1 && st1 != Canlib.canStatus.canOK)
                 {
                     CanKitLogger.LogWarning($"Kvaser: kvSetTimerScale failed: {st1}");
@@ -139,6 +139,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, ICanApplier, I
         }
     }
 
+    //Ignored for canlib
     public CanOptionType ApplierStatus => CanOptionType.Runtime;
 
 
@@ -196,11 +197,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, ICanApplier, I
     }
 
     public bool ReadErrorInfo(out ICanErrorInfo? errorInfo)
-    {
-        // Kvaser can report error frames in stream; surface as ErrorOccurred not implemented
-        errorInfo = null;
-        return false;
-    }
+        => throw new NotSupportedException("Directly read error information not supported. Use ErrorOccured to receive error frames instead.");
 
     IBusRTOptionsConfigurator ICanBus.Options => Options;
 
@@ -290,7 +287,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, ICanApplier, I
             if ((status & Canlib.canSTAT_ERROR_PASSIVE) != 0) return BusState.ErrPassive;
             if ((status & Canlib.canSTAT_ERROR_WARNING) != 0) return BusState.ErrWarning;
             if ((status & Canlib.canSTAT_ERROR_ACTIVE) != 0) return BusState.ErrActive;
-            return BusState.None;
+            return BusState.Unknown;
         }
     }
 
@@ -303,7 +300,6 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, ICanApplier, I
         try { _ = Canlib.canClose(_handle); } catch { }
         foreach (var o in _owners) { try { o.Dispose(); } catch { } }
         _owners.Clear();
-        GC.SuppressFinalize(this);
     }
 
     private static void EnsureLibInitialized()
@@ -316,7 +312,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, ICanApplier, I
     private static int OpenChannel(KvaserBusOptions opt)
     {
         int flags = 0;
-        if (opt.AcceptVirtual) flags |= (int)Canlib.canOPEN_ACCEPT_VIRTUAL;
+        if (opt.AcceptVirtual) flags |= Canlib.canOPEN_ACCEPT_VIRTUAL;
         // Try name lookup if provided
         if (!string.IsNullOrWhiteSpace(opt.ChannelName))
         {
@@ -439,7 +435,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, ICanApplier, I
     {
         if (_notifyActive) return;
         _kvCallback ??= KvNotifyCallback;
-        var mask = (Canlib.canNOTIFY_RX | Canlib.canNOTIFY_ERROR | Canlib.canNOTIFY_STATUS);
+        var mask = (Canlib.canNOTIFY_RX | (Options.AllowErrorInfo ? Canlib.canNOTIFY_ERROR : 0));
         KvaserUtils.ThrowIfError(Canlib.kvSetNotifyCallback(_handle, _kvCallback, IntPtr.Zero, mask),
             "kvSetNotifyCallback", "Failed to register notify callback");
         _notifyActive = true;
@@ -483,7 +479,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, ICanApplier, I
                 }
             }
             catch { }
-        });
+        }, cts.Token);
     }
 
     private void KvNotifyCallback(int handle, IntPtr context, int notifyEvent)
@@ -512,7 +508,6 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, ICanApplier, I
                 finally
                 {
                     Volatile.Write(ref _drainRunning, 0);
-                    // 退出瞬间若又来了通知，确保能重新排程
                     if (Volatile.Read(ref _pending) > 0 &&
                         Interlocked.Exchange(ref _drainRunning, 1) == 0)
                     {

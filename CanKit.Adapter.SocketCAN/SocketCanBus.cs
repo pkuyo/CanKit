@@ -104,7 +104,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
 
                     filters.Add(new Libc.can_filter { can_id = canId, can_mask = canMask });
                 }
-                else
+                else if ((Options.EnabledSoftwareFallback & CanFeature.Filters) != 0)
                 {
                     sc.Filter.softwareFilter.Add(r);
                 }
@@ -165,14 +165,17 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
         if (!enumerator.MoveNext())
             return 0;
 
+        bool hasTransmit = false;
         do
         {
             var remainingTime = timeOut > 0
                 ? Math.Max(0, timeOut - (Environment.TickCount - startTime))
                 : timeOut;
 
-            if (timeOut > 0 && remainingTime <= 0)
+            if (timeOut >= 0 && remainingTime <= 0 && hasTransmit) //at least transmit one times
                 break;
+
+            hasTransmit = true;
 
             var pr = Libc.poll(ref pollFd, 1, remainingTime);
             if (pr < 0)
@@ -328,11 +331,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
     }
 
     public bool ReadErrorInfo(out ICanErrorInfo? errorInfo)
-    {
-        // SocketCAN via raw socket does not expose detailed error info here
-        errorInfo = null;
-        return false;
-    }
+        => throw new NotSupportedException("Directly read error information not supported. Use ErrorOccured to receive error frames instead.");
 
 
     public void Dispose()
@@ -413,6 +412,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
                         needStart = true;
                 }
             }
+            if (needStart) StartReceiveLoopIfNeeded();
         }
         remove
         {
@@ -428,6 +428,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
                         needStop = true;
                 }
             }
+            if (needStop) RequestStopReceiveLoop();
         }
     }
 
@@ -701,7 +702,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
             Libc.ThrowErrno("epoll_create1", "Failed to create epoll instance");
         }
 #if NET8_0_OR_GREATER
-        var ev = new Libc.epoll_event { events = Libc.EPOLLIN, data = _fd };
+        var ev = new Libc.epoll_event { events = Libc.EPOLLIN, data = (IntPtr)_fd };
 #else
         var ev = new Libc.epoll_event { events = Libc.EPOLLIN, data = (IntPtr)_fd };
 #endif
@@ -764,7 +765,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
                 }
             }
             catch { /*Ignored*/ }
-        });
+        }, cts.Token);
     }
 
     private void EPollLoop(CancellationToken token)
@@ -820,7 +821,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
                             .Add(rec.ReceiveTimestamp).UtcDateTime
                         : DateTime.Now;
                     var info = new DefaultCanErrorInfo(
-                        SocketCanErr.ToFrameErrorType(err, span),
+                        SocketCanErr.ToFrameErrorType(err),
                         SocketCanErr.ToControllerStatus(span),
                         SocketCanErr.ToProtocolViolationType(span),
                         SocketCanErr.ToErrorLocation(span),

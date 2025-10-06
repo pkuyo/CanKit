@@ -18,15 +18,11 @@ public sealed class KvaserClassicTransceiver : ITransceiver
                 throw new InvalidOperationException("Kvaser classic transceiver requires CanClassicFrame.");
             }
             var flags = 0u;
-            if (cf.IsExtendedFrame) flags |= (uint)Canlib.canMSG_EXT;
-            if (cf.IsRemoteFrame) flags |= (uint)Canlib.canMSG_RTR;
+            if (cf.IsExtendedFrame) flags |= Canlib.canMSG_EXT;
+            if (cf.IsRemoteFrame) flags |= Canlib.canMSG_RTR;
 
             var data = cf.Data.ToArray();
-            var dlc = (int)Math.Min(8, data.Length);
-            if (data.Length < dlc)
-            {
-                Array.Resize(ref data, dlc);
-            }
+            var dlc = data.Length;
 
             var st = Canlib.canWrite(ch.Handle, (int)cf.ID, data, dlc, (int)flags);
             if (st == Canlib.canStatus.canOK)
@@ -55,14 +51,10 @@ public sealed class KvaserClassicTransceiver : ITransceiver
 
             if (st == Canlib.canStatus.canOK)
             {
-                var isExt = (flags & (int)Canlib.canMSG_EXT) != 0;
-                var isRtr = (flags & (int)Canlib.canMSG_RTR) != 0;
-                var isErr = (flags & (int)Canlib.canMSG_ERROR_FRAME) != 0;
+                var isExt = (flags & Canlib.canMSG_EXT) != 0;
+                var isRtr = (flags & Canlib.canMSG_RTR) != 0;
+                var isErr = (flags & Canlib.canMSG_ERROR_FRAME) != 0;
                 var buf = data;
-                if (buf.Length > dlc)
-                {
-                    Array.Resize(ref buf, dlc);
-                }
                 var frame = new CanClassicFrame((uint)id, buf, isExt) { IsRemoteFrame = isRtr, IsErrorFrame = isErr };
                 // Convert using configured timer_scale (microseconds per unit)
                 var kch = (KvaserBus)channel;

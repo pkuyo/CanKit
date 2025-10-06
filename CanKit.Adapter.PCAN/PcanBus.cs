@@ -62,6 +62,9 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
         // Initialize according to selected protocol mode
         if (options.ProtocolMode == CanProtocolMode.CanFd)
         {
+
+            CanKitErr.ThrowIfNotSupport(Options.Features, CanFeature.CanFd);
+
             var fd = MapFdBitrate(options.BitTiming);
             var st = Api.Initialize(_handle, fd);
             if (st != PcanStatus.OK)
@@ -157,18 +160,21 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
                     }
                 }
             }
+            // Cache software filter predicate for polling loop
+            _useSoftwareFilter = (Options.EnabledSoftwareFallback & CanFeature.Filters) != 0
+                                 && Options.Filter.SoftwareFilterRules.Count > 0;
+            _softwareFilterPredicate = _useSoftwareFilter
+                ? FilterRule.Build(Options.Filter.SoftwareFilterRules)
+                : null;
         }
+
         if (pc.AllowErrorInfo)
         {
             Api.SetValue(_handle, PcanParameter.AllowErrorFrames, ParameterValue.Activation.On);
         }
 
-        // Cache software filter predicate for polling loop
-        _useSoftwareFilter = (Options.EnabledSoftwareFallback & CanFeature.Filters) != 0
-                              && Options.Filter.SoftwareFilterRules.Count > 0;
-        _softwareFilterPredicate = _useSoftwareFilter
-            ? FilterRule.Build(Options.Filter.SoftwareFilterRules)
-            : null;
+
+
     }
 
     public CanOptionType ApplierStatus => CanOptionType.Runtime;
@@ -258,10 +264,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
 #endif
 
     public bool ReadErrorInfo(out ICanErrorInfo? errorInfo)
-    {
-        errorInfo = null;
-        return false;
-    }
+        => throw new NotSupportedException("Directly read error information not supported. Use ErrorOccured to receive error frames instead.");
 
     public PcanBusRtConfigurator Options { get; }
 
@@ -457,7 +460,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
                 }
             }
             catch { /*ignore*/ }
-        });
+        }, cts.Token);
     }
 
     private void PollLoop(CancellationToken token)
@@ -505,7 +508,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
                         raw,
                         rec.ReceiveTimestamp,
                         PcanErr.ToDirection(span),
-                        PcanErr.ToArbitrationLostBit(raw, span),
+                        null,
                         PcanErr.ToTransceiverStatus(span),
                         PcanErr.ToErrorCounters(span),
                         rec.CanFrame);
@@ -620,14 +623,13 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
             throw new CanBusCreationException("PCAN channel must not be empty.");
         }
 
-        // NONE / 0
+        // PcanChannel.NoneBus
         if (s.Equals("PCAN_NONEBUS", StringComparison.OrdinalIgnoreCase) ||
             s.Equals("NONEBUS", StringComparison.OrdinalIgnoreCase) ||
             s.Equals("NONE", StringComparison.OrdinalIgnoreCase) ||
             s == "0")
-            return 0; // PcanChannel.NoneBus
+            return 0;
 
-        // If given as integer code (e.g., 1281), try direct parse
         if (IsAllDigits(s))
         {
             if (int.TryParse(s, out var raw) && Enum.IsDefined(typeof(PcanChannel), raw))
@@ -635,11 +637,11 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
             throw new CanBusCreationException($"Unknown PCAN channel value '{s}'.");
         }
 
-        // Accept already-enum-like names, e.g., Usb01, Pci02
+        // Enum names: Usb01, Pci02
         if (Enum.TryParse<PcanChannel>(s, ignoreCase: true, out var named))
             return named;
 
-        // Normalize common PCAN names: PCAN_USBBUSn, PCAN_PCIBUSn, PCAN_LANBUSn
+        // PCAN names: PCAN_USBBUSn, PCAN_PCIBUSn, PCAN_LANBUSn
         var upper = s.ToUpperInvariant();
 
         PcanChannel FromIndex(string kind, int idx)
@@ -682,18 +684,13 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
         if (Api.GetValue(_handle, PcanParameter.ChannelFeatures, out uint feature) == PcanStatus.OK)
         {
             var feats = (PcanDeviceFeatures)feature;
-            var dyn = CanFeature.CanClassic | CanFeature.Filters;
+            CanFeature dyn = 0;
             if ((feats & PcanDeviceFeatures.FlexibleDataRate) != 0)
             {
                 dyn |= CanFeature.CanFd;
             }
 
             Options.UpdateDynamicFeatures(dyn);
-        }
-        else
-        {
-            // Fallback: assume classic + filters
-            Options.UpdateDynamicFeatures(CanFeature.CanClassic | CanFeature.Filters);
         }
     }
 }

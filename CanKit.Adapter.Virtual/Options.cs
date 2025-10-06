@@ -1,15 +1,14 @@
 using CanKit.Core.Abstractions;
 using CanKit.Core.Definitions;
 
-namespace CanKit.Adapter.PCAN;
+namespace CanKit.Adapter.Virtual;
 
-public sealed class PcanBusOptions(ICanModelProvider provider) : IBusOptions
+public sealed class VirtualBusOptions(ICanModelProvider provider) : IBusOptions
 {
-    public bool SoftwareFilterEnabled { get; set; }
     public ICanModelProvider Provider { get; } = provider;
 
     public int ChannelIndex { get; set; }
-    public string? ChannelName { get; set; } = "PCAN_USBBUS1";
+    public string? ChannelName { get; set; }
     public CanBusTiming BitTiming { get; set; } = CanBusTiming.ClassicDefault();
     public bool InternalResistance { get; set; }
     public bool BusUsageEnabled { get; set; }
@@ -18,16 +17,30 @@ public sealed class PcanBusOptions(ICanModelProvider provider) : IBusOptions
     public TxRetryPolicy TxRetryPolicy { get; set; } = TxRetryPolicy.NoRetry;
     public CanProtocolMode ProtocolMode { get; set; } = CanProtocolMode.Can20;
     public CanFilter Filter { get; set; } = new();
-    public CanFeature EnabledSoftwareFallback { get; set; }
+    public CanFeature EnabledSoftwareFallback { get; set; } = CanFeature.Filters | CanFeature.CyclicTx;
     public bool AllowErrorInfo { get; set; }
     public int AsyncBufferCapacity { get; set; } = 0;
     public int ReceiveLoopStopDelayMs { get; set; } = 200;
 
+    // Virtual specific: session id to join a hub
+    public string SessionId { get; set; } = "default";
+
     public void Apply(ICanApplier applier, bool force = false) => applier.Apply(this);
 }
 
-public sealed class PcanBusInitConfigurator
-    : BusInitOptionsConfigurator<PcanBusOptions, PcanBusInitConfigurator>;
+public sealed class VirtualBusInitConfigurator
+    : BusInitOptionsConfigurator<VirtualBusOptions, VirtualBusInitConfigurator>
+{
+    public VirtualBusInitConfigurator UseSession(string sessionId)
+    {
+        Options.SessionId = sessionId;
+        return this;
+    }
+}
 
-public sealed class PcanBusRtConfigurator
-    : BusRtOptionsConfigurator<PcanBusOptions, PcanBusRtConfigurator>;
+public sealed class VirtualBusRtConfigurator
+    : BusRtOptionsConfigurator<VirtualBusOptions, VirtualBusRtConfigurator>
+{
+    public string SessionId => Options.SessionId;
+}
+

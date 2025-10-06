@@ -7,7 +7,7 @@ public static class KvaserUtils
     public static void ThrowIfError(Canlib.canStatus status, string operation, string message)
     {
         if (status != Canlib.canStatus.canOK)
-            throw new CanKit.Adapter.Kvaser.Exceptions.KvaserCanException(operation, message, status);
+            throw new Exceptions.KvaserCanException(operation, message, status);
     }
 
     public static int MapToKvaserConst(int bitrate)
@@ -81,10 +81,10 @@ public static class KvaserUtils
             switch (bps)
             {
                 case 500_000:
-                    return (sp == 80) ? Canlib.canFD_BITRATE_500K_80P : (int?)null;
+                    return (sp == 80) ? Canlib.canFD_BITRATE_500K_80P : null;
 
                 case 1_000_000:
-                    return (sp == 80) ? Canlib.canFD_BITRATE_1M_80P : (int?)null;
+                    return (sp == 80) ? Canlib.canFD_BITRATE_1M_80P : null;
 
                 case 2_000_000:
                     if (sp == 80) return Canlib.canFD_BITRATE_2M_80P;
@@ -92,7 +92,7 @@ public static class KvaserUtils
                     return null;
 
                 case 4_000_000:
-                    return (sp == 80) ? Canlib.canFD_BITRATE_4M_80P : (int?)null;
+                    return (sp == 80) ? Canlib.canFD_BITRATE_4M_80P : null;
 
                 case 8_000_000:
                     if (sp == 80) return Canlib.canFD_BITRATE_8M_80P;

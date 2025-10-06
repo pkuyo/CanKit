@@ -18,10 +18,11 @@ namespace CanKit.Core.Definitions
 
 
 
-    public class BusRtOptionsConfigurator<TChannelOptions>
-      : CallOptionsConfigurator<TChannelOptions, BusRtOptionsConfigurator<TChannelOptions>>,
+    public class BusRtOptionsConfigurator<TChannelOptions, TSelf>
+      : CallOptionsConfigurator<TChannelOptions, BusRtOptionsConfigurator<TChannelOptions, TSelf>>,
         IBusRTOptionsConfigurator
       where TChannelOptions : class, IBusOptions
+      where TSelf : BusRtOptionsConfigurator<TChannelOptions, TSelf>
     {
         public ICanModelProvider Provider => Options.Provider;
         public CanFeature Features => _feature;
@@ -38,11 +39,28 @@ namespace CanKit.Core.Definitions
 
         public CanFeature EnabledSoftwareFallback => Options.EnabledSoftwareFallback;
         public bool AllowErrorInfo => Options.AllowErrorInfo;
+        public int AsyncBufferCapacity => Options.AsyncBufferCapacity;
+        public int ReceiveLoopStopDelayMs => Options.ReceiveLoopStopDelayMs;
 
-        public virtual BusRtOptionsConfigurator<TChannelOptions> SetInternalResistance(bool enabled)
+        IBusRTOptionsConfigurator IBusRTOptionsConfigurator.SetAsyncBufferCapacity(int capacity)
+            => SetAsyncBufferCapacity(capacity);
+
+        IBusRTOptionsConfigurator IBusRTOptionsConfigurator.SetReceiveLoopStopDelayMs(int milliseconds)
+            => SetReceiveLoopStopDelayMs(milliseconds);
+
+        public virtual TSelf SetAsyncBufferCapacity(int capacity)
         {
-            Options.InternalResistance = enabled;
-            return Self;
+            if (capacity <= 0)
+                throw new ArgumentOutOfRangeException(nameof(capacity));
+            Options.AsyncBufferCapacity = capacity;
+            return (TSelf)this;
+        }
+        public virtual TSelf SetReceiveLoopStopDelayMs(int milliseconds)
+        {
+            if (milliseconds <= 0)
+                throw new ArgumentOutOfRangeException(nameof(milliseconds));
+            Options.ReceiveLoopStopDelayMs = milliseconds;
+            return (TSelf)this;
         }
     }
 
@@ -74,11 +92,12 @@ namespace CanKit.Core.Definitions
         public ChannelWorkMode WorkMode => Options.WorkMode;
         public bool InternalResistance => Options.InternalResistance;
         public CanProtocolMode ProtocolMode => Options.ProtocolMode;
-
         public ICanFilter Filter => Options.Filter;
         public CanFeature EnabledSoftwareFallback => Options.EnabledSoftwareFallback;
-
         public bool AllowErrorInfo => Options.AllowErrorInfo;
+        public int AsyncBufferCapacity => Options.AsyncBufferCapacity;
+        public int ReceiveLoopStopDelayMs => Options.ReceiveLoopStopDelayMs;
+
 
         IBusInitOptionsConfigurator IBusInitOptionsConfigurator.Baud(uint baud, uint? clockMHz, ushort? samplePointPermille)
             => Baud(baud, samplePointPermille);
@@ -131,6 +150,12 @@ namespace CanKit.Core.Definitions
 
         IBusInitOptionsConfigurator IBusInitOptionsConfigurator.UseChannelName(string name)
             => UseChannelName(name);
+
+        IBusInitOptionsConfigurator IBusInitOptionsConfigurator.SetAsyncBufferCapacity(int capacity)
+            => SetAsyncBufferCapacity(capacity);
+
+        IBusInitOptionsConfigurator IBusInitOptionsConfigurator.SetReceiveLoopStopDelayMs(int delayMs)
+            => SetReceiveLoopStopDelayMs(delayMs);
 
         public virtual TSelf UseChannelIndex(int index)
         {
@@ -263,6 +288,22 @@ namespace CanKit.Core.Definitions
         public virtual TSelf EnableErrorInfo()
         {
             Options.AllowErrorInfo = true;
+            return (TSelf)this;
+        }
+
+
+        public virtual TSelf SetAsyncBufferCapacity(int capacity)
+        {
+            if (capacity <= 0)
+                throw new ArgumentOutOfRangeException(nameof(capacity));
+            Options.AsyncBufferCapacity = capacity;
+            return (TSelf)this;
+        }
+        public virtual TSelf SetReceiveLoopStopDelayMs(int milliseconds)
+        {
+            if (milliseconds <= 0)
+                throw new ArgumentOutOfRangeException(nameof(milliseconds));
+            Options.ReceiveLoopStopDelayMs = milliseconds;
             return (TSelf)this;
         }
     }

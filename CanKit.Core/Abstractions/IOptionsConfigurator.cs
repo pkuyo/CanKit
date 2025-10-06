@@ -93,10 +93,23 @@ public interface IBusRTOptionsConfigurator : ICanOptionsConfigurator
     /// </summary>
     CanFeature EnabledSoftwareFallback { get; }
 
+    //TODO:注释
+    IBusRTOptionsConfigurator SetAsyncBufferCapacity(int capacity);
+
+    //TODO:注释
+    IBusRTOptionsConfigurator SetReceiveLoopStopDelayMs(int milliseconds);
+
     /// <summary>
     /// Enable error information monitoring  (启用错误信息监听)。
     /// </summary>
     bool AllowErrorInfo { get; }
+
+    //TODO:注释
+    int AsyncBufferCapacity { get; }
+
+
+    //TODO:注释
+    int ReceiveLoopStopDelayMs { get; }
 }
 
 /// <summary>
@@ -174,6 +187,15 @@ public interface IBusInitOptionsConfigurator : ICanOptionsConfigurator
     /// Enable error information monitoring  (启用错误信息监听)。
     /// </summary>
     bool AllowErrorInfo { get; }
+
+
+    //TODO:注释
+    int AsyncBufferCapacity { get; }
+
+
+    //TODO:注释
+    int ReceiveLoopStopDelayMs { get; }
+
 
     /// <summary>
     /// Set channel bitrate (设置通道波特率)。
@@ -282,9 +304,19 @@ public interface IBusInitOptionsConfigurator : ICanOptionsConfigurator
     /// <returns>Configurator (配置器本身)。</returns>
     IBusInitOptionsConfigurator EnableErrorInfo();
 
+
+    //TODO:注释
     IBusInitOptionsConfigurator UseChannelIndex(int index);
 
+
+    //TODO:注释
     IBusInitOptionsConfigurator UseChannelName(string name);
+
+    //TODO:注释
+    IBusInitOptionsConfigurator SetAsyncBufferCapacity(int capacity);
+
+    //TODO:注释
+    IBusInitOptionsConfigurator SetReceiveLoopStopDelayMs(int delayMs);
 }
 
 

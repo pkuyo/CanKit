@@ -1,3 +1,4 @@
+using CanKit.Adapter.PCAN.Definitions;
 using CanKit.Adapter.PCAN.Transceivers;
 using CanKit.Core.Abstractions;
 using CanKit.Core.Attributes;
@@ -11,7 +12,6 @@ public sealed class PcanFactory : ICanFactory
 {
     public ICanDevice CreateDevice(IDeviceOptions options)
     {
-        // Use NullDevice to keep strong typing for device runtime options
         return new NullDevice<NullDeviceOptions>(options);
     }
 
@@ -30,9 +30,5 @@ public sealed class PcanFactory : ICanFactory
         };
     }
 
-    public bool Support(DeviceType deviceType)
-    {
-        // The provider enforces device type; the factory itself is generic
-        return true;
-    }
+    public bool Support(DeviceType deviceType) => deviceType.Equals(PcanDeviceType.PCANBasic);
 }

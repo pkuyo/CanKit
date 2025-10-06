@@ -21,18 +21,36 @@ public sealed class SocketCanFdTransceiver : ITransceiver
             var first = e.Current;
             if (e.MoveNext())
                 throw new InvalidOperationException("SocketCanFdTransceiver expects a single frame per call");
-            if (first.CanFrame is not CanFdFrame ff)
-                throw new InvalidOperationException("SocketCanFdTransceiver requires CanFdFrame for transmission");
-
-            var frame = ff.ToCanFrame();
-            var size = Marshal.SizeOf<Libc.canfd_frame>();
-            var result = Libc.write(((SocketCanBus)channel).FileDescriptor, &frame, (ulong)size);
-            return result switch
+            if (first.CanFrame is CanFdFrame ff)
             {
-                > 0 => 1,
-                0 => 0,
-                _ => throw new CanNativeCallException("write(canfd_frame)", "Failed to write CAN FD frame", (uint)Marshal.GetLastWin32Error())
-            };
+                var frame = ff.ToCanFrame();
+                var size = Marshal.SizeOf<Libc.canfd_frame>();
+                var result = Libc.write(((SocketCanBus)channel).FileDescriptor, &frame, (ulong)size);
+                return result switch
+                {
+                    > 0 => 1,
+                    0 => 0,
+                    _ => throw new CanNativeCallException("write(canfd_frame)", "Failed to write CAN FD frame",
+                        (uint)Marshal.GetLastWin32Error())
+                };
+            }
+            else if (first.CanFrame is CanClassicFrame cf)
+            {
+                var frame = cf.ToCanFrame();
+                var size = Marshal.SizeOf<Libc.can_frame>();
+                var result = Libc.write(((SocketCanBus)channel).FileDescriptor, &frame, (ulong)size);
+                return result switch
+                {
+                    > 0 => 1,
+                    0 => 0,
+                    _ => throw new CanNativeCallException("write(can_frame)", "Failed to write classic CAN frame",
+                        (uint)Marshal.GetLastWin32Error())
+                };
+            }
+            else
+            {
+                throw new InvalidOperationException("SocketCanFdTransceiver requires CanClassicFrame/CanFdFrame");
+            }
         }
     }
 
@@ -59,9 +77,9 @@ public sealed class SocketCanFdTransceiver : ITransceiver
                     msg_name = null,
                     msg_namelen = 0,
                     msg_iov = iov,
-                    msg_iovlen = (UIntPtr)1,
+                    msg_iovlen = (UIntPtr)1, //Cast for net standard 2.0
                     msg_control = cbuf,
-                    msg_controllen = (UIntPtr)256,
+                    msg_controllen = (UIntPtr)256, //Cast for net standard 2.0
                     msg_flags = 0
                 };
                 n = Libc.recvmsg(ch.FileDescriptor, &msg, 0);
@@ -85,7 +103,7 @@ public sealed class SocketCanFdTransceiver : ITransceiver
                                 var sw = t[0];
                                 var use = (raw.tv_sec != 0 || raw.tv_nsec != 0) ? raw : sw;
                                 var dto = DateTimeOffset.FromUnixTimeSeconds(use.tv_sec).AddTicks(use.tv_nsec / 100);
-                                var epoch = new DateTimeOffset(new DateTime(1970,1,1,0,0,0, DateTimeKind.Utc));
+                                var epoch = new DateTimeOffset(new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc));
                                 tsSpan = dto - epoch;
                                 break;
                             }
@@ -93,7 +111,7 @@ public sealed class SocketCanFdTransceiver : ITransceiver
                             {
                                 var t = *(Libc.timespec*)data2;
                                 var dto = DateTimeOffset.FromUnixTimeSeconds(t.tv_sec).AddTicks(t.tv_nsec / 100);
-                                var epoch = new DateTimeOffset(new DateTime(1970,1,1,0,0,0, DateTimeKind.Utc));
+                                var epoch = new DateTimeOffset(new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc));
                                 tsSpan = dto - epoch;
                                 break;
                             }
@@ -113,21 +131,49 @@ public sealed class SocketCanFdTransceiver : ITransceiver
             {
                 return result;
             }
-
-            int dataLen = frame->len;
-            var data = dataLen == 0 ? Array.Empty<byte>() : new byte[dataLen];
-            for (int i = 0; i < dataLen && i < 64; i++) data[i] = frame->data[i];
-
-            bool brs = (frame->flags & Libc.CANFD_BRS) != 0;
-            bool esi = (frame->flags & Libc.CANFD_ESI) != 0;
             if (tsSpan == TimeSpan.Zero)
             {
                 var now = DateTimeOffset.UtcNow;
-                var epoch = new DateTimeOffset(new DateTime(1970,1,1,0,0,0, DateTimeKind.Utc));
+                var epoch = new DateTimeOffset(new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc));
                 tsSpan = now - epoch;
             }
-            result.Add(new CanReceiveData(new CanFdFrame(frame->can_id, data, brs, esi))
-            { ReceiveTimestamp = tsSpan });
+
+            if (size == n)
+            {
+                //receive canfd_frame
+                int dataLen = frame->len;
+                var data = dataLen == 0 ? [] : new byte[dataLen];
+                for (int i = 0; i < dataLen && i < 64; i++) data[i] = frame->data[i];
+
+                bool brs = (frame->flags & Libc.CANFD_BRS) != 0;
+                bool esi = (frame->flags & Libc.CANFD_ESI) != 0;
+                bool err = (frame->flags & Libc.CAN_ERR_FLAG) != 0;
+
+                result.Add(new CanReceiveData(new CanFdFrame(frame->can_id, data, brs, esi)
+                { IsErrorFrame = err })
+                { ReceiveTimestamp = tsSpan });
+            }
+            else
+            {
+                //receive can_frame
+                var cf = (Libc.can_frame*)frame;
+                int dataLen = cf->can_dlc;
+                var data2 = dataLen == 0 ? Array.Empty<byte>() : new byte[dataLen];
+                for (int i = 0; i < dataLen && i < 8; i++) data2[i] = frame->data[i];
+
+                if (tsSpan == TimeSpan.Zero)
+                {
+                    var now = DateTimeOffset.UtcNow;
+                    var epoch = new DateTimeOffset(new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+                    tsSpan = now - epoch;
+                }
+                bool err = (frame->flags & Libc.CAN_ERR_FLAG) != 0;
+
+                result.Add(new CanReceiveData(new CanClassicFrame(frame->can_id, data2)
+                { IsErrorFrame = err })
+                { ReceiveTimestamp = tsSpan });
+            }
+
         }
         return result;
     }
