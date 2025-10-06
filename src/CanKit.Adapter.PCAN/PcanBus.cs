@@ -49,6 +49,25 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
 
         _handle = ParseHandle();
 
+        try
+        {
+            if (Api.GetValue(PcanChannel.Usb01, PcanParameter.ChannelCondition, out uint raw) == PcanStatus.OK)
+            {
+                var cond = (ChannelCondition)raw;
+                if((cond & ChannelCondition.ChannelAvailable) != ChannelCondition.ChannelAvailable)
+                    throw new CanBusCreationException("PCAN handle is not available");
+            }
+            else
+            {
+                CanKitLogger.LogWarning("PCAN can't get channel condition for handle");
+            }
+        }
+        catch (PcanBasicException)
+        {
+            throw new CanBusCreationException("PCAN handle is invalid");
+        }
+
+
         // Discover runtime capabilities (e.g., FD) and merge to dynamic features
         SniffDynamicFeatures();
         CanKitLogger.LogInformation($"PCAN: Initializing on '{options.ChannelName}', Mode={options.ProtocolMode}, Features={Options.Features}");
@@ -329,10 +348,13 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
     {
         add
         {
+            if (!Options.AllowErrorInfo)
+            {
+                throw new CanChannelConfigurationException("ErrorOccurred subscription requires AllowErrorInfo=true in options.");
+            }
             bool needStart = false;
             lock (_evtGate)
             {
-                //TODO:未启用故障帧时的异常
                 var before = _errorOccured;
                 _errorOccured += value;
                 if (!ReferenceEquals(before, _errorOccured))
@@ -345,10 +367,13 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
         }
         remove
         {
+            if (!Options.AllowErrorInfo)
+            {
+                throw new CanChannelConfigurationException("ErrorOccurred subscription requires AllowErrorInfo=true in options.");
+            }
             bool needStop = false;
             lock (_evtGate)
             {
-                //TODO:未启用故障帧时的异常
                 var before = _errorOccured;
                 _errorOccured -= value;
                 if (!ReferenceEquals(before, _errorOccured))

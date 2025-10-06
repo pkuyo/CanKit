@@ -14,7 +14,7 @@ namespace CanKit.Adapter.SocketCAN;
 /// Registers endpoint handler for scheme "socketcan" (为 "socketcan" scheme 注册 Endpoint 处理器)。
 /// </summary>
 
-[CanEndPoint("socketcan")]
+[CanEndPoint("socketcan",["linux", "libsocketcan"])]
 internal static class SocketCanEndpoint
 {
     public static ICanBus Open(CanEndpoint ep, Action<IBusInitOptionsConfigurator>? configure)
@@ -59,7 +59,8 @@ internal static class SocketCanEndpoint
             string name = Path.GetFileName(dir);
             if (string.IsNullOrWhiteSpace(name)) continue;
             if (name.StartsWith("can", StringComparison.OrdinalIgnoreCase) ||
-                name.StartsWith("vcan", StringComparison.OrdinalIgnoreCase))
+                name.StartsWith("vcan", StringComparison.OrdinalIgnoreCase) ||
+                name.StartsWith("vxcan", StringComparison.OrdinalIgnoreCase))
             {
                 yield return new BusEndpointInfo
                 {

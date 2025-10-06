@@ -134,6 +134,8 @@ public partial class CanRegistry
     private readonly Dictionary<string, Func<IEnumerable<Endpoints.BusEndpointInfo>>> _enumerators =
         new(StringComparer.OrdinalIgnoreCase);
 
+    private readonly Dictionary<string, string> _enumeratorAlias = new(StringComparer.OrdinalIgnoreCase);
+
     private readonly Dictionary<string, ICanFactory> _factories = new();
 
     private readonly Dictionary<string, Func<CanEndpoint, Action<IBusInitOptionsConfigurator>?, ICanBus>> _handlers =
@@ -248,6 +250,17 @@ public partial class CanRegistry
                     {
                         var del = (Func<IEnumerable<BusEndpointInfo>>)enumMethod.CreateDelegate(typeof(Func<IEnumerable<BusEndpointInfo>>));
                         _enumerators[attr.Scheme] = del;
+                        foreach (var alias in attr.Alias.Append(attr.Scheme))
+                        {
+                            if (_enumeratorAlias.TryGetValue(alias, out var enumerator))
+                            {
+                                CanKitLogger.LogError($"RegisterEndpoint skipped: alias already exists, Alias={alias}, Scheme={attr.Scheme}, AlreadyBindScheme={enumerator}");
+                            }
+                            else
+                            {
+                                _enumeratorAlias[alias] = attr.Scheme;
+                            }
+                        }
                         CanKitLogger.LogInformation($"Registered endpoint enumerator. Scheme='{attr.Scheme}', Type='{type.AssemblyQualifiedName}'");
                     }
                 }
@@ -427,27 +440,32 @@ public partial class CanRegistry
     /// Enumerate discoverable endpoints. When schemes is null/empty, include all registered schemes.
     /// ZH: 枚举可发现的端点；若未指定 scheme，则合并所有 scheme 的结果。
     /// </summary>
-    public IEnumerable<Endpoints.BusEndpointInfo> EnumerateEndPoints(IEnumerable<string>? schemes)
+    public IEnumerable<BusEndpointInfo> EnumerateEndPoints(IEnumerable<string>? vendorsOrSchemes)
     {
-        if (schemes is null)
+        if (vendorsOrSchemes is null)
         {
             foreach (var e in _enumerators.Values)
             {
                 IEnumerable<Endpoints.BusEndpointInfo> items;
-                try { items = e() ?? Array.Empty<Endpoints.BusEndpointInfo>(); }
-                catch { items = Array.Empty<Endpoints.BusEndpointInfo>(); }
+                try { items = e() ?? []; }
+                catch { items = []; }
                 foreach (var it in items) yield return it;
             }
             yield break;
         }
-
+        var schemes = vendorsOrSchemes.Select(i =>
+        {
+            if(_enumeratorAlias.TryGetValue(i, out var aliased))
+                return aliased;
+            return i;
+        });
         var set = new HashSet<string>(schemes, StringComparer.OrdinalIgnoreCase);
         foreach (var kv in _enumerators)
         {
             if (!set.Contains(kv.Key)) continue;
-            IEnumerable<Endpoints.BusEndpointInfo> items;
-            try { items = kv.Value() ?? Array.Empty<Endpoints.BusEndpointInfo>(); }
-            catch { items = Array.Empty<Endpoints.BusEndpointInfo>(); }
+            IEnumerable<BusEndpointInfo> items;
+            try { items = kv.Value() ?? []; }
+            catch { items = []; }
             foreach (var it in items) yield return it;
         }
     }

@@ -245,7 +245,10 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, ICanApplier, I
             bool needStart = false;
             lock (_evtGate)
             {
-                //TODO:未启用故障帧时的异常
+                if (!Options.AllowErrorInfo)
+                {
+                    throw new CanChannelConfigurationException("ErrorOccurred subscription requires AllowErrorInfo=true in options.");
+                }
                 var before = _errorOccured;
                 _errorOccured += value;
                 if (!ReferenceEquals(before, _errorOccured))
@@ -261,7 +264,10 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, ICanApplier, I
             bool needStop = false;
             lock (_evtGate)
             {
-                //TODO:未启用故障帧时的异常
+                if (!Options.AllowErrorInfo)
+                {
+                    throw new CanChannelConfigurationException("ErrorOccurred subscription requires AllowErrorInfo=true in options.");
+                }
                 var before = _errorOccured;
                 _errorOccured -= value;
                 if (!ReferenceEquals(before, _errorOccured))

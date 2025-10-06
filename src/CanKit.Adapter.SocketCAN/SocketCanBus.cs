@@ -327,7 +327,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
     public IPeriodicTx TransmitPeriodic(CanTransmitData frame, PeriodicTxOptions options)
     {
         ThrowIfDisposed();
-        return new BCMPeriodicTx(this, frame, options, Options);
+        return SoftwarePeriodicTx.Start(this, frame, options);
     }
 
     public bool ReadErrorInfo(out ICanErrorInfo? errorInfo)
@@ -400,7 +400,6 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
                 throw new CanChannelConfigurationException("ErrorOccurred subscription requires AllowErrorInfo=true in options.");
             }
             bool needStart = false;
-            //TODO:在未启用时抛出异常
             lock (_evtGate)
             {
                 var before = _errorOccurred;
@@ -416,6 +415,10 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
         }
         remove
         {
+            if (!Options.AllowErrorInfo)
+            {
+                throw new CanChannelConfigurationException("ErrorOccurred subscription requires AllowErrorInfo=true in options.");
+            }
             bool needStop = false;
             lock (_evtGate)
             {
@@ -580,9 +583,20 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
 
         _options.ChannelIndex = unchecked((int)ifIndex);
 
-        if (LibSocketCan.can_get_ctrlmode(ifName, out var ctrlMode) != Libc.OK)
+        var re = -LibSocketCan.can_get_ctrlmode(ifName, out var ctrlMode);
+        if (re != Libc.OK)
         {
-            Libc.ThrowErrno("can_get_ctrlmode", $"Failed to get ctrlmode for '{ifName}'");
+            if (re is Libc.EPERM or Libc.EACCES)
+            {
+                CanKitLogger.LogWarning($"SocketCanBus: Cannot configure CAN interface {ifName}: operation requires CAP_NET_ADMIN.");
+                return;
+            }
+            if (re == Libc.EOPNOTSUPP)
+            {
+                CanKitLogger.LogInformation($"SocketCanBus: {ifName} not support ctrlmode. Ignored socket can config.");
+                return;
+            }
+            Libc.ThrowErrno("can_get_ctrlmode", $"Failed to get ctrlmode for '{ifName}'", re);
         }
 
         if (Options.WorkMode == ChannelWorkMode.Echo)
@@ -696,7 +710,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
         if (_epollTask is { IsCompleted: false } || _fd < 0)
             return;
 
-        _epfd = Libc.epoll_create1(0);
+        _epfd = Libc.epoll_create1(Libc.EPOLL_CLOEXEC);
         if (_epfd < 0)
         {
             Libc.ThrowErrno("epoll_create1", "Failed to create epoll instance");
@@ -704,7 +718,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
 #if NET8_0_OR_GREATER
         var ev = new Libc.epoll_event { events = Libc.EPOLLIN, data = (IntPtr)_fd };
 #else
-        var ev = new Libc.epoll_event { events = Libc.EPOLLIN, data = (IntPtr)_fd };
+        var ev = new Libc.epoll_event { events = Libc.EPOLLIN | Libc.EPOLLERR, data = (IntPtr)_fd };
 #endif
         if (Libc.epoll_ctl(_epfd, Libc.EPOLL_CTL_ADD, _fd, ref ev) < 0)
         {
@@ -789,6 +803,10 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
                             break;
                         DrainReceive();
                     }
+                }
+                else if ((_events[i].events & Libc.EPOLLERR) != 0)
+                {
+                    //TODO:异常处理
                 }
             }
         }

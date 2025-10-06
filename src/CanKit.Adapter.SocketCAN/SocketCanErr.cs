@@ -1,5 +1,6 @@
 using CanKit.Adapter.SocketCAN.Native;
 using CanKit.Core.Definitions;
+using CanKit.Core.Exceptions;
 
 namespace CanKit.Adapter.SocketCAN;
 

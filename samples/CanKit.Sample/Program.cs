@@ -18,19 +18,21 @@ namespace CanKit.Sample
             "zlg://ZCAN_USBCANFD_200U?index=0#ch0",
             "pcan://PCAN_USBBUS1",
             "kvaser://0",
+            "socketcan://vxcan1"
         ];
 
         private static readonly string[] _sendEndPoints =
         [
             "zlg://ZCAN_USBCANFD_200U?index=0#ch0",
             "pcan://PCAN_USBBUS1",
-            "kvaser://0"
+            "kvaser://0",
+            "socketcan://vxcan0"
         ];
 
 
         static void Main(string[] args)
         {
-            var re = BusEndpointEntry.Enumerate("pcan", "kvaser");
+            var re = BusEndpointEntry.Enumerate("pcan", "kvaser", "socketcan");
             var logger = new FrameLogger("can_log.txt");
             var sampleCounter = 0;
             const int sampleEvery = 1000;
@@ -42,9 +44,10 @@ namespace CanKit.Sample
 
 
 #if LISTEN
-            using var listenChannel = CanBus.Open(_listenEndpoints[1], cfg =>
+            using var listenChannel = CanBus.Open(_listenEndpoints[3], cfg =>
                 cfg.Baud(500_000)
                     .InternalRes(true)
+                    .EnableErrorInfo()
                     .SetProtocolMode(CanProtocolMode.Can20));
 
             listenChannel.FrameReceived += (sender, data) =>
@@ -84,9 +87,10 @@ namespace CanKit.Sample
 #endif
 
 #if SEND
-            using var sendChannel = CanBus.Open(_sendEndPoints[0], cfg =>
+            using var sendChannel = CanBus.Open(_sendEndPoints[3], cfg =>
                 cfg.Baud(500_000)
                     .InternalRes(true)
+                    .EnableErrorInfo()
                     .SoftwareFeaturesFallBack(CanFeature.CyclicTx)
                     .SetProtocolMode(CanProtocolMode.Can20));
 
@@ -112,6 +116,8 @@ namespace CanKit.Sample
                     b.Append($"Arbitration Lost:{frame.ArbitrationLostBit}, ");
                 Console.WriteLine(b);
             };
+            Thread.Sleep(6000);
+            var a = listenChannel.Receive(10,0);
             for (int i = 0; i < 30; i++)
             {
                 Thread.Sleep(60000);

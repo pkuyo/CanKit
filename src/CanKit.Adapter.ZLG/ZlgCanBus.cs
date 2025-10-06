@@ -273,7 +273,10 @@ namespace CanKit.Adapter.ZLG
         {
             add
             {
-                //TODO:未启用故障帧时的异常
+                if (!Options.AllowErrorInfo)
+                {
+                    throw new CanChannelConfigurationException("ErrorOccurred subscription requires AllowErrorInfo=true in options.");
+                }
                 bool needStart = false;
                 lock (_evtGate)
                 {
@@ -289,7 +292,10 @@ namespace CanKit.Adapter.ZLG
             }
             remove
             {
-                //TODO:未启用故障帧时的异常
+                if (!Options.AllowErrorInfo)
+                {
+                    throw new CanChannelConfigurationException("ErrorOccurred subscription requires AllowErrorInfo=true in options.");
+                }
                 bool needStop = false;
                 lock (_evtGate)
                 {

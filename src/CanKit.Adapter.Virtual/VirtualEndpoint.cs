@@ -15,7 +15,7 @@ namespace CanKit.Adapter.Virtual;
 /// - sessionId: any string (grouped into same bus hub)
 /// - channelId: integer (>= 0)
 /// </summary>
-[CanEndPoint("virtual")]
+[CanEndPoint("virtual", [])]
 internal static class VirtualEndpoint
 {
     public static ICanBus Open(CanEndpoint ep, Action<IBusInitOptionsConfigurator>? configure)

@@ -127,9 +127,15 @@ public sealed class SocketCanFdTransceiver : ITransceiver
                 n = Libc.read(ch.FileDescriptor, frame, (ulong)size);
             }
 
-            if (n <= 0)
+            if (n == 0)
             {
                 return result;
+            }
+            if (n < 0)
+            {
+                if (Libc.Errno() == Libc.EAGAIN)
+                    return result;
+                Libc.ThrowErrno("read(FD)", "Failed to read classic/FD CAN frame");
             }
             if (tsSpan == TimeSpan.Zero)
             {

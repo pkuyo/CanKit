@@ -16,7 +16,7 @@ namespace CanKit.Adapter.Kvaser;
 ///  - kvaser://?ch=1      (open by channel number)
 ///  - kvaser:1            (fallback form)
 /// </summary>
-[CanEndPoint("kvaser")]
+[CanEndPoint("kvaser",["canlib"])]
 internal static class KvaserEndpoint
 {
     public static ICanBus Open(CanEndpoint ep, Action<IBusInitOptionsConfigurator>? configure)

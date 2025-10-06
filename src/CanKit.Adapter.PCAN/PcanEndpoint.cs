@@ -18,7 +18,7 @@ namespace CanKit.Adapter.PCAN;
 ///  - pcan://?ch=PCAN_PCIBUS1
 ///  - pcan:PCAN_USBBUS2
 /// </summary>
-[CanEndPoint("pcan")]
+[CanEndPoint("pcan", ["pcanbasic", "peak"])]
 internal static class PcanEndpoint
 {
     public static ICanBus Open(CanEndpoint ep, Action<IBusInitOptionsConfigurator>? configure)

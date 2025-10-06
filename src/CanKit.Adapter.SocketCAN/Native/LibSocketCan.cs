@@ -149,7 +149,7 @@ namespace CanKit.Adapter.SocketCAN.Native
             public uint nframes;
         }
 
-        public const UInt32 IFLA_CAN_MAX = ((UInt32)IFLA_CAN.__IFLA_CAN_MAX - 1);
+        public const uint IFLA_CAN_MAX = ((uint)IFLA_CAN.__IFLA_CAN_MAX - 1);
 
         [DllImport("socketcan", SetLastError = true, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
         public static extern int can_do_restart(string name);

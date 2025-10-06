@@ -26,31 +26,6 @@ public static class BusEndpointEntry
             return CanRegistry.Registry.EnumerateEndPoints(null);
         }
 
-        static string Normalize(string s)
-        {
-            if (string.IsNullOrWhiteSpace(s)) return s;
-            s = s.Trim();
-            var v = s.ToLowerInvariant();
-            return v switch
-            {
-                "peak" => "pcan",
-                "pcanbasic" => "pcan",
-                "pcan" => "pcan",
-
-                "linux" => "socketcan",
-                "can" => "socketcan",
-                "socketcan" => "socketcan",
-
-                "zlg" => "zlg",
-                "zlglib" => "zlg",
-
-                "kvaser" => "kvaser",
-                "canlib" => "kvaser",
-                _ => v
-            };
-        }
-
-        var schemes = vendorsOrSchemes.Select(Normalize).ToArray();
-        return CanRegistry.Registry.EnumerateEndPoints(schemes);
+        return CanRegistry.Registry.EnumerateEndPoints(vendorsOrSchemes);
     }
 }

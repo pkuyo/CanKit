@@ -215,6 +215,10 @@ public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, ICanApplier,
     {
         add
         {
+            if (!Options.AllowErrorInfo)
+            {
+                throw new CanChannelConfigurationException("ErrorOccurred subscription requires AllowErrorInfo=true in options.");
+            }
             bool inc = false;
             lock (_evtGate)
             {
@@ -230,6 +234,10 @@ public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, ICanApplier,
         }
         remove
         {
+            if (!Options.AllowErrorInfo)
+            {
+                throw new CanChannelConfigurationException("ErrorOccurred subscription requires AllowErrorInfo=true in options.");
+            }
             bool needStop = false;
             lock (_evtGate)
             {

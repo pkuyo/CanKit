@@ -1,4 +1,6 @@
 using System.Runtime.InteropServices;
+using System.Text;
+using CanKit.Adapter.SocketCAN.Diagnostics;
 using CanKit.Core.Exceptions;
 // @formatter:off
 namespace CanKit.Adapter.SocketCAN.Native;
@@ -7,6 +9,12 @@ namespace CanKit.Adapter.SocketCAN.Native;
 #pragma warning disable CS8981
 internal static class Libc
 {
+    //errno
+    public const int EOPNOTSUPP = 95;
+    public const int EPERM = 1;
+    public const int EAGAIN = 11;
+    public const int EACCES = 13;
+
     // Address family / socket types
     public const int AF_CAN = 29;           // Linux specific
     public const int SOCK_RAW = 3;
@@ -114,7 +122,9 @@ internal static class Libc
 
     // epoll
     public const int EPOLLIN = 0x001;
+    public const int EPOLLERR = 0x008;
     public const int EPOLL_CTL_ADD = 1;
+    public const int EPOLL_CLOEXEC = 0x00080000;
 
     // fcntl
     public const int F_GETFL = 3;
@@ -305,10 +315,62 @@ internal static class Libc
     [DllImport("libc", SetLastError = true, CharSet = CharSet.Ansi)]
     public static extern IntPtr if_indextoname(uint index, byte[] ifname);
 
+     [DllImport("libc", CharSet = CharSet.Ansi, EntryPoint = "__xpg_strerror_r")]
+    private static extern int __xpg_strerror_r(int errnum, StringBuilder buf, UIntPtr buflen);
+
+
+    [DllImport("libc", CharSet = CharSet.Ansi, EntryPoint = "strerror_r")]
+    private static extern int strerror_r_posix(int errnum, StringBuilder buf, UIntPtr buflen);
+
+
+    [DllImport("libc", CharSet = CharSet.Ansi)]
+    private static extern IntPtr strerror(int errnum);
+
+    public static string StrError(int errno)
+    {
+        const int BUF = 256;
+        var sb = new StringBuilder(BUF);
+
+        try
+        {
+            if (__xpg_strerror_r(errno, sb, (UIntPtr)BUF) == 0)
+                return sb.ToString();
+        }
+        catch (EntryPointNotFoundException)
+        {
+        }
+
+        try
+        {
+            if (strerror_r_posix(errno, sb, (UIntPtr)BUF) == 0)
+                return sb.ToString();
+        }
+        catch (EntryPointNotFoundException)
+        {
+        }
+
+        return StrErrorFallBack(errno);
+    }
+
+    private static string StrErrorFallBack(int errno)
+    {
+        var p = strerror(errno);
+        return p == IntPtr.Zero
+            ? $"Unknown error {errno}"
+            : Marshal.PtrToStringAnsi(p)!;
+    }
+
     public static void ThrowErrno(string operation, string message)
     {
         var err = (uint)Marshal.GetLastWin32Error();
-        throw new CanNativeCallException(operation, message, err);
+        throw new SocketCanNativeException(operation, message, err);
+    }
+
+    public static int Errno() => Marshal.GetLastWin32Error();
+
+    public static void ThrowErrno(string operation, string message, int errno)
+    {
+        throw new SocketCanNativeException(operation, message, (uint)errno);
     }
 
     public static T ThrowErrno<T>(string operation, string message)
