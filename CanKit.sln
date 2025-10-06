@@ -3,23 +3,23 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.13.35931.197
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CanKit.Core", "CanKit.Core\CanKit.Core.csproj", "{FAEC4575-7237-465F-9858-B38135176125}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CanKit.Core", "src\CanKit.Core\CanKit.Core.csproj", "{FAEC4575-7237-465F-9858-B38135176125}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CanKit.Sample", "CanKit.Sample\CanKit.Sample.csproj", "{EDBDE271-BC06-4B74-89FC-4220FA742317}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CanKit.Sample", "samples\CanKit.Sample\CanKit.Sample.csproj", "{EDBDE271-BC06-4B74-89FC-4220FA742317}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CanKit.Adapter.ZLG", "CanKit.Adapter.ZLG\CanKit.Adapter.ZLG.csproj", "{446B2183-A4B0-4E78-BF4B-F077ED6B9B55}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CanKit.Adapter.ZLG", "src\CanKit.Adapter.ZLG\CanKit.Adapter.ZLG.csproj", "{446B2183-A4B0-4E78-BF4B-F077ED6B9B55}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CanKit.Gen", "CanKit.Gen\CanKit.Gen\CanKit.Gen.csproj", "{1CAF5849-659B-4C41-B0CA-344A92C915CA}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CanKit.Gen", "src\CanKit.Gen\CanKit.Gen\CanKit.Gen.csproj", "{1CAF5849-659B-4C41-B0CA-344A92C915CA}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CanKit.Gen.Sample", "CanKit.Gen\CanKit.Gen.Sample\CanKit.Gen.Sample.csproj", "{2BE0BFD7-9A00-47E1-9026-D208055D6302}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CanKit.Gen.Sample", "src\CanKit.Gen\CanKit.Gen.Sample\CanKit.Gen.Sample.csproj", "{2BE0BFD7-9A00-47E1-9026-D208055D6302}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CanKit.Adapter.SocketCAN", "CanKit.Adapter.SocketCAN\CanKit.Adapter.SocketCAN.csproj", "{B7B6D8C2-4E33-4E1E-AC1D-1B1A3B9A6E42}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CanKit.Adapter.SocketCAN", "src\CanKit.Adapter.SocketCAN\CanKit.Adapter.SocketCAN.csproj", "{B7B6D8C2-4E33-4E1E-AC1D-1B1A3B9A6E42}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CanKit.Adapter.PCAN", "CanKit.Adapter.PCAN\CanKit.Adapter.PCAN.csproj", "{6A1D3C3E-AB12-4D0E-9F4C-23CB3B6C51A2}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CanKit.Adapter.PCAN", "src\CanKit.Adapter.PCAN\CanKit.Adapter.PCAN.csproj", "{6A1D3C3E-AB12-4D0E-9F4C-23CB3B6C51A2}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CanKit.Adapter.Kvaser", "CanKit.Adapter.Kvaser\CanKit.Adapter.Kvaser.csproj", "{BF250745-CA59-4AD7-B3A5-6939D017D0D2}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CanKit.Adapter.Kvaser", "src\CanKit.Adapter.Kvaser\CanKit.Adapter.Kvaser.csproj", "{BF250745-CA59-4AD7-B3A5-6939D017D0D2}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CanKit.Adapter.Virtual", "CanKit.Adapter.Virtual\CanKit.Adapter.Virtual.csproj", "{D0F1A9C5-3EAF-4E3D-9C9C-F79B214F6354}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CanKit.Adapter.Virtual", "src\CanKit.Adapter.Virtual\CanKit.Adapter.Virtual.csproj", "{D0F1A9C5-3EAF-4E3D-9C9C-F79B214F6354}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
