@@ -117,7 +117,6 @@ namespace CanKit.Sample
                 Console.WriteLine(b);
             };
             Thread.Sleep(6000);
-            var a = listenChannel.Receive(10,0);
             for (int i = 0; i < 30; i++)
             {
                 Thread.Sleep(60000);

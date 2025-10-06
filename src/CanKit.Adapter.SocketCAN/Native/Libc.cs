@@ -12,6 +12,7 @@ internal static class Libc
     //errno
     public const int EOPNOTSUPP = 95;
     public const int EPERM = 1;
+    public const int EINTR = 4;
     public const int EAGAIN = 11;
     public const int EACCES = 13;
 
