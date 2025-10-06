@@ -61,6 +61,7 @@ internal static class Libc
     public const uint RX_RTR_FRAME = 0x0400;
     public const uint CAN_FD_FRAME = 0x0800;
 
+
     // CAN ID flags and masks
     public const uint CAN_EFF_FLAG = 0x80000000U; // extended frame format
     public const uint CAN_RTR_FLAG = 0x40000000U; // remote transmission request
@@ -126,6 +127,11 @@ internal static class Libc
     public const int EPOLLERR = 0x008;
     public const int EPOLL_CTL_ADD = 1;
     public const int EPOLL_CLOEXEC = 0x00080000;
+
+    // eventfd (sys/eventfd.h)
+    public const int EFD_SEMAPHORE = 0x1;
+    public const int EFD_NONBLOCK  = 0x800;
+    public const int EFD_CLOEXEC   = 0x00080000;
 
     // fcntl
     public const int F_GETFL = 3;
@@ -307,6 +313,9 @@ internal static class Libc
 
     [DllImport("libc", SetLastError = true)]
     public static extern int epoll_wait(int epfd, [In, Out] epoll_event[] events, int maxevents, int timeout);
+
+    [DllImport("libc", SetLastError = true)]
+    public static extern int eventfd(uint initval, int flags);
 
 
     [DllImport("libc", SetLastError = true, CharSet = CharSet.Ansi)]

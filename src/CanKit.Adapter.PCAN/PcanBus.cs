@@ -54,7 +54,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
             if (Api.GetValue(PcanChannel.Usb01, PcanParameter.ChannelCondition, out uint raw) == PcanStatus.OK)
             {
                 var cond = (ChannelCondition)raw;
-                if((cond & ChannelCondition.ChannelAvailable) != ChannelCondition.ChannelAvailable)
+                if ((cond & ChannelCondition.ChannelAvailable) != ChannelCondition.ChannelAvailable)
                     throw new CanBusCreationException("PCAN handle is not available");
             }
             else

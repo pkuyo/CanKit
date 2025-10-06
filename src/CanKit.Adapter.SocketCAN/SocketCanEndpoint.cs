@@ -14,7 +14,7 @@ namespace CanKit.Adapter.SocketCAN;
 /// Registers endpoint handler for scheme "socketcan" (为 "socketcan" scheme 注册 Endpoint 处理器)。
 /// </summary>
 
-[CanEndPoint("socketcan",["linux", "libsocketcan"])]
+[CanEndPoint("socketcan", ["linux", "libsocketcan"])]
 internal static class SocketCanEndpoint
 {
     public static ICanBus Open(CanEndpoint ep, Action<IBusInitOptionsConfigurator>? configure)

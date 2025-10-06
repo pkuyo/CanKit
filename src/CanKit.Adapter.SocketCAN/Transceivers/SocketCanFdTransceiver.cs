@@ -143,7 +143,7 @@ public sealed class SocketCanFdTransceiver : ITransceiver
                     var errno = Libc.Errno();
                     if (errno == Libc.EAGAIN)
                         return result;
-                    if(errno == Libc.EINTR)
+                    if (errno == Libc.EINTR)
                         continue;
                     Libc.ThrowErrno("read(FD)", "Failed to read classic/FD CAN frame");
                 }

@@ -455,7 +455,7 @@ public partial class CanRegistry
         }
         var schemes = vendorsOrSchemes.Select(i =>
         {
-            if(_enumeratorAlias.TryGetValue(i, out var aliased))
+            if (_enumeratorAlias.TryGetValue(i, out var aliased))
                 return aliased;
             return i;
         });

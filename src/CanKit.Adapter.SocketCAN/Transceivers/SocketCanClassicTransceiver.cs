@@ -45,7 +45,7 @@ public sealed class SocketCanClassicTransceiver : ITransceiver
             var frame = stackalloc Libc.can_frame[1];
             var iov = stackalloc Libc.iovec[1];
             var cbuf = stackalloc byte[256];
-            while(readCount < count || count == 0)
+            while (readCount < count || count == 0)
             {
                 long n;
                 TimeSpan tsSpan = TimeSpan.Zero;
@@ -121,7 +121,7 @@ public sealed class SocketCanClassicTransceiver : ITransceiver
                     var errno = Libc.Errno();
                     if (errno == Libc.EAGAIN)
                         return result;
-                    if(errno == Libc.EINTR)
+                    if (errno == Libc.EINTR)
                         continue;
                     Libc.ThrowErrno("read(FD)", "Failed to read classic CAN frame");
                 }
