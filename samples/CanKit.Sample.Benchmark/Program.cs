@@ -24,6 +24,10 @@ namespace CanKit.Sample.Benchmark
             bool fd = HasFlag(args, "--fd");
             bool brs = HasFlag(args, "--brs");
             bool enableRes = (ParseUInt(GetArg(args, "--res"), 1) == 1U);
+            int sleepMsOverride = int.TryParse(GetArg(args, "--sleepms"), out var s) ? s : -1;
+            double util = double.TryParse(GetArg(args, "--util"), NumberStyles.Float, CultureInfo.InvariantCulture, out var u) ? u : 0.70;
+            double stuff = double.TryParse(GetArg(args, "--stuff"), NumberStyles.Float, CultureInfo.InvariantCulture, out var st) ? st : 1.20;
+
             using var rx = CanBus.Open(dst, cfg =>
             {
                 if (fd)
@@ -59,6 +63,7 @@ namespace CanKit.Sample.Benchmark
                 await foreach (var e in rx.GetFramesAsync(cts.Token))
                 {
                     if (Interlocked.Increment(ref received) >= frames) { done.TrySetResult(received); break; }
+                    if(received % 100 == 0)
                     Console.WriteLine("Received {0} frames", received);
                 }
             });
@@ -78,15 +83,28 @@ namespace CanKit.Sample.Benchmark
             for (int i = 0; i < payload.Length; i++) payload[i] = (byte)(i & 0xFF);
             var frame = fd ? (ICanFrame)new CanFdFrame(id, payload, BRS: brs, ESI: false) : new CanClassicFrame(id, payload);
 
+            double perFrameUs = FrameTimeUsEstimate(fd, brs, payload.Length, bitrate, dbitrate, stuff);
+            double perFramePeriodUs = perFrameUs / util;
+
             var sw = Stopwatch.StartNew();
             const int batch = 256;
             int sent = 0;
             while (sent < frames)
             {
                 int take = Math.Min(batch, frames - sent);
+                if (sleepMsOverride >= 0)
+                {
+                    if (sent > 0) Thread.Sleep(sleepMsOverride);
+                }
+                else
+                {
+                    double batchUs = perFramePeriodUs * take;
+                    int sleepMs = (int)Math.Round(batchUs / 1000.0);
+                    if (sleepMs > 0 && sent > 0) Thread.Sleep(sleepMs);
+                }
                 var list = new CanTransmitData[take];
                 for (int i = 0; i < take; i++) list[i] = new CanTransmitData(frame);
-                var b = await tx.TransmitAsync(list, -1);
+                await tx.TransmitAsync(list, -1);
                 sent += take;
             }
             var totalRx = await done.Task; // wait until received expected
@@ -99,6 +117,23 @@ namespace CanKit.Sample.Benchmark
             return 0;
         }
 
+        private static double FrameTimeUsEstimate(bool isFd, bool brsOn, int bytes, uint arbBitrate, uint dataBitrate, double stuffFactor)
+        {
+            bytes = Math.Max(0, Math.Min(bytes, isFd ? 64 : 8));
+            if (!isFd)
+            {
+                double bits = (47.0 + 8.0 * bytes) * stuffFactor;
+                return bits / arbBitrate * 1e6;
+            }
+            else
+            {
+                double arbBitsNoStuff = 36.0 + (bytes <= 16 ? 17.0 : 21.0);
+                double dataBits = 8.0 * bytes;
+                double tArbUs  = (arbBitsNoStuff * stuffFactor) / arbBitrate * 1e6;
+                double tDataUs = (dataBits        * stuffFactor) / (brsOn ? dataBitrate : arbBitrate) * 1e6;
+                return tArbUs + tDataUs;
+            }
+        }
         private static string? GetArg(string[] args, string name) => args.SkipWhile(a => !string.Equals(a, name, StringComparison.OrdinalIgnoreCase)).Skip(1).FirstOrDefault();
         private static bool HasFlag(string[] args, string name) => args.Any(a => string.Equals(a, name, StringComparison.OrdinalIgnoreCase));
         private static uint ParseUInt(string? s, uint def) => uint.TryParse(s, out var v) ? v : def;

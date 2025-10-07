@@ -212,6 +212,13 @@ internal static class Libc
     }
 
     [StructLayout(LayoutKind.Sequential)]
+    public struct mmsghdr
+    {
+        public msghdr msg_hdr;
+        public uint msg_len;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
     public struct timespec
     {
         public long tv_sec;   // seconds
@@ -300,6 +307,12 @@ internal static class Libc
 
     [DllImport("libc", SetLastError = true)]
     public static unsafe extern long recvmsg(int sockfd, msghdr* msg, int flags);
+
+    [DllImport("libc", SetLastError = true)]
+    public static unsafe extern int recvmmsg(int sockfd, mmsghdr* msgvec, uint vlen, int flags, timespec* timeout);
+
+    [DllImport("libc", SetLastError = true)]
+    public static unsafe extern int sendmmsg(int sockfd, mmsghdr* msgvec, uint vlen, int flags);
 
     [DllImport("libc", SetLastError = true)]
     public static extern int close(int fd);

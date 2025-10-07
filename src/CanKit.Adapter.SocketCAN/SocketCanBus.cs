@@ -182,21 +182,27 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
         uint sendCount = 0;
         var startTime = Environment.TickCount;
         var pollFd = new Libc.pollfd { fd = _fd, events = Libc.POLLOUT };
-        using var enumerator = frames.GetEnumerator();
-        var single = new CanTransmitData[1];
-        if (!enumerator.MoveNext())
-            return 0;
 
+        using var enumerator = frames.GetEnumerator();
+        var pending = new List<CanTransmitData>(64);
+
+        bool filled = false;
+        // initial fill
+        while (pending.Count < 64 && enumerator.MoveNext())
+        {
+            pending.Add(enumerator.Current);
+            filled = true;
+        }
+        if (!filled) return 0;
 
         bool hasTransmit = false;
-        do
+        while (true)
         {
             var remainingTime = timeOut > 0
                 ? Math.Max(0, timeOut - (Environment.TickCount - startTime))
                 : timeOut;
 
-
-            if (timeOut >= 0 && remainingTime <= 0 && hasTransmit) //at least transmit one times
+            if (timeOut >= 0 && remainingTime <= 0 && hasTransmit) // at least transmit once
                 break;
 
             hasTransmit = true;
@@ -210,22 +216,34 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
             {
                 continue;
             }
-            single[0] = enumerator.Current;
-            var re = _transceiver.Transmit(this, single);
-            if (re == 1)
+
+            // send current pending batch
+            var wrote = _transceiver.Transmit(this, pending);
+            if (wrote > 0)
             {
-                sendCount++;
-                if (!enumerator.MoveNext())
+                sendCount += wrote;
+                // remove sent ones
+                if (wrote >= pending.Count)
                 {
-                    break;
+                    pending.Clear();
+                }
+                else
+                {
+                    pending.RemoveRange(0, (int)wrote);
                 }
             }
-            else if (re == 2)
-            {
-                Thread.Sleep(Options.ReadTImeOutMs * 2);
-            }
-        } while (true);
 
+            // refill pending up to 64
+            while (pending.Count < 64 && enumerator.MoveNext())
+            {
+                pending.Add(enumerator.Current);
+            }
+
+            if (pending.Count == 0)
+            {
+                break; // all sent
+            }
+        }
 
         return sendCount;
 
@@ -236,14 +254,33 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
         ThrowIfDisposed();
         if (timeOut > 0)
         {
-            var pollFd = new Libc.pollfd { fd = _fd, events = Libc.POLLIN };
-            var pr = Libc.poll(ref pollFd, 1, timeOut);
-            if (pr == -1)
+            var pollFd2 = new Libc.pollfd { fd = _fd, events = Libc.POLLIN };
+            var pr2 = Libc.poll(ref pollFd2, 1, timeOut);
+            if (pr2 == -1)
             {
                 Libc.ThrowErrno("poll(POLLIN)", "Polling for readable socket failed");
             }
         }
-        return _transceiver.Receive(this, count);
+
+        // Read in chunks of up to 64 per transceiver call
+        var list = new List<CanReceiveData>((int)Math.Max(1, Math.Min(count == 0 ? 64u : count, 256u)));
+        uint remaining = count;
+        while (true)
+        {
+            var take = remaining == 0 ? 64u : Math.Min(remaining, 64u);
+            var batch = _transceiver.Receive(this, take);
+            int got = 0;
+            foreach (var item in batch)
+            {
+                list.Add(item);
+                got++;
+                if (remaining != 0 && list.Count >= remaining)
+                    break;
+            }
+            if (got < (int)take) break; // transceiver returned fewer than requested
+            if (remaining != 0 && list.Count >= remaining) break;
+        }
+        return list;
     }
 
     public Task<uint> TransmitAsync(IEnumerable<CanTransmitData> frames, int timeOut = 0, CancellationToken cancellationToken = default)
@@ -917,48 +954,54 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
         var useSw = _useSoftwareFilter;
         var pred = _softwareFilterPredicate;
 
-        foreach (var rec in _transceiver.Receive(this, 0))
+        while (true)
         {
-            var frame = rec.CanFrame;
-            bool isErr = frame is CanClassicFrame { IsErrorFrame: true } ||
-                         frame is CanFdFrame { IsErrorFrame: true };
+            int gotBatch = 0;
+            foreach (var rec in _transceiver.Receive(this, 64))
+            {
+                gotBatch++;
+                var frame = rec.CanFrame;
+                bool isErr = frame is CanClassicFrame { IsErrorFrame: true } ||
+                             frame is CanFdFrame { IsErrorFrame: true };
 
-            if (isErr)
-            {
-                uint raw = frame.RawID;
-                uint err = raw & Libc.CAN_ERR_MASK;
-                var span = frame.Data.Span;
-                var sysTs = Options.PreferKernelTimestamp && rec.ReceiveTimestamp != TimeSpan.Zero
-                    ? new DateTimeOffset(new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc))
-                        .Add(rec.ReceiveTimestamp).UtcDateTime
-                    : DateTime.Now;
-                var info = new DefaultCanErrorInfo(
-                    SocketCanErr.ToFrameErrorType(err),
-                    SocketCanErr.ToControllerStatus(span),
-                    SocketCanErr.ToProtocolViolationType(span),
-                    SocketCanErr.ToErrorLocation(span),
-                    sysTs,
-                    err,
-                    rec.ReceiveTimestamp,
-                    SocketCanErr.InferFrameDirection(err, span),
-                    SocketCanErr.ToArbitrationLostBit(err, span),
-                    SocketCanErr.ToTransceiverStatus(span),
-                    SocketCanErr.ToErrorCounters(err, span),
-                    frame);
-                var errSnap = Volatile.Read(ref _errorOccurred);
-                errSnap?.Invoke(this, info);
-            }
-            else
-            {
-                if (useSw && pred is not null && !pred(frame))
-                    continue;
-                var evSnap = Volatile.Read(ref _frameReceived);
-                evSnap?.Invoke(this, rec);
-                if (Volatile.Read(ref _asyncConsumerCount) > 0)
+                if (isErr)
                 {
-                    _asyncRx.Publish(rec);
+                    uint raw = frame.RawID;
+                    uint err = raw & Libc.CAN_ERR_MASK;
+                    var span = frame.Data.Span;
+                    var sysTs = Options.PreferKernelTimestamp && rec.ReceiveTimestamp != TimeSpan.Zero
+                        ? new DateTimeOffset(new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc))
+                            .Add(rec.ReceiveTimestamp).UtcDateTime
+                        : DateTime.Now;
+                    var info = new DefaultCanErrorInfo(
+                        SocketCanErr.ToFrameErrorType(err),
+                        SocketCanErr.ToControllerStatus(span),
+                        SocketCanErr.ToProtocolViolationType(span),
+                        SocketCanErr.ToErrorLocation(span),
+                        sysTs,
+                        err,
+                        rec.ReceiveTimestamp,
+                        SocketCanErr.InferFrameDirection(err, span),
+                        SocketCanErr.ToArbitrationLostBit(err, span),
+                        SocketCanErr.ToTransceiverStatus(span),
+                        SocketCanErr.ToErrorCounters(err, span),
+                        frame);
+                    var errSnap = Volatile.Read(ref _errorOccurred);
+                    errSnap?.Invoke(this, info);
+                }
+                else
+                {
+                    if (useSw && pred is not null && !pred(frame))
+                        continue;
+                    var evSnap = Volatile.Read(ref _frameReceived);
+                    evSnap?.Invoke(this, rec);
+                    if (Volatile.Read(ref _asyncConsumerCount) > 0)
+                    {
+                        _asyncRx.Publish(rec);
+                    }
                 }
             }
+            if (gotBatch < 64) break; // drained
         }
     }
 
