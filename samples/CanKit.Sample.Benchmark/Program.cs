@@ -1,0 +1,102 @@
+using System;
+using System.Diagnostics;
+using System.Globalization;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using CanKit.Core;
+using CanKit.Core.Definitions;
+
+namespace CanKit.Sample.Benchmark
+{
+    internal static class Program
+    {
+        private static async Task<int> Main(string[] args)
+        {
+            // Usage: Benchmark [--src <ep>] [--dst <ep>] [--frames 10000] [--len 8] [--fd] [--brs]
+            var src = GetArg(args, "--src") ?? "virtual://alpha/0";
+            var dst = GetArg(args, "--dst") ?? "virtual://alpha/1";
+            int frames = (int)ParseUInt(GetArg(args, "--frames"), 50_000);
+            int len = (int)ParseUInt(GetArg(args, "--len"), 8);
+            bool fd = HasFlag(args, "--fd");
+            bool brs = HasFlag(args, "--brs");
+
+            using var rx = CanBus.Open(dst, cfg =>
+            {
+                if (fd)
+                {
+                    cfg.SetProtocolMode(CanProtocolMode.CanFd);
+                }
+                else
+                {
+                    cfg.SetProtocolMode(CanProtocolMode.Can20);
+                }
+            });
+            using var tx = CanBus.Open(src, cfg =>
+            {
+                if (fd)
+                {
+                    cfg.SetProtocolMode(CanProtocolMode.CanFd);
+                }
+                else
+                {
+                    cfg.SetProtocolMode(CanProtocolMode.Can20);
+                }
+
+                cfg.SetWorkMode(ChannelWorkMode.Echo);
+            });
+
+            var done = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+            int received = 0;
+#if NET8_0_OR_GREATER
+            var cts = new CancellationTokenSource();
+            var rxTask = Task.Run(async () =>
+            {
+                await foreach (var e in rx.GetFramesAsync(cts.Token))
+                {
+                    if (Interlocked.Increment(ref received) >= frames) { done.TrySetResult(received); break; }
+                }
+            });
+#else
+            var rxTask = Task.Run(async () =>
+            {
+                while (Interlocked.CompareExchange(ref received, 0, 0) < frames)
+                {
+                    var list = await rx.ReceiveAsync(256, 10);
+                    Interlocked.Add(ref received, list.Count);
+                }
+                done.TrySetResult(received);
+            });
+#endif
+            var id = 0x100u;
+            var payload = new byte[Math.Max(0, Math.Min(len, fd ? 64 : 8))];
+            for (int i = 0; i < payload.Length; i++) payload[i] = (byte)(i & 0xFF);
+            var frame = fd ? (ICanFrame)new CanFdFrame(id, payload, BRS: brs, ESI: false) : new CanClassicFrame(id, payload);
+
+            var sw = Stopwatch.StartNew();
+            const int batch = 256;
+            int sent = 0;
+            while (sent < frames)
+            {
+                int take = Math.Min(batch, frames - sent);
+                var list = new CanTransmitData[take];
+                for (int i = 0; i < take; i++) list[i] = new CanTransmitData(frame);
+                await tx.TransmitAsync(list);
+                sent += take;
+            }
+            var totalRx = await done.Task; // wait until received expected
+            sw.Stop();
+
+            double secs = Math.Max(1e-6, sw.Elapsed.TotalSeconds);
+            double rate = totalRx / secs;
+            Console.WriteLine($"Frames: {frames}, Bytes/Frame: {payload.Length}, FD={fd}, BRS={brs}");
+            Console.WriteLine($"Elapsed: {sw.Elapsed.TotalMilliseconds:F1} ms, Throughput: {rate:F0} frames/s");
+            return 0;
+        }
+
+        private static string? GetArg(string[] args, string name) => args.SkipWhile(a => !string.Equals(a, name, StringComparison.OrdinalIgnoreCase)).Skip(1).FirstOrDefault();
+        private static bool HasFlag(string[] args, string name) => args.Any(a => string.Equals(a, name, StringComparison.OrdinalIgnoreCase));
+        private static uint ParseUInt(string? s, uint def) => uint.TryParse(s, out var v) ? v : def;
+    }
+}
+

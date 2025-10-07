@@ -7,8 +7,8 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\..\CanKit.Core\CanKit.Core.csproj" />
-        <ProjectReference Include="..\CanKit.Gen\CanKit.Gen.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+        <ProjectReference Include="..\..\src\CanKit.Core\CanKit.Core.csproj" />
+        <ProjectReference Include="..\..\src\CanKit.Gen\CanKit.Gen.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
     </ItemGroup>
 
 </Project>
