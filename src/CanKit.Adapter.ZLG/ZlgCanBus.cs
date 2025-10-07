@@ -57,24 +57,29 @@ namespace CanKit.Adapter.ZLG
             Options = new ZlgBusRtConfigurator();
             Options.Init((ZlgBusOptions)options);
             _asyncRx = new AsyncFramePipe(Options.AsyncBufferCapacity > 0 ? Options.AsyncBufferCapacity : null);
+            CanKitLogger.LogInformation($"ZLG: Initializing channel '{Options.ChannelName?? Options.ChannelIndex.ToString()}', Mode={Options.ProtocolMode}...");
             ApplyConfig(options);
             ZLGCAN.ZCAN_SetValue(_devicePtr, options.ChannelIndex+"clear_auto_send", "0");
             var provider = Options.Provider as ZlgCanProvider;
+
+            if (provider is null)
+            {
+                CanKitLogger.LogWarning($"provider is not ZlgCanProvider, Device={device.Options.DeviceType}, DeviceIndex={device.Options.DeviceIndex}, ChannelIndex={options.ChannelIndex}");
+            }
 
             ZLGCAN.ZCAN_CHANNEL_INIT_CONFIG config = new ZLGCAN.ZCAN_CHANNEL_INIT_CONFIG
             {
                 can_type = options.ProtocolMode == CanProtocolMode.Can20 ? 0U : 1U,
             };
             config.config.can.mode = (byte)options.WorkMode;
-            if (options.ProtocolMode == CanProtocolMode.Can20)
-            {
-            }
-            else
+            CanKitLogger.LogInformation($"ZLG: Initializing on '{options.ChannelIndex}', Mode={options.ProtocolMode}, Features={Options.Features}");
+
+            if (options.ProtocolMode == CanProtocolMode.CanFd)
             {
                 var arbitrationRate = options.BitTiming.Fd?.Nominal.Bitrate
-                                      ?? throw new CanChannelConfigurationException("Arbitration bitrate must be specified when configuring CAN FD timing.");
+                                      ?? throw new CanBusConfigurationException("Arbitration bitrate must be specified when configuring CAN FD timing.");
                 var dataRate = options.BitTiming.Fd?.Data.Bitrate
-                               ?? throw new CanChannelConfigurationException("Data bitrate must be specified when configuring CAN FD timing.");
+                               ?? throw new CanBusConfigurationException("Data bitrate must be specified when configuring CAN FD timing.");
                 config.config.canfd.abit_timing = arbitrationRate;
                 config.config.canfd.dbit_timing = dataRate;
             }
@@ -83,9 +88,6 @@ namespace CanKit.Adapter.ZLG
             {
                 if (options.Filter.filterRules[0] is FilterRule.Mask mask)
                 {
-                    if (provider is not null)
-                        ZlgErr.ThrowIfNotSupport(provider.ZlgFeature, ZlgFeature.MaskFilter);
-
                     config.config.can.acc_code = mask.AccCode;
                     config.config.can.acc_mask = mask.AccMask;
                     config.config.can.filter = (byte)Options.MaskFilterType;
@@ -100,6 +102,8 @@ namespace CanKit.Adapter.ZLG
             }
 
             var handle = ZLGCAN.ZCAN_InitCAN(device.NativeHandler, (uint)Options.ChannelIndex, ref config);
+            CanKitLogger.LogInformation("ZLG: Initialize succeeded.");
+
             ApplyConfigAfterInit(options);
             handle.SetDevice(device.NativeHandler.DangerousGetHandle());
 
@@ -111,7 +115,7 @@ namespace CanKit.Adapter.ZLG
             if (transceiver is not IZlgTransceiver zlg)
                 throw new CanTransceiverMismatchException(typeof(IZlgTransceiver), transceiver.GetType());
             _transceiver = zlg;
-
+            CanKitLogger.LogDebug("ZLG: Initial options applied.");
         }
 
         public ZlgChannelHandle NativeHandle => _nativeHandle;
@@ -125,7 +129,6 @@ namespace CanKit.Adapter.ZLG
         public void Reset()
         {
             ThrowIfDisposed();
-
             ZlgErr.ThrowIfError(ZLGCAN.ZCAN_ResetCAN(_nativeHandle), nameof(ZLGCAN.ZCAN_ResetCAN), _nativeHandle);
         }
 
@@ -139,22 +142,30 @@ namespace CanKit.Adapter.ZLG
         public uint Transmit(IEnumerable<CanTransmitData> frames, int timeOut = 0)
         {
             ThrowIfDisposed();
-            var list = frames.ToArray();
-            bool isFirst = true;
-            uint result = 0;
-            var startTime = Environment.TickCount;
-            do
+            try
             {
-                if (isFirst)
-                    isFirst = false;
-                else
-                    Thread.Sleep(Math.Min(Environment.TickCount - startTime, Options.PollingInterval));
+                var list = frames.ToArray();
+                bool isFirst = true;
+                uint result = 0;
+                var startTime = Environment.TickCount;
+                do
+                {
+                    if (isFirst)
+                        isFirst = false;
+                    else
+                        Thread.Sleep(Math.Min(Environment.TickCount - startTime, Options.PollingInterval));
 
-                var count = _transceiver.Transmit(this, new ArraySegment<CanTransmitData>(list, (int)result, list.Length - (int)result));
-                result += count;
-            } while (result < list.Length && Environment.TickCount - startTime <= timeOut);
+                    var count = _transceiver.Transmit(this, new ArraySegment<CanTransmitData>(list, (int)result, list.Length - (int)result));
+                    result += count;
+                } while (result < list.Length && Environment.TickCount - startTime <= timeOut);
 
-            return result;
+                return result;
+            }
+            catch (Exception ex)
+            {
+                HandleBackgroundException(ex);
+                throw;
+            }
         }
 
         public IPeriodicTx TransmitPeriodic(CanTransmitData frame, PeriodicTxOptions options)
@@ -165,8 +176,7 @@ namespace CanKit.Adapter.ZLG
 
         public float BusUsage()
         {
-            if ((Options.Features & CanFeature.BusUsage) == 0U)
-                throw new CanFeatureNotSupportedException(CanFeature.BusUsage, Options.Features);
+            CanKitErr.ThrowIfNotSupport(Options.Features, CanFeature.BusUsage);
             var ret = ZLGCAN.ZCAN_GetValue(NativeHandle.DeviceHandle, $"{Options.ChannelIndex}/get_bus_usage/1");
             var busUsage = Marshal.PtrToStructure<ZLGCAN.BusUsage>(ret);
             return busUsage.nBusUsage / 100f;
@@ -174,8 +184,7 @@ namespace CanKit.Adapter.ZLG
 
         public CanErrorCounters ErrorCounters()
         {
-            if ((Options.Features & CanFeature.ErrorCounters) == 0U)
-                throw new CanFeatureNotSupportedException(CanFeature.ErrorCounters, Options.Features);
+            //CanKitErr.ThrowIfNotSupport(Options.Features, CanFeature.ErrorCounters); always true
 
             ZLGCAN.ZCAN_ReadChannelErrInfo(_nativeHandle, out var errInfo);
             return new CanErrorCounters()
@@ -188,7 +197,23 @@ namespace CanKit.Adapter.ZLG
         public IEnumerable<CanReceiveData> Receive(uint count = 1, int timeOut = 0)
         {
             ThrowIfDisposed();
-            return _transceiver.Receive(this, count, timeOut);
+            IEnumerable<CanReceiveData> Iterator()
+            {
+                using var e = _transceiver.Receive(this, count, timeOut).GetEnumerator();
+                while (true)
+                {
+                    bool moved;
+                    try { moved = e.MoveNext(); }
+                    catch (Exception ex)
+                    {
+                        HandleBackgroundException(ex);
+                        throw;
+                    }
+                    if (!moved) yield break;
+                    yield return e.Current;
+                }
+            }
+            return Iterator();
         }
 
         public bool ReadErrorInfo(out ICanErrorInfo? errorInfo)
@@ -201,7 +226,6 @@ namespace CanKit.Adapter.ZLG
             return true;
 
         }
-
 
         public void Dispose()
         {
@@ -270,13 +294,16 @@ namespace CanKit.Adapter.ZLG
             }
         }
 
-        public event EventHandler<ICanErrorInfo> ErrorOccurred
+        public event EventHandler<Exception>? BackgroundExceptionOccurred;
+
+
+        public event EventHandler<ICanErrorInfo> ErrorFrameReceived
         {
             add
             {
                 if (!Options.AllowErrorInfo)
                 {
-                    throw new CanChannelConfigurationException("ErrorOccurred subscription requires AllowErrorInfo=true in options.");
+                    throw new CanBusConfigurationException("ErrorOccurred subscription requires AllowErrorInfo=true in options.");
                 }
                 bool needStart = false;
                 lock (_evtGate)
@@ -295,7 +322,7 @@ namespace CanKit.Adapter.ZLG
             {
                 if (!Options.AllowErrorInfo)
                 {
-                    throw new CanChannelConfigurationException("ErrorOccurred subscription requires AllowErrorInfo=true in options.");
+                    throw new CanBusConfigurationException("ErrorOccurred subscription requires AllowErrorInfo=true in options.");
                 }
                 bool needStop = false;
                 lock (_evtGate)
@@ -349,14 +376,14 @@ namespace CanKit.Adapter.ZLG
             {
                 ZLGCAN.ZCAN_SetValue(_devicePtr, Options.ChannelIndex + "/canfd_standard", "0");
                 var arbitrationRate = zlgOption.BitTiming.Fd?.Nominal.Bitrate
-                                  ?? throw new CanChannelConfigurationException("Arbitration bitrate must be specified when configuring CAN FD timing.");
+                                  ?? throw new CanBusConfigurationException("Arbitration bitrate must be specified when configuring CAN FD timing.");
                 var dataRate = zlgOption.BitTiming.Fd?.Data.Bitrate
-                               ?? throw new CanChannelConfigurationException("Data bitrate must be specified when configuring CAN FD timing.");
+                               ?? throw new CanBusConfigurationException("Data bitrate must be specified when configuring CAN FD timing.");
 
                 if (!Enum.IsDefined(typeof(ZlgBaudRate), arbitrationRate) ||
                     !Enum.IsDefined(typeof(ZlgDataDaudRate), dataRate))
                 {
-                    throw new CanChannelConfigurationException(
+                    throw new CanBusConfigurationException(
                         $"Unsupported ZLG CAN FD bitrate setting: abit={arbitrationRate} bps, dbit={dataRate} bps.");
                 }
 
@@ -377,12 +404,12 @@ namespace CanKit.Adapter.ZLG
             else
             {
                 var bitRate = zlgOption.BitTiming.Classic?.Nominal.Bitrate
-                              ?? throw new CanChannelConfigurationException(
+                              ?? throw new CanBusConfigurationException(
                                   "Bitrate must be specified when configuring classic CAN timing.");
 
                 if (!Enum.IsDefined(typeof(ZlgBaudRate), bitRate))
                 {
-                    throw new CanChannelConfigurationException(
+                    throw new CanBusConfigurationException(
                         $"Unsupported ZLG classic bitrate: {bitRate} bps.");
                 }
 
@@ -654,15 +681,19 @@ namespace CanKit.Adapter.ZLG
                 }
                 catch (Exception ex)
                 {
-                    // 其他异常：短暂休眠并继续，避免热循环
-                    CanKitLogger.LogWarning("Error occurred while polling ZLG CAN channel.", ex);
-                    Thread.Sleep(Options.PollingInterval);
+                    // 非预期异常：记录日志，通知故障并退出循环
+                    HandleBackgroundException(ex);
+                    break;
                 }
             }
         }
 
         public Task<uint> TransmitAsync(IEnumerable<CanTransmitData> frames, int timeOut = 0, CancellationToken cancellationToken = default)
-            => Task.Run(() => Transmit(frames, timeOut), cancellationToken);
+            => Task.Run(() =>
+            {
+                try { return Transmit(frames, timeOut); }
+                catch (Exception ex) { HandleBackgroundException(ex); throw; }
+            }, cancellationToken);
 
         public Task<IReadOnlyList<CanReceiveData>> ReceiveAsync(uint count = 1, int timeOut = 0, CancellationToken cancellationToken = default)
         {
@@ -764,6 +795,13 @@ namespace CanKit.Adapter.ZLG
         {
             ThrowIfDisposed();
             return _autoSendIndexes.Remove(index);
+        }
+
+        private void HandleBackgroundException(Exception ex)
+        {
+            try { CanKitLogger.LogError("ZLG bus occured background exception.", ex); } catch { }
+            try { _asyncRx.ExceptionOccured(ex); } catch { }
+            try { var snap = Volatile.Read(ref BackgroundExceptionOccurred); snap?.Invoke(this, ex); } catch { }
         }
     }
 }

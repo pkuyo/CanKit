@@ -67,10 +67,9 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
             throw new CanBusCreationException("PCAN handle is invalid");
         }
 
-
         // Update runtime capabilities
         UpdateDynamicFeatures();
-        CanKitLogger.LogInformation($"PCAN: Initializing on '{options.ChannelName}', Mode={options.ProtocolMode}, Features={Options.Features}");
+        CanKitLogger.LogInformation($"PCAN: Initializing on '{_handle}', Mode={options.ProtocolMode}, Features={Options.Features}");
 
 
         // Initialize according to selected protocol mode
@@ -156,7 +155,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
                     var mode = rg.FilterIdType == CanFilterIDType.Extend
                         ? FilterMode.Extended
                         : FilterMode.Standard;
-                    _ = Api.FilterMessages(_handle, rg.From, rg.To, mode);
+                    PcanUtils.ThrowIfError(Api.FilterMessages(_handle, rg.From, rg.To, mode),"FilterMessages", "PcanBus set filers error");
                 }
                 else
                 {
@@ -180,18 +179,16 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
 
         if (pc.AllowErrorInfo)
         {
-            Api.SetValue(_handle, PcanParameter.AllowErrorFrames, ParameterValue.Activation.On);
+            PcanUtils.ThrowIfError(Api.SetValue(_handle, PcanParameter.AllowErrorFrames, ParameterValue.Activation.On),
+                "SetAllowErrorFrames", "PcanBus enable error frames failed");
         }
-
-
-
     }
 
 
     public void Reset()
     {
         ThrowIfDisposed();
-        _ = Api.Reset(_handle);
+        PcanUtils.ThrowIfError(Api.Reset(_handle), "Reset", "Failed to reset PCAN handle");
         CanKitLogger.LogDebug("PCAN: Channel reset issued.");
     }
 
@@ -199,7 +196,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
     {
         ThrowIfDisposed();
         // Reset clears the receive/transmit queues
-        _ = Api.Reset(_handle);
+        PcanUtils.ThrowIfError(Api.Reset(_handle), "Reset", "Failed to reset PCAN handle (in CleanBuffer)");
         CanKitLogger.LogDebug("PCAN: Buffers cleared via reset.");
 
     }
@@ -215,13 +212,14 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
         ThrowIfDisposed();
         if ((Options.EnabledSoftwareFallback & CanFeature.CyclicTx) != 0)
             return SoftwarePeriodicTx.Start(this, frame, options);
-        else
-            throw new CanFeatureNotSupportedException(CanFeature.CyclicTx, Options.Features);
+        throw new CanFeatureNotSupportedException(CanFeature.CyclicTx, Options.Features);
     }
 
     public float BusUsage() => throw new CanFeatureNotSupportedException(CanFeature.BusUsage, Options.Features);
 
-    public CanErrorCounters ErrorCounters() => throw new CanFeatureNotSupportedException(CanFeature.ErrorCounters, Options.Features);
+    public CanErrorCounters ErrorCounters()
+        => throw new CanFeatureNotSupportedException(CanFeature.ErrorCounters, Options.Features);
+
 
     public IEnumerable<CanReceiveData> Receive(uint count = 1, int timeOut = 0)
     {
@@ -230,7 +228,15 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
     }
 
     public Task<uint> TransmitAsync(IEnumerable<CanTransmitData> frames, int timeOut = 0, CancellationToken cancellationToken = default)
-        => Task.Run(() => Transmit(frames, timeOut), cancellationToken);
+        => Task.Run(() =>
+        {
+            try
+            {
+                return Transmit(frames, timeOut);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+            catch (Exception ex) { HandleBackgroundException(ex); throw; }
+        }, cancellationToken);
 
     public Task<IReadOnlyList<CanReceiveData>> ReceiveAsync(uint count = 1, int timeOut = 0, CancellationToken cancellationToken = default)
     {
@@ -330,13 +336,13 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
         }
     }
 
-    public event EventHandler<ICanErrorInfo>? ErrorOccurred
+    public event EventHandler<ICanErrorInfo>? ErrorFrameReceived
     {
         add
         {
             if (!Options.AllowErrorInfo)
             {
-                throw new CanChannelConfigurationException("ErrorOccurred subscription requires AllowErrorInfo=true in options.");
+                throw new CanBusConfigurationException("ErrorOccurred subscription requires AllowErrorInfo=true in options.");
             }
             bool needStart = false;
             lock (_evtGate)
@@ -355,7 +361,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
         {
             if (!Options.AllowErrorInfo)
             {
-                throw new CanChannelConfigurationException("ErrorOccurred subscription requires AllowErrorInfo=true in options.");
+                throw new CanBusConfigurationException("ErrorOccurred subscription requires AllowErrorInfo=true in options.");
             }
             bool needStop = false;
             lock (_evtGate)
@@ -392,10 +398,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
 
     private void ThrowIfDisposed()
     {
-        if (_isDisposed)
-        {
-            throw new ObjectDisposedException(GetType().FullName);
-        }
+        if (_isDisposed) throw new ObjectDisposedException("PCanBus is disposed.");
     }
 
 
@@ -409,13 +412,15 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
         {
             _recEvent = new EventWaitHandle(false, EventResetMode.AutoReset);
             var h = (uint)_recEvent.SafeWaitHandle.DangerousGetHandle().ToInt32();
-            Api.SetValue(_handle, PcanParameter.ReceiveEvent, h);
+            PcanUtils.ThrowIfError(Api.SetValue(_handle, PcanParameter.ReceiveEvent, h), "SetValue(ReceiveEvent)",
+                "Start PcanBus receive loop failed");
         }
 #else
 #if WINDOWS
         _recEvent = new EventWaitHandle(false, EventResetMode.AutoReset);
         var h = (uint)_recEvent.SafeWaitHandle.DangerousGetHandle().ToInt32();
-        Api.SetValue(_handle, PcanParameter.ReceiveEvent, h);
+           PcanUtils.ThrowIfError(Api.SetValue(_handle, PcanParameter.ReceiveEvent, h) , "SetValue(ReceiveEvent)",
+                "Start PcanBus receive loop failed");
 #endif
 #endif
         _pollTask = Task.Run(() => PollLoop(token), token);
@@ -477,23 +482,30 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
     private void PollLoop(CancellationToken token)
     {
         var handles = new[] { _recEvent, token.WaitHandle };
-        while (!token.IsCancellationRequested)
+        try
         {
-            if (Volatile.Read(ref _subscriberCount) <= 0)
+            while (!token.IsCancellationRequested)
             {
-                break;
-            }
-            var signaled = WaitHandle.WaitAny(handles);
-            if (signaled == 1)
-            {
-                break;
-            }
-            if (signaled != 0)
-            {
-                continue;
-            }
+                if (Volatile.Read(ref _subscriberCount) <= 0)
+                {
+                    break;
+                }
+                var signaled = WaitHandle.WaitAny(handles);
+                if (signaled == 1)
+                {
+                    break;
+                }
+                if (signaled != 0)
+                {
+                    continue;
+                }
 
-            DrainReceive();
+                DrainReceive();
+            }
+        }
+        catch (Exception ex)
+        {
+            HandleBackgroundException(ex);
         }
     }
 
@@ -511,17 +523,17 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
                     var raw = rec.CanFrame.RawID;
                     var span = rec.CanFrame.Data.Span;
                     var info = new DefaultCanErrorInfo(
-                        PcanErr.ToFrameErrorType(raw, span),
+                        PcanUtils.ToFrameErrorType(raw, span),
                         CanKitExtension.ToControllerStatus(span[2], span[3]),
-                        PcanErr.ToProtocolViolationType(raw, span),
-                        PcanErr.ToErrorLocation(span),
+                        PcanUtils.ToProtocolViolationType(raw, span),
+                        PcanUtils.ToErrorLocation(span),
                         DateTime.Now,
                         raw,
                         rec.ReceiveTimestamp,
-                        PcanErr.ToDirection(span),
+                        PcanUtils.ToDirection(span),
                         null,
-                        PcanErr.ToTransceiverStatus(span),
-                        PcanErr.ToErrorCounters(span),
+                        PcanUtils.ToTransceiverStatus(span),
+                        PcanUtils.ToErrorCounters(span),
                         rec.CanFrame);
                     _errorOccured?.Invoke(this, info);
                     continue;
@@ -540,11 +552,20 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
         }
     }
 
+    public event EventHandler<Exception>? BackgroundExceptionOccurred;
+
+    private void HandleBackgroundException(Exception ex)
+    {
+        try { CanKitLogger.LogError("PCAN bus occured background exception.", ex); } catch { }
+        try { _asyncRx.ExceptionOccured(ex); } catch { }
+        try { var snap = Volatile.Read(ref BackgroundExceptionOccurred); snap?.Invoke(this, ex); } catch { }
+    }
+
     private static Bitrate MapClassicBaud(CanBusTiming timing)
     {
         if (!timing.Classic!.Value.Nominal.IsTarget)
         {
-            throw new CanChannelConfigurationException(
+            throw new CanBusConfigurationException(
                 "Classic timing must specify a target nominal bitrate.");
         }
 
@@ -565,7 +586,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
             20_000 => Bitrate.Pcan20,
             10_000 => Bitrate.Pcan10,
             5_000 => Bitrate.Pcan5,
-            _ => throw new CanChannelConfigurationException($"Unsupported PCAN classic bitrate: {b}")
+            _ => throw new CanBusConfigurationException($"Unsupported PCAN classic bitrate: {b}")
         };
     }
 
@@ -580,7 +601,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
 
         if (!Enum.IsDefined(typeof(BitrateFD.ClockFrequency), clock * 1_000_000))
         {
-            throw new CanKit.Core.Exceptions.CanChannelConfigurationException(
+            throw new CanBusConfigurationException(
                 $"Unsupported PCAN FD clock frequency: {clock} MHz.");
         }
 
@@ -702,6 +723,10 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
                 dyn &= ~CanFeature.CanFd;
             }
             Options.UpdateDynamicFeatures(dyn);
+        }
+        else
+        {
+            CanKitLogger.LogWarning($"PCAN: PcanBus get channel features failed. Channel={_handle}");
         }
     }
 }

@@ -103,9 +103,16 @@ namespace CanKit.Core.Abstractions
         event EventHandler<CanReceiveData> FrameReceived;
 
         /// <summary>
-        /// Raised when a channel error occurs (通道发生错误时触发)。
+        /// Raised when a CAN error frame is received（接收到新的 CAN 错误帧的时候触发）。
         /// </summary>
-        event EventHandler<ICanErrorInfo> ErrorOccurred;
+        event EventHandler<ICanErrorInfo> ErrorFrameReceived;
+
+        /// <summary>
+        /// Raised when an unexpected error occurs on the bus at background (发生非预期致命异常时触发)。
+        /// Implementations should log the error, stop internal loops, cleanup resources,
+        /// and ensure pending async operations observe this exception (最终通过该事件传播异常)。
+        /// </summary>
+        event EventHandler<Exception> BackgroundExceptionOccurred;
     }
 
 

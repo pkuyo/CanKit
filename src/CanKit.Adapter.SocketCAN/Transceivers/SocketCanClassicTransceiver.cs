@@ -24,21 +24,31 @@ public sealed class SocketCanClassicTransceiver : ITransceiver
             var frame = cf.ToCanFrame();
             var size = Marshal.SizeOf<Libc.can_frame>();
             var result = Libc.write(((SocketCanBus)channel).FileDescriptor, &frame, (ulong)size);
+            if (result < 0)
+            {
+                if (Libc.Errno() == Libc.ENOBUFS)
+                {
+                    return 2;
+                }
+                else
+                {
+                    Libc.ThrowErrno("write(can_frame)", "Failed to write classic CAN frame");
+                }
+            }
             return result switch
             {
                 > 0 => 1,
-                0 => 0,
-                _ => throw new CanNativeCallException("write(can_frame)", "Failed to write classic CAN frame", (uint)Marshal.GetLastWin32Error())
+                _ => 0,
             };
         }
     }
 
-    public IEnumerable<CanReceiveData> Receive(ICanBus<IBusRTOptionsConfigurator> channel, uint count = 1, int _ = -1)
+    public IEnumerable<CanReceiveData> Receive(ICanBus<IBusRTOptionsConfigurator> bus, uint count = 1, int _ = -1)
     {
         var size = Marshal.SizeOf<Libc.can_frame>();
         var result = new List<CanReceiveData>();
         var readCount = 0;
-        var ch = (SocketCanBus)channel;
+        var ch = (SocketCanBus)bus;
         var preferTs = ch.Options.PreferKernelTimestamp;
         unsafe
         {

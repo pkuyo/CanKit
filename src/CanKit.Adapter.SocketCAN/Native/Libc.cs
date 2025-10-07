@@ -15,6 +15,7 @@ internal static class Libc
     public const int EINTR = 4;
     public const int EAGAIN = 11;
     public const int EACCES = 13;
+    public const int ENOBUFS = 105;
 
     // Address family / socket types
     public const int AF_CAN = 29;           // Linux specific
@@ -144,6 +145,7 @@ internal static class Libc
 
     // timeStamp
     public const int SO_TIMESTAMP = 29;
+    public const int SO_SNDTIMEO = 21;
     public const int SO_TIMESTAMPNS = 35;
     public const int SO_TIMESTAMPING = 37;
     public const int SOF_TIMESTAMPING_SOFTWARE      = 1 << 4;

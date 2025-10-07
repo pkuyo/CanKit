@@ -57,14 +57,18 @@ public sealed class PcanClassicTransceiver : ITransceiver
             {
                 sent++;
             }
+            else
+            {
+                PcanUtils.ThrowIfError(st, "Write(Classic)",$"PCAN: transmit frame failed. Channel:{((PcanBus)channel).Handle}");
+            }
         }
         return sent;
     }
 
-    public IEnumerable<CanReceiveData> Receive(ICanBus<IBusRTOptionsConfigurator> channel, uint count = 1, int timeOut = 0)
+    public IEnumerable<CanReceiveData> Receive(ICanBus<IBusRTOptionsConfigurator> bus, uint count = 1, int timeOut = 0)
     {
         _ = timeOut;
-        var ch = (PcanBus)channel;
+        var ch = (PcanBus)bus;
         var list = new List<CanReceiveData>();
         for (int i = 0; i < count; i++)
         {
@@ -74,7 +78,9 @@ public sealed class PcanClassicTransceiver : ITransceiver
             if (st == PcanStatus.ReceiveQueueEmpty)
                 break;
             if (st != PcanStatus.OK)
-                break;
+            {
+                PcanUtils.ThrowIfError(st, "Read(FD)",$"PCAN: receive frame failed. Channel:{((PcanBus)bus).Handle}");
+            }
             var isFd = (pmsg.MsgType & MessageType.FlexibleDataRate) != 0;
             if (isFd)
             {

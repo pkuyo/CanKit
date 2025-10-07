@@ -23,7 +23,9 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
     private int _drainRunning;
     private EventHandler<CanReceiveData>? _frameReceived;
     private EventHandler<ICanErrorInfo>? _errorOccured;
+
     private bool _isDisposed;
+
     private Canlib.kvCallbackDelegate? _kvCallback;
     private bool _notifyActive;
     private int _subscriberCount;
@@ -43,6 +45,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
         // Open channel
         _handle = OpenChannel((KvaserBusOptions)options);
         UpdateDynamicFeatures();
+        CanKitLogger.LogInformation($"Kvaser: Initializing on '{_handle}', Mode={options.ProtocolMode}, Features={Options.Features}");
         if (_handle < 0)
         {
             throw new CanBusCreationException($"Kvaser canOpenChannel failed: handle={_handle}");
@@ -52,6 +55,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
         ConfigureBitrate(_handle, (KvaserBusOptions)options);
 
         var st = Canlib.canBusOn(_handle);
+        CanKitLogger.LogInformation("PCAN: Initialize succeeded.");
         if (st != Canlib.canStatus.canOK)
         {
             Canlib.canClose(_handle);
@@ -87,7 +91,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
                     var st = Canlib.canSetAcceptanceFilter(_handle, (int)mask.AccCode, (int)mask.AccMask, ext);
                     if (st != Canlib.canStatus.canOK)
                     {
-                        throw new CanChannelConfigurationException($"Kvaser canSetAcceptanceFilter failed: {st}");
+                        throw new CanBusConfigurationException($"Kvaser canSetAcceptanceFilter failed: {st}");
                     }
                 }
                 else
@@ -99,13 +103,13 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
                     }
                     else
                     {
-                        throw new CanFilterConfigurationException("Kvaser CANlib only supports mask filters via canAccept.");
+                        throw new CanFilterConfigurationException("Kvaser only supports mask filters via canAccept.");
                     }
                 }
             }
         }
 
-        // Apply timer_scale if supported by CANlib
+        // Apply timer_scale if supported by canlib
         try
         {
             // Prefer kvSetTimerScale(handle, scale)
@@ -148,7 +152,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
         ThrowIfDisposed();
         KvaserUtils.ThrowIfError(Canlib.canBusOff(_handle), "canBusOff", "Failed to bus-off during reset");
         KvaserUtils.ThrowIfError(Canlib.canBusOn(_handle), "canBusOn", "Failed to bus-on during reset");
-        CanKitLogger.LogDebug("Kvaser: Channel reset issued.");
+        CanKitLogger.LogDebug("Kvaser: Channel reset.");
     }
 
     public void ClearBuffer()
@@ -164,7 +168,14 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
     public uint Transmit(IEnumerable<CanTransmitData> frames, int timeOut = 0)
     {
         ThrowIfDisposed();
-        return _transceiver.Transmit(this, frames, timeOut);
+        try
+        {
+            return _transceiver.Transmit(this, frames, timeOut);
+        }
+        catch (Exception ex)
+        {
+            HandleBackgroundException(ex); throw;
+        }
     }
 
     public IPeriodicTx TransmitPeriodic(CanTransmitData frame, PeriodicTxOptions options)
@@ -206,7 +217,14 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
     public IEnumerable<CanReceiveData> Receive(uint count = 1, int timeOut = 0)
     {
         ThrowIfDisposed();
-        return _transceiver.Receive(this, count, timeOut);
+        try
+        {
+            return _transceiver.Receive(this, count, timeOut);
+        }
+        catch (Exception ex)
+        {
+            HandleBackgroundException(ex); throw;
+        }
     }
 
     IBusRTOptionsConfigurator ICanBus.Options => Options;
@@ -248,7 +266,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
         }
     }
 
-    public event EventHandler<ICanErrorInfo>? ErrorOccurred
+    public event EventHandler<ICanErrorInfo>? ErrorFrameReceived
     {
         add
         {
@@ -257,7 +275,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
             {
                 if (!Options.AllowErrorInfo)
                 {
-                    throw new CanChannelConfigurationException("ErrorOccurred subscription requires AllowErrorInfo=true in options.");
+                    throw new CanBusConfigurationException("ErrorOccurred subscription requires AllowErrorInfo=true in options.");
                 }
                 var before = _errorOccured;
                 _errorOccured += value;
@@ -276,7 +294,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
             {
                 if (!Options.AllowErrorInfo)
                 {
-                    throw new CanChannelConfigurationException("ErrorOccurred subscription requires AllowErrorInfo=true in options.");
+                    throw new CanBusConfigurationException("ErrorOccurred subscription requires AllowErrorInfo=true in options.");
                 }
                 var before = _errorOccured;
                 _errorOccured -= value;
@@ -370,7 +388,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
                     (int)seg.Tseg1, (int)seg.Tseg2, (int)seg.Sjw, 1);
                 if (st != Canlib.canStatus.canOK)
                 {
-                    throw new CanChannelConfigurationException($"Kvaser canSetBusParams (classic segments) failed: {st}");
+                    throw new CanBusConfigurationException($"Kvaser canSetBusParams (classic segments) failed: {st}");
                 }
             }
             else
@@ -378,12 +396,12 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
                 var mapped = KvaserUtils.MapToKvaserConst((int)classic.Nominal.Bitrate!.Value);
                 if (mapped == (int)classic.Nominal.Bitrate!.Value)
                 {
-                    throw new CanChannelConfigurationException($"Unsupported classic bitrate: {classic.Nominal.Bitrate!.Value} bps for Kvaser predefined constants.");
+                    throw new CanBusConfigurationException($"Unsupported classic bitrate: {classic.Nominal.Bitrate!.Value} bps for Kvaser predefined constants.");
                 }
                 var st = Canlib.canSetBusParams(handle, mapped, 0, 0, 0, 0);
                 if (st != Canlib.canStatus.canOK)
                 {
-                    throw new CanChannelConfigurationException($"Kvaser canSetBusParams (classic predefined) failed: {st}");
+                    throw new CanBusConfigurationException($"Kvaser canSetBusParams (classic predefined) failed: {st}");
                 }
             }
         }
@@ -396,7 +414,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
                     (int)seg.Tseg1, (int)seg.Tseg2, (int)seg.Sjw, 1);
                 if (st != Canlib.canStatus.canOK)
                 {
-                    throw new CanChannelConfigurationException($"Kvaser canSetBusParams (FD nominal segments) failed: {st}");
+                    throw new CanBusConfigurationException($"Kvaser canSetBusParams (FD nominal segments) failed: {st}");
                 }
             }
             else
@@ -404,12 +422,12 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
                 var mapped = KvaserUtils.MapToKvaserConst((int)fd.Nominal.Bitrate!.Value);
                 if (mapped == (int)fd.Nominal.Bitrate!.Value)
                 {
-                    throw new CanChannelConfigurationException($"Unsupported FD nominal bitrate: {fd.Nominal.Bitrate!.Value} bps for Kvaser predefined constants.");
+                    throw new CanBusConfigurationException($"Unsupported FD nominal bitrate: {fd.Nominal.Bitrate!.Value} bps for Kvaser predefined constants.");
                 }
                 var st = Canlib.canSetBusParams(handle, mapped, 0, 0, 0, 0);
                 if (st != Canlib.canStatus.canOK)
                 {
-                    throw new CanChannelConfigurationException($"Kvaser canSetBusParams (FD nominal predefined) failed: {st}");
+                    throw new CanBusConfigurationException($"Kvaser canSetBusParams (FD nominal predefined) failed: {st}");
                 }
             }
             if (fd.Data.Segments is { } seg1)
@@ -418,7 +436,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
                     (int)seg1.Tseg1, (int)seg1.Tseg2, (int)seg1.Sjw);
                 if (st != Canlib.canStatus.canOK)
                 {
-                    throw new CanChannelConfigurationException($"Kvaser canSetBusParamsFd (FD data segments) failed: {st}");
+                    throw new CanBusConfigurationException($"Kvaser canSetBusParamsFd (FD data segments) failed: {st}");
                 }
             }
             else
@@ -427,12 +445,12 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
                     fd.Data.SamplePointPermille ?? 80);
                 if (mappedFd == (int)fd.Data.Bitrate!.Value)
                 {
-                    throw new CanChannelConfigurationException($"Unsupported FD data bitrate/SP combination: {fd.Data.Bitrate!.Value} bps @ {fd.Data.SamplePointPermille ?? 80}%.");
+                    throw new CanBusConfigurationException($"Unsupported FD data bitrate/SP combination: {fd.Data.Bitrate!.Value} bps @ {fd.Data.SamplePointPermille ?? 80}%.");
                 }
                 var st = Canlib.canSetBusParamsFd(handle, mappedFd, 0, 0, 0);
                 if (st != Canlib.canStatus.canOK)
                 {
-                    throw new CanChannelConfigurationException($"Kvaser canSetBusParamsFd (FD data predefined) failed: {st}");
+                    throw new CanBusConfigurationException($"Kvaser canSetBusParamsFd (FD data predefined) failed: {st}");
                 }
             }
         }
@@ -440,7 +458,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
 
     private void ThrowIfDisposed()
     {
-        if (_isDisposed) throw new ObjectDisposedException(GetType().FullName);
+        if (_isDisposed) throw new ObjectDisposedException("KvaserBus is disposed.");
     }
 
     private void StartReceiveLoopIfNeeded()
@@ -517,11 +535,15 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
                             break;
                     }
                 }
+                catch (Exception ex)
+                {
+                    HandleBackgroundException(ex); //will not throw in poll loop
+                }
                 finally
                 {
                     Volatile.Write(ref _drainRunning, 0);
-                    if (Volatile.Read(ref _pending) > 0 &&
-                        Interlocked.Exchange(ref _drainRunning, 1) == 0)
+                    if ((Volatile.Read(ref _pending) > 0 &&
+                        Interlocked.Exchange(ref _drainRunning, 1) == 0))
                     {
                         Task.Run(() => KvNotifyCallback(_handle, IntPtr.Zero, 0));
                     }
@@ -535,7 +557,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
         while (true)
         {
             var any = false;
-            foreach (var rec in _transceiver.Receive(this, 64, 0))
+            foreach (var rec in _transceiver.Receive(this, 64))
             {
                 any = true;
 
@@ -555,7 +577,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
                         CanTransceiverStatus.Unknown,
                         errorCounters,
                         null
-                        ));
+                    ));
                     continue;
                 }
 
@@ -577,7 +599,15 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
     }
 
     public Task<uint> TransmitAsync(IEnumerable<CanTransmitData> frames, int timeOut = 0, CancellationToken cancellationToken = default)
-        => Task.Run(() => Transmit(frames, timeOut), cancellationToken);
+        => Task.Run(() =>
+        {
+            try
+            {
+                return Transmit(frames, timeOut);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+            catch (Exception ex) { HandleBackgroundException(ex); throw; }
+        }, cancellationToken);
 
     public Task<IReadOnlyList<CanReceiveData>> ReceiveAsync(uint count = 1, int timeOut = 0, CancellationToken cancellationToken = default)
     {
@@ -593,6 +623,15 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
                 if (rem == 0 && remAsync == 0) RequestStopReceiveLoop();
                 return t.Result;
             }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+    }
+
+    public event EventHandler<Exception>? BackgroundExceptionOccurred;
+
+    private void HandleBackgroundException(Exception ex)
+    {
+        try { CanKitLogger.LogError("Kvaser bus occured background exception.", ex); } catch { /*ignored*/ }
+        try { _asyncRx.ExceptionOccured(ex); } catch { /*ignored*/ }
+        try { var snap = Volatile.Read(ref BackgroundExceptionOccurred); snap?.Invoke(this, ex); } catch { /*ignored*/ }
     }
 
 #if NET8_0_OR_GREATER

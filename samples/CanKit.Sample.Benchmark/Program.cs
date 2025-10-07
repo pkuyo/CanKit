@@ -59,6 +59,7 @@ namespace CanKit.Sample.Benchmark
                 await foreach (var e in rx.GetFramesAsync(cts.Token))
                 {
                     if (Interlocked.Increment(ref received) >= frames) { done.TrySetResult(received); break; }
+                    Console.WriteLine("Received {0} frames", received);
                 }
             });
 #else
@@ -85,7 +86,7 @@ namespace CanKit.Sample.Benchmark
                 int take = Math.Min(batch, frames - sent);
                 var list = new CanTransmitData[take];
                 for (int i = 0; i < take; i++) list[i] = new CanTransmitData(frame);
-                await tx.TransmitAsync(list, -1);
+                var b = await tx.TransmitAsync(list, -1);
                 sent += take;
             }
             var totalRx = await done.Task; // wait until received expected

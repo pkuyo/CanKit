@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using CanKit.Core.Abstractions;
 using CanKit.Core.Definitions;
+using CanKit.Core.Diagnostics;
 using CanKit.Core.Exceptions;
 using CanKit.Core.Utils;
 
@@ -21,7 +22,6 @@ public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, IBusOwnershi
 
     private readonly AsyncFramePipe _asyncRx;
     private readonly ConcurrentQueue<CanReceiveData> _rxQueue = new();
-    private readonly ConcurrentQueue<ICanErrorInfo> _errQueue = new();
 
     private Func<ICanFrame, bool>? _softwareFilterPredicate;
     private bool _useSoftwareFilter;
@@ -42,7 +42,7 @@ public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, IBusOwnershi
         _transceiver = transceiver;
 
         // join hub
-        _hub = VirtualBusHub.Get(Options.SessionId ?? "default");
+        _hub = VirtualBusHub.Get(Options.SessionId);
         _hub.Attach(this);
 
         var cap = Options.AsyncBufferCapacity > 0 ? Options.AsyncBufferCapacity : (int?)null;
@@ -120,7 +120,15 @@ public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, IBusOwnershi
     }
 
     public Task<uint> TransmitAsync(IEnumerable<CanTransmitData> frames, int timeOut = 0, CancellationToken cancellationToken = default)
-        => Task.Run(() => Transmit(frames, timeOut), cancellationToken);
+        => Task.Run(() =>
+        {
+            try
+            {
+                return Transmit(frames, timeOut);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+            catch (Exception ex) { HandleBackgroundException(ex); throw; }
+        }, cancellationToken);
 
     public Task<IReadOnlyList<CanReceiveData>> ReceiveAsync(uint count = 1, int timeOut = 0, CancellationToken cancellationToken = default)
     {
@@ -198,13 +206,13 @@ public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, IBusOwnershi
         }
     }
 
-    public event EventHandler<ICanErrorInfo>? ErrorOccurred
+    public event EventHandler<ICanErrorInfo>? ErrorFrameReceived
     {
         add
         {
             if (!Options.AllowErrorInfo)
             {
-                throw new CanChannelConfigurationException("ErrorOccurred subscription requires AllowErrorInfo=true in options.");
+                throw new CanBusConfigurationException("ErrorOccurred subscription requires AllowErrorInfo=true in options.");
             }
             bool inc = false;
             lock (_evtGate)
@@ -223,7 +231,7 @@ public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, IBusOwnershi
         {
             if (!Options.AllowErrorInfo)
             {
-                throw new CanChannelConfigurationException("ErrorOccurred subscription requires AllowErrorInfo=true in options.");
+                throw new CanBusConfigurationException("ErrorOccurred subscription requires AllowErrorInfo=true in options.");
             }
             bool needStop = false;
             lock (_evtGate)
@@ -272,7 +280,6 @@ public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, IBusOwnershi
 
     internal void InternalInjectError(ICanErrorInfo info)
     {
-        _errQueue.Enqueue(info);
         _errorOccurred?.Invoke(this, info);
     }
 
@@ -300,5 +307,13 @@ public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, IBusOwnershi
     {
         if (_disposed) throw new ObjectDisposedException(GetType().FullName);
     }
-}
 
+    public event EventHandler<Exception>? BackgroundExceptionOccurred;
+
+    private void HandleBackgroundException(Exception ex)
+    {
+        try { CanKitLogger.LogError("Virtual bus occured background exception.", ex); } catch { }
+        try { _asyncRx.ExceptionOccured(ex); } catch { }
+        try { var snap = Volatile.Read(ref BackgroundExceptionOccurred); snap?.Invoke(this, ex); } catch { }
+    }
+}

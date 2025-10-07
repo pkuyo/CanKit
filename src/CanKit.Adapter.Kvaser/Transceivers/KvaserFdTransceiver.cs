@@ -40,16 +40,19 @@ public sealed class KvaserFdTransceiver : ITransceiver
             }
             else
             {
+                var msg = "Failed to write frame";
+                if (Canlib.canGetErrorText(st, out var str) == Canlib.canStatus.canOK)
+                    msg += $". Message:{str}";
                 KvaserUtils.ThrowIfError(
-                    st, "canWrite", "Failed to write frame");
+                    st, "canWrite", msg);
             }
         }
         return sent;
     }
 
-    public IEnumerable<CanReceiveData> Receive(ICanBus<IBusRTOptionsConfigurator> channel, uint count = 1, int timeOut = 0)
+    public IEnumerable<CanReceiveData> Receive(ICanBus<IBusRTOptionsConfigurator> bus, uint count = 1, int timeOut = 0)
     {
-        var ch = (KvaserBus)channel;
+        var ch = (KvaserBus)bus;
         var list = new List<CanReceiveData>();
         var timeout = timeOut < 0 ? -1 : timeOut;
         for (int i = 0; i < count; i++)
@@ -82,7 +85,7 @@ public sealed class KvaserFdTransceiver : ITransceiver
                 }
 
                 // Convert using configured timer_scale (microseconds per unit)
-                var kch = (KvaserBus)channel;
+                var kch = (KvaserBus)bus;
                 var ticks = time * kch.Options.TimerScaleMicroseconds * 10L; // us -> ticks
                 list.Add(new CanReceiveData(frame) { ReceiveTimestamp = TimeSpan.FromTicks(ticks) });
             }
@@ -92,10 +95,12 @@ public sealed class KvaserFdTransceiver : ITransceiver
             }
             else
             {
+                var msg = "Failed to read frame";
+                if (Canlib.canGetErrorText(st, out var str) == Canlib.canStatus.canOK)
+                    msg += $". Message:{str}";
                 KvaserUtils.ThrowIfError(
                     st,
-                    timeout > 0 ? "canReadWait" : "canRead",
-                    "Failed to read frame");
+                    timeout > 0 ? "canReadWait" : "canRead", msg);
                 break;
             }
         }
