@@ -42,6 +42,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, ICanApplier, I
 
         // Open channel
         _handle = OpenChannel((KvaserBusOptions)options);
+        UpdateDynamicFeatures();
         if (_handle < 0)
         {
             throw new CanBusCreationException($"Kvaser canOpenChannel failed: handle={_handle}");
@@ -170,17 +171,30 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, ICanApplier, I
     public IPeriodicTx TransmitPeriodic(CanTransmitData frame, PeriodicTxOptions options)
     {
         ThrowIfDisposed();
+        if (KvaserPeriodicTx.TryStart(this, frame, options, out var tx))
+            return tx;
         if ((Options.EnabledSoftwareFallback & CanFeature.CyclicTx) != 0)
             return SoftwarePeriodicTx.Start(this, frame, options);
-        else
-            throw new CanFeatureNotSupportedException(CanFeature.CyclicTx, Options.Features);
+
+        throw new CanKitException(CanKitErrorCode.NativeCallFailed,
+            "Failed to start hardware periodic transmit. The device may not support object buffers for cyclic TX; enable SoftwareFallback or check device capabilities.");
     }
 
-    public float BusUsage() => throw new CanFeatureNotSupportedException(CanFeature.BusUsage, Options.Features);
+    public float BusUsage()
+    {
+        CanKitErr.ThrowIfNotSupport(Options.Features, CanFeature.BusUsage);
+        KvaserUtils.ThrowIfError(Canlib.canRequestBusStatistics(_handle), "canRequestBusStatistics",
+            "Failed to request bus usage");
+        KvaserUtils.ThrowIfError(Canlib.canGetBusStatistics(_handle, out var stat), "canRequestBusStatistics",
+            "Failed to get bus usage");
+        return stat.busLoad / 100f;
+    }
 
     public CanErrorCounters ErrorCounters()
     {
         ThrowIfDisposed();
+        CanKitErr.ThrowIfNotSupport(Options.Features, CanFeature.ErrorCounters);
+
         KvaserUtils.ThrowIfError(Canlib.canReadErrorCounters(_handle, out var tx, out var rx, out _),
             "canReadErrorCounters", "Failed to read error counters");
         return new CanErrorCounters()
@@ -195,9 +209,6 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, ICanApplier, I
         ThrowIfDisposed();
         return _transceiver.Receive(this, count, timeOut);
     }
-
-    public bool ReadErrorInfo(out ICanErrorInfo? errorInfo)
-        => throw new NotSupportedException("Directly read error information not supported. Use ErrorOccured to receive error frames instead.");
 
     IBusRTOptionsConfigurator ICanBus.Options => Options;
 
@@ -611,4 +622,29 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, ICanApplier, I
         }
     }
 #endif
+
+    private void UpdateDynamicFeatures()
+    {
+        var status = Canlib.canGetChannelData(_handle, Canlib.canCHANNELDATA_CHANNEL_CAP, out var capsObj);
+        if (status != Canlib.canStatus.canOK)
+        {
+            CanKitLogger.LogError($"Canlib.canGetChannelData failed. Status:{status}, Channel:{_handle}");
+        }
+        uint caps = (uint)capsObj;
+        var features = CanFeature.CanClassic | CanFeature.Filters | CanFeature.Echo | CanFeature.ErrorFrame;
+        if ((caps & Canlib.canCHANNEL_CAP_CAN_FD) != 0 ||
+            (caps & Canlib.canCHANNEL_CAP_CAN_FD_NONISO) != 0)
+            features |= CanFeature.CanFd;
+
+        if ((caps & Canlib.canCHANNEL_CAP_SILENT_MODE) != 0)
+            features |= CanFeature.ListenOnly;
+
+        if ((caps & Canlib.canCHANNEL_CAP_ERROR_COUNTERS) != 0)
+            features |= CanFeature.ErrorCounters;
+
+        if ((caps & Canlib.canCHANNEL_CAP_BUS_STATISTICS) != 0)
+            features |= CanFeature.BusUsage;
+
+        Options.UpdateDynamicFeatures(features);
+    }
 }

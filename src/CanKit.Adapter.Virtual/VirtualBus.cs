@@ -161,17 +161,6 @@ public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, ICanApplier,
     }
 #endif
 
-    public bool ReadErrorInfo(out ICanErrorInfo? errorInfo)
-    {
-        if (_errQueue.TryDequeue(out var e))
-        {
-            errorInfo = e;
-            return true;
-        }
-        errorInfo = null;
-        return false;
-    }
-
     public VirtualBusRtConfigurator Options { get; }
 
     IBusRTOptionsConfigurator ICanBus.Options => Options;

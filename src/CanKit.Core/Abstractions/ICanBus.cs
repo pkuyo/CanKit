@@ -87,12 +87,6 @@ namespace CanKit.Core.Abstractions
         /// <returns>Received frames (收到的帧集合)。当达到期望数量或超时/取消时返回。</returns>
         Task<IReadOnlyList<CanReceiveData>> ReceiveAsync(uint count = 1, int timeOut = 0, System.Threading.CancellationToken cancellationToken = default);
 
-        /// <summary>
-        /// Try read channel error info (获取通道错误信息)。
-        /// </summary>
-        /// <param name="errorInfo">Error info if present, otherwise null (错误信息或 null)。</param>
-        /// <returns>True if error exists (存在错误返回 true)。</returns>
-        bool ReadErrorInfo(out ICanErrorInfo? errorInfo);
 
 #if NET8_0_OR_GREATER
         /// <summary>

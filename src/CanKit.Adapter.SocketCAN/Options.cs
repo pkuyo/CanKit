@@ -17,7 +17,7 @@ public sealed class SocketCanBusOptions(ICanModelProvider provider) : IBusOption
     public bool BusUsageEnabled { get; set; }
     public uint BusUsagePeriodTime { get; set; } = 1000U;
     public ChannelWorkMode WorkMode { get; set; } = ChannelWorkMode.Normal;
-    public TxRetryPolicy TxRetryPolicy { get; set; } = TxRetryPolicy.NoRetry;
+    public TxRetryPolicy TxRetryPolicy { get; set; } = TxRetryPolicy.AlwaysRetry;
     public CanProtocolMode ProtocolMode { get; set; } = CanProtocolMode.Can20;
     public CanFilter Filter { get; set; } = new();
     public CanFeature EnabledSoftwareFallback { get; set; }

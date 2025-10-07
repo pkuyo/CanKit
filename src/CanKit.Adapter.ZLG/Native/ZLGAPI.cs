@@ -11,6 +11,7 @@ namespace CanKit.Adapter.ZLG.Native
     public class ZLGCAN
     {
 
+        public const int TX_ECHO_FLAG = 0x20;
         #region 设备类型
         public static UInt32 ZCAN_PCI9810 = 2;
         public static UInt32 ZCAN_USBCAN1 = 3;

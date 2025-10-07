@@ -125,7 +125,7 @@ public sealed class ZlgPeriodicTx : IPeriodicTx
                 enable = (ushort)(enable ? 1 : 0),
                 index = _index,
                 interval = interval,
-                obj = classic.ToTransmitData()
+                obj = classic.ToTransmitData(_bus.Options.WorkMode == ChannelWorkMode.Echo)
             };
 
             var path = $"{chan}/auto_send";
@@ -139,7 +139,7 @@ public sealed class ZlgPeriodicTx : IPeriodicTx
                 enable = (ushort)(enable ? 1 : 0),
                 index = _index,
                 interval = interval,
-                obj = fd.ToTransmitData()
+                obj = fd.ToTransmitData(_bus.Options.WorkMode == ChannelWorkMode.Echo)
             };
 
             var path = $"{chan}/auto_send_canfd";

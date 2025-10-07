@@ -16,6 +16,9 @@ namespace CanKit.Core.Abstractions
 
         /// <summary>
         /// Supported features (支持的功能集合)。
+        /// Usually represents the maximum set of supported features;
+        /// restrictions are applied at runtime to prevent exceptions during the Configurator phase.
+        /// 一般是最大功能集合，在运行时进行限制防止Configurator阶段抛出异常
         /// </summary>
         CanFeature StaticFeatures { get; }
 

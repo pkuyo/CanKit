@@ -12,7 +12,10 @@ namespace CanKit.Adapter.ZLG
         public virtual ZlgFeature ZlgFeature => ZlgFeature.None;
         public abstract DeviceType DeviceType { get; }
 
-        public virtual CanFeature StaticFeatures => CanFeature.CanClassic | CanFeature.Filters | CanFeature.ErrorCounters;
+        public virtual CanFeature StaticFeatures => CanFeature.CanClassic |
+                                                    CanFeature.Filters |
+                                                    CanFeature.ErrorCounters |
+                                                    CanFeature.Echo;
 
         public ICanFactory Factory => CanRegistry.Registry.Factory("Zlg");
 

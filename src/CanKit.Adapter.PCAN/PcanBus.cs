@@ -68,8 +68,8 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
         }
 
 
-        // Discover runtime capabilities (e.g., FD) and merge to dynamic features
-        SniffDynamicFeatures();
+        // Update runtime capabilities (e.g., FD) and remove un-support features
+        UpdateDynamicFeatures();
         CanKitLogger.LogInformation($"PCAN: Initializing on '{options.ChannelName}', Mode={options.ProtocolMode}, Features={Options.Features}");
 
         // If requested FD but not supported at runtime, fail early
@@ -281,9 +281,6 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
         }
     }
 #endif
-
-    public bool ReadErrorInfo(out ICanErrorInfo? errorInfo)
-        => throw new NotSupportedException("Directly read error information not supported. Use ErrorOccured to receive error frames instead.");
 
     public PcanBusRtConfigurator Options { get; }
 
@@ -703,18 +700,17 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
         }
     }
 
-    private void SniffDynamicFeatures()
+    private void UpdateDynamicFeatures()
     {
-        // Query channel features and merge supported ones
+        // Query channel features and removed not-supported ones
         if (Api.GetValue(_handle, PcanParameter.ChannelFeatures, out uint feature) == PcanStatus.OK)
         {
             var feats = (PcanDeviceFeatures)feature;
-            CanFeature dyn = 0;
-            if ((feats & PcanDeviceFeatures.FlexibleDataRate) != 0)
+            CanFeature dyn = Options.Features;
+            if ((feats & PcanDeviceFeatures.FlexibleDataRate) == 0)
             {
-                dyn |= CanFeature.CanFd;
+                dyn &= ~CanFeature.CanFd;
             }
-
             Options.UpdateDynamicFeatures(dyn);
         }
     }

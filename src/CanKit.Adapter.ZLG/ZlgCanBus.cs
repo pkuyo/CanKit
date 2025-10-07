@@ -168,7 +168,7 @@ namespace CanKit.Adapter.ZLG
                 throw new CanFeatureNotSupportedException(CanFeature.BusUsage, Options.Features);
             var ret = ZLGCAN.ZCAN_GetValue(NativeHandle.DeviceHandle, $"{Options.ChannelIndex}/get_bus_usage/1");
             var busUsage = Marshal.PtrToStructure<ZLGCAN.BusUsage>(ret);
-            return busUsage.nBusUsage / 10000f;
+            return busUsage.nBusUsage / 100f;
         }
 
         public CanErrorCounters ErrorCounters()

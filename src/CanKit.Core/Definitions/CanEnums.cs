@@ -165,8 +165,12 @@ namespace CanKit.Core.Definitions
         Filters       = 1 << 2,
         CyclicTx      = 1 << 3,
         BusUsage      = 1 << 4,
-        ErrorCounters = 1 << 5,
-        ErrorFrame    = 1 << 6,
+        ListenOnly    = 1 << 5,
+        Echo          = 1 << 6,
+        ErrorCounters = 1 << 7,
+        ErrorFrame    = 1 << 8,
+        TxRetryPolicy = 1 << 9,
+        All           = int.MaxValue,
     }
 
     /// <summary>
@@ -183,8 +187,8 @@ namespace CanKit.Core.Definitions
     /// </summary>
     public enum TxRetryPolicy : byte
     {
+        AlwaysRetry = 0,
         NoRetry     = 1,
-        AlwaysRetry = 2,
     }
 
     /// <summary>

@@ -322,6 +322,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
 
     public CanErrorCounters ErrorCounters()
     {
+        CanKitErr.ThrowIfNotSupport(Options.Features, CanFeature.ErrorCounters);
         if (LibSocketCan.can_get_berr_counter(_ifName, out var counter) == Libc.OK)
         {
             return new CanErrorCounters()
@@ -330,8 +331,11 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
                 TransmitErrorCounter = counter.txerr
             };
         }
-        return Libc.ThrowErrno<CanErrorCounters>("can_get_berr_counter",
+
+        Libc.ThrowErrno("can_get_berr_counter",
             $"Failed to get error counters for '{_ifName}'");
+
+        return default;
     }
 
     public IPeriodicTx TransmitPeriodic(CanTransmitData frame, PeriodicTxOptions options)
@@ -339,10 +343,6 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
         ThrowIfDisposed();
         return new BCMPeriodicTx(this, frame, options, Options);
     }
-
-    public bool ReadErrorInfo(out ICanErrorInfo? errorInfo)
-        => throw new NotSupportedException("Directly read error information not supported. Use ErrorOccured to receive error frames instead.");
-
 
     public void Dispose()
     {
@@ -609,25 +609,24 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
             Libc.ThrowErrno("can_get_ctrlmode", $"Failed to get ctrlmode for '{ifName}'", re);
         }
 
+        UpdateDynamicFeatures(ctrlMode.mask);
+
         if (Options.WorkMode == ChannelWorkMode.Echo)
         {
-            if ((ctrlMode.mask & LibSocketCan.CAN_CTRLMODE_LOOPBACK) == 0)
-            {
-                throw new CanChannelConfigurationException("Kernel driver does not support loopback (echo) mode.");
-            }
-
+            CanKitErr.ThrowIfNotSupport(Options.Features, CanFeature.Echo);
             ctrlMode.flags &= ~(LibSocketCan.CAN_CTRLMODE_LISTENONLY);
             ctrlMode.flags |= LibSocketCan.CAN_CTRLMODE_LOOPBACK;
         }
-        else
+        else if(Options.WorkMode == ChannelWorkMode.ListenOnly)
         {
-            if ((ctrlMode.mask & LibSocketCan.CAN_CTRLMODE_LISTENONLY) == 0)
-            {
-                throw new CanChannelConfigurationException("Kernel driver does not support listen-only mode.");
-            }
-
+            CanKitErr.ThrowIfNotSupport(Options.Features, CanFeature.ListenOnly);
             ctrlMode.flags &= ~(LibSocketCan.CAN_CTRLMODE_LOOPBACK);
             ctrlMode.flags |= LibSocketCan.CAN_CTRLMODE_LISTENONLY;
+        }
+        else
+        {
+            ctrlMode.flags &= ~(LibSocketCan.CAN_CTRLMODE_LOOPBACK);
+            ctrlMode.flags &= ~(LibSocketCan.CAN_CTRLMODE_LISTENONLY);
         }
         if (LibSocketCan.can_get_clock(ifName, out var clock) != Libc.OK)
         {
@@ -655,14 +654,10 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
         }
         else
         {
+            CanKitErr.ThrowIfNotSupport(Options.Features, CanFeature.CanFd);
 
-            if ((ctrlMode.mask & LibSocketCan.CAN_CTRLMODE_FD) == 0)
-            {
-                throw new CanFeatureNotSupportedException(CanFeature.CanFd, Options.Features);
-            }
             ctrlMode.flags |= LibSocketCan.CAN_CTRLMODE_FD;
             var fd = Options.BitTiming.Fd!.Value;
-
             if (fd.clockMHz != clock.freq / 1_000_000)
             {
                 //TODO:警告处理，时钟与读取到的不一致
@@ -678,11 +673,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
 
         if (Options.AllowErrorInfo)
         {
-            if ((ctrlMode.mask & LibSocketCan.CAN_CTRLMODE_BERR_REPORTING) == 0)
-            {
-                throw new CanChannelConfigurationException("Kernel driver does not support bus-error reporting.");
-            }
-
+            CanKitErr.ThrowIfNotSupport(Options.Features, CanFeature.ErrorFrame);
             ctrlMode.flags |= LibSocketCan.CAN_CTRLMODE_BERR_REPORTING;
         }
         else
@@ -707,6 +698,24 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
                 Libc.ThrowErrno("can_do_start", $"Failed to start interface '{ifName}'");
             }
         }
+    }
+
+    private void UpdateDynamicFeatures(uint mask)
+    {
+        var features = CanFeature.CanClassic | CanFeature.Filters | CanFeature.ErrorCounters;
+        if ((mask & LibSocketCan.CAN_CTRLMODE_LOOPBACK) != 0)
+            features |= CanFeature.Echo;
+        if ((mask & LibSocketCan.CAN_CTRLMODE_LISTENONLY) != 0)
+            features |= CanFeature.ListenOnly;
+        if ((mask & LibSocketCan.CAN_CTRLMODE_FD) != 0)
+            features |= CanFeature.CanFd;
+        if ((mask & LibSocketCan.CAN_CTRLMODE_BERR_REPORTING) != 0)
+            features |= CanFeature.ErrorFrame;
+        if (LibSocketCan.can_get_berr_counter(_ifName, out _) == Libc.OK)
+            features |= CanFeature.ErrorCounters;
+
+        Options.UpdateDynamicFeatures(features);
+
     }
 
     private void ThrowIfDisposed()
@@ -919,5 +928,6 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
             }
         }
     }
+
 
 }

@@ -18,6 +18,7 @@ public sealed class KvaserClassicTransceiver : ITransceiver
                 throw new InvalidOperationException("Kvaser classic transceiver requires CanClassicFrame.");
             }
             var flags = 0u;
+            flags |= (channel.Options.TxRetryPolicy == TxRetryPolicy.NoRetry) ? (uint)Canlib.canMSG_SINGLE_SHOT : 0;
             if (cf.IsExtendedFrame) flags |= Canlib.canMSG_EXT;
             if (cf.IsRemoteFrame) flags |= Canlib.canMSG_RTR;
 

@@ -344,12 +344,12 @@ public abstract class CallOptionsConfigurator<TOption, TSelf>
 
 
     /// <summary>
-    /// Merge dynamic features discovered at runtime into current capability set.
-    /// ZH: 合并运行期发现的动态功能到当前能力集合。
+    /// Merge dynamic features discovered at runtime override current capability set.
+    /// ZH: 合并运行期发现的动态功能替代当前能力集合。
     /// </summary>
     public TSelf UpdateDynamicFeatures(CanFeature dynamic)
     {
-        _feature |= dynamic;
+        _feature = dynamic;
         return (TSelf)this;
     }
 

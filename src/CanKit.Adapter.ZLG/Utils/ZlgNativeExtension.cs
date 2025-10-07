@@ -133,7 +133,7 @@ namespace CanKit.Adapter.ZLG.Utils
             Unsafe.CopyBlockUnaligned(&src, dst, count);
         }
 
-        internal static unsafe CanClassicFrame FromReceiveData(this ZLGCAN.can_frame frame)
+        internal static unsafe CanClassicFrame FromReceiveData(this can_frame frame)
         {
             var result = new CanClassicFrame(frame.can_id, new byte[frame.can_dlc]);
             fixed (byte* ptr = result.Data.Span)
@@ -143,9 +143,8 @@ namespace CanKit.Adapter.ZLG.Utils
             return result;
         }
 
-        internal static unsafe CanFdFrame FromReceiveData(this ZLGCAN.canfd_frame frame)
+        internal static unsafe CanFdFrame FromReceiveData(this canfd_frame frame)
         {
-            //TODO: FD处理
             var result = new CanFdFrame(frame.can_id, new byte[frame.len]);
             fixed (byte* ptr = result.Data.Span)
             {
@@ -154,29 +153,30 @@ namespace CanKit.Adapter.ZLG.Utils
             return result;
         }
 
-        internal static unsafe ZCAN_Transmit_Data ToTransmitData(this CanClassicFrame frame)
+        internal static unsafe ZCAN_Transmit_Data ToTransmitData(this CanClassicFrame frame, bool echo)
         {
             ZCAN_Transmit_Data data = new ZCAN_Transmit_Data();
             fixed (byte* ptr = frame.Data.Span)
             {
                 data.frame.can_dlc = frame.Dlc;
                 data.frame.can_id = frame.RawID;
+                data.frame.__pad |= (byte)(echo ? TX_ECHO_FLAG : 0);
                 Unsafe.CopyBlockUnaligned(data.frame.data, ptr, (uint)frame.Data.Length);
-                data.transmit_type = 0; //TODO: 不清楚功能
+                data.transmit_type = 0;
             }
             return data;
         }
 
-        internal static unsafe ZCAN_TransmitFD_Data ToTransmitData(this CanFdFrame frame)
+        internal static unsafe ZCAN_TransmitFD_Data ToTransmitData(this CanFdFrame frame, bool echo)
         {
             ZCAN_TransmitFD_Data data = new ZCAN_TransmitFD_Data();
             fixed (byte* ptr = frame.Data.Span)
             {
                 data.frame.len = (byte)frame.Data.Length;
-                //TODO: FD接收
                 data.frame.can_id = frame.RawID;
+                data.frame.flags |= (byte)(echo ? TX_ECHO_FLAG : 0);
                 Unsafe.CopyBlockUnaligned(data.frame.data, ptr, (uint)frame.Data.Length);
-                data.transmit_type = 0; //TODO: 不清楚功能
+                data.transmit_type = 0;
             }
             return data;
         }

@@ -17,7 +17,7 @@ namespace CanKit.Adapter.ZLG.Transceivers
             var zcanTransmitData =
                 frames.Select(i => i.CanFrame)
                     .OfType<CanFdFrame>()
-                    .Select(i => i.ToTransmitData())
+                    .Select(i => i.ToTransmitData(channel.Options.WorkMode == ChannelWorkMode.Echo))
                     .ToArray();
 
             return ZLGCAN.ZCAN_TransmitFD(((ZlgCanBus)channel).NativeHandle, zcanTransmitData, (uint)zcanTransmitData.Length);

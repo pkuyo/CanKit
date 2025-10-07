@@ -383,12 +383,6 @@ internal static class Libc
         throw new SocketCanNativeException(operation, message, (uint)errno);
     }
 
-    public static T ThrowErrno<T>(string operation, string message)
-    {
-        ThrowErrno(operation, message);
-        return default;
-    }
-
 
     public static timeval ToTimeval(TimeSpan t)
     {
