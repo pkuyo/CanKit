@@ -1,0 +1,4 @@
+<linker>
+  <assembly fullname="CanKit.Adapter.SocketCAN" preserve="all" />
+</linker>
+

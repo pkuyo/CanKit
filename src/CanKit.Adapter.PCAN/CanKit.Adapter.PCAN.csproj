@@ -13,5 +13,9 @@
   <ItemGroup>
     <PackageReference Include="Peak.PCANBasic.NET" Version="4.10.1.968" />
   </ItemGroup>
+  
+  <!-- 将 buildTransitive 资源纳入 NuGet 包 -->
+  <ItemGroup>
+    <None Include="buildTransitive\\**\\*.*" Pack="true" PackagePath="buildTransitive\\" />
+  </ItemGroup>
 </Project>
-

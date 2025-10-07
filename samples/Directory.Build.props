@@ -1,0 +1,11 @@
+<Project>
+    <PropertyGroup>
+      <TargetFrameworks>netstandard2.0;net8.0;net8.0-windows</TargetFrameworks>
+      <LangVersion>12</LangVersion>
+      <EnableNETAnalyzers>true</EnableNETAnalyzers>
+      <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+      <AnalysisLevel>latest</AnalysisLevel>
+      <Nullable>enable</Nullable>
+      <DisableSampleTrimmingRoots>true</DisableSampleTrimmingRoots>
+    </PropertyGroup>
+</Project>

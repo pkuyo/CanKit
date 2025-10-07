@@ -7,4 +7,8 @@
   <ItemGroup>
     <ProjectReference Include="..\CanKit.Core\CanKit.Core.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <None Include="buildTransitive\**\*.*" Pack="true" PackagePath="buildTransitive\" />
+  </ItemGroup>
 </Project>

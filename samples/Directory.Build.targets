@@ -1,0 +1,62 @@
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+    <PropertyGroup>
+        <CanKitAdapterHintsGenerated>$(IntermediateOutputPath)CanKit.AdapterHints.g.cs</CanKitAdapterHintsGenerated>
+    </PropertyGroup>
+
+    <Target Name="CanKit_Samples_GenerateAdapterHints" AfterTargets="ResolveReferences" BeforeTargets="CoreCompile">
+        <ItemGroup>
+            <_AdapterDllCandidates Include="@(ReferenceCopyLocalPaths)"
+                                   Condition="$([System.String]::Copy('%(ReferenceCopyLocalPaths.Filename)').StartsWith('CanKit.Adapter.', System.StringComparison.Ordinal))" />
+            <CanKitAdapterAssemblyName Include="@(_AdapterDllCandidates->'%(Filename)')" />
+        </ItemGroup>
+        
+        <ItemGroup Condition=" '@(CanKitAdapterAssemblyName)' != '' ">
+            <_QuotedAdapters Include="@(CanKitAdapterAssemblyName)">
+                <Q>&quot;%(Identity)&quot;</Q>
+            </_QuotedAdapters>
+        </ItemGroup>
+        
+        <PropertyGroup Condition=" '@(_QuotedAdapters)' != '' ">
+            <_JoinedAdapters>@(_QuotedAdapters->'%(Q)', ', ')</_JoinedAdapters>
+        </PropertyGroup>
+        
+        <ItemGroup Condition=" '$(_JoinedAdapters)' != '' ">
+            <_AdapterHintLines Include="// &lt;auto-generated /&gt;" />
+            <_AdapterHintLines Include="namespace CanKit.Core.Internal {" />
+            <_AdapterHintLines Include="    internal static class AdapterPreloadList {" />
+            <_AdapterHintLines Include="        internal static readonly string[] Assemblies = new string[] { $(_JoinedAdapters) }%3B " />
+            <_AdapterHintLines Include="    }" />
+            <_AdapterHintLines Include="}" />
+        </ItemGroup>
+
+        <WriteLinesToFile File="$(CanKitAdapterHintsGenerated)"
+                          Lines="@(_AdapterHintLines)"
+                          Overwrite="true"
+                          Condition=" '$(_JoinedAdapters)' != '' " />
+
+        <ItemGroup Condition=" '$(_JoinedAdapters)' != '' ">
+            <Compile Include="$(CanKitAdapterHintsGenerated)" Visible="false" />
+        </ItemGroup>
+
+        <!-- Build ILLink Descriptors -->
+        <PropertyGroup>
+            <CanKitAdapterLinkerDescriptor>$(IntermediateOutputPath)CanKit.AdapterLinker.g.xml</CanKitAdapterLinkerDescriptor>
+        </PropertyGroup>
+
+        <ItemGroup Condition=" '@(CanKitAdapterAssemblyName)' != '' ">
+            <_LinkerLines Include="&lt;linker&gt;" />
+            <_LinkerAsm Include="@(CanKitAdapterAssemblyName)" />
+            <_LinkerLines Include="@(_LinkerAsm-&gt;'    &lt;assembly fullname=&quot;%(Identity)&quot; preserve=&quot;all&quot; /&gt;')" />
+            <_LinkerLines Include="&lt;/linker&gt;" />
+        </ItemGroup>
+
+        <WriteLinesToFile File="$(CanKitAdapterLinkerDescriptor)"
+                          Lines="@(_LinkerLines)"
+                          Overwrite="true"
+                          Condition=" '@(CanKitAdapterAssemblyName)' != '' " />
+
+        <ItemGroup Condition=" '@(CanKitAdapterAssemblyName)' != '' ">
+            <TrimmerRootDescriptor Include="$(CanKitAdapterLinkerDescriptor)" />
+        </ItemGroup>
+    </Target>
+</Project>

@@ -9,10 +9,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Note: The official Kvaser .NET wrapper (canlibCLSNET) is typically supplied with the CANlib SDK. -->
     <PackageReference Include="Kvaser.CanLib" Version="1.16.851" />
   </ItemGroup>
 
-  <!-- Note: The official Kvaser .NET wrapper (canlibCLSNET) is typically supplied with the CANlib SDK.
-       If you manage it via NuGet, add a PackageReference here. Otherwise, reference the DLL in your solution. -->
-</Project>
 
+  <ItemGroup>
+    <None Include="buildTransitive\**\*.*" Pack="true" PackagePath="buildTransitive\" />
+  </ItemGroup>
+</Project>

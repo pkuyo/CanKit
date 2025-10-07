@@ -1,0 +1,4 @@
+<linker>
+  <assembly fullname="CanKit.Adapter.Kvaser" preserve="all" />
+</linker>
+

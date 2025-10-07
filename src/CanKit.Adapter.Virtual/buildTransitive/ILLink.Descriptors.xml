@@ -1,0 +1,5 @@
+<linker>
+  <!-- 保留整个 Virtual 适配器程序集，避免裁剪掉通过反射使用的类型/成员 -->
+  <assembly fullname="CanKit.Adapter.Virtual" preserve="all" />
+</linker>
+

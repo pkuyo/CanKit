@@ -1,0 +1,41 @@
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+    <PropertyGroup>
+        <CanKitAdapterHintsGenerated>$(IntermediateOutputPath)CanKit.AdapterHints.g.cs</CanKitAdapterHintsGenerated>
+    </PropertyGroup>
+
+    <Target Name="CanKit_GenerateAdapterHints" AfterTargets="ResolveReferences" BeforeTargets="CoreCompile">
+        <ItemGroup>
+            <_CanKitAdapterNames Include="@(CanKitAdapterAssemblyName)" />
+        </ItemGroup>
+        
+        <ItemGroup Condition=" '@(_CanKitAdapterNames)' != '' ">
+            <_QuotedAdapters Include="@(_CanKitAdapterNames)">
+                <Q>&quot;%(Identity)&quot;</Q>
+            </_QuotedAdapters>
+        </ItemGroup>
+        
+        <PropertyGroup Condition=" '@(_QuotedAdapters)' != '' ">
+            <_JoinedAdapters>@(_QuotedAdapters->'%(Q)', ', ')</_JoinedAdapters>
+        </PropertyGroup>
+        
+        <ItemGroup Condition=" '$(_JoinedAdapters)' != '' ">
+            <_AdapterHintLines Include="// &lt;auto-generated /&gt;" />
+            <_AdapterHintLines Include="namespace CanKit.Core.Internal {" />
+            <_AdapterHintLines Include="    internal static class AdapterPreloadList {" />
+            <_AdapterHintLines Include="        internal static readonly string[] Assemblies = new string[] { $(_JoinedAdapters) }%3B" />
+            <_AdapterHintLines Include="    }" />
+            <_AdapterHintLines Include="}" />
+        </ItemGroup>
+
+        <WriteLinesToFile File="$(CanKitAdapterHintsGenerated)"
+                          Lines="@(_AdapterHintLines)"
+                          Overwrite="true"
+                          Condition=" '$(_JoinedAdapters)' != '' " />
+
+        <ItemGroup Condition=" '$(_JoinedAdapters)' != '' ">
+            <Compile Include="$(CanKitAdapterHintsGenerated)" Visible="false" />
+        </ItemGroup>
+    </Target>
+</Project>
+
+

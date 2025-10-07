@@ -154,21 +154,36 @@ public partial class CanRegistry
             RegisterEndPoint(asm);
         }
     }
+    public static Assembly Entry()
+    {
 
+        var entry = Assembly.GetEntryAssembly();
+        if (entry != null) return entry;
+
+        var withEntry = AppDomain.CurrentDomain.GetAssemblies()
+            .FirstOrDefault(a => a.EntryPoint != null);
+        if (withEntry != null) return withEntry;
+
+        return Assembly.GetExecutingAssembly();
+    }
     private static CanRegistry BuildRegistry()
     {
-        //TODO:白名单
-        var pre = DefaultPrefix;
-        var baseDir = AppContext.BaseDirectory;
-        foreach (var path in Directory.EnumerateFiles(baseDir, "*.dll"))
+        try
         {
-            var fileName = Path.GetFileName(path);
-            if (fileName.StartsWith(pre, StringComparison.OrdinalIgnoreCase))
+            var genType = Entry().GetType("CanKit.Core.Internal.AdapterPreloadList", false);
+
+            if (genType?
+                    .GetField("Assemblies", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static)?
+                    .GetValue(null) is string[] names)
             {
-                SafeLoadFromPath(path);
+                foreach (var n in names.Where(s => !string.IsNullOrWhiteSpace(s)))
+                {
+                    try { SafeLoad(new AssemblyName(n)); }
+                    catch { /* ignore one-off load errors */ }
+                }
             }
         }
-
+        catch { /* ignore any preload reflection errors */ }
         var asms = AppDomain.CurrentDomain.GetAssemblies()
             .Where(a => !a.IsDynamic)
             .ToArray();
@@ -178,14 +193,14 @@ public partial class CanRegistry
         return reg;
     }
 
-    private static void SafeLoadFromPath(string path)
+    private static void SafeLoad(AssemblyName path)
     {
         try
         {
 #if NET5_0_OR_GREATER
-            var asm = System.Runtime.Loader.AssemblyLoadContext.Default.LoadFromAssemblyPath(path);
+            var asm = System.Runtime.Loader.AssemblyLoadContext.Default.LoadFromAssemblyName(path);
 #else
-            var asm = Assembly.LoadFrom(path); // .NET Framework
+            var asm = Assembly.Load(path); // .NET Framework
 #endif
 
         }
