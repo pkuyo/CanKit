@@ -4,8 +4,7 @@ using CanKit.Core.Definitions;
 
 namespace CanKit.Adapter.ZLG.Options
 {
-    [CanOption]
-    public sealed partial class ZlgBusOptions(ICanModelProvider provider) : IBusOptions
+    public sealed class ZlgBusOptions(ICanModelProvider provider) : IBusOptions
     {
         public enum MaskFilterType : byte
         {
@@ -20,9 +19,6 @@ namespace CanKit.Adapter.ZLG.Options
         public MaskFilterType FilterType { get; set; }
 
         public ICanModelProvider Provider => provider;
-
-        public partial void Apply(ICanApplier applier, bool force = false);
-
         public int ChannelIndex { get; set; }
         public string? ChannelName { get; set; }
 
@@ -39,27 +35,8 @@ namespace CanKit.Adapter.ZLG.Options
         public bool InternalResistance { get; set; }
         public int AsyncBufferCapacity { get; set; } = 0;
         public int ReceiveLoopStopDelayMs { get; set; } = 200;
-
-        [CanOptionItem("/set_bus_usage_enable", CanOptionType.Init, "false")]
-        public bool BusUsageEnabled
-        {
-            get => Get_BusUsageEnabled();
-            set => Set_BusUsageEnabled(value);
-        }
-
-        [CanOptionItem("/set_bus_usage_period", CanOptionType.Init, "200U")]
-        public uint BusUsagePeriodTime
-        {
-            get => Get_BusUsagePeriodTime();
-            set => Set_BusUsagePeriodTime(value);
-        }
-
-        [CanOptionItem("/set_tx_retry_policy", CanOptionType.Init,
-            "CanKit.Core.Definitions.TxRetryPolicy.NoRetry")]
-        public TxRetryPolicy TxRetryPolicy
-        {
-            get => Get_TxRetryPolicy();
-            set => Set_TxRetryPolicy(value);
-        }
+        public bool BusUsageEnabled { get; set; }
+        public uint BusUsagePeriodTime { get; set; } = 200;
+        public TxRetryPolicy TxRetryPolicy { get; set; } = TxRetryPolicy.AlwaysRetry;
     }
 }

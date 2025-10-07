@@ -11,7 +11,7 @@ using CanKit.Core.Utils;
 
 namespace CanKit.Adapter.SocketCAN;
 
-public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanApplier, IBusOwnership
+public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwnership
 {
     private readonly object _evtGate = new();
 
@@ -51,15 +51,15 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
         var cap = Options.AsyncBufferCapacity > 0 ? Options.AsyncBufferCapacity : (int?)null;
         _asyncRx = new AsyncFramePipe(cap);
 
-        // Init socket configs
+        // Apply device configs
         CanKitLogger.LogInformation($"SocketCAN: Initializing interface '{Options.ChannelName?? Options.ChannelIndex.ToString()}', Mode={Options.ProtocolMode}...");
-        InitSocketCanConfig();
+        ApplyDeviceConfig();
 
         // Create socket & bind
         _fd = CreateAndBind(Options.ChannelName, Options.ProtocolMode, Options.PreferKernelTimestamp);
 
-        // Apply initial options (filters etc.)
-        _options.Apply(this, true);
+        // Apply socket options
+        ApplySocketConfig(options);
         CanKitLogger.LogDebug("SocketCAN: Initial options applied.");
     }
 
@@ -70,7 +70,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
         _owner = owner;
     }
 
-    public void Apply(ICanOptions options)
+    public void ApplySocketConfig(ICanOptions options)
     {
         if (options is not SocketCanBusOptions sc)
         {
@@ -150,8 +150,6 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
             ? FilterRule.Build(Options.Filter.SoftwareFilterRules)
             : null;
     }
-
-    public CanOptionType ApplierStatus => _fd >= 0 ? CanOptionType.Runtime : CanOptionType.Init;
 
     public void Reset()
     {
@@ -566,7 +564,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, ICanAppl
         }
     }
 
-    private void InitSocketCanConfig()
+    private void ApplyDeviceConfig()
     {
         // bind to interface
         var ifName = Options.ChannelName;

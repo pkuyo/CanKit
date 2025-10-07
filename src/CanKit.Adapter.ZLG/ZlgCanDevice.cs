@@ -3,12 +3,11 @@ using CanKit.Adapter.ZLG.Diagnostics;
 using CanKit.Adapter.ZLG.Native;
 using CanKit.Adapter.ZLG.Options;
 using CanKit.Core.Abstractions;
-using CanKit.Core.Definitions;
 using CanKit.Core.Exceptions;
 
 namespace CanKit.Adapter.ZLG
 {
-    public sealed class ZlgCanDevice : ICanDevice<ZlgDeviceRTOptionsConfigurator>, INamedCanApplier
+    public sealed class ZlgCanDevice : ICanDevice<ZlgDeviceRTOptionsConfigurator>
     {
         private bool _isDeviceOpen = false;
 
@@ -31,13 +30,13 @@ namespace CanKit.Adapter.ZLG
         public void OpenDevice()
         {
             ThrowIfDisposed();
-            var zdt = (ZLG.Definitions.ZlgDeviceType)Options.DeviceType;
+            var zdt = (ZlgDeviceType)Options.DeviceType;
             var ptr = ZLGCAN.ZCAN_OpenDevice((uint)zdt.Code, Options.DeviceIndex, 0);
             var handle = new ZlgDeviceHandle(ptr);
             if (handle is { IsInvalid: false })
             {
                 _nativeHandler = handle;
-                _options.Apply(this, true);
+                ApplyConfig(_options);
                 _isDeviceOpen = true;
                 return;
             }
@@ -74,18 +73,11 @@ namespace CanKit.Adapter.ZLG
 
         IDeviceRTOptionsConfigurator ICanDevice.Options => Options;
 
-        public bool ApplyOne<T>(object id, T value)
-        {
-            return ZLGCAN.ZCAN_SetValue(NativeHandler,
-                Options.DeviceIndex + (string)id, value!.ToString()) != 0;
-        }
 
-        public void Apply(ICanOptions options)
+        public void ApplyConfig(ICanOptions options)
         {
 
         }
-
-        public CanOptionType ApplierStatus => IsDeviceOpen ? CanOptionType.Runtime : CanOptionType.Init;
 
 
         private void ThrowIfDisposed()

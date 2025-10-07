@@ -4,40 +4,6 @@ namespace CanKit.Core.Abstractions
 {
 
     /// <summary>
-    /// Applies options to a target (用于将选项应用到目标的接口)。
-    /// </summary>
-    public interface ICanApplier
-    {
-        /// <summary>
-        /// Applier capability/type (应用器当前状态/类型)。
-        /// </summary>
-        CanOptionType ApplierStatus { get; }
-
-
-        /// <summary>
-        /// Apply a batch of options (批量应用选项)。
-        /// </summary>
-        /// <param name="options">Options to apply (要应用的选项对象)。</param>
-        void Apply(ICanOptions options);
-    }
-
-
-    /// <summary>
-    /// Named applier that supports applying options by name (支持按名称应用选项的应用器)。
-    /// </summary>
-    public interface INamedCanApplier : ICanApplier
-    {
-        /// <summary>
-        /// Apply a single option value (应用单个选项)。
-        /// </summary>
-        /// <typeparam name="T">Value type (值类型)。</typeparam>
-        /// <param name="ID">Option name (选项名)。</param>
-        /// <param name="value">Option value (选项值)。</param>
-        /// <returns>True if applied (应用成功返回 true)。</returns>
-        bool ApplyOne<T>(object ID, T value);
-    }
-
-    /// <summary>
     /// Unified options to be applied by an applier (统一的可应用选项对象)。
     /// </summary>
     public interface ICanOptions
@@ -46,13 +12,6 @@ namespace CanKit.Core.Abstractions
         /// Model provider owning these options (选项对应的模型提供者)。
         /// </summary>
         ICanModelProvider Provider { get; }
-
-        /// <summary>
-        /// Apply via the specified applier (通过给定应用器应用)。
-        /// </summary>
-        /// <param name="applier">Applier to read/commit options (用于读写选项的应用器)。</param>
-        /// <param name="force">Force apply even if type not fully matched (是否强制应用)。</param>
-        void Apply(ICanApplier applier, bool force = false);
     }
 
 
@@ -132,10 +91,14 @@ namespace CanKit.Core.Abstractions
         bool AllowErrorInfo { get; set; }
 
 
-        //TODO:注释
+        /// <summary>
+        /// Capacity of the internal async receive buffer (异步接收缓冲区容量)。
+        /// </summary>
         int AsyncBufferCapacity { get; set; }
 
-        //TODO:注释
+        /// <summary>
+        /// Milliseconds to wait after a stop request before terminating the receive loop (接收循环停止延迟，毫秒)。
+        /// </summary>
         int ReceiveLoopStopDelayMs { get; set; }
     }
 }

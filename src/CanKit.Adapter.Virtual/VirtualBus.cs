@@ -10,7 +10,7 @@ using CanKit.Core.Utils;
 
 namespace CanKit.Adapter.Virtual;
 
-public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, ICanApplier, IBusOwnership
+public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, IBusOwnership
 {
     private readonly object _evtGate = new();
 
@@ -49,7 +49,7 @@ public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, ICanApplier,
         _asyncRx = new AsyncFramePipe(cap);
 
         // apply initial options (software filter, etc.)
-        _options.Apply(this, true);
+        ApplyConfig(_options);
     }
 
     internal VirtualBusHub Hub => _hub;
@@ -59,7 +59,7 @@ public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, ICanApplier,
         _owner = owner;
     }
 
-    public void Apply(ICanOptions options)
+    public void ApplyConfig(ICanOptions options)
     {
         if (options is not VirtualBusOptions vo)
         {
@@ -74,8 +74,6 @@ public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, ICanApplier,
             ? FilterRule.Build(Options.Filter.FilterRules)
             : null;
     }
-
-    public CanOptionType ApplierStatus => CanOptionType.Runtime;
 
     public void Reset()
     {

@@ -24,8 +24,6 @@ public sealed class VirtualBusOptions(ICanModelProvider provider) : IBusOptions
 
     // Virtual specific: session id to join a hub
     public string SessionId { get; set; } = "default";
-
-    public void Apply(ICanApplier applier, bool force = false) => applier.Apply(this);
 }
 
 public sealed class VirtualBusInitConfigurator

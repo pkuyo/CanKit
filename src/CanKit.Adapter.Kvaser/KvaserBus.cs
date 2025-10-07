@@ -11,7 +11,7 @@ using CanKit.Core.Utils;
 
 namespace CanKit.Adapter.Kvaser;
 
-public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, ICanApplier, IBusOwnership
+public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
 {
     private readonly object _evtGate = new();
 
@@ -58,8 +58,8 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, ICanApplier, I
             throw new CanBusCreationException($"Kvaser canBusOn failed: {st}");
         }
 
-        // Apply initial options (filters, error options)
-        options.Apply(this, true);
+        // Apply initial options
+        ApplyConfig(options);
         CanKitLogger.LogDebug("Kvaser: Initial options applied.");
     }
 
@@ -70,7 +70,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, ICanApplier, I
         _owners.Add(owner);
     }
 
-    public void Apply(ICanOptions options)
+    public void ApplyConfig(ICanOptions options)
     {
         if (options is not KvaserBusOptions kc) return;
 
@@ -141,7 +141,6 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, ICanApplier, I
     }
 
     //Ignored for canlib
-    public CanOptionType ApplierStatus => CanOptionType.Runtime;
 
 
     public void Reset()

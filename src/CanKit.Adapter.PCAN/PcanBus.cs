@@ -12,7 +12,7 @@ using Peak.Can.Basic;
 
 namespace CanKit.Adapter.PCAN;
 
-public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusOwnership
+public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
 {
     private readonly object _evtGate = new();
 
@@ -68,15 +68,10 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
         }
 
 
-        // Update runtime capabilities (e.g., FD) and remove un-support features
+        // Update runtime capabilities
         UpdateDynamicFeatures();
         CanKitLogger.LogInformation($"PCAN: Initializing on '{options.ChannelName}', Mode={options.ProtocolMode}, Features={Options.Features}");
 
-        // If requested FD but not supported at runtime, fail early
-        if (options.ProtocolMode == CanProtocolMode.CanFd && (Options.Features & CanFeature.CanFd) == 0)
-        {
-            throw new CanFeatureNotSupportedException(CanFeature.CanFd, Options.Features);
-        }
 
         // Initialize according to selected protocol mode
         if (options.ProtocolMode == CanProtocolMode.CanFd)
@@ -107,8 +102,8 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
             //TODO:
         }
 
-        // Apply initial options (filters etc.)
-        options.Apply(this, true);
+        // Apply initial options
+        ApplyConfig(options);
         CanKitLogger.LogDebug("PCAN: Initial options applied.");
 #if NETSTANDARD2_0
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
@@ -150,7 +145,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
         _owner = owner;
     }
 
-    public void Apply(ICanOptions options)
+    public void ApplyConfig(ICanOptions options)
     {
         if (options is not PcanBusOptions pc)
             return;
@@ -195,8 +190,6 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, ICanApplier, IBusO
 
 
     }
-
-    public CanOptionType ApplierStatus => CanOptionType.Runtime;
 
 
     public void Reset()

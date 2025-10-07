@@ -19,7 +19,7 @@ using CanKit.Core.Utils;
 namespace CanKit.Adapter.ZLG
 {
 
-    public sealed class ZlgCanBus : ICanBus<ZlgBusRtConfigurator>, INamedCanApplier, IBusOwnership
+    public sealed class ZlgCanBus : ICanBus<ZlgBusRtConfigurator>, IBusOwnership
     {
         private readonly HashSet<int> _autoSendIndexes = new();
 
@@ -41,7 +41,7 @@ namespace CanKit.Adapter.ZLG
 
         private CancellationTokenSource? _pollCts;
 
-        private System.Threading.Tasks.Task? _pollTask;
+        private Task? _pollTask;
         private Func<ICanFrame, bool>? _softwareFilterPredicate;
 
         private int _subscriberCount;
@@ -57,7 +57,7 @@ namespace CanKit.Adapter.ZLG
             Options = new ZlgBusRtConfigurator();
             Options.Init((ZlgBusOptions)options);
             _asyncRx = new AsyncFramePipe(Options.AsyncBufferCapacity > 0 ? Options.AsyncBufferCapacity : (int?)null);
-            options.Apply(this, true);
+            ApplyConfig(options);
             ZLGCAN.ZCAN_SetValue(_devicePtr, options.ChannelIndex+"clear_auto_send", "0");
             var provider = Options.Provider as ZlgCanProvider;
 
@@ -333,13 +333,7 @@ namespace CanKit.Adapter.ZLG
             }
         }
 
-        public bool ApplyOne<T>(object id, T value)
-        {
-            return ZLGCAN.ZCAN_SetValue(_devicePtr,
-                Options.ChannelIndex + (string)id, value!.ToString()) != 0; //Only ValueType
-        }
-
-        public void Apply(ICanOptions options)
+        public void ApplyConfig(ICanOptions options)
         {
             if (options is not ZlgBusOptions zlgOption)
             {
@@ -491,6 +485,25 @@ namespace CanKit.Adapter.ZLG
                     Options.InternalResistance ? "1" : "0"),
                 "ZCAN_SetValue(initenal_resistance)");
 
+            if ((Options.Features & CanFeature.TxRetryPolicy) != 0)
+            {
+
+            }
+
+            if ((Options.Features & CanFeature.BusUsage) != 0)
+            {
+                ZlgErr.ThrowIfError(
+                    ZLGCAN.ZCAN_SetValue(_devicePtr,
+                        Options.ChannelIndex + "/set_bus_usage_period",
+                        Options.BusUsagePeriodTime.ToString()),
+                    "ZCAN_SetValue(bus_usage_period)");
+                ZlgErr.ThrowIfError(
+                    ZLGCAN.ZCAN_SetValue(_devicePtr,
+                        Options.ChannelIndex + "/set_bus_usage_enable",
+                        Options.BusUsageEnabled ? "1" : "0"),
+                    "ZCAN_SetValue(bus_usage_enable)");
+            }
+
             // Cache software filter predicate for polling loop
             _useSoftwareFilter = (Options.EnabledSoftwareFallback & CanFeature.Filters) != 0
                                   && Options.Filter.SoftwareFilterRules.Count > 0;
@@ -499,10 +512,6 @@ namespace CanKit.Adapter.ZLG
                 : null;
 
         }
-
-        public CanOptionType ApplierStatus => _nativeHandle is { IsInvalid: false, IsClosed: false } ?
-            CanOptionType.Runtime :
-            CanOptionType.Init;
 
 
         public uint GetReceiveCount()

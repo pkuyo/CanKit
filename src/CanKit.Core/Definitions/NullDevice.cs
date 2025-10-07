@@ -7,7 +7,7 @@ namespace CanKit.Core.Definitions;
 /// Generic no-op device used for backends without a real device layer.
 /// TOptions keeps strong typing for RT options access.
 /// </summary>
-public sealed class NullDevice<TOptions> : ICanDevice<DeviceRTOptionsConfigurator<TOptions>>, ICanApplier
+public sealed class NullDevice<TOptions> : ICanDevice<DeviceRTOptionsConfigurator<TOptions>>
     where TOptions : class, IDeviceOptions
 {
     private readonly TOptions _options;
@@ -22,13 +22,6 @@ public sealed class NullDevice<TOptions> : ICanDevice<DeviceRTOptionsConfigurato
         Options.Init(typed);
         _options = typed;
     }
-
-    public void Apply(ICanOptions options)
-    {
-        // no-op for null device
-    }
-
-    public CanOptionType ApplierStatus => IsDeviceOpen ? CanOptionType.Runtime : CanOptionType.Init;
 
     public void OpenDevice()
     {
@@ -64,5 +57,4 @@ public sealed class NullDeviceOptions(ICanModelProvider provider) : IDeviceOptio
     public uint TxTimeOut { get; set; } = 100U;
     public ICanModelProvider Provider { get; } = provider;
     public DeviceType DeviceType => Provider.DeviceType;
-    public void Apply(ICanApplier applier, bool force = false) => applier.Apply(this);
 }

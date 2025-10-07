@@ -26,7 +26,6 @@ public sealed class SocketCanBusOptions(ICanModelProvider provider) : IBusOption
     public int ReceiveLoopStopDelayMs { get; set; } = 200;
     // Prefer kernel-provided timestamps (hardware if available, fallback to software)
     public bool PreferKernelTimestamp { get; set; } = true;
-    public void Apply(ICanApplier applier, bool force = false) => applier.Apply(this);
 }
 
 
