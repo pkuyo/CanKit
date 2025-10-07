@@ -1,8 +1,10 @@
-﻿using CanKit.Core.Definitions;
+﻿using CanKit.Adapter.PCAN.Exceptions;
+using CanKit.Core.Definitions;
+using Peak.Can.Basic;
 
 namespace CanKit.Adapter.PCAN;
 
-public static class PcanErr
+public static class PcanUtils
 {
     public static CanProtocolViolationType ToProtocolViolationType(uint id, ReadOnlySpan<byte> data)
     {
@@ -101,5 +103,11 @@ public static class PcanErr
             TransmitErrorCounter = data[2],
             ReceiveErrorCounter = data[3]
         };
+    }
+
+    public static void ThrowIfError(PcanStatus status, string operation, string message)
+    {
+        if (status != PcanStatus.OK)
+            throw new PcanCanException(operation, message, status);
     }
 }

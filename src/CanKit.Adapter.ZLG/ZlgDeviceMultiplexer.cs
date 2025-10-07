@@ -17,6 +17,7 @@ internal static class ZlgDeviceMultiplexer
 
     /// <summary>
     /// Acquire device lease by type/index (获取指定设备类型与索引的设备租约)。不存在时将创建并打开设备。
+    /// 返回设备和引用计数
     /// </summary>
     public static (ICanDevice device, IDisposable lease) Acquire(DeviceType dt, uint index, Func<ICanDevice> createAndOpen)
     {
@@ -37,7 +38,7 @@ internal static class ZlgDeviceMultiplexer
             }
             try
             {
-                dev.Dispose();
+                dev.Dispose(); //已经在另一线程创建相同的Device，销毁现有
             }
             catch
             {
@@ -59,6 +60,7 @@ internal static class ZlgDeviceMultiplexer
         public ICanDevice Device { get; }
     }
 
+    //引用计数
     private sealed class DeviceLease : IDisposable
     {
         private readonly string _key;

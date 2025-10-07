@@ -24,8 +24,18 @@ public sealed class SocketCanBusOptions(ICanModelProvider provider) : IBusOption
     public bool AllowErrorInfo { get; set; }
     public int AsyncBufferCapacity { get; set; } = 0;
     public int ReceiveLoopStopDelayMs { get; set; } = 200;
-    // Prefer kernel-provided timestamps (hardware if available, fallback to software)
+
+    /// <summary>
+    /// Prefer kernel-provided timestamps (hardware if available, fallback to software)
+    /// </summary>
     public bool PreferKernelTimestamp { get; set; } = true;
+
+    /// <summary>
+    /// When true, configure the CAN interface via libsocketcan.
+    /// Requires root or CAP_NET_ADMIN privileges;
+    /// </summary>
+
+    public bool UseNetLink { get; set; }
 }
 
 
@@ -46,10 +56,20 @@ public sealed class SocketCanBusInitConfigurator
         }
         return base.RangeFilter(min, max, idType);
     }
+
+    public SocketCanBusInitConfigurator NetLink(bool enable)
+    {
+        Options.UseNetLink = enable;
+        return this;
+    }
+
+    public bool UseNetLink => Options.UseNetLink;
 }
 
 public sealed class SocketCanBusRtConfigurator
     : BusRtOptionsConfigurator<SocketCanBusOptions, SocketCanBusRtConfigurator>
 {
     public bool PreferKernelTimestamp => Options.PreferKernelTimestamp;
+
+    public bool UseNetLink => Options.UseNetLink;
 }

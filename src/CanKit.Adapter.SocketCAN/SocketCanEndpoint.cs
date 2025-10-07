@@ -6,6 +6,7 @@ using System.Runtime.InteropServices;
 using CanKit.Core;
 using CanKit.Core.Abstractions;
 using CanKit.Core.Attributes;
+using CanKit.Core.Diagnostics;
 using CanKit.Core.Endpoints;
 
 namespace CanKit.Adapter.SocketCAN;
@@ -26,20 +27,28 @@ internal static class SocketCanEndpoint
         {
             if (ep.TryGet("if", out var v) || ep.TryGet("iface", out v))
                 iface = v!;
+
+            // use #netlink=1/#nl to conifg CanBus by libsocketcan
         }
 
-        if (string.IsNullOrWhiteSpace(iface))
+        bool enableNetLink = false;
+        if (!string.IsNullOrWhiteSpace(ep.Fragment))
         {
-            // try index
-            if (int.TryParse(ep.Path, out var idx)) index = idx;
-            iface = $"can{index}";
+            var frag = ep.Fragment!;
+            if (frag.StartsWith("netlink", StringComparison.OrdinalIgnoreCase) ||
+                frag.StartsWith("nl", StringComparison.OrdinalIgnoreCase))
+            {
+                enableNetLink = true;
+            }
         }
+
 
         return CanBus.Open<SocketCanBus, SocketCanBusOptions, SocketCanBusInitConfigurator>(
             LinuxDeviceType.SocketCAN,
             cfg =>
             {
-                cfg.UseChannelName(iface);
+                cfg.UseChannelName(iface)
+                    .NetLink(enableNetLink);
                 configure?.Invoke(cfg);
             });
     }

@@ -13,64 +13,40 @@ namespace CanKit.Core.Exceptions
         /// Unknown error (未知错误)。
         /// </summary>
         Unknown = 0,
-
-        /// <summary>
-        /// Device option type mismatch (设备选项类型不匹配)。
-        /// </summary>
-        DeviceOptionTypeMismatch = 1001,
         /// <summary>
         /// Device creation failed (设备实例创建失败)。
         /// </summary>
-        DeviceCreationFailed = 1002,
+        DeviceCreationFailed = 1001,
         /// <summary>
         /// Device disposed and cannot be used (设备已释放，无法再使用)。
         /// </summary>
-        DeviceDisposed = 1003,
+        DeviceDisposed = 1002,
         /// <summary>
         /// Device is not open (设备未打开)。
         /// </summary>
-        DeviceNotOpen = 1004,
+        DeviceNotOpen = 1003,
 
         /// <summary>
         /// Channel option type mismatch (通道选项类型不匹配)。
         /// </summary>
         ChannelOptionTypeMismatch = 2001,
         /// <summary>
-        /// Channel creation failed (通道创建失败)。
-        /// </summary>
-        ChannelCreationFailed = 2002,
-        /// <summary>
         /// Channel initialization failed (通道初始化失败)。
         /// </summary>
-        ChannelInitializationFailed = 2003,
-        /// <summary>
-        /// Channel start failed (通道启动失败)。
-        /// </summary>
-        ChannelStartFailed = 2004,
-        /// <summary>
-        /// Channel reset failed (通道复位失败)。
-        /// </summary>
-        ChannelResetFailed = 2005,
-        /// <summary>
-        /// Channel clean buffer failed (清理缓冲失败)。
-        /// </summary>
-        ChannelCleanBufferFailed = 2006,
-        /// <summary>
-        /// Channel polling failed (通道轮询失败)。
-        /// </summary>
-        ChannelPollingFailed = 2007,
+        ChannelInitializationFailed = 2002,
         /// <summary>
         /// Channel disposed (通道已释放)。
         /// </summary>
-        ChannelDisposed = 2008,
+        ChannelDisposed = 2003,
+        /// <summary>
+        /// Channel Faulted (通道异常终止)。
+        /// </summary>
+        ChannelFaulted = 2004, //No Use
         /// <summary>
         /// Channel configuration invalid (通道配置无效/冲突)。
         /// </summary>
-        ChannelConfigurationInvalid = 2009,
-        /// <summary>
-        /// Channel is not open (通道未打开)。
-        /// </summary>
-        ChannelNotOpen = 2010,
+        ChannelConfigurationInvalid = 2005,
+
 
         /// <summary>
         /// Transceiver type mismatch (收发器类型不匹配)。
@@ -106,14 +82,6 @@ namespace CanKit.Core.Exceptions
     /// </summary>
     public class CanKitException : Exception
     {
-        /// <summary>
-        /// Create with default code <see cref="CanKitErrorCode.Unknown"/> (使用默认未知错误码创建)。
-        /// </summary>
-        public CanKitException(string message)
-            : this(CanKitErrorCode.Unknown, message, null, null)
-        {
-        }
-
         /// <summary>
         /// Create with code, message, optional native code and inner exception (使用错误码/消息/可选原生码/内部异常创建)。
         /// </summary>
@@ -209,11 +177,11 @@ namespace CanKit.Core.Exceptions
     }
 
     /// <summary>
-    /// Thrown when channel configuration is invalid (通道配置无效异常)。
+    /// Thrown when bus configuration is invalid (通道配置无效异常)。
     /// </summary>
-    public class CanChannelConfigurationException : CanConfigurationException
+    public class CanBusConfigurationException : CanConfigurationException
     {
-        public CanChannelConfigurationException(string message)
+        public CanBusConfigurationException(string message)
             : base(CanKitErrorCode.ChannelConfigurationInvalid, message)
         {
         }
@@ -280,7 +248,7 @@ namespace CanKit.Core.Exceptions
     public class CanBusCreationException : CanBusException
     {
         public CanBusCreationException(string message)
-            : base(CanKitErrorCode.ChannelCreationFailed, message)
+            : base(CanKitErrorCode.ChannelInitializationFailed, message)
         {
         }
     }

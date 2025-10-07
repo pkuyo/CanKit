@@ -25,7 +25,7 @@ public sealed class ZlgPeriodicTx : IPeriodicTx
 
         if (options.Repeat >= 0)
         {
-            throw new CanChannelConfigurationException(
+            throw new CanBusConfigurationException(
                 "ZLG periodic transmit does not support finite Repeat values; use Repeat = -1.");
         }
 

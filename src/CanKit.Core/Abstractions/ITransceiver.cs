@@ -22,12 +22,12 @@ namespace CanKit.Core.Abstractions
         /// <summary>
         ///     通过指定通道接收 CAN 帧。
         /// </summary>
-        /// <param name="channel">执行接收操作的通道。</param>
+        /// <param name="bus">执行接收操作的通道。</param>
         /// <param name="count">期望接收的最大帧数量。</param>
         /// <param name="timeOut">等待数据的超时时间，单位为毫秒，-1 表示无限等待。</param>
         /// <returns>接收到的帧集合。</returns>
         IEnumerable<CanReceiveData> Receive(
-            ICanBus<IBusRTOptionsConfigurator> channel,
+            ICanBus<IBusRTOptionsConfigurator> bus,
             uint count = 1,
             int timeOut = 0);
     }

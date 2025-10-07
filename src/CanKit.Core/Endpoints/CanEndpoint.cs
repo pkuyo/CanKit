@@ -47,17 +47,6 @@ public readonly struct CanEndpoint
 
         // Accept forms:
         //  - scheme://path?key=value#frag
-        //  - scheme:path (fallback)
-        if (!endpoint.Contains("://"))
-        {
-            var idx = endpoint.IndexOf(':');
-            if (idx > 0)
-            {
-                var scheme = endpoint.Substring(0, idx);
-                var path = endpoint.Substring(idx + 1);
-                return new CanEndpoint(scheme, path, new Dictionary<string, string>(), null, endpoint);
-            }
-        }
 
         var uri = new Uri(endpoint, UriKind.Absolute);
         var schemePart = uri.Scheme;

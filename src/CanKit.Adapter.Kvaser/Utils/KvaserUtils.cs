@@ -27,7 +27,7 @@ public static class KvaserUtils
             case 50_000: return Canlib.canBITRATE_50K;
             case 10_000: return Canlib.canBITRATE_10K;
             default:
-                throw new CanChannelConfigurationException(
+                throw new CanBusConfigurationException(
                     $"Unsupported classic bitrate: {bitrate} bps for Kvaser predefined constants.");
         }
     }
@@ -50,7 +50,7 @@ public static class KvaserUtils
         }
 
         // 未找到预定义常量：回退为原始 bps
-        throw new CanChannelConfigurationException(
+        throw new CanBusConfigurationException(
             $"Unsupported Kvaser FD bitrate/sample-point combination: {bitrate} bps @ {sp}%.");
 
         // —— 内部小工具 —— //

@@ -25,9 +25,9 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
     private EventHandler<ICanErrorInfo>? _errorOccurred;
     private Libc.epoll_event[] _events = new Libc.epoll_event[8];
     private int _fd;
+    private string _ifName;
     private EventHandler<CanReceiveData>? _frameReceived;
 
-    private string _ifName;
     private bool _isDisposed;
 
     private IDisposable? _owner;
@@ -53,7 +53,11 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
 
         // Apply device configs
         CanKitLogger.LogInformation($"SocketCAN: Initializing interface '{Options.ChannelName?? Options.ChannelIndex.ToString()}', Mode={Options.ProtocolMode}...");
-        ApplyDeviceConfig();
+
+        if (Options.UseNetLink)
+        {
+            ApplyDeviceConfig();
+        }
 
         // Create socket & bind
         _fd = CreateAndBind(Options.ChannelName, Options.ProtocolMode, Options.PreferKernelTimestamp);
@@ -124,7 +128,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
                 var ptr = handle.AddrOfPinnedObject();
                 if (Libc.setsockopt(_fd, Libc.SOL_CAN_RAW, Libc.CAN_RAW_FILTER, ptr, (uint)total) != 0)
                 {
-                    throw new CanChannelConfigurationException("setsockopt(CAN_RAW_FILTER) failed.");
+                    throw new CanBusConfigurationException("setsockopt(CAN_RAW_FILTER) failed.");
                 }
             }
             finally { handle.Free(); }
@@ -164,7 +168,6 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
     public uint Transmit(IEnumerable<CanTransmitData> frames, int timeOut = 0)
     {
         ThrowIfDisposed();
-
         uint sendCount = 0;
         var startTime = Environment.TickCount;
         var pollFd = new Libc.pollfd { fd = _fd, events = Libc.POLLOUT };
@@ -206,12 +209,12 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
         } while (true);
 
         return sendCount;
+
     }
 
     public IEnumerable<CanReceiveData> Receive(uint count = 1, int timeOut = 0)
     {
         ThrowIfDisposed();
-
         if (timeOut > 0)
         {
             var pollFd = new Libc.pollfd { fd = _fd, events = Libc.POLLIN };
@@ -221,12 +224,16 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
                 Libc.ThrowErrno("poll(POLLIN)", "Polling for readable socket failed");
             }
         }
-
         return _transceiver.Receive(this, count);
     }
 
     public Task<uint> TransmitAsync(IEnumerable<CanTransmitData> frames, int timeOut = 0, CancellationToken cancellationToken = default)
-        => Task.Run(() => Transmit(frames, timeOut), cancellationToken);
+        => Task.Run(() =>
+        {
+            try { return Transmit(frames, timeOut); }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+            catch (Exception ex) { HandleBackgroundException(ex); throw; }
+        }, cancellationToken);
 
     public Task<IReadOnlyList<CanReceiveData>> ReceiveAsync(uint count = 1, int timeOut = 0, CancellationToken cancellationToken = default)
     {
@@ -315,10 +322,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
         CanKitLogger.LogDebug("SocketCAN: RX buffer drained.");
     }
 
-    public float BusUsage()
-    {
-        throw new CanFeatureNotSupportedException(CanFeature.BusUsage, Options.Features);
-    }
+    public float BusUsage() => throw new CanFeatureNotSupportedException(CanFeature.BusUsage, Options.Features);
 
     public CanErrorCounters ErrorCounters()
     {
@@ -401,13 +405,13 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
         }
     }
 
-    public event EventHandler<ICanErrorInfo> ErrorOccurred
+    public event EventHandler<ICanErrorInfo> ErrorFrameReceived
     {
         add
         {
             if (!Options.AllowErrorInfo)
             {
-                throw new CanChannelConfigurationException("ErrorOccurred subscription requires AllowErrorInfo=true in options.");
+                throw new CanBusConfigurationException("ErrorOccurred subscription requires AllowErrorInfo=true in options.");
             }
             bool needStart = false;
             lock (_evtGate)
@@ -427,7 +431,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
         {
             if (!Options.AllowErrorInfo)
             {
-                throw new CanChannelConfigurationException("ErrorOccurred subscription requires AllowErrorInfo=true in options.");
+                throw new CanBusConfigurationException("ErrorOccurred subscription requires AllowErrorInfo=true in options.");
             }
             bool needStop = false;
             lock (_evtGate)
@@ -593,14 +597,9 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
 
         _options.ChannelIndex = unchecked((int)ifIndex);
 
-        var re = -LibSocketCan.can_get_ctrlmode(ifName, out var ctrlMode);
-        if (re != Libc.OK)
+        if (LibSocketCan.can_get_ctrlmode(ifName, out var ctrlMode) != Libc.OK)
         {
-            if (re is Libc.EPERM or Libc.EACCES)
-            {
-                CanKitLogger.LogWarning($"SocketCanBus: Cannot configure CAN interface {ifName}: operation requires CAP_NET_ADMIN.");
-                return;
-            }
+            var re = Libc.Errno();
             if (re == Libc.EOPNOTSUPP)
             {
                 CanKitLogger.LogInformation($"SocketCanBus: {ifName} not support ctrlmode. Ignored socket can config.");
@@ -661,7 +660,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
             var fd = Options.BitTiming.Fd!.Value;
             if (fd.clockMHz != clock.freq / 1_000_000)
             {
-                CanKit.Core.Diagnostics.CanKitLogger.LogWarning(
+                CanKitLogger.LogWarning(
                     $"SocketCanBus: timing clock ({fd.clockMHz} MHz) differs from device clock ({clock.freq / 1_000_000} MHz); using device clock.");
             }
             var aTiming = fd.Nominal.ToCanBitTiming(clock.freq);
@@ -789,10 +788,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
             catch { /* ignore wake errors */ }
             _epollTask?.Wait(200);
         }
-        catch
-        {
-            // ignored
-        }
+        catch { /*ignored*/ }
         finally
         {
             if (_epfd >= 0)
@@ -836,47 +832,57 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
 
     private void EPollLoop(CancellationToken token)
     {
-        while (!token.IsCancellationRequested)
+        try
         {
-            if (Volatile.Read(ref _subscriberCount) <= 0) break;
-
-            int n = Libc.epoll_wait(_epfd, _events, _events.Length, -1);
-            if (n < 0)
+            while (!token.IsCancellationRequested)
             {
-                var errno = Libc.Errno();
-                if (errno == Libc.EINTR)
-                    continue;
-                throw new SocketCanNativeException("epoll_wait(FD)", "epoll_wait occured an error", (uint)errno);
-            }
+                if (Volatile.Read(ref _subscriberCount) <= 0) break;
 
-            for (int i = 0; i < n; i++)
-            {
-                var fd = (int)_events[i].data;
-                if (fd == _cancelFd)
+                int n = Libc.epoll_wait(_epfd, _events, _events.Length, -1);
+                if (n < 0)
                 {
-                    // drain cancelfd and allow loop to exit on next iteration
-                    try
+                    var errno = Libc.Errno();
+                    if (errno == Libc.EINTR)
+                        continue;
+                    throw new SocketCanNativeException("epoll_wait(FD)", "epoll_wait occured an error", (uint)errno);
+                }
+
+                for (int i = 0; i < n; i++)
+                {
+                    var fd = (int)_events[i].data;
+                    if (fd == _cancelFd)
                     {
-                        unsafe
+                        try
                         {
-                            ulong tmp;
-                            _ = Libc.read(_cancelFd, &tmp, sizeof(ulong));
+                            unsafe
+                            {
+                                ulong tmp;
+                                _ = Libc.read(_cancelFd, &tmp, sizeof(ulong));
+                            }
                         }
+                        catch { /* ignore */ }
+                        continue;
                     }
-                    catch { /* ignore */ }
-                    continue;
-                }
 
-                if ((_events[i].events & Libc.EPOLLIN) != 0 && fd == _fd)
-                {
-                    DrainReceive();
-                }
-                else if ((_events[i].events & Libc.EPOLLERR) != 0)
-                {
-                    throw new CanKit.Adapter.SocketCAN.Diagnostics.SocketCanNativeException(
-                        "epoll_wait(FD)", "EPOLLERR event received for CAN socket", (uint)CanKit.Adapter.SocketCAN.Native.Libc.Errno());
+                    if ((_events[i].events & Libc.EPOLLIN) != 0 && fd == _fd)
+                    {
+                        DrainReceive();
+                    }
+                    else if ((_events[i].events & Libc.EPOLLERR) != 0)
+                    {
+                        throw new SocketCanNativeException(
+                            "epoll_wait(FD)", "EPOLLERR event received for CAN socket", (uint)Libc.Errno());
+                    }
                 }
             }
+        }
+        catch (OperationCanceledException)
+        {
+            // ignore
+        }
+        catch (Exception ex)
+        {
+            HandleBackgroundException(ex);
         }
     }
 
@@ -932,5 +938,23 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
         }
     }
 
+    public event EventHandler<Exception>? BackgroundExceptionOccurred;
 
+    private void HandleBackgroundException(Exception ex)
+    {
+        try
+        {
+            CanKitLogger.LogError($"SocketCAN occured background exception on '{_ifName}'.", ex);
+        }
+        catch { }
+
+        try { _asyncRx.ExceptionOccured(ex); }catch { }
+
+        try
+        {
+            var snap = Volatile.Read(ref BackgroundExceptionOccurred);
+            snap?.Invoke(this, ex);
+        }
+        catch { }
+    }
 }

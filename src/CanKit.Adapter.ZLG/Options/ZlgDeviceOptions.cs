@@ -9,8 +9,6 @@ namespace CanKit.Adapter.ZLG.Options
 
         public uint DeviceIndex { get; set; }
 
-        public bool MergeReceive { get; set; }
-
         public ICanModelProvider Provider => provider;
 
         public DeviceType DeviceType => provider.DeviceType;

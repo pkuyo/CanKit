@@ -54,12 +54,12 @@ public sealed class SocketCanFdTransceiver : ITransceiver
         }
     }
 
-    public IEnumerable<CanReceiveData> Receive(ICanBus<IBusRTOptionsConfigurator> channel, uint count = 1, int _ = -1)
+    public IEnumerable<CanReceiveData> Receive(ICanBus<IBusRTOptionsConfigurator> bus, uint count = 1, int _ = -1)
     {
         var size = Marshal.SizeOf<Libc.canfd_frame>();
         var result = new List<CanReceiveData>();
         var readCount = 0;
-        var ch = (SocketCanBus)channel;
+        var ch = (SocketCanBus)bus;
         var preferTs = ch.Options.PreferKernelTimestamp;
         unsafe
         {

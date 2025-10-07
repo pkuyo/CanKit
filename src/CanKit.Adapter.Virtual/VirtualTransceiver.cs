@@ -26,7 +26,7 @@ internal sealed class VirtualTransceiver : ITransceiver
 
 
     [Obsolete("We use rxQueue in CanBus instead of VirtualTransceiver.Receive")]
-    public IEnumerable<CanReceiveData> Receive(ICanBus<IBusRTOptionsConfigurator> channel, uint count = 1, int timeOut = 0)
+    public IEnumerable<CanReceiveData> Receive(ICanBus<IBusRTOptionsConfigurator> bus, uint count = 1, int timeOut = 0)
     {
         throw new InvalidOperationException();
     }

@@ -23,11 +23,11 @@ namespace CanKit.Adapter.ZLG.Transceivers
             return ZLGCAN.ZCAN_TransmitFD(((ZlgCanBus)channel).NativeHandle, zcanTransmitData, (uint)zcanTransmitData.Length);
         }
 
-        public IEnumerable<CanReceiveData> Receive(ICanBus<IBusRTOptionsConfigurator> channel, uint count = 1, int timeOut = 0)
+        public IEnumerable<CanReceiveData> Receive(ICanBus<IBusRTOptionsConfigurator> bus, uint count = 1, int timeOut = 0)
         {
             var data = new ZLGCAN.ZCAN_ReceiveFD_Data[count];
 
-            var recCount = ZLGCAN.ZCAN_ReceiveFD(((ZlgCanBus)channel).NativeHandle, data, count, timeOut);
+            var recCount = ZLGCAN.ZCAN_ReceiveFD(((ZlgCanBus)bus).NativeHandle, data, count, timeOut);
 
             return data.Take((int)recCount).Select(i => new CanReceiveData(i.frame.FromReceiveData())
             {
