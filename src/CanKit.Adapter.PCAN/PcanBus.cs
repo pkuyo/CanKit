@@ -97,10 +97,6 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
             }
             CanKitLogger.LogInformation("PCAN: Initialize (classic) succeeded.");
         }
-        else
-        {
-            //TODO:
-        }
 
         // Apply initial options
         ApplyConfig(options);
@@ -548,8 +544,8 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
     {
         if (!timing.Classic!.Value.Nominal.IsTarget)
         {
-            //TODO: 异常处理
-            throw new Exception();
+            throw new CanChannelConfigurationException(
+                "Classic timing must specify a target nominal bitrate.");
         }
 
         var b = timing.Classic.Value.Nominal.Bitrate!.Value;
@@ -582,9 +578,10 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
         BitrateFD.BitrateSegment nominalSeg = new BitrateFD.BitrateSegment();
         BitrateFD.BitrateSegment dataSeg = new BitrateFD.BitrateSegment();
 
-        if (!Enum.IsDefined(typeof(BitrateFD.BitrateSegment), clock * 1_000_000))
+        if (!Enum.IsDefined(typeof(BitrateFD.ClockFrequency), clock * 1_000_000))
         {
-            //TODO:异常处理
+            throw new CanKit.Core.Exceptions.CanChannelConfigurationException(
+                $"Unsupported PCAN FD clock frequency: {clock} MHz.");
         }
 
         if (nomial.Segments is { } seg)

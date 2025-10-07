@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using CanKit.Adapter.Kvaser.Utils;
 using CanKit.Core.Abstractions;
 using CanKit.Core.Definitions;
 using Kvaser.CanLib;
@@ -32,7 +33,8 @@ public sealed class KvaserClassicTransceiver : ITransceiver
             }
             else
             {
-                //TODO:异常处理
+                KvaserUtils.ThrowIfError(
+                    st, "canWrite", "Failed to write frame");
             }
         }
         return sent;
@@ -68,7 +70,10 @@ public sealed class KvaserClassicTransceiver : ITransceiver
             }
             else
             {
-                //TODO:异常处理
+                KvaserUtils.ThrowIfError(
+                    st,
+                    timeout > 0 ? "canReadWait" : "canRead",
+                    "Failed to read frame");
                 break;
             }
         }

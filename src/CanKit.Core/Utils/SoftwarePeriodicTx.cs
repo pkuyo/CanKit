@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using CanKit.Core.Abstractions;
 using CanKit.Core.Definitions;
+using CanKit.Core.Diagnostics;
 
 namespace CanKit.Core.Utils
 {
@@ -34,7 +35,8 @@ namespace CanKit.Core.Utils
         {
             if (options.Period < TimeSpan.FromMilliseconds(2))
             {
-                //TODO:输出警告信息，太短的间隔时间不稳定
+                CanKitLogger.LogWarning(
+                    "SoftwarePeriodicTx: period < 2 ms may be unstable on general-purpose OS schedulers.");
             }
             _bus = bus;
             _frame = frame;
@@ -93,7 +95,8 @@ namespace CanKit.Core.Utils
                 {
                     if (period.Value < TimeSpan.FromMilliseconds(2))
                     {
-                        //TODO:输出警告信息，太短的间隔时间不稳定
+                        CanKitLogger.LogWarning(
+                            "SoftwarePeriodicTx: period < 2 ms may be unstable on general-purpose OS schedulers.");
                     }
                     _period = period.Value;
                 }

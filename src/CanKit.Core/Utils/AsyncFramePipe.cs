@@ -131,7 +131,6 @@ namespace CanKit.Core.Utils
             }
             if (toWake != null)
             {
-                //广播数据发送 TODO:惊群效应
                 foreach (var t in toWake)
                 {
                     _ = t.TrySetResult(true);

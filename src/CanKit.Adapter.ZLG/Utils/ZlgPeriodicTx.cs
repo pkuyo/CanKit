@@ -25,7 +25,8 @@ public sealed class ZlgPeriodicTx : IPeriodicTx
 
         if (options.Repeat >= 0)
         {
-            //TODO:异常，不支持有限个数发送
+            throw new CanChannelConfigurationException(
+                "ZLG periodic transmit does not support finite Repeat values; use Repeat = -1.");
         }
 
         // Validate frame type vs channel
@@ -98,11 +99,15 @@ public sealed class ZlgPeriodicTx : IPeriodicTx
     {
         add
         {
-            //TODO:异常，不支持Complete
+            throw new CanKit.Core.Exceptions.CanKitException(
+                CanKit.Core.Exceptions.CanKitErrorCode.FeatureNotSupported,
+                "ZLG periodic transmit does not support Completed event notifications.");
         }
         remove
         {
-            //TODO:异常，不支持Complete
+            throw new CanKit.Core.Exceptions.CanKitException(
+                CanKit.Core.Exceptions.CanKitErrorCode.FeatureNotSupported,
+                "ZLG periodic transmit does not support Completed event notifications.");
         }
     }
 

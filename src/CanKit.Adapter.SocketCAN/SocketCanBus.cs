@@ -289,7 +289,8 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
                     var n = Libc.read(_fd, buf, (ulong)readSize);
                     if (n <= 0)
                     {
-                        //TODO:错误输出
+                        CanKitLogger.LogWarning(
+                            $"SocketCAN: read(FD) returned {n} while draining RX buffer. errno={CanKit.Adapter.SocketCAN.Native.Libc.Errno()}");
                         break;
                     }
                 }
@@ -304,7 +305,8 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
                     var n = Libc.read(_fd, buf, (ulong)readSize);
                     if (n <= 0)
                     {
-                        //TODO:错误输出
+                        CanKitLogger.LogWarning(
+                            $"SocketCAN: read(FD) returned {n} while draining RX buffer. errno={CanKit.Adapter.SocketCAN.Native.Libc.Errno()}");
                         break;
                     }
                 }
@@ -637,7 +639,8 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
 
             if (classic.clockMHz != clock.freq / 1_000_000)
             {
-                //TODO:警告处理，时钟与读取到的不一致
+                CanKit.Core.Diagnostics.CanKitLogger.LogWarning(
+                    $"SocketCanBus: timing clock ({classic.clockMHz} MHz) differs from device clock ({clock.freq / 1_000_000} MHz); using device clock.");
             }
 
             var timing = classic.Nominal.ToCanBitTiming(clock.freq);
@@ -658,7 +661,8 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
             var fd = Options.BitTiming.Fd!.Value;
             if (fd.clockMHz != clock.freq / 1_000_000)
             {
-                //TODO:警告处理，时钟与读取到的不一致
+                CanKit.Core.Diagnostics.CanKitLogger.LogWarning(
+                    $"SocketCanBus: timing clock ({fd.clockMHz} MHz) differs from device clock ({clock.freq / 1_000_000} MHz); using device clock.");
             }
             var aTiming = fd.Nominal.ToCanBitTiming(clock.freq);
             var dTiming = fd.Data.ToCanBitTiming(clock.freq);
@@ -869,7 +873,8 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
                 }
                 else if ((_events[i].events & Libc.EPOLLERR) != 0)
                 {
-                    //TODO:异常处理
+                    throw new CanKit.Adapter.SocketCAN.Diagnostics.SocketCanNativeException(
+                        "epoll_wait(FD)", "EPOLLERR event received for CAN socket", (uint)CanKit.Adapter.SocketCAN.Native.Libc.Errno());
                 }
             }
         }

@@ -93,10 +93,16 @@ public interface IBusRTOptionsConfigurator : ICanOptionsConfigurator
     /// </summary>
     CanFeature EnabledSoftwareFallback { get; }
 
-    //TODO:注释
+    /// <summary>
+    /// Set capacity for internal async receive buffer (设置异步接收缓冲区容量)。
+    /// </summary>
+    /// <param name="capacity">Buffer capacity in frames (缓冲区容量，单位：帧)。</param>
     IBusRTOptionsConfigurator SetAsyncBufferCapacity(int capacity);
 
-    //TODO:注释
+    /// <summary>
+    /// Set delay before stopping receive loop in milliseconds (设置停止接收循环前的延时，毫秒)。
+    /// </summary>
+    /// <param name="milliseconds">Delay in milliseconds (延时时间，毫秒)。</param>
     IBusRTOptionsConfigurator SetReceiveLoopStopDelayMs(int milliseconds);
 
     /// <summary>
@@ -104,11 +110,15 @@ public interface IBusRTOptionsConfigurator : ICanOptionsConfigurator
     /// </summary>
     bool AllowErrorInfo { get; }
 
-    //TODO:注释
+    /// <summary>
+    /// Capacity of the internal async receive buffer (异步接收缓冲区容量)。
+    /// </summary>
     int AsyncBufferCapacity { get; }
 
 
-    //TODO:注释
+    /// <summary>
+    /// Delay in milliseconds before stopping the receive loop (停止接收循环延时，毫秒)。
+    /// </summary>
     int ReceiveLoopStopDelayMs { get; }
 }
 
@@ -189,11 +199,15 @@ public interface IBusInitOptionsConfigurator : ICanOptionsConfigurator
     bool AllowErrorInfo { get; }
 
 
-    //TODO:注释
+    /// <summary>
+    /// Capacity of the internal async receive buffer (异步接收缓冲区容量)。
+    /// </summary>
     int AsyncBufferCapacity { get; }
 
 
-    //TODO:注释
+    /// <summary>
+    /// Delay in milliseconds before stopping the receive loop (停止接收循环延时，毫秒)。
+    /// </summary>
     int ReceiveLoopStopDelayMs { get; }
 
 
@@ -277,7 +291,10 @@ public interface IBusInitOptionsConfigurator : ICanOptionsConfigurator
     IBusInitOptionsConfigurator SetFilter(CanFilter filter);
 
 
-    //TODO:
+    /// <summary>
+    /// Enable software fallback for specified features (启用指定功能的软件替代)。
+    /// </summary>
+    /// <param name="features">Feature flags to enable in software (要启用的软件替代功能标志)。</param>
     IBusInitOptionsConfigurator SoftwareFeaturesFallBack(CanFeature features);
 
     /// <summary>
@@ -305,17 +322,29 @@ public interface IBusInitOptionsConfigurator : ICanOptionsConfigurator
     IBusInitOptionsConfigurator EnableErrorInfo();
 
 
-    //TODO:注释
+    /// <summary>
+    /// Select channel by index (通过索引选择通道)。
+    /// </summary>
+    /// <param name="index">Channel index (通道索引)。</param>
     IBusInitOptionsConfigurator UseChannelIndex(int index);
 
 
-    //TODO:注释
+    /// <summary>
+    /// Select channel by name (通过名称选择通道)。
+    /// </summary>
+    /// <param name="name">Channel name (通道名称)。</param>
     IBusInitOptionsConfigurator UseChannelName(string name);
 
-    //TODO:注释
+    /// <summary>
+    /// Set capacity for internal async receive buffer (设置异步接收缓冲区容量)。
+    /// </summary>
+    /// <param name="capacity">Buffer capacity in frames (缓冲区容量，单位：帧)。</param>
     IBusInitOptionsConfigurator SetAsyncBufferCapacity(int capacity);
 
-    //TODO:注释
+    /// <summary>
+    /// Set delay before stopping receive loop in milliseconds (设置停止接收循环前的延时，毫秒)。
+    /// </summary>
+    /// <param name="delayMs">Delay in milliseconds (延时时间，毫秒)。</param>
     IBusInitOptionsConfigurator SetReceiveLoopStopDelayMs(int delayMs);
 }
 

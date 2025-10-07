@@ -356,8 +356,8 @@ namespace CanKit.Adapter.ZLG
                 if (!Enum.IsDefined(typeof(ZlgBaudRate), arbitrationRate) ||
                     !Enum.IsDefined(typeof(ZlgDataDaudRate), dataRate))
                 {
-                    //TODO:异常处理，不支持的波特率设置
-                    throw new Exception();
+                    throw new CanChannelConfigurationException(
+                        $"Unsupported ZLG CAN FD bitrate setting: abit={arbitrationRate} bps, dbit={dataRate} bps.");
                 }
 
                 ZlgErr.ThrowIfError(
@@ -382,8 +382,8 @@ namespace CanKit.Adapter.ZLG
 
                 if (!Enum.IsDefined(typeof(ZlgBaudRate), bitRate))
                 {
-                    //TODO:异常处理，不支持的波特率设置
-                    throw new Exception();
+                    throw new CanChannelConfigurationException(
+                        $"Unsupported ZLG classic bitrate: {bitRate} bps.");
                 }
 
                 if ((Options.Features & CanFeature.CanFd) != 0)

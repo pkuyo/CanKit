@@ -26,9 +26,8 @@ public sealed class SocketCanFactory : ICanFactory
         // SocketCAN supports classic + FD;
         return busOptions.ProtocolMode switch
         {
-            CanProtocolMode.Can20 => new SocketCanClassicTransceiver(),
             CanProtocolMode.CanFd => new SocketCanFdTransceiver(),
-            _ => throw new Exception() //TODO:异常处理（目前不可达分支）
+            _ => new SocketCanClassicTransceiver(),
         };
     }
 

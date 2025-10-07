@@ -436,10 +436,6 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
                 }
             }
         }
-        else
-        {
-            //TODO:
-        }
     }
 
     private void ThrowIfDisposed()
