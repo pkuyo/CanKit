@@ -254,11 +254,7 @@ namespace CanKit.Core.Definitions
             get => CanIdBits.IsExtended(RawID);
             init => RawID = CanIdBits.WithExtended(RawID, value);
         }
-        public bool IsRemoteFrame
-        {
-            get => CanIdBits.IsRemote(RawID);
-            init => RawID = CanIdBits.WithRemote(RawID, value);
-        }
+
         public bool IsErrorFrame { get; init; }
 
         /// <summary>

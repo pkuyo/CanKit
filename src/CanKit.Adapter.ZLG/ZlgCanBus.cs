@@ -56,7 +56,7 @@ namespace CanKit.Adapter.ZLG
 
             Options = new ZlgBusRtConfigurator();
             Options.Init((ZlgBusOptions)options);
-            _asyncRx = new AsyncFramePipe(Options.AsyncBufferCapacity > 0 ? Options.AsyncBufferCapacity : (int?)null);
+            _asyncRx = new AsyncFramePipe(Options.AsyncBufferCapacity > 0 ? Options.AsyncBufferCapacity : null);
             ApplyConfig(options);
             ZLGCAN.ZCAN_SetValue(_devicePtr, options.ChannelIndex+"clear_auto_send", "0");
             var provider = Options.Provider as ZlgCanProvider;
@@ -100,6 +100,7 @@ namespace CanKit.Adapter.ZLG
             }
 
             var handle = ZLGCAN.ZCAN_InitCAN(device.NativeHandler, (uint)Options.ChannelIndex, ref config);
+            ApplyConfigAfterInit(options);
             handle.SetDevice(device.NativeHandler.DangerousGetHandle());
 
             ZlgErr.ThrowIfInvalid(handle, nameof(ZLGCAN.ZCAN_InitCAN));
@@ -346,6 +347,7 @@ namespace CanKit.Adapter.ZLG
 
             if (zlgOption.ProtocolMode == CanProtocolMode.CanFd)
             {
+                ZLGCAN.ZCAN_SetValue(_devicePtr, Options.ChannelIndex + "/canfd_standard", "0");
                 var arbitrationRate = zlgOption.BitTiming.Fd?.Nominal.Bitrate
                                   ?? throw new CanChannelConfigurationException("Arbitration bitrate must be specified when configuring CAN FD timing.");
                 var dataRate = zlgOption.BitTiming.Fd?.Data.Bitrate
@@ -408,7 +410,48 @@ namespace CanKit.Adapter.ZLG
                     Options.ChannelIndex + "/work_mode",
                     ((int)zlgOption.WorkMode).ToString()),
                 "ZCAN_SetValue(work_mode)");
+            ZlgErr.ThrowIfError(
+                ZLGCAN.ZCAN_SetValue(
+                    _devicePtr,
+                    Options.ChannelIndex + "/initenal_resistance",
+                    Options.InternalResistance ? "1" : "0"),
+                "ZCAN_SetValue(initenal_resistance)");
 
+            if ((Options.Features & CanFeature.TxRetryPolicy) != 0)
+            {
+                ZlgErr.ThrowIfError(
+                    ZLGCAN.ZCAN_SetValue(_devicePtr,
+                        Options.ChannelIndex + "/set_tx_retry_policy",
+                        Options.TxRetryPolicy == TxRetryPolicy.NoRetry ? "1" : "2"),
+                    "ZCAN_SetValue(tx_retry_policy)");
+            }
+
+            if ((Options.Features & CanFeature.BusUsage) != 0)
+            {
+                ZlgErr.ThrowIfError(
+                    ZLGCAN.ZCAN_SetValue(_devicePtr,
+                        Options.ChannelIndex + "/set_bus_usage_period",
+                        Options.BusUsagePeriodTime.ToString()),
+                    "ZCAN_SetValue(bus_usage_period)");
+                ZlgErr.ThrowIfError(
+                    ZLGCAN.ZCAN_SetValue(_devicePtr,
+                        Options.ChannelIndex + "/set_bus_usage_enable",
+                        Options.BusUsageEnabled ? "1" : "0"),
+                    "ZCAN_SetValue(bus_usage_enable)");
+            }
+
+            // Cache software filter predicate for polling loop
+            _useSoftwareFilter = (Options.EnabledSoftwareFallback & CanFeature.Filters) != 0
+                                  && Options.Filter.SoftwareFilterRules.Count > 0;
+            _softwareFilterPredicate = _useSoftwareFilter
+                ? FilterRule.Build(Options.Filter.SoftwareFilterRules)
+                : null;
+
+        }
+
+        public void ApplyConfigAfterInit(ICanOptions options)
+        {
+            var zlgOption = (ZlgBusOptions)options;
             if (zlgOption.Filter.filterRules.Count > 0)
             {
                 if (zlgOption.Filter.filterRules[0] is FilterRule.Mask mask)
@@ -416,14 +459,12 @@ namespace CanKit.Adapter.ZLG
                     ZlgErr.ThrowIfError(
                         ZLGCAN.ZCAN_SetValue(
                             _devicePtr,
-                            Options.ChannelIndex + "/acc_code",
-                            mask.AccCode.ToString()),
+                            Options.ChannelIndex + "/acc_code", $"0x{mask.AccCode:X}"),
                         "ZCAN_SetValue(acc_code)");
                     ZlgErr.ThrowIfError(
                         ZLGCAN.ZCAN_SetValue(
                             _devicePtr,
-                            Options.ChannelIndex + "/acc_mask",
-                            mask.AccMask.ToString()),
+                            Options.ChannelIndex + "/acc_mask", $"0x{mask.AccMask:X}"),
                         "ZCAN_SetValue(acc_mask)");
 
                     foreach (var rule in zlgOption.Filter.filterRules.Skip(1))
@@ -453,17 +494,16 @@ namespace CanKit.Adapter.ZLG
                         ZlgErr.ThrowIfError(
                             ZLGCAN.ZCAN_SetValue(
                                 _devicePtr,
-                                Options.ChannelIndex + "/filter_start",
-                                range.From.ToString()),
+                                Options.ChannelIndex + "/filter_start", $"0x{range.From:X}"),
                             "ZCAN_SetValue(filter_start)");
                         ZlgErr.ThrowIfError(
                             ZLGCAN.ZCAN_SetValue(
                                 _devicePtr,
-                                Options.ChannelIndex + "/filter_end",
-                                range.To.ToString()),
+                                Options.ChannelIndex + "/filter_end", $"0x{range.To:X}"),
                             "ZCAN_SetValue(filter_end)");
                     }
 
+                    _softwareFilterPredicate = FilterRule.Build(Options.Filter.SoftwareFilterRules);
                     ZlgErr.ThrowIfError(
                         ZLGCAN.ZCAN_SetValue(
                             _devicePtr,
@@ -478,39 +518,6 @@ namespace CanKit.Adapter.ZLG
                     Options.ChannelIndex + "/filter_ack",
                     "1"),
                 "ZCAN_SetValue(filter_ack)");
-            ZlgErr.ThrowIfError(
-                ZLGCAN.ZCAN_SetValue(
-                    _devicePtr,
-                    Options.ChannelIndex + "/initenal_resistance",
-                    Options.InternalResistance ? "1" : "0"),
-                "ZCAN_SetValue(initenal_resistance)");
-
-            if ((Options.Features & CanFeature.TxRetryPolicy) != 0)
-            {
-
-            }
-
-            if ((Options.Features & CanFeature.BusUsage) != 0)
-            {
-                ZlgErr.ThrowIfError(
-                    ZLGCAN.ZCAN_SetValue(_devicePtr,
-                        Options.ChannelIndex + "/set_bus_usage_period",
-                        Options.BusUsagePeriodTime.ToString()),
-                    "ZCAN_SetValue(bus_usage_period)");
-                ZlgErr.ThrowIfError(
-                    ZLGCAN.ZCAN_SetValue(_devicePtr,
-                        Options.ChannelIndex + "/set_bus_usage_enable",
-                        Options.BusUsageEnabled ? "1" : "0"),
-                    "ZCAN_SetValue(bus_usage_enable)");
-            }
-
-            // Cache software filter predicate for polling loop
-            _useSoftwareFilter = (Options.EnabledSoftwareFallback & CanFeature.Filters) != 0
-                                  && Options.Filter.SoftwareFilterRules.Count > 0;
-            _softwareFilterPredicate = _useSoftwareFilter
-                ? FilterRule.Build(Options.Filter.SoftwareFilterRules)
-                : null;
-
         }
 
 
@@ -608,7 +615,7 @@ namespace CanKit.Adapter.ZLG
                         var frames = Receive(Math.Min(count, batch));
                         var useSw = (Options.EnabledSoftwareFallback & CanFeature.Filters) != 0
                                     && Options.Filter.SoftwareFilterRules.Count > 0;
-                        var pred = useSw ? FilterRule.Build(Options.Filter.SoftwareFilterRules) : null;
+                        var pred = useSw ? _softwareFilterPredicate : null;
                         foreach (var frame in frames)
                         {
                             try
@@ -654,10 +661,10 @@ namespace CanKit.Adapter.ZLG
             }
         }
 
-        public Task<uint> TransmitAsync(IEnumerable<CanTransmitData> frames, int timeOut = 0, System.Threading.CancellationToken cancellationToken = default)
+        public Task<uint> TransmitAsync(IEnumerable<CanTransmitData> frames, int timeOut = 0, CancellationToken cancellationToken = default)
             => Task.Run(() => Transmit(frames, timeOut), cancellationToken);
 
-        public Task<IReadOnlyList<CanReceiveData>> ReceiveAsync(uint count = 1, int timeOut = 0, System.Threading.CancellationToken cancellationToken = default)
+        public Task<IReadOnlyList<CanReceiveData>> ReceiveAsync(uint count = 1, int timeOut = 0, CancellationToken cancellationToken = default)
         {
             ThrowIfDisposed();
             Interlocked.Increment(ref _subscriberCount);

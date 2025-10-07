@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using CanKit.Core;
@@ -13,37 +14,40 @@ namespace CanKit.Sample.Benchmark
     {
         private static async Task<int> Main(string[] args)
         {
-            // Usage: Benchmark [--src <ep>] [--dst <ep>] [--frames 10000] [--len 8] [--fd] [--brs]
+            // Usage: Benchmark [--src <ep>] [--dst <ep>] [--frames 10000] [--len 8] [--fd] [--brs]  [--bitrate 500000] [--dbitrate 2000000] [--res 1]
             var src = GetArg(args, "--src") ?? "virtual://alpha/0";
             var dst = GetArg(args, "--dst") ?? "virtual://alpha/1";
             int frames = (int)ParseUInt(GetArg(args, "--frames"), 50_000);
+            uint bitrate = ParseUInt(GetArg(args, "--bitrate"), 500_000);
+            uint dbitrate = ParseUInt(GetArg(args, "--dbitrate"), 2_000_000);
             int len = (int)ParseUInt(GetArg(args, "--len"), 8);
             bool fd = HasFlag(args, "--fd");
             bool brs = HasFlag(args, "--brs");
-
+            bool enableRes = (ParseUInt(GetArg(args, "--res"), 1) == 1U);
             using var rx = CanBus.Open(dst, cfg =>
             {
                 if (fd)
                 {
-                    cfg.SetProtocolMode(CanProtocolMode.CanFd);
+                    cfg.Fd(bitrate, dbitrate).SetProtocolMode(CanProtocolMode.CanFd);
                 }
                 else
                 {
-                    cfg.SetProtocolMode(CanProtocolMode.Can20);
+                    cfg.Baud(bitrate).SetProtocolMode(CanProtocolMode.Can20);
                 }
+
+                cfg.InternalRes(enableRes);
             });
             using var tx = CanBus.Open(src, cfg =>
             {
                 if (fd)
                 {
-                    cfg.SetProtocolMode(CanProtocolMode.CanFd);
+                    cfg.Fd(bitrate, dbitrate).SetProtocolMode(CanProtocolMode.CanFd);
                 }
                 else
                 {
-                    cfg.SetProtocolMode(CanProtocolMode.Can20);
+                    cfg.Baud(bitrate).SetProtocolMode(CanProtocolMode.Can20);
                 }
-
-                cfg.SetWorkMode(ChannelWorkMode.Echo);
+                cfg.InternalRes(enableRes);
             });
 
             var done = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -81,7 +85,7 @@ namespace CanKit.Sample.Benchmark
                 int take = Math.Min(batch, frames - sent);
                 var list = new CanTransmitData[take];
                 for (int i = 0; i < take; i++) list[i] = new CanTransmitData(frame);
-                await tx.TransmitAsync(list);
+                await tx.TransmitAsync(list, -1);
                 sent += take;
             }
             var totalRx = await done.Task; // wait until received expected

@@ -13,19 +13,24 @@ namespace CanKit.Sample.Sniffer
     {
         private static async Task<int> Main(string[] args)
         {
-            // Usage: Sniffer --endpoint <ep> [--listen-only] [--fd] [--range 0x100-0x200] [--mask 0x123:0x7FF] [--seconds 0]
+            // Usage: Sniffer --endpoint <ep> [--listen-only] [--bitrate 500000] [--dbitrate 2000000] [--fd] [--range 0x100-0x200] [--mask 0x123:0x7FF] [--seconds 0] [--res 1]
             var endpoint = GetArg(args, "--endpoint") ?? "virtual://alpha/0";
             bool listenOnly = HasFlag(args, "--listen-only");
             bool useFd = HasFlag(args, "--fd");
             var range = GetArg(args, "--range");
             var mask = GetArg(args, "--mask");
+            uint bitrate = ParseUInt(GetArg(args, "--bitrate"), 500_000);
+            uint dbitrate = ParseUInt(GetArg(args, "--dbitrate"), 2_000_000);
             int seconds = (int)ParseUInt(GetArg(args, "--seconds"), 0);
+            bool enableRes = (ParseUInt(GetArg(args, "--res"), 1) == 1U);
 
             using var bus = CanBus.Open(endpoint, cfg =>
             {
-                if (useFd) cfg.SetProtocolMode(CanProtocolMode.CanFd); else cfg.SetProtocolMode(CanProtocolMode.Can20);
+                if (useFd) cfg.SetProtocolMode(CanProtocolMode.CanFd).Fd(bitrate, dbitrate);
+                else cfg.SetProtocolMode(CanProtocolMode.Can20).Baud(bitrate);
                 if (listenOnly) cfg.SetWorkMode(ChannelWorkMode.ListenOnly);
-                cfg.EnableErrorInfo();
+                cfg.EnableErrorInfo()
+                    .InternalRes(enableRes);
                 if (!string.IsNullOrWhiteSpace(range))
                 {
                     var (min, max, ext) = ParseRange(range!);
@@ -85,8 +90,8 @@ namespace CanKit.Sample.Sniffer
             if (p.Length >= 2)
             {
                 var min = Convert.ToUInt32(p[0], 16);
-                var max = Convert.ToUInt32(p[1], 16);
-                bool ext = s.IndexOf("x", StringComparison.OrdinalIgnoreCase) >= 0 && s.IndexOf(":ext", StringComparison.OrdinalIgnoreCase) >= 0;
+                var max = Convert.ToUInt32(p[1].Split([':'])[0], 16);
+                bool ext = s.EndsWith(":ext", StringComparison.OrdinalIgnoreCase);
                 return (min, max, ext);
             }
             return (0, 0x7FF, false);

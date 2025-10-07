@@ -33,77 +33,6 @@ namespace CanKit.Adapter.ZLG.Utils
     }
     internal static class ZlgNativeExtension
     {
-        internal static IEnumerable<CanReceiveData> RecvCanFrames(ZCANDataObj[] recvData, int receiveCount)
-        {
-            var list = new List<CanReceiveData>();
-            int count = Math.Min(receiveCount, recvData.Length);
-
-            for (int i = 0; i < count; i++)
-            {
-                var item = TryParseCan(recvData[i]); // 包含 unsafe 的解析函数
-                if (item != null) list.Add(item.Value);
-            }
-            return list;
-        }
-
-        private static CanReceiveData? TryParseCan(in ZCANDataObj recData)
-        {
-            var typeFlag = GetFrameType(recData.dataType);
-
-            if ((typeFlag & CanFrameType.Can20) == 0 && (typeFlag & CanFrameType.CanFd) == 0)
-                return null;
-
-            unsafe
-            {
-                fixed (byte* p = recData.data)
-                {
-                    var data = ByteArrayToStruct<ZCANCANFDData>(p);
-                    if (data.frameType == 1)
-                    {
-                        return new CanReceiveData(
-                            new CanFdFrame(data.frame.can_id, ToArray(data.frame.data, data.frame.len)))
-                        {
-                            // ZLG timestamp is in microseconds
-                            ReceiveTimestamp = TimeSpan.FromTicks((long)data.timeStamp * 10),
-                        };
-                    }
-                    else
-                    {
-                        return new CanReceiveData(
-                            new CanClassicFrame(data.frame.can_id, ToArray(data.frame.data, data.frame.len)))
-                        {
-                            // ZLG timestamp is in microseconds
-                            ReceiveTimestamp = TimeSpan.FromTicks((long)data.timeStamp * 10),
-                        };
-                    }
-                }
-            }
-        }
-
-        internal static ZCANDataObj[] TransmitCanFrames(IEnumerable<CanTransmitData> canFrames, byte channelId)
-        {
-            List<ZCANDataObj> transmitData = new List<ZCANDataObj>();
-            int i = 0;
-            foreach (var frame in canFrames)
-            {
-                transmitData.Add(frame.CanFrame.ToZCANObj(channelId));
-                i++;
-            }
-            return transmitData.ToArray();
-        }
-
-
-        internal static CanFrameType GetFrameType(uint dataType)
-        {
-            if (dataType == 0 || dataType > 8)
-            {
-                return CanFrameType.Invalid;
-            }
-            if (dataType == 1)
-                return (CanFrameType)(1 | 2);
-            return (CanFrameType)(1 << (int)dataType);
-
-        }
 
         internal static byte GetRawFrameType(CanFrameType type)
         {
@@ -112,20 +41,6 @@ namespace CanKit.Adapter.ZLG.Utils
             if ((type & CanFrameType.CanFd) != 0)
                 return 1;
             return 0;
-        }
-
-        internal static unsafe byte[] ToArray(byte* data, int length)
-        {
-            if (length <= 0) return Array.Empty<byte>();
-            var arr = new byte[length];
-            Marshal.Copy((IntPtr)data, arr, 0, length);
-
-            return arr;
-        }
-
-        internal static unsafe T ByteArrayToStruct<T>(byte* data) where T : unmanaged
-        {
-            return *(T*)data;
         }
 
         internal static unsafe void StructCopyToBuffer<T>(T src, byte* dst, uint count) where T : unmanaged
@@ -145,7 +60,9 @@ namespace CanKit.Adapter.ZLG.Utils
 
         internal static unsafe CanFdFrame FromReceiveData(this canfd_frame frame)
         {
-            var result = new CanFdFrame(frame.can_id, new byte[frame.len]);
+            var result = new CanFdFrame(frame.can_id, new byte[frame.len],
+                (frame.flags & CANFD_BRS) != 0,
+                (frame.flags & CANFD_ESI) != 0);
             fixed (byte* ptr = result.Data.Span)
             {
                 Unsafe.CopyBlockUnaligned(ptr, frame.data, (uint)result.Data.Length);
@@ -175,6 +92,8 @@ namespace CanKit.Adapter.ZLG.Utils
                 data.frame.len = (byte)frame.Data.Length;
                 data.frame.can_id = frame.RawID;
                 data.frame.flags |= (byte)(echo ? TX_ECHO_FLAG : 0);
+                data.frame.flags |= (byte)(frame.BitRateSwitch ? CANFD_BRS : 0);
+                data.frame.flags |= (byte)(frame.ErrorStateIndicator ? CANFD_ESI : 0);
                 Unsafe.CopyBlockUnaligned(data.frame.data, ptr, (uint)frame.Data.Length);
                 data.transmit_type = 0;
             }

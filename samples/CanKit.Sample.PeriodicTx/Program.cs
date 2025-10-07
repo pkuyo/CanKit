@@ -13,7 +13,7 @@ namespace CanKit.Sample.PeriodicTx
     {
         private static int Main(string[] args)
         {
-            // Usage: PeriodicTx --endpoint <ep> [--id 0x123] [--ext] [--fd] [--brs] [--data 11223344] [--period 100] [--count -1]
+            // Usage: PeriodicTx --endpoint <ep> [--id 0x123] [--ext] [--fd] [--brs] [--data 11223344] [--period 100] [--count -1] [--res 1]
             var endpoint = GetArg(args, "--endpoint") ?? "virtual://alpha/1";
             uint id = ParseHex(GetArg(args, "--id"), 0x123);
             bool ext = HasFlag(args, "--ext");
@@ -23,7 +23,7 @@ namespace CanKit.Sample.PeriodicTx
             var dataHex = GetArg(args, "--data") ?? "11223344";
             int period = (int)ParseUInt(GetArg(args, "--period"), 100);
             int repeat = int.TryParse(GetArg(args, "--count"), out var c) ? c : -1;
-
+            bool enableRes = (ParseUInt(GetArg(args, "--res"), 1) == 1U);
             var payload = ParseHexBytes(dataHex);
 
             using var bus = CanBus.Open(endpoint, cfg =>
@@ -33,7 +33,7 @@ namespace CanKit.Sample.PeriodicTx
                 else
                     cfg.SetProtocolMode(CanProtocolMode.Can20);
 
-                cfg.InternalRes(true)
+                cfg.InternalRes(enableRes)
                     .SoftwareFeaturesFallBack(CanFeature.CyclicTx);
                 if (echo)
                     cfg.SetWorkMode(ChannelWorkMode.Echo);

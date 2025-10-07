@@ -13,14 +13,15 @@ namespace CanKit.Sample.Bridge
     {
         private static async Task<int> Main(string[] args)
         {
-            // Usage: Bridge --src <ep> --dst <ep> [--bidir] [--seconds 0]
+            // Usage: Bridge --src <ep> --dst <ep> [--bidir] [--seconds 0] [--res 1]
             var src = GetArg(args, "--src") ?? "virtual://alpha/0";
             var dst = GetArg(args, "--dst") ?? "virtual://alpha/1";
             bool bidir = HasFlag(args, "--bidir");
+            bool enableRes = (ParseUInt(GetArg(args, "--res"), 1) == 1U);
             int seconds = (int)ParseUInt(GetArg(args, "--seconds"), 0);
 
-            using var srcBus = CanBus.Open(src, cfg => cfg.SetProtocolMode(CanProtocolMode.CanFd));
-            using var dstBus = CanBus.Open(dst, cfg => cfg.SetProtocolMode(CanProtocolMode.CanFd));
+            using var srcBus = CanBus.Open(src, cfg => cfg.SetProtocolMode(CanProtocolMode.CanFd).InternalRes(enableRes));
+            using var dstBus = CanBus.Open(dst, cfg => cfg.SetProtocolMode(CanProtocolMode.CanFd).InternalRes(enableRes));
 
             using var cts = seconds > 0 ? new CancellationTokenSource(TimeSpan.FromSeconds(seconds)) : new CancellationTokenSource();
             Console.CancelKeyPress += (_, e) => { e.Cancel = true; cts.Cancel(); };

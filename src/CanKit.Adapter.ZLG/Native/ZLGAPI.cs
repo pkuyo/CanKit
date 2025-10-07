@@ -12,6 +12,9 @@ namespace CanKit.Adapter.ZLG.Native
     {
 
         public const int TX_ECHO_FLAG = 0x20;
+
+        public const int CANFD_BRS = 0x01;
+        public const int CANFD_ESI = 0x02;
         #region 设备类型
         public static UInt32 ZCAN_PCI9810 = 2;
         public static UInt32 ZCAN_USBCAN1 = 3;

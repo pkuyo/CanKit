@@ -15,53 +15,80 @@ namespace CanKit.Sample.QuickStartTxRx
         private static async Task<int> Main(string[] args)
         {
             // Usage:
-            //  QuickStartTxRx --endpoint virtual://alpha/0 [--fd] [--brs] [--bitrate 500000] [--dbitrate 2000000] [--count 10] [--ext]
-            var endpoint = GetArg(args, "--endpoint") ?? "virtual://alpha/0";
+            //  QuickStartTxRx --src virtual://alpha/0 [--dst virtual://alpha/1] [--bitrate 500000] [--dbitrate 2000000] [--fd] [--brs] [--count 10] [--ext] [--res 1]
+            var tx = GetArg(args, "--src") ?? "virtual://alpha/0";
+            var rx = GetArg(args, "--dst");
             bool useFd = HasFlag(args, "--fd");
             bool brs = HasFlag(args, "--brs");
             bool extended = HasFlag(args, "--ext");
             uint bitrate = ParseUInt(GetArg(args, "--bitrate"), 500_000);
             uint dbitrate = ParseUInt(GetArg(args, "--dbitrate"), 2_000_000);
             int count = (int)ParseUInt(GetArg(args, "--count"), 5);
-
-            using var bus = CanBus.Open(endpoint, cfg =>
+            bool enableRes = (ParseUInt(GetArg(args, "--res"), 1) == 1U);
+            using var txBus = CanBus.Open(tx, cfg =>
             {
                 if (useFd)
                 {
-                    cfg.Fd(bitrate, dbitrate).SetProtocolMode(CanProtocolMode.CanFd);
+                    cfg.Fd(bitrate, dbitrate).SetProtocolMode(CanProtocolMode.CanFd).InternalRes(enableRes);
                 }
                 else
                 {
-                    cfg.Baud(bitrate).SetProtocolMode(CanProtocolMode.Can20);
+                    cfg.Baud(bitrate).SetProtocolMode(CanProtocolMode.Can20).InternalRes(enableRes);
                 }
-                cfg.InternalRes(true)
-                   .SetWorkMode(ChannelWorkMode.Echo) // echo so we can see our own TX
-                   .EnableErrorInfo();
+                if (rx == null)
+                {
+                    cfg.SetWorkMode(ChannelWorkMode.Echo); // echo so we can see our own TX
+                }
             });
-
-            using var _ = SubscribeLogging(bus);
-
-            Console.WriteLine($"Opened: {endpoint} ({(useFd ? "CAN-FD" : "Classic")})");
-
-            // Compose a demo frame
-            var payload = new byte[] { 0x11, 0x22, 0x33, 0x44 };
-            var id = extended ? 0x18DAF110u : 0x123u;
-
-            for (int i = 0; i < count; i++)
+            var rxBus = txBus;
+            try
             {
-                var data = payload.AsMemory();
-                ICanFrame f = useFd
-                    ? new CanFdFrame(id, data, BRS: brs, ESI: false) { IsExtendedFrame = extended }
-                    : new CanClassicFrame(id, data, isExtendedFrame: extended);
 
-                var sent = await bus.TransmitAsync(new[] { new CanTransmitData(f) });
-                Console.WriteLine($"TX {i + 1}/{count}: id=0x{id:X} dlc={f.Dlc} kind={f.FrameKind} sent={sent}");
 
-                await Task.Delay(100);
+                if (rx != null)
+                {
+                    rxBus = CanBus.Open(rx, cfg =>
+                    {
+                        if (useFd)
+                        {
+                            cfg.Fd(bitrate, dbitrate).SetProtocolMode(CanProtocolMode.CanFd)
+                                .InternalRes(enableRes);
+                        }
+                        else
+                        {
+                            cfg.Baud(bitrate).SetProtocolMode(CanProtocolMode.Can20).InternalRes(enableRes);
+                        }
+                    });
+                }
+
+                using var _ = SubscribeLogging(rxBus);
+
+                Console.WriteLine($"Opened: {tx} ({(useFd ? "CAN-FD" : "Classic")})");
+
+                // Compose a demo frame
+                var payload = new byte[] { 0x11, 0x22, 0x33, 0x44 };
+                var id = extended ? 0x18DAF110u : 0x123u;
+
+                for (int i = 0; i < count; i++)
+                {
+                    var data = payload.AsMemory();
+                    ICanFrame f = useFd
+                        ? new CanFdFrame(id, data, BRS: brs, ESI: false) { IsExtendedFrame = extended }
+                        : new CanClassicFrame(id, data, isExtendedFrame: extended);
+
+                    var sent = await txBus.TransmitAsync(new[] { new CanTransmitData(f) });
+                    Console.WriteLine($"TX {i + 1}/{count}: id=0x{id:X} dlc={f.Dlc} kind={f.FrameKind} sent={sent}");
+
+                    await Task.Delay(100);
+                }
+                Console.WriteLine("Done. Press Enter to exit.");
+                Console.ReadLine();
+            }
+            finally
+            {
+                if(rx != null) rxBus.Dispose();
             }
 
-            Console.WriteLine("Done. Press Enter to exit.");
-            Console.ReadLine();
             return 0;
         }
 
