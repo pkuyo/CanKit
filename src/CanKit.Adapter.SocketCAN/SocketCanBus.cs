@@ -117,45 +117,47 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
         }
         var tv = Libc.ToTimeval(TimeSpan.FromMilliseconds(Options.ReadTImeOutMs));
 
-        var hl = GCHandle.Alloc(tv, GCHandleType.Pinned);
-        try
+        unsafe
         {
-            if (Libc.setsockopt(_fd, Libc.SOL_SOCKET, Libc.SO_SNDTIMEO, hl.AddrOfPinnedObject(),
+            if (Libc.setsockopt(_fd, Libc.SOL_SOCKET, Libc.SO_SNDTIMEO, &tv,
                     (uint)Marshal.SizeOf<Libc.timeval>()) != Libc.OK)
             {
                 throw new CanBusConfigurationException("setsockopt(SO_SNDTIMEO) failed.");
             }
         }
-        finally { hl.Free(); }
+
 
         if (filters.Count > 0)
         {
             var elem = Marshal.SizeOf<Libc.can_filter>();
             var total = elem * filters.Count;
             var arr = filters.ToArray();
-            var handle = GCHandle.Alloc(arr, GCHandleType.Pinned);
-            try
+            unsafe
             {
-                var ptr = handle.AddrOfPinnedObject();
-                if (Libc.setsockopt(_fd, Libc.SOL_CAN_RAW, Libc.CAN_RAW_FILTER, ptr, (uint)total) != Libc.OK)
+                fixed (Libc.can_filter* pArr = arr)
                 {
-                    throw new CanBusConfigurationException("setsockopt(CAN_RAW_FILTER) failed.");
+                    if (Libc.setsockopt(_fd, Libc.SOL_CAN_RAW, Libc.CAN_RAW_FILTER, pArr, (uint)total) != Libc.OK)
+                    {
+                        throw new CanBusConfigurationException("setsockopt(CAN_RAW_FILTER) failed.");
+                    }
                 }
             }
-            finally { handle.Free(); }
         }
         else
         {
             // set filter to receive all
             var all = new Libc.can_filter { can_id = 0, can_mask = 0 };
             var sz = Marshal.SizeOf<Libc.can_filter>();
-            var handle = GCHandle.Alloc(all, GCHandleType.Pinned);
-            try
+            unsafe
             {
-                var ptr = handle.AddrOfPinnedObject();
-                Libc.setsockopt(_fd, Libc.SOL_CAN_RAW, Libc.CAN_RAW_FILTER, ptr, (uint)sz);
+                Libc.setsockopt(_fd, Libc.SOL_CAN_RAW, Libc.CAN_RAW_FILTER, &all, (uint)sz);
             }
-            finally { handle.Free(); }
+        }
+
+        if (Options.ReceiveBufferCapacity != null)
+        {
+            var cap = (int)Options.ReceiveBufferCapacity.Value;
+            Libc.setsockopt(_fd, Libc.SOL_CAN_RAW, Libc.SO_RCVBUF,ref cap, (uint)Marshal.SizeOf<int>());
         }
 
         // Cache software filter predicate for event loop
@@ -179,108 +181,89 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
     public uint Transmit(IEnumerable<CanTransmitData> frames, int timeOut = 0)
     {
         ThrowIfDisposed();
-        uint sendCount = 0;
+        int sendCount = 0;
         var startTime = Environment.TickCount;
         var pollFd = new Libc.pollfd { fd = _fd, events = Libc.POLLOUT };
-
-        using var enumerator = frames.GetEnumerator();
-        var pending = new List<CanTransmitData>(64);
-
-        bool filled = false;
-        // initial fill
-        while (pending.Count < 64 && enumerator.MoveNext())
+        var needSend = frames.ToArray();
+        var wrote = _transceiver.Transmit(this, needSend.Skip(sendCount));
+        sendCount = (int)wrote;
+        var remainingTime = timeOut;
+        while ((timeOut < 0 || remainingTime > 0) && sendCount < needSend.Length)
         {
-            pending.Add(enumerator.Current);
-            filled = true;
-        }
-        if (!filled) return 0;
-
-        bool hasTransmit = false;
-        while (true)
-        {
-            var remainingTime = timeOut > 0
+            remainingTime = timeOut > 0
                 ? Math.Max(0, timeOut - (Environment.TickCount - startTime))
                 : timeOut;
 
-            if (timeOut >= 0 && remainingTime <= 0 && hasTransmit) // at least transmit once
-                break;
-
-            hasTransmit = true;
 
             var pr = Libc.poll(ref pollFd, 1, remainingTime);
             if (pr < 0)
             {
+                var errno = Libc.Errno();
+                if(errno == Libc.EINTR) continue;
                 Libc.ThrowErrno("poll(POLLOUT)", "Polling for writable socket failed");
             }
             if (pr == 0)
             {
-                continue;
+                break;
             }
 
-            // send current pending batch
-            var wrote = _transceiver.Transmit(this, pending);
-            if (wrote > 0)
+            if ((pollFd.revents & (Libc.POLLERR | Libc.POLLHUP | Libc.POLLNVAL)) != 0)
             {
-                sendCount += wrote;
-                // remove sent ones
-                if (wrote >= pending.Count)
-                {
-                    pending.Clear();
-                }
-                else
-                {
-                    pending.RemoveRange(0, (int)wrote);
-                }
+                Libc.ThrowErrno("poll(POLLOUT)", "socket error");
             }
 
-            // refill pending up to 64
-            while (pending.Count < 64 && enumerator.MoveNext())
-            {
-                pending.Add(enumerator.Current);
-            }
+            wrote = _transceiver.Transmit(this,
+                new ArraySegment<CanTransmitData>(needSend, sendCount, needSend.Length - sendCount));
+            sendCount += (int)wrote;
 
-            if (pending.Count == 0)
-            {
-                break; // all sent
-            }
         }
 
-        return sendCount;
+        return (uint)sendCount;
 
     }
 
     public IEnumerable<CanReceiveData> Receive(uint count = 1, int timeOut = 0)
     {
         ThrowIfDisposed();
-        if (timeOut > 0)
+        if(timeOut == 0)
+            return _transceiver.Receive(this, count);
+        var recList = new List<CanReceiveData>((int)count);
+        var startTime = Environment.TickCount;
+        var pollFd = new Libc.pollfd { fd = _fd, events = Libc.POLLIN };
+        var remainingTime = timeOut;
+
+        while ((timeOut < 0 || remainingTime > 0) && recList.Count < count)
         {
-            var pollFd2 = new Libc.pollfd { fd = _fd, events = Libc.POLLIN };
-            var pr2 = Libc.poll(ref pollFd2, 1, timeOut);
-            if (pr2 == -1)
+            remainingTime = timeOut > 0
+                ? Math.Max(0, timeOut - (Environment.TickCount - startTime))
+                : timeOut;
+
+
+            var pr = Libc.poll(ref pollFd, 1, remainingTime);
+            if (pr < 0)
             {
+                var errno = Libc.Errno();
+                if(errno == Libc.EINTR) continue;
                 Libc.ThrowErrno("poll(POLLIN)", "Polling for readable socket failed");
             }
-        }
+            if (pr == 0)
+            {
+                break;
+            }
+            if ((pollFd.revents & (Libc.POLLERR | Libc.POLLHUP | Libc.POLLNVAL)) != 0)
+            {
+                Libc.ThrowErrno("poll(POLLIN)", "socket error");
+            }
 
-        // Read in chunks of up to 64 per transceiver call
-        var list = new List<CanReceiveData>((int)Math.Max(1, Math.Min(count == 0 ? 64u : count, 256u)));
-        uint remaining = count;
-        while (true)
-        {
-            var take = remaining == 0 ? 64u : Math.Min(remaining, 64u);
-            var batch = _transceiver.Receive(this, take);
-            int got = 0;
+            var batch = _transceiver.Receive(this, (uint)(count - recList.Count));
             foreach (var item in batch)
             {
-                list.Add(item);
-                got++;
-                if (remaining != 0 && list.Count >= remaining)
+                recList.Add(item);
+                if (recList.Count == count)
                     break;
             }
-            if (got < (int)take) break; // transceiver returned fewer than requested
-            if (remaining != 0 && list.Count >= remaining) break;
         }
-        return list;
+        return recList;
     }
 
     public Task<uint> TransmitAsync(IEnumerable<CanTransmitData> frames, int timeOut = 0, CancellationToken cancellationToken = default)
@@ -949,8 +932,6 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
 
     private void DrainReceive()
     {
-        // receive one frame via transceiver
-        // Build software predicate once per drain cycle if needed
         var useSw = _useSoftwareFilter;
         var pred = _softwareFilterPredicate;
 

@@ -56,15 +56,15 @@ namespace CanKit.Sample.Benchmark
 
             var done = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
             int received = 0;
-#if NET8_0_OR_GREATER
             var cts = new CancellationTokenSource();
+#if NET8_0_OR_GREATER
+
             var rxTask = Task.Run(async () =>
             {
                 await foreach (var e in rx.GetFramesAsync(cts.Token))
                 {
                     if (Interlocked.Increment(ref received) >= frames) { done.TrySetResult(received); break; }
-                    if(received % 100 == 0)
-                    Console.WriteLine("Received {0} frames", received);
+                    if (cts.Token.IsCancellationRequested) { break; }
                 }
             });
 #else
@@ -76,7 +76,7 @@ namespace CanKit.Sample.Benchmark
                     Interlocked.Add(ref received, list.Count);
                 }
                 done.TrySetResult(received);
-            });
+            }, cts.Token);
 #endif
             var id = 0x100u;
             var payload = new byte[Math.Max(0, Math.Min(len, fd ? 64 : 8))];
@@ -87,7 +87,7 @@ namespace CanKit.Sample.Benchmark
             double perFramePeriodUs = perFrameUs / util;
 
             var sw = Stopwatch.StartNew();
-            const int batch = 256;
+            const int batch = 64;
             int sent = 0;
             while (sent < frames)
             {
@@ -107,15 +107,17 @@ namespace CanKit.Sample.Benchmark
                 await tx.TransmitAsync(list, -1);
                 sent += take;
             }
+            cts.CancelAfter(TimeSpan.FromMilliseconds(1000));
             var totalRx = await done.Task; // wait until received expected
             sw.Stop();
 
             double secs = Math.Max(1e-6, sw.Elapsed.TotalSeconds);
             double rate = totalRx / secs;
-            Console.WriteLine($"Frames: {frames}, Bytes/Frame: {payload.Length}, FD={fd}, BRS={brs}");
+            Console.WriteLine($"Frames: {frames}, Received:{received} Bytes/Frame: {payload.Length}, FD={fd}, BRS={brs}");
             Console.WriteLine($"Elapsed: {sw.Elapsed.TotalMilliseconds:F1} ms, Throughput: {rate:F0} frames/s");
             return 0;
         }
+
 
         private static double FrameTimeUsEstimate(bool isFd, bool brsOn, int bytes, uint arbBitrate, uint dataBitrate, double stuffFactor)
         {

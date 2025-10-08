@@ -28,7 +28,7 @@ public sealed class SocketCanBusOptions(ICanModelProvider provider) : IBusOption
     /// <summary>
     /// Prefer kernel-provided timestamps (hardware if available, fallback to software)
     /// </summary>
-    public bool PreferKernelTimestamp { get; set; } = true;
+    public bool PreferKernelTimestamp { get; set; }
 
     /// <summary>
     /// Read timeout, in milliseconds, for blocking receive operations on the CAN socket.
@@ -41,6 +41,12 @@ public sealed class SocketCanBusOptions(ICanModelProvider provider) : IBusOption
     /// </summary>
 
     public bool UseNetLink { get; set; }
+
+
+    /// <summary>
+    /// esired per-socket receive buffer capacity (in bytes) for the  CAN socket.
+    /// </summary>
+    public uint? ReceiveBufferCapacity { get; set; }
 }
 
 
@@ -68,6 +74,12 @@ public sealed class SocketCanBusInitConfigurator
         return this;
     }
 
+    public SocketCanBusInitConfigurator SetReceiveBufferCapacity(uint? capacity)
+    {
+        Options.ReceiveBufferCapacity = capacity;
+        return this;
+    }
+
     public SocketCanBusInitConfigurator ReadTimeOut(int ms)
     {
         Options.ReadTImeOutMs = ms;
@@ -77,6 +89,8 @@ public sealed class SocketCanBusInitConfigurator
     public bool UseNetLink => Options.UseNetLink;
 
     public int ReadTImeOutMs => Options.ReadTImeOutMs;
+
+    public uint? ReceiveBufferCapacity => Options.ReceiveBufferCapacity;
 }
 
 public sealed class SocketCanBusRtConfigurator
@@ -87,4 +101,6 @@ public sealed class SocketCanBusRtConfigurator
     public bool UseNetLink => Options.UseNetLink;
 
     public int ReadTImeOutMs => Options.ReadTImeOutMs;
+
+    public uint? ReceiveBufferCapacity => Options.ReceiveBufferCapacity;
 }

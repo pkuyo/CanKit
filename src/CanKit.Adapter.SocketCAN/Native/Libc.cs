@@ -122,6 +122,9 @@ internal static class Libc
     // poll
     public const short POLLIN = 0x0001;
     public const short POLLOUT = 0x0004;
+    public const short POLLERR = 0x0008;
+    public const short POLLHUP = 0x0010;
+    public const short POLLNVAL = 0x0020;
 
     // epoll
     public const int EPOLLIN = 0x001;
@@ -143,8 +146,9 @@ internal static class Libc
     public const byte CANFD_BRS = 0x01; // bit rate switch
     public const byte CANFD_ESI = 0x02; // error state indicator
 
-    // timeStamp
+    // socket option
     public const int SO_TIMESTAMP = 29;
+    public const int SO_RCVBUF = 8;
     public const int SO_SNDTIMEO = 21;
     public const int SO_TIMESTAMPNS = 35;
     public const int SO_TIMESTAMPING = 37;
@@ -291,7 +295,7 @@ internal static class Libc
     public static extern int setsockopt(int sockfd, int level, int optname, ref int optval, uint optlen);
 
     [DllImport("libc", SetLastError = true)]
-    public static extern int setsockopt(int sockfd, int level, int optname, IntPtr optval, uint optlen);
+    public static unsafe extern int setsockopt(int sockfd, int level, int optname, void* optval, uint optlen);
 
     [DllImport("libc", SetLastError = true)]
     public static extern int ioctl(int fd, uint request, ref int argp);
