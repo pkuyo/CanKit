@@ -86,6 +86,7 @@ public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, IBusOwnershi
         while (_rxQueue.TryDequeue(out _)) { }
     }
 
+    //non-support time out
     public uint Transmit(IEnumerable<CanTransmitData> frames, int timeOut = 0)
     {
         ThrowIfDisposed();
@@ -107,16 +108,7 @@ public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, IBusOwnershi
     public IEnumerable<CanReceiveData> Receive(uint count = 1, int timeOut = 0)
     {
         ThrowIfDisposed();
-        var startTime = DateTime.Now.Millisecond;
-        var list = new List<CanReceiveData>((int)Math.Max(1, Math.Min(count, 256)));
-        while (list.Count < count && DateTime.Now.Millisecond - startTime <= timeOut)
-        {
-            while (list.Count < count && _rxQueue.TryDequeue(out var item))
-            {
-                list.Add(item);
-            }
-        }
-        return list;
+        return ReceiveAsync(count,timeOut).GetAwaiter().GetResult();
     }
 
     public Task<uint> TransmitAsync(IEnumerable<CanTransmitData> frames, int timeOut = 0, CancellationToken cancellationToken = default)

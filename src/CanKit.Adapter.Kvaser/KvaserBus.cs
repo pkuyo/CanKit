@@ -182,7 +182,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
     {
         ThrowIfDisposed();
         if (KvaserPeriodicTx.TryStart(this, frame, options, out var tx))
-            return tx;
+            return tx!;
         if ((Options.EnabledSoftwareFallback & CanFeature.CyclicTx) != 0)
             return SoftwarePeriodicTx.Start(this, frame, options);
 

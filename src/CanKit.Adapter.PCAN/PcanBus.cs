@@ -29,9 +29,8 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
     private Task? _pollTask;
     private EventWaitHandle _recEvent;
 
-    // Cached software filter predicate to avoid rebuilding on each poll
     private Func<ICanFrame, bool>? _softwareFilterPredicate;
-    //private EventHandler<ICanErrorInfo>? _errorOccurred;
+
 
     private int _subscriberCount;
     private bool _useSoftwareFilter;
@@ -51,7 +50,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
 
         try
         {
-            if (Api.GetValue(PcanChannel.Usb01, PcanParameter.ChannelCondition, out uint raw) == PcanStatus.OK)
+            if (Api.GetValue(_handle, PcanParameter.ChannelCondition, out uint raw) == PcanStatus.OK)
             {
                 var cond = (ChannelCondition)raw;
                 if ((cond & ChannelCondition.ChannelAvailable) != ChannelCondition.ChannelAvailable)
@@ -100,7 +99,19 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
         // Apply initial options
         ApplyConfig(options);
         CanKitLogger.LogDebug("PCAN: Initial options applied.");
-#if NETSTANDARD2_0
+#if NET8_0_OR_GREATER
+#if WINDOWS
+        _recEvent = new EventWaitHandle(false, EventResetMode.AutoReset);
+#else
+        var ok = Api.GetValue(_handle, PcanParameter.ReceiveEvent, out uint evHandle);
+        if (ok != PcanStatus.OK)
+            throw new InvalidOperationException($"Get ReceiveEvent failed: {ok}");
+
+        _recEvent = new EventWaitHandle(false, EventResetMode.AutoReset);
+        _recEvent.SafeWaitHandle.Close();
+        _recEvent.SafeWaitHandle = new SafeWaitHandle(new IntPtr(evHandle), false);
+#endif
+#else
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
             _recEvent = new EventWaitHandle(false, EventResetMode.AutoReset);
@@ -115,18 +126,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
             _recEvent.SafeWaitHandle?.Close();
             _recEvent.SafeWaitHandle = new SafeWaitHandle(new IntPtr(evHandle), false);
         }
-#else
-#if WINDOWS
-        _recEvent = new EventWaitHandle(false, EventResetMode.AutoReset);
-#else
-        var ok = Api.GetValue(_handle, PcanParameter.ReceiveEvent, out uint evHandle);
-        if (ok != PcanStatus.OK)
-            throw new InvalidOperationException($"Get ReceiveEvent failed: {ok}");
 
-        _recEvent = new EventWaitHandle(false, EventResetMode.AutoReset);
-        _recEvent.SafeWaitHandle.Close();
-        _recEvent.SafeWaitHandle = new SafeWaitHandle(new IntPtr(evHandle), false);
-#endif
 #endif
     }
 
@@ -201,12 +201,6 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
 
     }
 
-    public uint Transmit(IEnumerable<CanTransmitData> frames, int timeOut = 0)
-    {
-        ThrowIfDisposed();
-        return _transceiver.Transmit(this, frames, timeOut);
-    }
-
     public IPeriodicTx TransmitPeriodic(CanTransmitData frame, PeriodicTxOptions options)
     {
         ThrowIfDisposed();
@@ -220,23 +214,30 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
     public CanErrorCounters ErrorCounters()
         => throw new CanFeatureNotSupportedException(CanFeature.ErrorCounters, Options.Features);
 
-
-    public IEnumerable<CanReceiveData> Receive(uint count = 1, int timeOut = 0)
+    //non-support time out
+    public uint Transmit(IEnumerable<CanTransmitData> frames, int _ = 0)
     {
         ThrowIfDisposed();
-        return _transceiver.Receive(this, count, timeOut);
+        return _transceiver.Transmit(this, frames);
     }
 
-    public Task<uint> TransmitAsync(IEnumerable<CanTransmitData> frames, int timeOut = 0, CancellationToken cancellationToken = default)
+    //non-support time out
+    public Task<uint> TransmitAsync(IEnumerable<CanTransmitData> frames, int _ = 0, CancellationToken cancellationToken = default)
         => Task.Run(() =>
         {
             try
             {
-                return Transmit(frames, timeOut);
+                return Transmit(frames, _);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
             catch (Exception ex) { HandleBackgroundException(ex); throw; }
         }, cancellationToken);
+
+
+    public IEnumerable<CanReceiveData> Receive(uint count = 1, int timeOut = 0)
+    {
+        return ReceiveAsync(count, timeOut).GetAwaiter().GetResult();
+    }
 
     public Task<IReadOnlyList<CanReceiveData>> ReceiveAsync(uint count = 1, int timeOut = 0, CancellationToken cancellationToken = default)
     {
@@ -407,21 +408,21 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
         if (_pollTask != null) return;
         _pollCts = new CancellationTokenSource();
         var token = _pollCts.Token;
-#if NETSTANDARD2_0
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-        {
-            _recEvent = new EventWaitHandle(false, EventResetMode.AutoReset);
-            var h = (uint)_recEvent.SafeWaitHandle.DangerousGetHandle().ToInt32();
-            PcanUtils.ThrowIfError(Api.SetValue(_handle, PcanParameter.ReceiveEvent, h), "SetValue(ReceiveEvent)",
-                "Start PcanBus receive loop failed");
-        }
-#else
+
+#if NET8_0_OR_GREATER
 #if WINDOWS
         _recEvent = new EventWaitHandle(false, EventResetMode.AutoReset);
         var h = (uint)_recEvent.SafeWaitHandle.DangerousGetHandle().ToInt32();
            PcanUtils.ThrowIfError(Api.SetValue(_handle, PcanParameter.ReceiveEvent, h) , "SetValue(ReceiveEvent)",
                 "Start PcanBus receive loop failed");
 #endif
+#else
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            var h = (uint)_recEvent.SafeWaitHandle.DangerousGetHandle().ToInt32();
+            PcanUtils.ThrowIfError(Api.SetValue(_handle, PcanParameter.ReceiveEvent, h), "SetValue(ReceiveEvent)",
+                "Start PcanBus receive loop failed");
+        }
 #endif
         _pollTask = Task.Run(() => PollLoop(token), token);
         CanKitLogger.LogDebug("PCAN: Poll loop started.");
@@ -515,7 +516,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
         while (true)
         {
             bool any = false;
-            foreach (var rec in _transceiver.Receive(this, 16))
+            foreach (var rec in _transceiver.Receive(this, 64))
             {
                 any = true;
                 if (rec.CanFrame.IsErrorFrame)

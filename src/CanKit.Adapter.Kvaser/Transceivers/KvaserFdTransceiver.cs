@@ -12,10 +12,13 @@ public sealed class KvaserFdTransceiver : ITransceiver
     {
         var ch = (KvaserBus)channel;
         uint sent = 0;
+        var startTime = Environment.TickCount;
         foreach (var item in frames)
         {
             var data = item.CanFrame.Data.ToArray();
-
+            var remainingTime = timeOut > 0
+                ? Math.Max(0, timeOut - (Environment.TickCount - startTime))
+                : timeOut;
             //Canlib.canWrite use data length as DLC
             var dlc = item.CanFrame.Data.Length;
             var flags = 0U;
@@ -33,10 +36,19 @@ public sealed class KvaserFdTransceiver : ITransceiver
                 if (classic.IsRemoteFrame) flags |= Canlib.canMSG_RTR;
             }
 
-            var st = Canlib.canWrite(ch.Handle, (int)item.CanFrame.ID, data, dlc, (int)flags);
+            var st = timeOut switch
+            {
+                0 => Canlib.canWrite(ch.Handle, (int)item.CanFrame.ID, data, dlc, (int)flags),
+                > 0 => Canlib.canWriteWait(ch.Handle, (int)item.CanFrame.ID, data, dlc, (int)flags, remainingTime),
+                < 0 => Canlib.canWriteWait(ch.Handle, (int)item.CanFrame.ID, data, dlc, (int)flags, long.MaxValue),
+            };
             if (st == Canlib.canStatus.canOK)
             {
                 sent++;
+            }
+            else if (st == Canlib.canStatus.canERR_TXBUFOFL)
+            {
+                break;
             }
             else
             {
@@ -44,7 +56,7 @@ public sealed class KvaserFdTransceiver : ITransceiver
                 if (Canlib.canGetErrorText(st, out var str) == Canlib.canStatus.canOK)
                     msg += $". Message:{str}";
                 KvaserUtils.ThrowIfError(
-                    st, "canWrite", msg);
+                    st, timeOut != 0 ? "canWriteWait" : "canWrite", msg);
             }
         }
         return sent;
@@ -54,13 +66,22 @@ public sealed class KvaserFdTransceiver : ITransceiver
     {
         var ch = (KvaserBus)bus;
         var list = new List<CanReceiveData>();
-        var timeout = timeOut < 0 ? -1 : timeOut;
+        var startTime = Environment.TickCount;
         for (int i = 0; i < count; i++)
         {
             byte[] data = new byte[64];
-            var st = timeout > 0
-                ? Canlib.canReadWait(ch.Handle, out var id, data, out _, out var flags, out var time, timeout)
-                : Canlib.canRead(ch.Handle, out id, data, out _, out flags, out time);
+            var remainingTime = timeOut > 0
+                ? Math.Max(0, timeOut - (Environment.TickCount - startTime))
+                : timeOut;
+            int id;
+            int flags;
+            long time;
+            var st = timeOut switch
+            {
+                0 => Canlib.canRead(ch.Handle, out id, data, out _, out flags, out time),
+                > 0 => Canlib.canReadWait(ch.Handle, out id, data, out _, out flags, out time, remainingTime),
+                < 0 => Canlib.canReadWait(ch.Handle, out id, data, out _, out flags, out time, long.MaxValue),
+            };
 
             if (st == Canlib.canStatus.canOK)
             {
@@ -88,6 +109,11 @@ public sealed class KvaserFdTransceiver : ITransceiver
                 var kch = (KvaserBus)bus;
                 var ticks = time * kch.Options.TimerScaleMicroseconds * 10L; // us -> ticks
                 list.Add(new CanReceiveData(frame) { ReceiveTimestamp = TimeSpan.FromTicks(ticks) });
+
+                if (list.Count == count)
+                {
+                    break;
+                }
             }
             else if (st == Canlib.canStatus.canERR_NOMSG)
             {
@@ -100,7 +126,7 @@ public sealed class KvaserFdTransceiver : ITransceiver
                     msg += $". Message:{str}";
                 KvaserUtils.ThrowIfError(
                     st,
-                    timeout > 0 ? "canReadWait" : "canRead", msg);
+                    timeOut != 0 ? "canReadWait" : "canRead", msg);
                 break;
             }
         }

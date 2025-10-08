@@ -60,7 +60,6 @@ public sealed class PcanFdTransceiver : ITransceiver
             PcanMessage pmsg;
             ulong ts;
             var st = Api.Read(ch.Handle, out pmsg, out ts);
-
             if (st == PcanStatus.ReceiveQueueEmpty)
                 break;
             if (st != PcanStatus.OK)
