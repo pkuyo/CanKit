@@ -86,7 +86,7 @@ namespace CanKit.Sample.QuickStartTxRx
             }
             finally
             {
-                if(rx != null) rxBus.Dispose();
+                if (rx != null) rxBus.Dispose();
             }
 
             return 0;

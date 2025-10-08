@@ -155,7 +155,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
                     var mode = rg.FilterIdType == CanFilterIDType.Extend
                         ? FilterMode.Extended
                         : FilterMode.Standard;
-                    PcanUtils.ThrowIfError(Api.FilterMessages(_handle, rg.From, rg.To, mode),"FilterMessages", "PcanBus set filers error");
+                    PcanUtils.ThrowIfError(Api.FilterMessages(_handle, rg.From, rg.To, mode), "FilterMessages", "PcanBus set filers error");
                 }
                 else
                 {
@@ -413,7 +413,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
 #if WINDOWS
         _recEvent = new EventWaitHandle(false, EventResetMode.AutoReset);
         var h = (uint)_recEvent.SafeWaitHandle.DangerousGetHandle().ToInt32();
-           PcanUtils.ThrowIfError(Api.SetValue(_handle, PcanParameter.ReceiveEvent, h) , "SetValue(ReceiveEvent)",
+        PcanUtils.ThrowIfError(Api.SetValue(_handle, PcanParameter.ReceiveEvent, h), "SetValue(ReceiveEvent)",
                 "Start PcanBus receive loop failed");
 #endif
 #else

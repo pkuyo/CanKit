@@ -59,7 +59,7 @@ public sealed class PcanClassicTransceiver : ITransceiver
             }
             else
             {
-                PcanUtils.ThrowIfError(st, "Write(Classic)",$"PCAN: transmit frame failed. Channel:{((PcanBus)channel).Handle}");
+                PcanUtils.ThrowIfError(st, "Write(Classic)", $"PCAN: transmit frame failed. Channel:{((PcanBus)channel).Handle}");
             }
         }
         return sent;
@@ -79,7 +79,7 @@ public sealed class PcanClassicTransceiver : ITransceiver
                 break;
             if (st != PcanStatus.OK)
             {
-                PcanUtils.ThrowIfError(st, "Read(FD)",$"PCAN: receive frame failed. Channel:{((PcanBus)bus).Handle}");
+                PcanUtils.ThrowIfError(st, "Read(FD)", $"PCAN: receive frame failed. Channel:{((PcanBus)bus).Handle}");
             }
             var isFd = (pmsg.MsgType & MessageType.FlexibleDataRate) != 0;
             if (isFd)

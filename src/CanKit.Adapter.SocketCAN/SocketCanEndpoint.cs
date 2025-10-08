@@ -22,7 +22,6 @@ internal static class SocketCanEndpoint
     {
         // Interpret path as interfaceName, or use query iface= / if=, else index as number
         string iface = ep.Path;
-        int index = 0;
         uint? rcvbuf = null;
         if (string.IsNullOrWhiteSpace(iface))
         {
@@ -32,7 +31,7 @@ internal static class SocketCanEndpoint
             // Use query rcvbuf= / rcvbuf= to set receive buffer cap.
             if (ep.TryGet("rcvbuf", out var u))
             {
-                if(uint.TryParse(u, out var result))
+                if (uint.TryParse(u, out var result))
                     rcvbuf = result;
                 else
                 {

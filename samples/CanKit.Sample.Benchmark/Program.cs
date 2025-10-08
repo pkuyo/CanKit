@@ -131,7 +131,7 @@ namespace CanKit.Sample.Benchmark
             {
                 double arbBitsNoStuff = 36.0 + (bytes <= 16 ? 17.0 : 21.0);
                 double dataBits = 8.0 * bytes;
-                double tArbUs  = (arbBitsNoStuff * stuffFactor) / arbBitrate * 1e6;
+                double tArbUs = (arbBitsNoStuff * stuffFactor) / arbBitrate * 1e6;
                 double tDataUs = (dataBits        * stuffFactor) / (brsOn ? dataBitrate : arbBitrate) * 1e6;
                 return tArbUs + tDataUs;
             }

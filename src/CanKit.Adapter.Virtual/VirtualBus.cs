@@ -108,7 +108,7 @@ public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, IBusOwnershi
     public IEnumerable<CanReceiveData> Receive(uint count = 1, int timeOut = 0)
     {
         ThrowIfDisposed();
-        return ReceiveAsync(count,timeOut).GetAwaiter().GetResult();
+        return ReceiveAsync(count, timeOut).GetAwaiter().GetResult();
     }
 
     public Task<uint> TransmitAsync(IEnumerable<CanTransmitData> frames, int timeOut = 0, CancellationToken cancellationToken = default)

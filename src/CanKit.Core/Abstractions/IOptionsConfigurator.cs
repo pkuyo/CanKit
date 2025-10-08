@@ -215,6 +215,7 @@ public interface IBusInitOptionsConfigurator : ICanOptionsConfigurator
     /// Set channel bitrate (设置通道波特率)。
     /// </summary>
     /// <param name="baud">Bitrate in bps (比特率)。</param>
+    /// <param name="clockMHz">device clock frequency (设备时钟频率）。</param>
     /// <param name="samplePointPermille"></param>
     /// <returns>Configurator (配置器本身)。</returns>
     IBusInitOptionsConfigurator Baud(uint baud,
@@ -226,6 +227,7 @@ public interface IBusInitOptionsConfigurator : ICanOptionsConfigurator
     /// </summary>
     /// <param name="abit">Arbitration bitrate (仲裁位率)。</param>
     /// <param name="dbit">Data bitrate (数据位率)。</param>
+    /// <param name="clockMHz">device clock frequency (设备时钟频率）。</param>
     /// <param name="nominalSamplePointPermille"></param>
     /// <param name="dataSamplePointPermille"></param>
     /// <returns>Configurator (配置器本身)。</returns>

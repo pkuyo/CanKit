@@ -1,0 +1,141 @@
+# CanKit
+
+CanKit 提供一个统一 .NET 抽象，用于在同一套 API 下访问多家 CAN 适配器。
+
+支持通过 Endpoint 字符串或强类型入口打开总线，并在不同适配器上提供尽可能一致的收发、过滤、周期发送、错误帧与诊断体验。
+
+- 适配器：PCAN-Basic（Peak）、Kvaser CANlib、SocketCAN（Linux）、ZLG(周立功)
+- 目标框架：.NET Standard 2.0、.NET 8（含 net8.0-windows）
+
+
+## 安装
+
+先添加核心包，再按需选择适配器包：
+
+```
+# Core
+dotnet add package CanKit.Core
+
+# Adapters（按需选择）
+dotnet add package CanKit.Adapter.PCAN
+dotnet add package CanKit.Adapter.Kvaser
+dotnet add package CanKit.Adapter.SocketCAN
+dotnet add package CanKit.Adapter.ZLG
+dotnet add package CanKit.Adapter.Virtual
+```
+
+> 注：驱动/运行库需按各厂商要求单独安装（见下方“适配器说明”）。
+
+
+## 特性（Features）
+
+- 统一 API
+  - Endpoint 打开或强类型打开；支持枚举 Endpoint
+  - 支持经典 CAN 2.0 与 CAN FD 帧类型
+  - 同步/异步：`Transmit/Receive`、`TransmitAsync/ReceiveAsync`、`GetFramesAsync`（.NET 8+）
+  - 事件：`FrameReceived`、`ErrorFrameReceived`、`BackgroundExceptionOccurred`
+- 定时与模式
+  - 经典/FD 位时序配置；支持段参数（Tseg1/Tseg2/Brp 等）
+  - 工作模式：正常/只听/回环（取决于设备能力）
+- 过滤器
+  - 统一的掩码/范围过滤配置接口
+  - 当硬件能力有限时，可启用软件回退
+- 周期发送
+  - 支持设备上的硬件周期发送（若可用）；否则自动使用软件周期发送
+- 诊断与监控
+  - 错误帧、总线状态、错误计数、总线利用率（是否可用取决于适配器）
+- 运行时选项
+  - 异步缓冲容量、接收循环延迟停止、发送重试策略（单次/重试）、启用错误信息等
+
+
+## 快速开始
+
+通过 Endpoint 打开，然后发送/接收：
+
+```csharp
+using CanKit.Core;
+using CanKit.Core.Abstractions;
+using CanKit.Core.Definitions;
+
+// 以 SocketCAN 为例，片段 #netlink 表示启用 netlink 进行设备层配置
+using var bus = CanBus.Open("socketcan://can0#netlink", cfg =>
+{
+    cfg.TimingClassic(500_000)
+       .EnableErrorInfo()  // 如需订阅错误帧
+       .SetAsyncBufferCapacity(1024);
+});
+
+bus.FrameReceived += (s, rec) =>
+{
+    Console.WriteLine($"RX {rec.CanFrame.FrameKind} ID={rec.CanFrame.ID:X} DLC={rec.CanFrame.Dlc}");
+};
+
+// 发送一帧经典 CAN
+bus.Transmit(new[] { new CanTransmitData(new CanClassicFrame(0x123, new byte[]{ 0x01, 0x02 })) });
+
+// 同步接收（超时 100ms）
+var items = bus.Receive(1, timeOut: 100);
+
+// 异步批量接收（10 帧，超时 500ms）
+var list = await bus.ReceiveAsync(10, timeOut: 500);
+```
+
+常见 Endpoint：
+- PCAN：`pcan://PCAN_USBBUS1` 或 `pcan://?ch=PCAN_PCIBUS1`
+- Kvaser：`kvaser://0` 或 `kvaser://?ch=0`
+- SocketCAN：`socketcan://can0` 或 `socketcan://can0#netlink`；可选 `?rcvbuf=<字节数>`
+- ZLG：`zlg://USBCANFD-200U?index=0#ch1`（设备索引 + 通道）
+- Virtual：`virtual://sessionId/channelId`（如 `virtual://alpha/0`）
+
+若更偏好强类型入口：
+
+```csharp
+using CanKit.Adapter.Kvaser;
+var bus = Kvaser.Open(0, cfg => cfg.TimingFd(1_000_000, 2_000_000));
+```
+
+
+## Endpoint 与枚举
+
+```csharp
+using CanKit.Core.Endpoints;
+foreach (var ep in BusEndpointEntry.Enumerate("pcan", "kvaser", "socketcan", "zlg", "virtual"))
+{
+    Console.WriteLine($"{ep.Title ?? ep.Endpoint} -> {ep.Endpoint}");
+}
+```
+
+
+## 适配器说明
+
+- PCAN（Windows）：安装 PCAN 驱动与 PCAN-Basic；确保 `PCANBasic.dll` 可加载（进程位数匹配 x86/x64）。
+- Kvaser（Windows/Linux）：安装 Kvaser Driver + CANlib；并**确保将 `CANLib.Net` 添加到你的 NuGet 包源**; 确保 canlib 可加载并能访问通道。
+- SocketCAN（Linux）：启用内核 SocketCAN，创建/配置接口（`ip link …`）；安装 `libsocketcan`。
+- ZLG（Windows）：确保 `zlgcan.dll` 在加载路径，且位数与进程匹配。
+- Virtual：无需驱动。
+
+
+## 行为差异
+
+- 超时语义：部分适配器对 TX 超时不生效（如 PCAN）；Kvaser/SocketCAN 对 TX/RX 超时均支持；ZLG 的 RX 超时传入底层。
+- 过滤器：各家支持的过滤类型不同（掩码/范围）；不足可启用软件回退。
+- 错误帧/计数/总线利用率：可用性视适配器与驱动而定。
+- 周期发送：部分设备可使用硬件周期发送；否则用软件周期发送回退。
+
+> 详细适配器差异请参考英文文档（稍后提供中文版差异页）。
+
+
+## 入门
+
+- 中文：[快速开始](docs/zh/getting-started.md)
+
+
+## 项目状态
+
+本库仍在积极开发中。由于可用硬件有限，尚未能对所有设备型号与系统组合进行完整验证。如遇问题，欢迎提交 Issue；也非常欢迎 PR、设备适配改进与测试反馈！
+
+
+## 许可
+
+请参见仓库中的 LICENSE 文件。
+

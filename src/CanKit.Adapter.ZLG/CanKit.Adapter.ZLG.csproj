@@ -3,14 +3,27 @@
     <PropertyGroup>
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
         <RootNamespace>CanKit.Adapter.ZLG</RootNamespace>
-        <Platforms>x64;x86</Platforms>
-        <PackageId>Pkuyo.CanKit.ZLG</PackageId>
+        <Platforms>x64;x86;AnyCPU</Platforms>
+        <PackageId>CanKit.Adapter.ZLG</PackageId>
         <AssemblyName>CanKit.Adapter.ZLG</AssemblyName>
+        <Version>0.1.1</Version>
+        <Description>ZLG adapter for CanKit, enabling unified access to ZLG USBCAN/PCIe CAN/CAN FD devices (zlgcan.dll).</Description>
+        <PackageTags>CAN;CAN-bus;CANFD;ZLG;USBCAN;PCIe;zlgcan;CanKit</PackageTags>
+        <AssemblyVersion>1.0.0.0</AssemblyVersion>
+        <FileVersion>0.1.0.0</FileVersion>
+        <Authors>Pkuyo</Authors>
+        <RepositoryUrl>https://github.com/pkuyo/CanKit</RepositoryUrl>
+        <Configurations>Debug;Release</Configurations>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
     </PropertyGroup>
-    
-    <PropertyGroup Condition="'$(TargetFrameworkIdentifier)' == '.NETFramework'">
-        <Prefer32Bit>true</Prefer32Bit>
-    </PropertyGroup>
+
+    <ItemGroup Condition="'$(UseLocalProjectReferences)'=='true'">
+        <ProjectReference Include="..\CanKit.Core\CanKit.Core.csproj"/>
+    </ItemGroup>
+
+    <ItemGroup Condition="'$(UseLocalProjectReferences)'!='true'">
+        <PackageReference Include="CanKit.Core" Version="0.1.0"/>
+    </ItemGroup>
 
     <ItemGroup>
         <ProjectReference Include="..\CanKit.Core\CanKit.Core.csproj" />
@@ -18,6 +31,10 @@
     
     <ItemGroup>
         <None Include="buildTransitive\**\*.*" Pack="true" PackagePath="buildTransitive\" />
+    </ItemGroup>
+    
+    <ItemGroup>
+        <None Include="README.md" Pack="true" PackagePath="" />
     </ItemGroup>
     
 </Project>

@@ -1,17 +1,32 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-    <LangVersion>latest</LangVersion>
-    <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
-  </PropertyGroup>
+    <PropertyGroup>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <LangVersion>latest</LangVersion>
+        <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
+        <Version>0.1.0</Version>
+        <Description>Virtual in-process CAN adapter for CanKit for development, testing, and simulation.</Description>
+        <PackageTags>CAN;CAN-bus;CANFD;;Adapter;CanKit</PackageTags>
+        <AssemblyVersion>1.0.0.0</AssemblyVersion>
+        <FileVersion>0.1.0.0</FileVersion>
+        <Authors>Pkuyo</Authors>
+        <RepositoryUrl>https://github.com/pkuyo/CanKit</RepositoryUrl>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
+    </PropertyGroup>
 
-  <ItemGroup>
-    <ProjectReference Include="..\CanKit.Core\CanKit.Core.csproj" />
-  </ItemGroup>
-    
-  <ItemGroup>
-    <None Include="buildTransitive\\**\\*.*" Pack="true" PackagePath="buildTransitive\\" />
-  </ItemGroup>
+    <ItemGroup Condition="'$(UseLocalProjectReferences)'=='true'">
+        <ProjectReference Include="..\CanKit.Core\CanKit.Core.csproj"/>
+    </ItemGroup>
+
+    <ItemGroup Condition="'$(UseLocalProjectReferences)'!='true'">
+        <PackageReference Include="CanKit.Core" Version="0.1.0"/>
+    </ItemGroup>
+
+
+    <ItemGroup>
+        <None Include="buildTransitive\**\*.*" Pack="true" PackagePath="buildTransitive\"/>
+    </ItemGroup>
+    <ItemGroup>
+        <None Include="README.md" Pack="true" PackagePath=""/>
+    </ItemGroup>
 </Project>
-

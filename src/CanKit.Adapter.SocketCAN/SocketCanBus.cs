@@ -157,7 +157,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
         if (Options.ReceiveBufferCapacity != null)
         {
             var cap = (int)Options.ReceiveBufferCapacity.Value;
-            Libc.setsockopt(_fd, Libc.SOL_CAN_RAW, Libc.SO_RCVBUF,ref cap, (uint)Marshal.SizeOf<int>());
+            Libc.setsockopt(_fd, Libc.SOL_CAN_RAW, Libc.SO_RCVBUF, ref cap, (uint)Marshal.SizeOf<int>());
         }
 
         // Cache software filter predicate for event loop
@@ -199,7 +199,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
             if (pr < 0)
             {
                 var errno = Libc.Errno();
-                if(errno == Libc.EINTR) continue;
+                if (errno == Libc.EINTR) continue;
                 Libc.ThrowErrno("poll(POLLOUT)", "Polling for writable socket failed");
             }
             if (pr == 0)
@@ -225,7 +225,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
     public IEnumerable<CanReceiveData> Receive(uint count = 1, int timeOut = 0)
     {
         ThrowIfDisposed();
-        if(timeOut == 0)
+        if (timeOut == 0)
             return _transceiver.Receive(this, count);
         var recList = new List<CanReceiveData>((int)count);
         var startTime = Environment.TickCount;
@@ -243,7 +243,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
             if (pr < 0)
             {
                 var errno = Libc.Errno();
-                if(errno == Libc.EINTR) continue;
+                if (errno == Libc.EINTR) continue;
                 Libc.ThrowErrno("poll(POLLIN)", "Polling for readable socket failed");
             }
             if (pr == 0)
@@ -660,7 +660,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
             ctrlMode.flags &= ~(LibSocketCan.CAN_CTRLMODE_LISTENONLY);
             ctrlMode.flags |= LibSocketCan.CAN_CTRLMODE_LOOPBACK;
         }
-        else if(Options.WorkMode == ChannelWorkMode.ListenOnly)
+        else if (Options.WorkMode == ChannelWorkMode.ListenOnly)
         {
             CanKitErr.ThrowIfNotSupport(Options.Features, CanFeature.ListenOnly);
             ctrlMode.flags &= ~(LibSocketCan.CAN_CTRLMODE_LOOPBACK);
@@ -996,7 +996,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
         }
         catch { }
 
-        try { _asyncRx.ExceptionOccured(ex); }catch { }
+        try { _asyncRx.ExceptionOccured(ex); } catch { }
 
         try
         {

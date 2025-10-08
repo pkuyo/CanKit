@@ -3,7 +3,7 @@ using Peak.Can.Basic;
 
 namespace CanKit.Adapter.PCAN.Exceptions;
 
-public class PcanCanException: CanNativeCallException
+public class PcanCanException : CanNativeCallException
 {
     public PcanCanException(string operation, string message, PcanStatus status)
         : base(operation, message, (uint)status)
