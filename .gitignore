@@ -363,5 +363,4 @@ MigrationBackup/
 FodyWeavers.xsd
 /.idea
 
-Pkuyo.CanKit.Net.ZLG/runtimes
-/Pkuyo.CanKit.Net.Gen/Pkuyo.CanKit.Net.Gen.Tests
+global.json

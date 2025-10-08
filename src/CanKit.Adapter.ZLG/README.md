@@ -10,10 +10,12 @@ ZLG adapter for CanKit. Provides a unified .NET API to access ZLG USBCAN/PCIe de
 
 - Windows with ZLG drivers installed (zlgcan runtime, typically installed with ZLGCAN or USBCAN FD package).
 - Ensure `zlgcan.dll` is available on PATH or next to your app.
+- It is **strongly recommended** to compile as an x86 application. For some older devices (e.g., USBCAN1/2), not enabling this may prevent the device from starting properly.
 
 简体中文
 - Windows，需要已安装周立功 ZLG CAN 驱动（含 `zlgcan.dll`）。
 - 请保证运行时能加载到 `zlgcan.dll`（放到程序目录或加入 PATH）。
+- **强烈建议**编译为x86程序，对于一部分老设备（USBCAN1/2等）不开启会导致无法正常开启设备。
 
 ## Install
 
@@ -73,6 +75,16 @@ foreach (var ep in BusEndpointEntry.Enumerate("zlg"))
     Console.WriteLine($"{ep.Title}: {ep.Endpoint}");
 }
 ```
+
+## Support Devices
+- UUSBCAN-I/I+、USBCAN-I-MINI
+- USBCAN-II/II+、MiniPCIeCAN-II
+- PCI-9820、PCI-9820I
+- PCI-5010-U、PCI-5020-U、USBCAN-E-U、USBCAN-2E-U、USBCAN-4E-U、USBCAN-8E-U
+- USBCANDTU-100UR、CANDTU-200UR
+- USBCANFD-100U、USBCANFD-200U、USBCANFD-400U、USBCANFD-800U、USBCANFD-MINI
+- PCIE-CANFD-100U, PCIE-CANFD-200U-EX,PCIE-CANFD-400U, M/2CANFD, MiniPCIeCANFD
+- PCIE_CANFD_200U
 
 ## Notes
 

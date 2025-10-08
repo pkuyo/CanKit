@@ -29,7 +29,6 @@ public sealed class USBCANFDProviderGroup : ICanModelProviderGroup
         ZlgDeviceType.ZCAN_USBCANFD_100U,
         ZlgDeviceType.ZCAN_USBCANFD_200U,
         ZlgDeviceType.ZCAN_USBCANFD_400U,
-        ZlgDeviceType.ZCAN_USBCANFD_800U,
         ZlgDeviceType.ZCAN_USBCANFD_MINI
     ];
 

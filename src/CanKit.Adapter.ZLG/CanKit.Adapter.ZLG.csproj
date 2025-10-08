@@ -6,9 +6,9 @@
         <Platforms>x64;x86;AnyCPU</Platforms>
         <PackageId>CanKit.Adapter.ZLG</PackageId>
         <AssemblyName>CanKit.Adapter.ZLG</AssemblyName>
-        <Version>0.1.1</Version>
+        <Version>0.1.2</Version>
         <Description>ZLG adapter for CanKit, enabling unified access to ZLG USBCAN/PCIe CAN/CAN FD devices (zlgcan.dll).</Description>
-        <PackageTags>CAN;CAN-bus;CANFD;ZLG;USBCAN;PCIe;zlgcan;CanKit</PackageTags>
+        <PackageTags>CAN;CAN-bus;CANFD;ZLG;zlgcan;CanKit</PackageTags>
         <AssemblyVersion>1.0.0.0</AssemblyVersion>
         <FileVersion>0.1.0.0</FileVersion>
         <Authors>Pkuyo</Authors>

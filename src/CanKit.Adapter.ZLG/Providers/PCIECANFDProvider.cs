@@ -37,6 +37,7 @@ public sealed class PCIECANFDProviderGroup : ICanModelProviderGroup
     public IEnumerable<DeviceType> SupportedDeviceTypes =>
     [
         ZlgDeviceType.ZCAN_PCIE_CANFD_400U,
+        ZlgDeviceType.ZCAN_PCIE_CANFD_100U_EX,
         ZlgDeviceType.ZCAN_PCIE_CANFD_200U_EX,
         ZlgDeviceType.ZCAN_PCIE_CANFD_200U_M2,
         ZlgDeviceType.ZCAN_MINI_PCIE_CANFD,

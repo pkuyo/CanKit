@@ -111,7 +111,7 @@ foreach (var ep in BusEndpointEntry.Enumerate("pcan", "kvaser", "socketcan", "zl
 - PCAN（Windows）：安装 PCAN 驱动与 PCAN-Basic；确保 `PCANBasic.dll` 可加载（进程位数匹配 x86/x64）。
 - Kvaser（Windows/Linux）：安装 Kvaser Driver + CANlib；并**确保将 `CANLib.Net` 添加到你的 NuGet 包源**; 确保 canlib 可加载并能访问通道。
 - SocketCAN（Linux）：启用内核 SocketCAN，创建/配置接口（`ip link …`）；安装 `libsocketcan`。
-- ZLG（Windows）：确保 `zlgcan.dll` 在加载路径，且位数与进程匹配。
+- ZLG（Windows）：确保 `zlgcan.dll` 在加载路径，且位数与进程匹配。**强烈建议**编译为x86程序，对于一部分老设备（USBCAN1/2等）不开启会导致无法正常开启设备。
 - Virtual：无需驱动。
 
 

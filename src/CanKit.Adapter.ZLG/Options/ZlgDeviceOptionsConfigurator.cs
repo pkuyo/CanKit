@@ -25,7 +25,6 @@ public sealed class ZlgDeviceRTOptionsConfigurator
 public sealed class ZlgBusInitConfigurator
     : BusInitOptionsConfigurator<ZlgBusOptions, ZlgBusInitConfigurator>
 {
-    public ZlgBusOptions.MaskFilterType MaskFilterType => Options.FilterType;
 
     /// <summary>
     /// Polling interval in ms (轮询间隔，毫秒)。
@@ -40,12 +39,6 @@ public sealed class ZlgBusInitConfigurator
     public ZlgBusInitConfigurator SetPollingInterval(int newPollingInterval)
     {
         Options.PollingInterval = newPollingInterval;
-        return this;
-    }
-
-    public ZlgBusInitConfigurator SetMaskFilterType(ZlgBusOptions.MaskFilterType maskFilterType)
-    {
-        Options.FilterType = maskFilterType;
         return this;
     }
 
@@ -86,7 +79,6 @@ public sealed class ZlgBusInitConfigurator
 public sealed class ZlgBusRtConfigurator
     : BusRtOptionsConfigurator<ZlgBusOptions, ZlgBusRtConfigurator>
 {
-    public ZlgBusOptions.MaskFilterType MaskFilterType => Options.FilterType;
 
     /// <summary>
     /// Polling interval in ms (轮询间隔，毫秒)。

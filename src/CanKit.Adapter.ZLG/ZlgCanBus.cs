@@ -90,7 +90,7 @@ namespace CanKit.Adapter.ZLG
                 {
                     config.config.can.acc_code = mask.AccCode;
                     config.config.can.acc_mask = mask.AccMask;
-                    config.config.can.filter = (byte)Options.MaskFilterType;
+                    config.config.can.filter = (byte)mask.FilterIdType;
 
                 }
                 else
@@ -431,18 +431,16 @@ namespace CanKit.Adapter.ZLG
                 }
             }
 
-            ZlgErr.ThrowIfError(
-                ZLGCAN.ZCAN_SetValue(
-                    _devicePtr,
-                    Options.ChannelIndex + "/work_mode",
-                    ((int)zlgOption.WorkMode).ToString()),
-                "ZCAN_SetValue(work_mode)");
-            ZlgErr.ThrowIfError(
-                ZLGCAN.ZCAN_SetValue(
-                    _devicePtr,
-                    Options.ChannelIndex + "/initenal_resistance",
-                    Options.InternalResistance ? "1" : "0"),
-                "ZCAN_SetValue(initenal_resistance)");
+
+            ZLGCAN.ZCAN_SetValue(
+                _devicePtr,
+                Options.ChannelIndex + "/work_mode",
+                ((int)zlgOption.WorkMode).ToString());
+
+            ZLGCAN.ZCAN_SetValue(
+                _devicePtr,
+                Options.ChannelIndex + "/initenal_resistance",
+                Options.InternalResistance ? "1" : "0");
 
             if ((Options.Features & CanFeature.TxRetryPolicy) != 0)
             {
@@ -530,7 +528,6 @@ namespace CanKit.Adapter.ZLG
                             "ZCAN_SetValue(filter_end)");
                     }
 
-                    _softwareFilterPredicate = FilterRule.Build(Options.Filter.SoftwareFilterRules);
                     ZlgErr.ThrowIfError(
                         ZLGCAN.ZCAN_SetValue(
                             _devicePtr,
@@ -538,13 +535,8 @@ namespace CanKit.Adapter.ZLG
                             "1"),
                         "ZCAN_SetValue(filter_ack)");
                 }
+                _softwareFilterPredicate = FilterRule.Build(Options.Filter.SoftwareFilterRules);
             }
-            ZlgErr.ThrowIfError(
-                ZLGCAN.ZCAN_SetValue(
-                    _devicePtr,
-                    Options.ChannelIndex + "/filter_ack",
-                    "1"),
-                "ZCAN_SetValue(filter_ack)");
         }
 
 

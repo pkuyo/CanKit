@@ -6,17 +6,10 @@ namespace CanKit.Adapter.ZLG.Options
 {
     public sealed class ZlgBusOptions(ICanModelProvider provider) : IBusOptions
     {
-        public enum MaskFilterType : byte
-        {
-            Single = 0,
-            Double = 1
-        }
 
         public bool SoftwareFilterEnabled { get; set; }
 
         public int PollingInterval { get; set; } = 20;
-
-        public MaskFilterType FilterType { get; set; }
 
         public ICanModelProvider Provider => provider;
         public int ChannelIndex { get; set; }
