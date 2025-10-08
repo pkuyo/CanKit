@@ -129,7 +129,7 @@ namespace CanKit.Core.Definitions
         public IReadOnlyList<FilterRule> FilterRules => filterRules;
 
         /// <summary>
-        /// Exposes software-only filter rules as read-only list.
+        /// Software-only filter rules (软过滤规则，用于硬件不支持的类型)
         /// </summary>
         public IReadOnlyList<FilterRule> SoftwareFilterRules => softwareFilter;
     }

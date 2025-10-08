@@ -14,8 +14,6 @@ namespace CanKit.Core.Abstractions
         ICanModelProvider Provider { get; }
     }
 
-
-
     /// <summary>
     /// Options related to CAN device (与 CAN 设备相关的选项)。
     /// </summary>

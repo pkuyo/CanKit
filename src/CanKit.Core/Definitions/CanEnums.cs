@@ -10,19 +10,17 @@ namespace CanKit.Core.Definitions
     {
         None = 0,
 
-        // Top-level categories aligned with SocketCAN CAN_ERR_* classes
-        // 这些位对应 arbitration_id 上的 CAN_ERR_FLAG 类别；更细节见其它字段
-        TxTimeout         = 1 << 0, // CAN_ERR_TX_TIMEOUT
-        ArbitrationLost   = 1 << 1, // CAN_ERR_LOSTARB
-        Controller        = 1 << 2, // CAN_ERR_CRTL（细节见 CanControllerStatus）
-        ProtocolViolation = 1 << 3, // CAN_ERR_PROT（细节见 CanProtocolViolationType / FrameErrorLocation）
-        TransceiverError  = 1 << 4, // CAN_ERR_TRX（细节见 CanTransceiverStatus）
-        AckError          = 1 << 5, // CAN_ERR_ACK
-        BusOff            = 1 << 6, // CAN_ERR_BUSOFF
-        BusError          = 1 << 7, // CAN_ERR_BUSERROR
-        Restarted         = 1 << 8, // CAN_ERR_RESTARTED
+        TxTimeout         = 1 << 0,
+        ArbitrationLost   = 1 << 1,
+        Controller        = 1 << 2,
+        ProtocolViolation = 1 << 3,
+        TransceiverError  = 1 << 4,
+        AckError          = 1 << 5,
+        BusOff            = 1 << 6,
+        BusError          = 1 << 7,
+        Restarted         = 1 << 8,
 
-        // 非错误帧（设备/驱动）级别错误，保留用于设备报告
+
         DeviceError       = 1 << 17,
         DriverError       = 1 << 18,
         ResourceError     = 1 << 19,
@@ -49,7 +47,7 @@ namespace CanKit.Core.Definitions
     }
 
     /// <summary>
-    /// Protocol violation type
+    /// Protocol violation type (协议违规类型)
     /// </summary>
     [Flags]
     public enum CanProtocolViolationType : UInt16
@@ -96,14 +94,14 @@ namespace CanKit.Core.Definitions
 
         // 240..255:
         Unrecognized         = 248,   // 合法范围内但未收录
-        Reserved             = 249,       // 规范保留值
+        Reserved             = 249,   // 规范保留值
         VendorSpecific       = 250,
 
         Invalid              = 255,
     }
 
     /// <summary>
-    /// Transceiver status code
+    /// Transceiver status code (通道状态码)
     /// </summary>
     public enum CanTransceiverStatus : byte
     {
@@ -142,7 +140,6 @@ namespace CanKit.Core.Definitions
         Invalid = 0,
         Can20   = 1 << 0,
         CanFd   = 1 << 1,
-        Any     = int.MaxValue
     }
 
     /// <summary>
@@ -171,15 +168,6 @@ namespace CanKit.Core.Definitions
         ErrorFrame    = 1 << 8,
         TxRetryPolicy = 1 << 9,
         All           = int.MaxValue,
-    }
-
-    /// <summary>
-    /// Options application phase (选项应用阶段)
-    /// </summary>
-    public enum CanOptionType
-    {
-        Init    = 1,
-        Runtime = 2
     }
 
     /// <summary>

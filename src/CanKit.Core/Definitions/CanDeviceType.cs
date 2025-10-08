@@ -4,7 +4,7 @@ using System.Collections.Generic;
 namespace CanKit.Core.Definitions
 {
     /// <summary>
-    /// Device type registry with unique string Id (轻量设备类型注册，仅保留唯一 Id)
+    /// Device type registry with unique string Id
     /// </summary>
     public abstract record DeviceType
     {

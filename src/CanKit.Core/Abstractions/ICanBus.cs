@@ -20,6 +20,9 @@ namespace CanKit.Core.Abstractions
         /// </summary>
         IBusRTOptionsConfigurator Options { get; }
 
+        /// <summary>
+        /// Gets the current CAN bus/controller state as reported by the underlying driver
+        /// </summary>
         public BusState BusState { get; }
 
         /// <summary>
@@ -36,7 +39,11 @@ namespace CanKit.Core.Abstractions
         /// Transmit one or more CAN frames (发送一个或多个 CAN 帧)。
         /// </summary>
         /// <param name="frames">Frames to transmit (待发送帧集合)。</param>
-        /// <param name="timeOut">Timeout in ms, -1 for infinite (超时毫秒，-1 表示无限等待)。</param>
+        /// <param name="timeOut">
+        /// Timeout in milliseconds; use -1 for an infinite wait, and 0 to return immediately without waiting.
+        /// Actual behavior is adapter/driver dependent and may not be honored by all hardware.
+        /// （超时时间，单位毫秒；-1 表示无限等待，0 表示不等待立即返回。实际行为取决于适配器/驱动，并非所有硬件都会遵循。）
+        /// </param>
         /// <returns>Number of frames accepted by driver (被底层接受的帧数)。</returns>
         uint Transmit(IEnumerable<CanTransmitData> frames, int timeOut = 0);
 
@@ -44,7 +51,11 @@ namespace CanKit.Core.Abstractions
         /// Asynchronously transmit one or more CAN frames (异步发送一个或多个 CAN 帧)
         /// </summary>
         /// <param name="frames">Frames to transmit (待发送帧集合)</param>
-        /// <param name="timeOut">Timeout in ms, -1 for infinite (超时毫秒，-1 表示无限等待)</param>
+        /// <param name="timeOut">
+        /// Timeout in milliseconds; use -1 for an infinite wait, and 0 to return immediately without waiting.
+        /// Actual behavior is adapter/driver dependent and may not be honored by all hardware.
+        /// （超时时间，单位毫秒；-1 表示无限等待，0 表示不等待立即返回。实际行为取决于适配器/驱动，并非所有硬件都会遵循。）
+        /// </param>
         /// <param name="cancellationToken">Cancellation (取消令牌)</param>
         /// <returns>Number of frames accepted by driver (被底层接受的帧数)</returns>
         Task<uint> TransmitAsync(IEnumerable<CanTransmitData> frames, int timeOut = 0, System.Threading.CancellationToken cancellationToken = default);
@@ -74,7 +85,11 @@ namespace CanKit.Core.Abstractions
         /// Receive CAN frames (读取 CAN 帧)。
         /// </summary>
         /// <param name="count">Expected frame count (期望读取的帧数)。</param>
-        /// <param name="timeOut">Timeout in ms, -1 for infinite (超时毫秒，-1 表示无限等待)。</param>
+        /// <param name="timeOut">
+        /// Timeout in milliseconds; use -1 for an infinite wait, and 0 to return immediately without waiting.
+        /// Actual behavior is adapter/driver dependent and may not be honored by all hardware.
+        /// （超时时间，单位毫秒；-1 表示无限等待，0 表示不等待立即返回。实际行为取决于适配器/驱动，并非所有硬件都会遵循。）
+        /// </param>
         /// <returns>Received frames (收到的帧集合)。</returns>
         IEnumerable<CanReceiveData> Receive(uint count = 1, int timeOut = 0);
 
@@ -82,7 +97,11 @@ namespace CanKit.Core.Abstractions
         /// Asynchronously receive one or more CAN frames (异步读取一个或多个 CAN 帧)
         /// </summary>
         /// <param name="count">Expected frame count (期望读取的帧数)</param>
-        /// <param name="timeOut">Timeout in ms, -1 for infinite (超时毫秒，-1 表示无限等待)</param>
+        /// <param name="timeOut">
+        /// Timeout in milliseconds; use -1 for an infinite wait, and 0 to return immediately without waiting.
+        /// Actual behavior is adapter/driver dependent and may not be honored by all hardware.
+        /// （超时时间，单位毫秒；-1 表示无限等待，0 表示不等待立即返回。实际行为取决于适配器/驱动，并非所有硬件都会遵循。）
+        /// </param>
         /// <param name="cancellationToken">Cancellation (取消令牌)</param>
         /// <returns>Received frames (收到的帧集合)。当达到期望数量或超时/取消时返回。</returns>
         Task<IReadOnlyList<CanReceiveData>> ReceiveAsync(uint count = 1, int timeOut = 0, System.Threading.CancellationToken cancellationToken = default);
@@ -108,7 +127,7 @@ namespace CanKit.Core.Abstractions
         event EventHandler<ICanErrorInfo> ErrorFrameReceived;
 
         /// <summary>
-        /// Raised when an unexpected error occurs on the bus at background (发生非预期致命异常时触发)。
+        /// Raised when an unexpected error occurs on the bus at background (发生非预期后台异常时触发)。
         /// Implementations should log the error, stop internal loops, cleanup resources,
         /// and ensure pending async operations observe this exception (最终通过该事件传播异常)。
         /// </summary>

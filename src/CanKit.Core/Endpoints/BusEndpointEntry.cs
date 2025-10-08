@@ -16,7 +16,7 @@ public static class BusEndpointEntry
 
     /// <summary>
     /// Enumerate discoverable endpoints. Optionally limit by vendor/scheme names.
-    /// ZH: 枚举可发现的 Endpoint；可选传入厂商/协议前缀（如 "pcan"、"zlg"、"socketcan"）以限制范围。
+    /// (枚举可发现的 Endpoint；可选传入厂商/协议前缀（如 "pcan"、"zlg"、"socketcan"）以限制范围。)
     /// </summary>
     /// <param name="vendorsOrSchemes">Optional vendor or scheme names. If empty, returns all. (可选厂商/协议前缀，留空返回全部)</param>
     public static IEnumerable<BusEndpointInfo> Enumerate(params string[]? vendorsOrSchemes)
