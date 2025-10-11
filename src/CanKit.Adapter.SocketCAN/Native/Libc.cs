@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Text;
 using CanKit.Adapter.SocketCAN.Diagnostics;
+using CanKit.Core.Definitions;
 using CanKit.Core.Exceptions;
 // @formatter:off
 namespace CanKit.Adapter.SocketCAN.Native;
@@ -403,7 +404,23 @@ internal static class Libc
     {
         throw new SocketCanNativeException(operation, message, (uint)errno);
     }
-
+    public static uint ToCanID(this CanClassicFrame frame)
+    {
+        var id = frame.ID;
+        var cid = frame.IsExtendedFrame ? ((frame.ID & CAN_EFF_MASK) | CAN_EFF_FLAG)
+                               :  (frame.ID & CAN_SFF_MASK);
+        if (frame.IsRemoteFrame)      cid |= CAN_RTR_FLAG;
+        if (frame.IsErrorFrame)      cid |= CAN_ERR_FLAG;
+        return cid;
+    }
+    public static uint ToCanID(this ICanFrame frame)
+    {
+        var id = frame.ID;
+        var cid = frame.IsExtendedFrame ? ((frame.ID & CAN_EFF_MASK) | CAN_EFF_FLAG)
+                               :  (frame.ID & CAN_SFF_MASK);
+        if (frame.IsErrorFrame)      cid |= CAN_ERR_FLAG;
+        return cid;
+    }
 
     public static timeval ToTimeval(TimeSpan t)
     {

@@ -144,7 +144,9 @@ public sealed class SocketCanClassicTransceiver : ITransceiver
         {
             Buffer.MemoryCopy(fr[idx].data, pData, data.Length, Math.Min(dataLen, 64));
         }
-        result.Add(new CanReceiveData(new CanClassicFrame(fr[idx].can_id, data))
+        result.Add(new CanReceiveData(new CanClassicFrame((fr[idx].can_id & Libc.CAN_EFF_MASK) == 1 ?
+                fr[idx].can_id & Libc.CAN_EFF_MASK :
+                fr[idx].can_id & Libc.CAN_SFF_MASK, data))
         { ReceiveTimestamp = tsSpan });
     }
 

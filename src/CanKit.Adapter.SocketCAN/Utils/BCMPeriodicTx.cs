@@ -78,7 +78,7 @@ public sealed class BCMPeriodicTx : IPeriodicTx
             count = (options.Repeat < 0) ? 0u : (uint)options.Repeat,
             ival1 = Libc.ToTimeval(ival1),
             ival2 = Libc.ToTimeval(ival2),
-            can_id = frame.CanFrame.RawID,
+            can_id = frame.CanFrame.ToCanID(),
             nframes = 1
         };
 
@@ -153,7 +153,7 @@ public sealed class BCMPeriodicTx : IPeriodicTx
             count = (RepeatCount < 0) ? 0u : (uint)newCount,
             ival1 = Libc.ToTimeval((RepeatCount < 0) ? TimeSpan.Zero : Period), // repeat config times and stop
             ival2 = Libc.ToTimeval((RepeatCount < 0) ? Period : TimeSpan.Zero), // immediately enter ival2 for infinite loop
-            can_id = _frame.RawID,
+            can_id = _frame.ToCanID(),
             nframes = (uint)(includeFrame ? 1 : 0)
         };
 
@@ -202,7 +202,7 @@ public sealed class BCMPeriodicTx : IPeriodicTx
             Libc.bcm_msg_head head = new Libc.bcm_msg_head
             {
                 opcode = Libc.TX_READ,
-                can_id = _frame.RawID,
+                can_id = _frame.ToCanID(),
                 nframes = 0
             };
 
@@ -238,7 +238,7 @@ public sealed class BCMPeriodicTx : IPeriodicTx
                 count = 0,
                 ival1 = default,
                 ival2 = default,
-                can_id = _frame.RawID,
+                can_id = _frame.ToCanID(),
                 nframes = 0
             };
             var size = Marshal.SizeOf<Libc.bcm_msg_head>();

@@ -33,7 +33,7 @@ internal static class SocketCanExtension
     {
         var frame = new Libc.can_frame
         {
-            can_id = cf.RawID,
+            can_id = cf.ToCanID(),
             can_dlc = cf.Dlc,
             __pad = 0,
             __res0 = 0,
@@ -56,7 +56,7 @@ internal static class SocketCanExtension
     {
         var frame = new Libc.canfd_frame
         {
-            can_id = ff.RawID,
+            can_id = ff.ToCanID(),
             len = (byte)CanFdFrame.DlcToLen(ff.Dlc),
             flags = (byte)((ff.BitRateSwitch ? Libc.CANFD_BRS : 0) | (ff.ErrorStateIndicator ? Libc.CANFD_ESI : 0)),
             __res0 = 0,

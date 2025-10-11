@@ -521,7 +521,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
                 any = true;
                 if (rec.CanFrame.IsErrorFrame)
                 {
-                    var raw = rec.CanFrame.RawID;
+                    var raw = rec.CanFrame.ID;
                     var span = rec.CanFrame.Data.Span;
                     var info = new DefaultCanErrorInfo(
                         PcanUtils.ToFrameErrorType(raw, span),

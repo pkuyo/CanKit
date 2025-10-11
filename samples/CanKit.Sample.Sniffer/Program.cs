@@ -69,7 +69,7 @@ namespace CanKit.Sample.Sniffer
             sb.Append("RX ");
             sb.Append(f.FrameKind == CanFrameType.CanFd ? "FD" : "CL");
             sb.Append(' ');
-            sb.Append(((f.RawID & 0x8000_0000) != 0) ? "ext" : "std");
+            sb.Append(f.IsExtendedFrame ? "ext" : "std");
             sb.Append(" id=0x").Append(f.ID.ToString("X"));
             sb.Append(" dlc=").Append(f.Dlc);
             if (f is CanFdFrame fd && fd.BitRateSwitch) sb.Append(" brs");

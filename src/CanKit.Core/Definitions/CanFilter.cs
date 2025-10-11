@@ -64,8 +64,7 @@ namespace CanKit.Core.Definitions
             {
                 return frame =>
                 {
-                    bool isExt = CanIdBits.IsExtended(frame.RawID);
-                    if ((FilterIdType == CanFilterIDType.Extend) != isExt)
+                    if ((FilterIdType == CanFilterIDType.Extend) != frame.IsExtendedFrame)
                     {
                         return false;
                     }
@@ -98,8 +97,7 @@ namespace CanKit.Core.Definitions
             {
                 return frame =>
                 {
-                    bool isExt = CanIdBits.IsExtended(frame.RawID);
-                    if ((FilterIdType == CanFilterIDType.Extend) != isExt) return false;
+                    if ((FilterIdType == CanFilterIDType.Extend) != frame.IsExtendedFrame) return false;
                     var id = frame.ID;
                     return (id & AccMask) == (AccCode & AccMask);
                 };
