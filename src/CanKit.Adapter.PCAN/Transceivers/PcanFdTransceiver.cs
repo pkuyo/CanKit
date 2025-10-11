@@ -1,18 +1,22 @@
 using System;
+using System.Runtime.CompilerServices;
+using CanKit.Adapter.PCAN.Native;
 using CanKit.Core.Abstractions;
 using CanKit.Core.Definitions;
 using Peak.Can.Basic;
+using Peak.Can.Basic.BackwardCompatibility;
 
 namespace CanKit.Adapter.PCAN.Transceivers;
 
 
 public sealed class PcanFdTransceiver : ITransceiver
 {
-    public uint Transmit(ICanBus<IBusRTOptionsConfigurator> channel, IEnumerable<ICanFrame> frames, int timeOut = 0)
+    public unsafe uint Transmit(ICanBus<IBusRTOptionsConfigurator> channel, IEnumerable<ICanFrame> frames, int timeOut = 0)
     {
         _ = timeOut;
         var ch = (PcanBus)channel;
         uint sent = 0;
+        var pMsg = stackalloc PcanBasicNative.TpcanMsgFd[1];
         foreach (var item in frames)
         {
             if (item is not CanFdFrame fd)
@@ -20,24 +24,30 @@ public sealed class PcanFdTransceiver : ITransceiver
                 throw new InvalidOperationException("PCAN FD transceiver requires CanFdFrame.");
             }
 
-            var type = MessageType.FlexibleDataRate;
+            var type = TPCANMessageType.PCAN_MESSAGE_FD;
             if (fd.IsExtendedFrame)
             {
-                type |= MessageType.Extended;
+                type |= TPCANMessageType.PCAN_MESSAGE_EXTENDED;
             }
             if (fd.BitRateSwitch)
             {
-                type |= MessageType.BitRateSwitch;
+                type |= TPCANMessageType.PCAN_MESSAGE_BRS;
             }
             if (fd.ErrorStateIndicator)
             {
-                type |= MessageType.ErrorStateIndicator;
+                type |= TPCANMessageType.PCAN_MESSAGE_ESI;
             }
 
-            var payload = fd.Data.Length == 0 ? Array.Empty<byte>() : fd.Data.ToArray();
-            var msg = new PcanMessage(fd.ID, type, fd.Dlc, payload, extendedDataLength: true);
 
-            var st = Api.Write(ch.Handle, msg);
+            PcanStatus st;
+            fixed (byte* ptr = item.Data.Span)
+            {
+                Unsafe.CopyBlock(pMsg->DATA, ptr, (uint)fd.Data.Length);
+                pMsg->ID = item.ID;
+                pMsg->MSGTYPE = type;
+                pMsg->DLC = fd.Dlc;
+                st = (PcanStatus)PcanBasicNative.CAN_WriteFD((UInt16)ch.Handle, pMsg);
+            }
             if (st == PcanStatus.OK)
             {
                 sent++;
@@ -54,39 +64,43 @@ public sealed class PcanFdTransceiver : ITransceiver
     {
         _ = timeOut;
         var ch = (PcanBus)bus;
-        var list = new List<CanReceiveData>();
         for (int i = 0; i < count; i++)
         {
-            PcanMessage pmsg;
-            ulong ts;
-            var st = Api.Read(ch.Handle, out pmsg, out ts);
-            if (st == PcanStatus.ReceiveQueueEmpty)
+            var st = PcanBasicNative.CAN_ReadFD((UInt16)ch.Handle, out TPCANMsgFD pmsg, out var timestamp);
+            if (st == TPCANStatus.PCAN_ERROR_QRCVEMPTY)
                 break;
-            if (st != PcanStatus.OK)
+            if (st != TPCANStatus.PCAN_ERROR_OK)
             {
-                PcanUtils.ThrowIfError(st, "Read(FD)", $"PCAN: receive frame failed. Channel:{((PcanBus)bus).Handle}");
+                PcanUtils.ThrowIfError((PcanStatus)st, "CAN_ReadFD()", $"PCAN: receive frame failed. Channel:{((PcanBus)bus).Handle}");
             }
 
-            var isFd = (pmsg.MsgType & MessageType.FlexibleDataRate) != 0;
+            var isFd = (pmsg.MSGTYPE & TPCANMessageType.PCAN_MESSAGE_FD) != 0;
+            var isExt = (pmsg.MSGTYPE & TPCANMessageType.PCAN_MESSAGE_EXTENDED) != 0;
+            var isErr = (pmsg.MSGTYPE & TPCANMessageType.PCAN_MESSAGE_ERRFRAME) != 0;
+            var ticks = timestamp * 10UL; // microseconds -> ticks (100ns)
+            int len;
             if (!isFd)
             {
-                // Skip classic frames in FD transceiver
+                var isRtr = (pmsg.MSGTYPE & TPCANMessageType.PCAN_MESSAGE_RTR) != 0;
+
+                len = Math.Min(pmsg.DATA.Length, pmsg.DLC);
+                var scf = len == 0 ? ReadOnlyMemory<byte>.Empty : new ReadOnlyMemory<byte>(pmsg.DATA, 0, len);
+                var cf = new CanClassicFrame(pmsg.ID, scf, isExt) { IsRemoteFrame = isRtr, IsErrorFrame = isErr };
+
+                yield return new CanReceiveData(cf) { ReceiveTimestamp = TimeSpan.FromTicks((long)ticks) };
                 continue;
             }
 
-            var isExt = (pmsg.MsgType & MessageType.Extended) != 0;
-            var brs = (pmsg.MsgType & MessageType.BitRateSwitch) != 0;
-            var esi = (pmsg.MsgType & MessageType.ErrorStateIndicator) != 0;
-            var isErr = (pmsg.MsgType & MessageType.Error) != 0;
+            var brs = (pmsg.MSGTYPE & TPCANMessageType.PCAN_MESSAGE_BRS) != 0;
+            var esi = (pmsg.MSGTYPE & TPCANMessageType.PCAN_MESSAGE_ESI) != 0;
 
-            byte[] arr = pmsg.Data;
-            var len = Math.Min(arr.Length, CanFdFrame.DlcToLen(pmsg.DLC));
-            var slice = len == 0 ? ReadOnlyMemory<byte>.Empty : new ReadOnlyMemory<byte>(arr, 0, len);
-            var frame = new CanFdFrame(pmsg.ID, slice, brs, esi) { IsExtendedFrame = isExt, IsErrorFrame = isErr };
 
-            var ticks = ts * 10UL; // microseconds -> ticks (100ns)
-            list.Add(new CanReceiveData(frame) { ReceiveTimestamp = TimeSpan.FromTicks((long)ticks) });
+            len = Math.Min(pmsg.DATA.Length, CanFdFrame.DlcToLen(pmsg.DLC));
+            var sfd = len == 0 ? ReadOnlyMemory<byte>.Empty : new ReadOnlyMemory<byte>(pmsg.DATA, 0, len);
+            var fd = new CanFdFrame(pmsg.ID, sfd, brs, esi) { IsExtendedFrame = isExt, IsErrorFrame = isErr };
+
+
+            yield return new CanReceiveData(fd) { ReceiveTimestamp = TimeSpan.FromTicks((long)ticks) };
         }
-        return list;
     }
 }

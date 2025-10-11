@@ -13,62 +13,68 @@ public sealed class SocketCanClassicTransceiver : ITransceiver
 {
     public uint Transmit(ICanBus<IBusRTOptionsConfigurator> channel, IEnumerable<ICanFrame> frames, int _ = 0)
     {
-        /*
+
         var ch = (SocketCanBus)channel;
-        var pool = ArrayPool<ICanFrame>.Shared;
-        var buf = pool.Rent();
         var totalSent = 0;
+        var index = 0;
         unsafe
         {
-
             var frameSize = Marshal.SizeOf<Libc.can_frame>();
             Libc.can_frame* fr = stackalloc Libc.can_frame[Libc.BATCH_COUNT];
             Libc.iovec* iov = stackalloc Libc.iovec[Libc.BATCH_COUNT];
             Libc.mmsghdr* msgs = stackalloc Libc.mmsghdr[Libc.BATCH_COUNT];
-            while (totalSent < batch.Length)
+            foreach (var f in frames)
             {
-                int n = Math.Min(batch.Length - totalSent, Libc.BATCH_COUNT);
-
-                for (int i = 0; i < n; i++)
+                if (index == Libc.BATCH_COUNT)
                 {
-                    var cf = (CanClassicFrame)batch[i + totalSent];
-                    fr[i] = cf.ToCanFrame();
-                    iov[i].iov_base = &fr[i];
-                    iov[i].iov_len = (UIntPtr)frameSize;
-                    msgs[i].msg_hdr = new Libc.msghdr
+                    int sent;
+                    do
                     {
-                        msg_name = null,
-                        msg_namelen = 0,
-                        msg_iov = &iov[i],
-                        msg_iovlen = (UIntPtr)1,
-                        msg_control = null,
-                        msg_controllen = UIntPtr.Zero,
-                        msg_flags = 0
-                    };
-                    msgs[i].msg_len = 0;
+                        sent = Libc.sendmmsg(ch.FileDescriptor, msgs, 64, 0);
+                    } while (sent < 0 && Libc.Errno() == Libc.EINTR);
+                    if (sent < 0)
+                    {
+                        var errno = Libc.Errno();
+                        if (errno == Libc.EAGAIN) return (uint)totalSent;
+                        Libc.ThrowErrno("sendmmsg(FD)", "Failed to send classic CAN frames");
+                    }
+                    totalSent += sent;
+                    index = 0;
+                    if (sent != Libc.BATCH_COUNT)
+                        break;
                 }
-
-                int sent;
-                do
+                var cf = (CanClassicFrame)f;
+                fr[index] = cf.ToCanFrame();
+                iov[index].iov_base = &fr[index];
+                iov[index].iov_len = (UIntPtr)frameSize;
+                msgs[index].msg_hdr = new Libc.msghdr
                 {
-                    sent = Libc.sendmmsg(ch.FileDescriptor, msgs, (uint)n, 0);
-                }
-                while (sent < 0 && Libc.Errno() == Libc.EINTR);
-                if (sent < 0)
-                {
-                    var errno = Libc.Errno();
-                    if (errno == Libc.EAGAIN) return (uint)totalSent;
-                    Libc.ThrowErrno("sendmmsg(FD)", "Failed to send classic CAN frames");
-                }
-
-                totalSent += sent;
-                if (sent != n)
-                    break;
+                    msg_name = null,
+                    msg_namelen = 0,
+                    msg_iov = &iov[index],
+                    msg_iovlen = (UIntPtr)1,
+                    msg_control = null,
+                    msg_controllen = UIntPtr.Zero,
+                    msg_flags = 0
+                };
+                msgs[index].msg_len = 0;
+                index++;
             }
+            int s;
+            do
+            {
+                s = Libc.sendmmsg(ch.FileDescriptor, msgs, (uint)index, 0);
+            } while (s < 0 && Libc.Errno() == Libc.EINTR);
+            if (s < 0)
+            {
+                var errno = Libc.Errno();
+                if (errno == Libc.EAGAIN) return (uint)totalSent;
+                Libc.ThrowErrno("sendmmsg(FD)", "Failed to send classic CAN frames");
+            }
+            totalSent += s;
+
             return (uint)totalSent;
         }
-        */
-        throw new NotImplementedException();
     }
 
     public IEnumerable<CanReceiveData> Receive(ICanBus<IBusRTOptionsConfigurator> bus, uint count = 1, int _ = -1)

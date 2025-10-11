@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using CanKit.Adapter.Kvaser.Native;
 using CanKit.Adapter.Kvaser.Utils;
 using CanKit.Core.Abstractions;
 using CanKit.Core.Definitions;
@@ -29,12 +30,19 @@ public sealed class KvaserClassicTransceiver : ITransceiver
 
             var data = cf.Data.ToArray();
             var dlc = data.Length;
-            var st = timeOut switch
+            Canlib.canStatus st;
+            unsafe
             {
-                0 => Canlib.canWrite(ch.Handle, (int)cf.ID, data, dlc, (int)flags),
-                > 0 => Canlib.canWriteWait(ch.Handle, (int)cf.ID, data, dlc, (int)flags, remainingTime),
-                < 0 => Canlib.canWriteWait(ch.Handle, (int)cf.ID, data, dlc, (int)flags, long.MaxValue),
-            };
+                fixed (byte* ptr = item.Data.Span)
+                {
+                    st = timeOut switch
+                    {
+                        0 => CanlibNative.canWrite(ch.Handle, (int)item.ID, ptr, (uint)dlc, flags),
+                        > 0 => CanlibNative.canWriteWait(ch.Handle, (int)item.ID, ptr, (uint)dlc, flags, (uint)remainingTime),
+                        < 0 => CanlibNative.canWriteWait(ch.Handle, (int)item.ID, ptr, (uint)dlc, flags, uint.MaxValue),
+                    };
+                }
+            }
             if (st == Canlib.canStatus.canOK)
             {
                 sent++;
@@ -58,9 +66,8 @@ public sealed class KvaserClassicTransceiver : ITransceiver
     public IEnumerable<CanReceiveData> Receive(ICanBus<IBusRTOptionsConfigurator> bus, uint count = 1, int timeOut = 0)
     {
         var ch = (KvaserBus)bus;
-        var list = new List<CanReceiveData>((int)count);
         var startTime = Environment.TickCount;
-        for (int i = 0; i < count; i++)
+        while (true)
         {
             var data = new byte[8];
             var remainingTime = timeOut > 0
@@ -69,6 +76,7 @@ public sealed class KvaserClassicTransceiver : ITransceiver
             int id;
             int flags;
             long time;
+            int recCount = 0;
             var st = timeOut switch
             {
                 0 => Canlib.canRead(ch.Handle, out id, data, out _, out flags, out time),
@@ -86,9 +94,9 @@ public sealed class KvaserClassicTransceiver : ITransceiver
                 // Convert using configured timer_scale (microseconds per unit)
                 var kch = (KvaserBus)bus;
                 var ticks = time * kch.Options.TimerScaleMicroseconds * 10L; // us -> ticks
-                list.Add(new CanReceiveData(frame) { ReceiveTimestamp = TimeSpan.FromTicks(ticks) });
-
-                if (list.Count == count)
+                yield return new CanReceiveData(frame) { ReceiveTimestamp = TimeSpan.FromTicks(ticks) };
+                recCount++;
+                if (recCount == count)
                 {
                     break;
                 }
@@ -108,6 +116,5 @@ public sealed class KvaserClassicTransceiver : ITransceiver
                 break;
             }
         }
-        return list;
     }
 }

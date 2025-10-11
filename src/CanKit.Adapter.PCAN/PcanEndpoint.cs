@@ -16,7 +16,6 @@ namespace CanKit.Adapter.PCAN;
 /// Examples:
 ///  - pcan://PCAN_USBBUS1
 ///  - pcan://?ch=PCAN_PCIBUS1
-///  - pcan:PCAN_USBBUS2
 /// </summary>
 [CanEndPoint("pcan", ["pcanbasic", "peak"])]
 internal static class PcanEndpoint
