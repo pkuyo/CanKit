@@ -21,10 +21,10 @@ namespace CanKit.Sample.QuickStartTxRx
             bool useFd = HasFlag(args, "--fd");
             bool brs = HasFlag(args, "--brs");
             bool extended = HasFlag(args, "--ext");
-            uint bitrate = ParseUInt(GetArg(args, "--bitrate"), 500_000);
-            uint dbitrate = ParseUInt(GetArg(args, "--dbitrate"), 2_000_000);
-            int count = (int)ParseUInt(GetArg(args, "--count"), 5);
-            bool enableRes = (ParseUInt(GetArg(args, "--res"), 1) == 1U);
+            int bitrate = ParseInt(GetArg(args, "--bitrate"), 500_000);
+            int dbitrate = ParseInt(GetArg(args, "--dbitrate"), 2_000_000);
+            int count = ParseInt(GetArg(args, "--count"), 5);
+            bool enableRes = (ParseInt(GetArg(args, "--res"), 1) == 1);
             using var txBus = CanBus.Open(tx, cfg =>
             {
                 if (useFd)
@@ -67,7 +67,7 @@ namespace CanKit.Sample.QuickStartTxRx
 
                 // Compose a demo frame
                 var payload = new byte[] { 0x11, 0x22, 0x33, 0x44 };
-                var id = extended ? 0x18DAF110u : 0x123u;
+                var id = extended ? 0x18DAF110 : 0x123;
 
                 for (int i = 0; i < count; i++)
                 {
@@ -131,7 +131,7 @@ namespace CanKit.Sample.QuickStartTxRx
             return false;
         }
 
-        private static uint ParseUInt(string? s, uint def) => uint.TryParse(s, out var v) ? v : def;
+        private static int ParseInt(string? s, int def) => int.TryParse(s, out var v) ? v : def;
 
         private static string ToHex(ReadOnlySpan<byte> span)
         {

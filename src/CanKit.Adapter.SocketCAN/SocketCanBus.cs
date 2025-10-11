@@ -178,7 +178,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
     }
 
 
-    public uint Transmit(IEnumerable<ICanFrame> frames, int timeOut = 0)
+    public int Transmit(IEnumerable<ICanFrame> frames, int timeOut = 0)
     {
         ThrowIfDisposed();
         int sendCount = 0;
@@ -186,7 +186,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
         var pollFd = new Libc.pollfd { fd = _fd, events = Libc.POLLOUT };
         var needSend = frames.ToArray();
         var wrote = _transceiver.Transmit(this, needSend.Skip(sendCount));
-        sendCount = (int)wrote;
+        sendCount = wrote;
         var remainingTime = timeOut;
         while ((timeOut < 0 || remainingTime > 0) && sendCount < needSend.Length)
         {
@@ -218,13 +218,14 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
 
         }
 
-        return (uint)sendCount;
+        return sendCount;
 
     }
 
-    public IEnumerable<CanReceiveData> Receive(uint count = 1, int timeOut = 0)
+    public IEnumerable<CanReceiveData> Receive(int count = 1, int timeOut = 0)
     {
         ThrowIfDisposed();
+        if (count < 0) throw new ArgumentOutOfRangeException(nameof(count));
         if (timeOut == 0)
             return _transceiver.Receive(this, count);
         var recList = new List<CanReceiveData>((int)count);
@@ -255,7 +256,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
                 Libc.ThrowErrno("poll(POLLIN)", "socket error");
             }
 
-            var batch = _transceiver.Receive(this, (uint)(count - recList.Count));
+            var batch = _transceiver.Receive(this, count - recList.Count);
             foreach (var item in batch)
             {
                 recList.Add(item);
@@ -266,7 +267,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
         return recList;
     }
 
-    public Task<uint> TransmitAsync(IEnumerable<ICanFrame> frames, int timeOut = 0, CancellationToken cancellationToken = default)
+    public Task<int> TransmitAsync(IEnumerable<ICanFrame> frames, int timeOut = 0, CancellationToken cancellationToken = default)
         => Task.Run(() =>
         {
             try { return Transmit(frames, timeOut); }
@@ -274,9 +275,10 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
             catch (Exception ex) { HandleBackgroundException(ex); throw; }
         }, cancellationToken);
 
-    public Task<IReadOnlyList<CanReceiveData>> ReceiveAsync(uint count = 1, int timeOut = 0, CancellationToken cancellationToken = default)
+    public Task<IReadOnlyList<CanReceiveData>> ReceiveAsync(int count = 1, int timeOut = 0, CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
+        if (count < 0) throw new ArgumentOutOfRangeException(nameof(count));
         Interlocked.Increment(ref _subscriberCount);
         Interlocked.Increment(ref _asyncConsumerCount);
         StartReceiveLoopIfNeeded();

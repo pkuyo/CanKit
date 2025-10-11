@@ -406,18 +406,18 @@ internal static class Libc
     }
     public static uint ToCanID(this CanClassicFrame frame)
     {
-        var id = frame.ID;
-        var cid = frame.IsExtendedFrame ? ((frame.ID & CAN_EFF_MASK) | CAN_EFF_FLAG)
-                               :  (frame.ID & CAN_SFF_MASK);
+        var id = (uint)frame.ID;
+        var cid = frame.IsExtendedFrame ? ((id & CAN_EFF_MASK) | CAN_EFF_FLAG)
+                               :  (id & CAN_SFF_MASK);
         if (frame.IsRemoteFrame)      cid |= CAN_RTR_FLAG;
         if (frame.IsErrorFrame)      cid |= CAN_ERR_FLAG;
         return cid;
     }
     public static uint ToCanID(this ICanFrame frame)
     {
-        var id = frame.ID;
-        var cid = frame.IsExtendedFrame ? ((frame.ID & CAN_EFF_MASK) | CAN_EFF_FLAG)
-                               :  (frame.ID & CAN_SFF_MASK);
+        var id = (uint)frame.ID;
+        var cid = frame.IsExtendedFrame ? ((id & CAN_EFF_MASK) | CAN_EFF_FLAG)
+                               :  (id & CAN_SFF_MASK);
         if (frame.IsErrorFrame)      cid |= CAN_ERR_FLAG;
         return cid;
     }

@@ -9,10 +9,10 @@ namespace CanKit.Adapter.Kvaser.Transceivers;
 
 public sealed class KvaserClassicTransceiver : ITransceiver
 {
-    public uint Transmit(ICanBus<IBusRTOptionsConfigurator> channel, IEnumerable<ICanFrame> frames, int timeOut = 0)
+    public int Transmit(ICanBus<IBusRTOptionsConfigurator> channel, IEnumerable<ICanFrame> frames, int timeOut = 0)
     {
         var ch = (KvaserBus)channel;
-        uint sent = 0;
+        int sent = 0;
         var startTime = Environment.TickCount;
         foreach (var item in frames)
         {
@@ -63,9 +63,10 @@ public sealed class KvaserClassicTransceiver : ITransceiver
         return sent;
     }
 
-    public IEnumerable<CanReceiveData> Receive(ICanBus<IBusRTOptionsConfigurator> bus, uint count = 1, int timeOut = 0)
+    public IEnumerable<CanReceiveData> Receive(ICanBus<IBusRTOptionsConfigurator> bus, int count = 1, int timeOut = 0)
     {
         var ch = (KvaserBus)bus;
+        if (count < 0) throw new ArgumentOutOfRangeException(nameof(count));
         var startTime = Environment.TickCount;
         while (true)
         {
@@ -90,7 +91,7 @@ public sealed class KvaserClassicTransceiver : ITransceiver
                 var isRtr = (flags & Canlib.canMSG_RTR) != 0;
                 var isErr = (flags & Canlib.canMSG_ERROR_FRAME) != 0;
                 var buf = data;
-                var frame = new CanClassicFrame((uint)id, buf, isExt) { IsRemoteFrame = isRtr, IsErrorFrame = isErr };
+                var frame = new CanClassicFrame(id, buf, isExt) { IsRemoteFrame = isRtr, IsErrorFrame = isErr };
                 // Convert using configured timer_scale (microseconds per unit)
                 var kch = (KvaserBus)bus;
                 var ticks = time * kch.Options.TimerScaleMicroseconds * 10L; // us -> ticks

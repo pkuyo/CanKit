@@ -27,7 +27,7 @@ namespace CanKit.Core.Abstractions
         /// The number of frames successfully written to the hardware (may be less than requested if a timeout occurs).
         /// （成功写入硬件的帧数量；若发生超时，可能小于请求数量。）
         /// </returns>
-        uint Transmit(
+        int Transmit(
             ICanBus<IBusRTOptionsConfigurator> channel,
             IEnumerable<ICanFrame> frames,
             int timeOut = 0);
@@ -48,7 +48,7 @@ namespace CanKit.Core.Abstractions
         /// </returns>
         IEnumerable<CanReceiveData> Receive(
             ICanBus<IBusRTOptionsConfigurator> bus,
-            uint count = 1,
+            int count = 1,
             int timeOut = 0);
     }
 }

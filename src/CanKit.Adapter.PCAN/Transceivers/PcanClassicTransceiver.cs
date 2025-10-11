@@ -10,11 +10,11 @@ namespace CanKit.Adapter.PCAN.Transceivers;
 
 public sealed class PcanClassicTransceiver : ITransceiver
 {
-    public unsafe uint Transmit(ICanBus<IBusRTOptionsConfigurator> channel, IEnumerable<ICanFrame> frames, int timeOut = 0)
+    public unsafe int Transmit(ICanBus<IBusRTOptionsConfigurator> channel, IEnumerable<ICanFrame> frames, int timeOut = 0)
     {
         _ = timeOut;
         var ch = (PcanBus)channel;
-        uint sent = 0;
+        int sent = 0;
         var pMsg = stackalloc PcanBasicNative.TpcanMsg[1];
         foreach (var item in frames)
         {
@@ -39,7 +39,7 @@ public sealed class PcanClassicTransceiver : ITransceiver
             fixed (byte* ptr = item.Data.Span)
             {
                 Unsafe.CopyBlock(pMsg->DATA, ptr, dlc);
-                pMsg->ID = item.ID;
+                pMsg->ID = (uint)item.ID;
                 pMsg->MSGTYPE = type;
                 pMsg->LEN = dlc;
                 st = (PcanStatus)PcanBasicNative.CAN_Write((UInt16)ch.Handle, pMsg);
@@ -57,10 +57,11 @@ public sealed class PcanClassicTransceiver : ITransceiver
         return sent;
     }
 
-    public IEnumerable<CanReceiveData> Receive(ICanBus<IBusRTOptionsConfigurator> bus, uint count = 1, int timeOut = 0)
+    public IEnumerable<CanReceiveData> Receive(ICanBus<IBusRTOptionsConfigurator> bus, int count = 1, int timeOut = 0)
     {
         _ = timeOut;
         var ch = (PcanBus)bus;
+        if (count < 0) throw new ArgumentOutOfRangeException(nameof(count));
         for (int i = 0; i < count; i++)
         {
             var st = PcanBasicNative.CAN_Read((UInt16)ch.Handle, out TPCANMsg pmsg, out var timestamp);
@@ -76,7 +77,7 @@ public sealed class PcanClassicTransceiver : ITransceiver
 
             var len = Math.Min(pmsg.DATA.Length, pmsg.LEN);
             var slice = len == 0 ? ReadOnlyMemory<byte>.Empty : new ReadOnlyMemory<byte>(pmsg.DATA, 0, len);
-            var frame = new CanClassicFrame(pmsg.ID, slice, isExt) { IsRemoteFrame = isRtr, IsErrorFrame = isErr };
+            var frame = new CanClassicFrame((int)pmsg.ID, slice, isExt) { IsRemoteFrame = isRtr, IsErrorFrame = isErr };
 
             // Assume PCAN timestamp is in microseconds. Convert to TimeSpan
             yield return new CanReceiveData(frame) { ReceiveTimestamp = timestamp.ToTimeSpan() };

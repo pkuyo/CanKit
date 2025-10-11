@@ -215,14 +215,14 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
         => throw new CanFeatureNotSupportedException(CanFeature.ErrorCounters, Options.Features);
 
     //non-support time out
-    public uint Transmit(IEnumerable<ICanFrame> frames, int _ = 0)
+    public int Transmit(IEnumerable<ICanFrame> frames, int _ = 0)
     {
         ThrowIfDisposed();
         return _transceiver.Transmit(this, frames);
     }
 
     //non-support time out
-    public Task<uint> TransmitAsync(IEnumerable<ICanFrame> frames, int _ = 0, CancellationToken cancellationToken = default)
+    public Task<int> TransmitAsync(IEnumerable<ICanFrame> frames, int _ = 0, CancellationToken cancellationToken = default)
         => Task.Run(() =>
         {
             try
@@ -234,14 +234,15 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
         }, cancellationToken);
 
 
-    public IEnumerable<CanReceiveData> Receive(uint count = 1, int timeOut = 0)
+    public IEnumerable<CanReceiveData> Receive(int count = 1, int timeOut = 0)
     {
         return ReceiveAsync(count, timeOut).GetAwaiter().GetResult();
     }
 
-    public Task<IReadOnlyList<CanReceiveData>> ReceiveAsync(uint count = 1, int timeOut = 0, CancellationToken cancellationToken = default)
+    public Task<IReadOnlyList<CanReceiveData>> ReceiveAsync(int count = 1, int timeOut = 0, CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
+        if (count < 0) throw new ArgumentOutOfRangeException(nameof(count));
         Interlocked.Increment(ref _subscriberCount);
         Interlocked.Increment(ref _asyncConsumerCount);
         StartReceiveLoopIfNeeded();
@@ -529,7 +530,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
                         PcanUtils.ToProtocolViolationType(raw, span),
                         PcanUtils.ToErrorLocation(span),
                         DateTime.Now,
-                        raw,
+                        (uint)raw,
                         rec.ReceiveTimestamp,
                         PcanUtils.ToDirection(span),
                         null,

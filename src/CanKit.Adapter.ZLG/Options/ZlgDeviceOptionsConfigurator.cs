@@ -42,7 +42,7 @@ public sealed class ZlgBusInitConfigurator
         return this;
     }
 
-    public override ZlgBusInitConfigurator AccMask(uint accCode, uint accMask, CanFilterIDType idType = CanFilterIDType.Standard)
+    public override ZlgBusInitConfigurator AccMask(int accCode, int accMask, CanFilterIDType idType = CanFilterIDType.Standard)
     {
         if ((EnabledSoftwareFallback & CanFeature.Filters) == 0)
         {
@@ -60,7 +60,7 @@ public sealed class ZlgBusInitConfigurator
         return base.AccMask(accCode, accMask, idType);
     }
 
-    public override ZlgBusInitConfigurator RangeFilter(uint min, uint max, CanFilterIDType idType = CanFilterIDType.Standard)
+    public override ZlgBusInitConfigurator RangeFilter(int min, int max, CanFilterIDType idType = CanFilterIDType.Standard)
     {
         if ((EnabledSoftwareFallback & CanFeature.Filters) == 0)
         {

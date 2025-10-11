@@ -50,9 +50,10 @@ namespace CanKit.Adapter.ZLG.Utils
 
         internal static unsafe CanClassicFrame FromReceiveData(this can_frame frame)
         {
-            var result = new CanClassicFrame((frame.can_id & ZLGCAN.CAN_EFF_MASK) == 1 ?
-                frame.can_id & ZLGCAN.CAN_EFF_MASK :
-                frame.can_id & ZLGCAN.CAN_SFF_MASK, new byte[frame.can_dlc]);
+            var id = ((frame.can_id & ZLGCAN.CAN_EFF_MASK) == 1)
+                ? (frame.can_id & ZLGCAN.CAN_EFF_MASK)
+                : (frame.can_id & ZLGCAN.CAN_SFF_MASK);
+            var result = new CanClassicFrame((int)id, new byte[frame.can_dlc]);
             fixed (byte* ptr = result.Data.Span)
             {
                 Unsafe.CopyBlockUnaligned(ptr, frame.data, (uint)result.Data.Length);
@@ -62,9 +63,10 @@ namespace CanKit.Adapter.ZLG.Utils
 
         internal static unsafe CanFdFrame FromReceiveData(this canfd_frame frame)
         {
-            var result = new CanFdFrame((frame.can_id & ZLGCAN.CAN_EFF_MASK) == 1 ?
-                    frame.can_id & ZLGCAN.CAN_EFF_MASK :
-                    frame.can_id & ZLGCAN.CAN_SFF_MASK, new byte[frame.len],
+            var id = ((frame.can_id & ZLGCAN.CAN_EFF_MASK) == 1)
+                ? (frame.can_id & ZLGCAN.CAN_EFF_MASK)
+                : (frame.can_id & ZLGCAN.CAN_SFF_MASK);
+            var result = new CanFdFrame((int)id, new byte[frame.len],
                 (frame.flags & CANFD_BRS) != 0,
                 (frame.flags & CANFD_ESI) != 0);
             fixed (byte* ptr = result.Data.Span)
@@ -135,18 +137,18 @@ namespace CanKit.Adapter.ZLG.Utils
 
         public static uint ToCanID(this CanClassicFrame frame)
         {
-            var id = frame.ID;
-            var cid = frame.IsExtendedFrame ? ((frame.ID & CAN_EFF_MASK) | CAN_EFF_FLAG)
-                : (frame.ID & CAN_SFF_MASK);
-            if (frame.IsErrorFrame) cid |= CAN_RTR_FLAG;
+            var id = (uint)frame.ID;
+            var cid = frame.IsExtendedFrame ? ((id & CAN_EFF_MASK) | CAN_EFF_FLAG)
+                : (id & CAN_SFF_MASK);
+            if (frame.IsRemoteFrame) cid |= CAN_RTR_FLAG;
             if (frame.IsErrorFrame) cid |= CAN_ERR_FLAG;
             return cid;
         }
         public static uint ToCanID(this CanFdFrame frame)
         {
-            var id = frame.ID;
-            var cid = frame.IsExtendedFrame ? ((frame.ID & CAN_EFF_MASK) | CAN_EFF_FLAG)
-                : (frame.ID & CAN_SFF_MASK);
+            var id = (uint)frame.ID;
+            var cid = frame.IsExtendedFrame ? ((id & CAN_EFF_MASK) | CAN_EFF_FLAG)
+                : (id & CAN_SFF_MASK);
             if (frame.IsErrorFrame) cid |= CAN_ERR_FLAG;
             return cid;
         }

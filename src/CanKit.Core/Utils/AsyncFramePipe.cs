@@ -47,8 +47,9 @@ public sealed class AsyncFramePipe
     }
 
     public async Task<IReadOnlyList<CanReceiveData>> ReceiveBatchAsync(
-        uint count, int timeoutMs, CancellationToken cancellationToken)
+        int count, int timeoutMs, CancellationToken cancellationToken)
     {
+        if (count < 0) throw new ArgumentOutOfRangeException(nameof(count));
         var list = new List<CanReceiveData>((int)Math.Max(1, Math.Min(count, 256)));
 
         if (timeoutMs == 0)
@@ -185,8 +186,9 @@ public sealed class AsyncFramePipe
     }
 
     public async Task<IReadOnlyList<CanReceiveData>> ReceiveBatchAsync(
-        uint count, int timeoutMs, CancellationToken cancellationToken)
+        int count, int timeoutMs, CancellationToken cancellationToken)
     {
+        if (count < 0) throw new ArgumentOutOfRangeException(nameof(count));
         var list = new List<CanReceiveData>((int)Math.Max(1, Math.Min(count, 256)));
 
         if (timeoutMs == 0)

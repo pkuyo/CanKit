@@ -15,15 +15,15 @@ namespace CanKit.Sample.PeriodicTx
         {
             // Usage: PeriodicTx --endpoint <ep> [--id 0x123] [--ext] [--fd] [--brs] [--data 11223344] [--period 100] [--count -1] [--res 1]
             var endpoint = GetArg(args, "--endpoint") ?? "virtual://alpha/1";
-            uint id = ParseHex(GetArg(args, "--id"), 0x123);
+            int id = ParseHex(GetArg(args, "--id"), 0x123);
             bool ext = HasFlag(args, "--ext");
             bool fd = HasFlag(args, "--fd");
             bool brs = HasFlag(args, "--brs");
             bool echo = HasFlag(args, "--echo");
             var dataHex = GetArg(args, "--data") ?? "11223344";
-            int period = (int)ParseUInt(GetArg(args, "--period"), 100);
+            int period = ParseInt(GetArg(args, "--period"), 100);
             int repeat = int.TryParse(GetArg(args, "--count"), out var c) ? c : -1;
-            bool enableRes = (ParseUInt(GetArg(args, "--res"), 1) == 1U);
+            bool enableRes = (ParseInt(GetArg(args, "--res"), 1) == 1);
             var payload = ParseHexBytes(dataHex);
 
             using var bus = CanBus.Open(endpoint, cfg =>
@@ -70,13 +70,13 @@ namespace CanKit.Sample.PeriodicTx
 
         private static string? GetArg(string[] args, string name) => args.SkipWhile(a => !string.Equals(a, name, StringComparison.OrdinalIgnoreCase)).Skip(1).FirstOrDefault();
         private static bool HasFlag(string[] args, string name) => args.Any(a => string.Equals(a, name, StringComparison.OrdinalIgnoreCase));
-        private static uint ParseUInt(string? s, uint def) => uint.TryParse(s, out var v) ? v : def;
-        private static uint ParseHex(string? s, uint def)
+        private static int ParseInt(string? s, int def) => int.TryParse(s, out var v) ? v : def;
+        private static int ParseHex(string? s, int def)
         {
             if (string.IsNullOrWhiteSpace(s)) return def;
             s = s!.Trim();
             if (s.StartsWith("0x", StringComparison.OrdinalIgnoreCase)) s = s.Substring(2);
-            return uint.TryParse(s, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var v) ? v : def;
+            return int.TryParse(s, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var v) ? v : def;
         }
         private static ReadOnlyMemory<byte> ParseHexBytes(string hex)
         {

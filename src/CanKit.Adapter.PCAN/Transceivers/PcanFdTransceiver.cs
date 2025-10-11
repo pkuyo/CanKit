@@ -11,11 +11,11 @@ namespace CanKit.Adapter.PCAN.Transceivers;
 
 public sealed class PcanFdTransceiver : ITransceiver
 {
-    public unsafe uint Transmit(ICanBus<IBusRTOptionsConfigurator> channel, IEnumerable<ICanFrame> frames, int timeOut = 0)
+    public unsafe int Transmit(ICanBus<IBusRTOptionsConfigurator> channel, IEnumerable<ICanFrame> frames, int timeOut = 0)
     {
         _ = timeOut;
         var ch = (PcanBus)channel;
-        uint sent = 0;
+        int sent = 0;
         var pMsg = stackalloc PcanBasicNative.TpcanMsgFd[1];
         foreach (var item in frames)
         {
@@ -43,7 +43,7 @@ public sealed class PcanFdTransceiver : ITransceiver
             fixed (byte* ptr = item.Data.Span)
             {
                 Unsafe.CopyBlock(pMsg->DATA, ptr, (uint)fd.Data.Length);
-                pMsg->ID = item.ID;
+                pMsg->ID = (uint)item.ID;
                 pMsg->MSGTYPE = type;
                 pMsg->DLC = fd.Dlc;
                 st = (PcanStatus)PcanBasicNative.CAN_WriteFD((UInt16)ch.Handle, pMsg);
@@ -60,10 +60,11 @@ public sealed class PcanFdTransceiver : ITransceiver
         return sent;
     }
 
-    public IEnumerable<CanReceiveData> Receive(ICanBus<IBusRTOptionsConfigurator> bus, uint count = 1, int timeOut = 0)
+    public IEnumerable<CanReceiveData> Receive(ICanBus<IBusRTOptionsConfigurator> bus, int count = 1, int timeOut = 0)
     {
         _ = timeOut;
         var ch = (PcanBus)bus;
+        if (count < 0) throw new ArgumentOutOfRangeException(nameof(count));
         for (int i = 0; i < count; i++)
         {
             var st = PcanBasicNative.CAN_ReadFD((UInt16)ch.Handle, out TPCANMsgFD pmsg, out var timestamp);
@@ -85,7 +86,7 @@ public sealed class PcanFdTransceiver : ITransceiver
 
                 len = Math.Min(pmsg.DATA.Length, pmsg.DLC);
                 var scf = len == 0 ? ReadOnlyMemory<byte>.Empty : new ReadOnlyMemory<byte>(pmsg.DATA, 0, len);
-                var cf = new CanClassicFrame(pmsg.ID, scf, isExt) { IsRemoteFrame = isRtr, IsErrorFrame = isErr };
+                var cf = new CanClassicFrame((int)pmsg.ID, scf, isExt) { IsRemoteFrame = isRtr, IsErrorFrame = isErr };
 
                 yield return new CanReceiveData(cf) { ReceiveTimestamp = TimeSpan.FromTicks((long)ticks) };
                 continue;
@@ -97,7 +98,7 @@ public sealed class PcanFdTransceiver : ITransceiver
 
             len = Math.Min(pmsg.DATA.Length, CanFdFrame.DlcToLen(pmsg.DLC));
             var sfd = len == 0 ? ReadOnlyMemory<byte>.Empty : new ReadOnlyMemory<byte>(pmsg.DATA, 0, len);
-            var fd = new CanFdFrame(pmsg.ID, sfd, brs, esi) { IsExtendedFrame = isExt, IsErrorFrame = isErr };
+            var fd = new CanFdFrame(unchecked((int)pmsg.ID), sfd, brs, esi) { IsExtendedFrame = isExt, IsErrorFrame = isErr };
 
 
             yield return new CanReceiveData(fd) { ReceiveTimestamp = TimeSpan.FromTicks((long)ticks) };

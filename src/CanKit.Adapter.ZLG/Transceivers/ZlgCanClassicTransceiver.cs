@@ -12,14 +12,14 @@ namespace CanKit.Adapter.ZLG.Transceivers
 {
     public sealed class ZlgCanClassicTransceiver : IZlgTransceiver
     {
-        public uint Transmit(ICanBus<IBusRTOptionsConfigurator> channel,
+        public int Transmit(ICanBus<IBusRTOptionsConfigurator> channel,
             IEnumerable<ICanFrame> frames, int _ = 0)
         {
             unsafe
             {
                 var transmitData = stackalloc ZLGCAN.ZCAN_Transmit_Data[ZLGCAN.BATCH_COUNT];
                 var index = 0;
-                long sent = 0;
+                int sent = 0;
                 var echo = channel.Options.WorkMode == ChannelWorkMode.Echo;
                 foreach (var f in frames)
                 {
@@ -28,7 +28,7 @@ namespace CanKit.Adapter.ZLG.Transceivers
                         var re = ZLGCAN.ZCAN_Transmit(((ZlgCanBus)channel).NativeHandle, transmitData, ZLGCAN.BATCH_COUNT);
                         index = 0;
                         if (re != ZLGCAN.BATCH_COUNT)
-                            return (uint)sent;
+                            return sent;
                         sent += ZLGCAN.BATCH_COUNT;
                     }
                     if (f is not CanClassicFrame cf)
@@ -36,21 +36,22 @@ namespace CanKit.Adapter.ZLG.Transceivers
                     cf.ToTransmitData(echo, transmitData, index);
                     index++;
                 }
-                return (uint)(sent + ZLGCAN.ZCAN_Transmit(((ZlgCanBus)channel).NativeHandle, transmitData, (uint)index));
+                return (int)(sent + ZLGCAN.ZCAN_Transmit(((ZlgCanBus)channel).NativeHandle, transmitData, (uint)index));
             }
 
         }
 
-        public IEnumerable<CanReceiveData> Receive(ICanBus<IBusRTOptionsConfigurator> bus, uint count = 1, int timeOut = 0)
+        public IEnumerable<CanReceiveData> Receive(ICanBus<IBusRTOptionsConfigurator> bus, int count = 1, int timeOut = 0)
         {
             var pool = ArrayPool<ZLGCAN.ZCAN_Receive_Data>.Shared;
             var buf = pool.Rent(ZLGCAN.BATCH_COUNT);
             try
             {
+                if (count < 0) throw new ArgumentOutOfRangeException(nameof(count));
                 while (count > 0)
                 {
 
-                    var recCount = ZLGCAN.ZCAN_Receive(((ZlgCanBus)bus).NativeHandle, buf, count, timeOut);
+                    var recCount = ZLGCAN.ZCAN_Receive(((ZlgCanBus)bus).NativeHandle, buf, (uint)count, timeOut);
                     if (recCount == 0)
                         yield break;
                     for (int i = 0; i < recCount; i++)
@@ -61,7 +62,7 @@ namespace CanKit.Adapter.ZLG.Transceivers
                             ReceiveTimestamp = TimeSpan.FromTicks((long)buf[i].timestamp * 10)
                         };
                     }
-                    count -= recCount;
+                    count -= (int)recCount;
                 }
             }
             finally

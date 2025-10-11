@@ -165,7 +165,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
             "canIoCtl(FLUSH_TX_BUFFER)", "Failed to flush TX buffer");
     }
 
-    public uint Transmit(IEnumerable<ICanFrame> frames, int timeOut = 0)
+    public int Transmit(IEnumerable<ICanFrame> frames, int timeOut = 0)
     {
         ThrowIfDisposed();
         try
@@ -214,11 +214,12 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
         };
     }
 
-    public IEnumerable<CanReceiveData> Receive(uint count = 1, int timeOut = 0)
+    public IEnumerable<CanReceiveData> Receive(int count = 1, int timeOut = 0)
     {
         ThrowIfDisposed();
         try
         {
+            if (count < 0) throw new ArgumentOutOfRangeException(nameof(count));
             return _transceiver.Receive(this, count, timeOut);
         }
         catch (Exception ex)
@@ -598,7 +599,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
         }
     }
 
-    public Task<uint> TransmitAsync(IEnumerable<ICanFrame> frames, int timeOut = 0, CancellationToken cancellationToken = default)
+    public Task<int> TransmitAsync(IEnumerable<ICanFrame> frames, int timeOut = 0, CancellationToken cancellationToken = default)
         => Task.Run(() =>
         {
             try
@@ -609,9 +610,10 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
             catch (Exception ex) { HandleBackgroundException(ex); throw; }
         }, cancellationToken);
 
-    public Task<IReadOnlyList<CanReceiveData>> ReceiveAsync(uint count = 1, int timeOut = 0, CancellationToken cancellationToken = default)
+    public Task<IReadOnlyList<CanReceiveData>> ReceiveAsync(int count = 1, int timeOut = 0, CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
+        if (count < 0) throw new ArgumentOutOfRangeException(nameof(count));
         Interlocked.Increment(ref _subscriberCount);
         Interlocked.Increment(ref _asyncConsumerCount);
         StartReceiveLoopIfNeeded();

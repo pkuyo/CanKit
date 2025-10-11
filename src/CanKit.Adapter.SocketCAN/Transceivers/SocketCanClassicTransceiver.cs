@@ -11,7 +11,7 @@ namespace CanKit.Adapter.SocketCAN.Transceivers;
 
 public sealed class SocketCanClassicTransceiver : ITransceiver
 {
-    public uint Transmit(ICanBus<IBusRTOptionsConfigurator> channel, IEnumerable<ICanFrame> frames, int _ = 0)
+    public int Transmit(ICanBus<IBusRTOptionsConfigurator> channel, IEnumerable<ICanFrame> frames, int _ = 0)
     {
 
         var ch = (SocketCanBus)channel;
@@ -35,7 +35,7 @@ public sealed class SocketCanClassicTransceiver : ITransceiver
                     if (sent < 0)
                     {
                         var errno = Libc.Errno();
-                        if (errno == Libc.EAGAIN) return (uint)totalSent;
+                        if (errno == Libc.EAGAIN) return totalSent;
                         Libc.ThrowErrno("sendmmsg(FD)", "Failed to send classic CAN frames");
                     }
                     totalSent += sent;
@@ -68,20 +68,21 @@ public sealed class SocketCanClassicTransceiver : ITransceiver
             if (s < 0)
             {
                 var errno = Libc.Errno();
-                if (errno == Libc.EAGAIN) return (uint)totalSent;
+                if (errno == Libc.EAGAIN) return totalSent;
                 Libc.ThrowErrno("sendmmsg(FD)", "Failed to send classic CAN frames");
             }
             totalSent += s;
 
-            return (uint)totalSent;
+            return totalSent;
         }
     }
 
-    public IEnumerable<CanReceiveData> Receive(ICanBus<IBusRTOptionsConfigurator> bus, uint count = 1, int _ = -1)
+    public IEnumerable<CanReceiveData> Receive(ICanBus<IBusRTOptionsConfigurator> bus, int count = 1, int _ = -1)
     {
         var result = new List<CanReceiveData>();
         var ch = (SocketCanBus)bus;
         var preferTs = ch.Options.PreferKernelTimestamp;
+        if (count < 0) throw new ArgumentOutOfRangeException(nameof(count));
         bool inf = count == 0;
         unsafe
         {
@@ -124,7 +125,7 @@ public sealed class SocketCanClassicTransceiver : ITransceiver
                     Libc.ThrowErrno("recvmmsg(FD)", "Failed to read classic CAN frames");
                 }
 
-                count -= (uint)recvd;
+                count -= recvd;
                 for (int i = 0; i < recvd; i++)
                 {
                     var msg = msgs[i].msg_hdr;
@@ -150,9 +151,10 @@ public sealed class SocketCanClassicTransceiver : ITransceiver
         {
             Buffer.MemoryCopy(fr[idx].data, pData, data.Length, Math.Min(dataLen, 64));
         }
-        result.Add(new CanReceiveData(new CanClassicFrame((fr[idx].can_id & Libc.CAN_EFF_MASK) == 1 ?
-                fr[idx].can_id & Libc.CAN_EFF_MASK :
-                fr[idx].can_id & Libc.CAN_SFF_MASK, data))
+        var rawId = ((fr[idx].can_id & Libc.CAN_EFF_MASK) == 1)
+            ? (fr[idx].can_id & Libc.CAN_EFF_MASK)
+            : (fr[idx].can_id & Libc.CAN_SFF_MASK);
+        result.Add(new CanReceiveData(new CanClassicFrame(unchecked((int)rawId), data))
         { ReceiveTimestamp = tsSpan });
     }
 

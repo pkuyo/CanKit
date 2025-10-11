@@ -99,10 +99,10 @@ namespace CanKit.Core.Definitions
         public int ReceiveLoopStopDelayMs => Options.ReceiveLoopStopDelayMs;
 
 
-        IBusInitOptionsConfigurator IBusInitOptionsConfigurator.Baud(uint baud, uint? clockMHz, ushort? samplePointPermille)
+        IBusInitOptionsConfigurator IBusInitOptionsConfigurator.Baud(int baud, uint? clockMHz, ushort? samplePointPermille)
             => Baud(baud, samplePointPermille);
 
-        IBusInitOptionsConfigurator IBusInitOptionsConfigurator.Fd(uint abit, uint dbit,
+        IBusInitOptionsConfigurator IBusInitOptionsConfigurator.Fd(int abit, int dbit,
             uint? clockMHz,
             ushort? nominalSamplePointPermille,
             ushort? dataSamplePointPermille)
@@ -114,7 +114,7 @@ namespace CanKit.Core.Definitions
         IBusInitOptionsConfigurator IBusInitOptionsConfigurator.TimingFd(CanFdTiming timing)
             => TimingFd(timing);
 
-        IBusInitOptionsConfigurator IBusInitOptionsConfigurator.BusUsage(uint periodMs)
+        IBusInitOptionsConfigurator IBusInitOptionsConfigurator.BusUsage(int periodMs)
             => BusUsage(periodMs);
 
         IBusInitOptionsConfigurator IBusInitOptionsConfigurator.SetTxRetryPolicy(TxRetryPolicy retryPolicy)
@@ -136,10 +136,10 @@ namespace CanKit.Core.Definitions
             => SoftwareFeaturesFallBack(features);
 
 
-        IBusInitOptionsConfigurator IBusInitOptionsConfigurator.RangeFilter(uint min, uint max, CanFilterIDType idType)
+        IBusInitOptionsConfigurator IBusInitOptionsConfigurator.RangeFilter(int min, int max, CanFilterIDType idType)
             => RangeFilter(min, max, idType);
 
-        IBusInitOptionsConfigurator IBusInitOptionsConfigurator.AccMask(uint accCode, uint accMask, CanFilterIDType idType)
+        IBusInitOptionsConfigurator IBusInitOptionsConfigurator.AccMask(int accCode, int accMask, CanFilterIDType idType)
             => AccMask(accCode, accMask, idType);
 
         IBusInitOptionsConfigurator IBusInitOptionsConfigurator.EnableErrorInfo()
@@ -170,24 +170,27 @@ namespace CanKit.Core.Definitions
         }
 
 
-        public virtual TSelf Baud(uint baud,
+        public virtual TSelf Baud(int baud,
             uint? clockMHz = null,
             ushort? samplePointPermille = null)
         {
             CanKitErr.ThrowIfNotSupport(_feature, CanFeature.CanClassic);
+            if (baud < 0) throw new ArgumentOutOfRangeException(nameof(baud));
             Options.BitTiming = new CanBusTiming(
-                new CanClassicTiming(CanPhaseTiming.Target(baud, samplePointPermille), clockMHz));
+                new CanClassicTiming(CanPhaseTiming.Target((uint)baud, samplePointPermille), clockMHz));
             return (TSelf)this;
         }
 
-        public virtual TSelf Fd(uint abit, uint dbit, uint? clockMHz = null,
+        public virtual TSelf Fd(int abit, int dbit, uint? clockMHz = null,
             ushort? nominalSamplePointPermille = null,
             ushort? dataSamplePointPermille = null)
         {
             CanKitErr.ThrowIfNotSupport(_feature, CanFeature.CanFd);
+            if (abit < 0) throw new ArgumentOutOfRangeException(nameof(abit));
+            if (dbit < 0) throw new ArgumentOutOfRangeException(nameof(dbit));
             Options.BitTiming = new CanBusTiming(
-                new CanFdTiming(CanPhaseTiming.Target(abit, nominalSamplePointPermille),
-                    CanPhaseTiming.Target(dbit, dataSamplePointPermille), clockMHz));
+                new CanFdTiming(CanPhaseTiming.Target((uint)abit, nominalSamplePointPermille),
+                    CanPhaseTiming.Target((uint)dbit, dataSamplePointPermille), clockMHz));
             return (TSelf)this;
         }
 
@@ -207,11 +210,12 @@ namespace CanKit.Core.Definitions
             return (TSelf)this;
         }
 
-        public virtual TSelf BusUsage(uint periodMs = 1000)
+        public virtual TSelf BusUsage(int periodMs = 1000)
         {
             CanKitErr.ThrowIfNotSupport(_feature, CanFeature.BusUsage);
+            if (periodMs < 0) throw new ArgumentOutOfRangeException(nameof(periodMs));
             Options.BusUsageEnabled = true;
-            Options.BusUsagePeriodTime = periodMs;
+            Options.BusUsagePeriodTime = (uint)periodMs;
             return (TSelf)this;
         }
 
@@ -265,23 +269,26 @@ namespace CanKit.Core.Definitions
             return (TSelf)this;
         }
 
-        public virtual TSelf RangeFilter(uint min, uint max, CanFilterIDType idType = CanFilterIDType.Standard)
+        public virtual TSelf RangeFilter(int min, int max, CanFilterIDType idType = CanFilterIDType.Standard)
         {
             CanKitErr.ThrowIfNotSupport(_feature, CanFeature.Filters);
+            if (min < 0) throw new ArgumentOutOfRangeException(nameof(min));
+            if (max < 0) throw new ArgumentOutOfRangeException(nameof(max));
             if (min > max)
             {
                 throw new ArgumentException($"Invalid range: min ({min}) must be less than or equal to max ({max}).",
                     nameof(max));
             }
-            Options.Filter.filterRules.Add(new FilterRule.Range(min, max, idType));
+            Options.Filter.filterRules.Add(new FilterRule.Range((uint)min, (uint)max, idType));
             return (TSelf)this;
 
         }
 
-        public virtual TSelf AccMask(uint accCode, uint accMask, CanFilterIDType idType = CanFilterIDType.Standard)
+        public virtual TSelf AccMask(int accCode, int accMask, CanFilterIDType idType = CanFilterIDType.Standard)
         {
             CanKitErr.ThrowIfNotSupport(_feature, CanFeature.Filters);
-            Options.Filter.filterRules.Add(new FilterRule.Mask(accCode, accMask, idType));
+            // For AccMask, do not throw on negative; allow patterns like -1 (0xFFFFFFFF)
+            Options.Filter.filterRules.Add(new FilterRule.Mask((uint)accCode, (uint)accMask, idType));
             return (TSelf)this;
         }
 

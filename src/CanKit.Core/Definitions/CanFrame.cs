@@ -26,7 +26,7 @@ namespace CanKit.Core.Definitions
         /// <summary>
         /// Gets or initializes the actual ID with flag bits stripped. (获取或初始化剔除标志位后的实际 ID。)
         /// </summary>
-        uint ID { get; init; }
+        int ID { get; init; }
 
         /// <summary>
         /// Indicates whether this is an error frame. (是否为错误帧。)
@@ -118,12 +118,12 @@ namespace CanKit.Core.Definitions
         /// <summary>
         /// Gets the ID with flag bits removed. (获取去掉标志位后的 ID。)
         /// </summary>
-        public static uint GetId(uint raw) => raw & ID_MASK;
+        public static int GetId(uint raw) => (int)(raw & ID_MASK);
 
         /// <summary>
         /// Writes the ID into the raw value. (将 ID 写入原始值中。)
         /// </summary>
-        public static uint SetId(uint raw, uint id) => (raw & ~ID_MASK) | (id & ID_MASK);
+        public static uint SetId(uint raw, int id) => (raw & ~ID_MASK) | ((uint)id & ID_MASK);
 
         public static bool Get(uint raw, int bit) => (raw & (1u << bit)) != 0;
 
@@ -151,10 +151,11 @@ namespace CanKit.Core.Definitions
         /// <param name="dataInit">Frame payload. (帧数据。)</param>
         /// <param name="isExtendedFrame">Indicates whether this is an extended frame. (指示是否为扩展帧。)</param>
         /// <param name="isRemoteFrame">Indicates whether this is an remote frame.（指示是否为远程帧。）</param>
-        public CanClassicFrame(uint id, ReadOnlyMemory<byte> dataInit = default,
+        public CanClassicFrame(int id, ReadOnlyMemory<byte> dataInit = default,
             bool isExtendedFrame = false,
             bool isRemoteFrame = false)
         {
+            if (id < 0) throw new ArgumentOutOfRangeException(nameof(id));
             ID = id;
             IsRemoteFrame = isRemoteFrame;
             IsExtendedFrame = isExtendedFrame;
@@ -197,10 +198,14 @@ namespace CanKit.Core.Definitions
         /// <summary>
         /// Gets or initializes the actual ID with flag bits stripped. (获取或初始化剔除标志位后的实际 ID。)
         /// </summary>
-        public uint ID
+        public int ID
         {
             get => CanIdBits.GetId(RawID);
-            init => RawID = CanIdBits.SetId(RawID, value);
+            init
+            {
+                if (value < 0) throw new ArgumentOutOfRangeException(nameof(ID));
+                RawID = CanIdBits.SetId(RawID, value);
+            }
         }
 
         /// <summary>
@@ -252,8 +257,9 @@ namespace CanKit.Core.Definitions
         /// <param name="BRS">Indicates whether Bit Rate Switching (BRS).（是否启用BRS。）</param>
         /// <param name="ESI">ndicates whether the transmitter is in Error State.（发送方是否处于错误状态。）</param>
         /// <param name="isExtendedFrame">Indicates whether this is an extended frame. (指示是否为扩展帧。)</param>
-        public CanFdFrame(uint id, ReadOnlyMemory<byte> dataInit = default, bool BRS = false, bool ESI = false, bool isExtendedFrame = false)
+        public CanFdFrame(int id, ReadOnlyMemory<byte> dataInit = default, bool BRS = false, bool ESI = false, bool isExtendedFrame = false)
         {
+            if (id < 0) throw new ArgumentOutOfRangeException(nameof(id));
             ID = id;
             _data = Validate(dataInit);
             IsExtendedFrame = isExtendedFrame;
@@ -274,10 +280,14 @@ namespace CanKit.Core.Definitions
         /// <summary>
         /// Gets or initializes the actual ID with flag bits stripped. (获取或初始化剔除标志位后的实际 ID。)
         /// </summary>
-        public uint ID
+        public int ID
         {
             get => CanIdBits.GetId(RawID);
-            init => RawID = CanIdBits.SetId(RawID, value);
+            init
+            {
+                if (value < 0) throw new ArgumentOutOfRangeException(nameof(ID));
+                RawID = CanIdBits.SetId(RawID, value);
+            }
         }
 
         /// <summary>

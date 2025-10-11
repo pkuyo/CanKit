@@ -87,7 +87,7 @@ public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, IBusOwnershi
     }
 
     //non-support time out
-    public uint Transmit(IEnumerable<ICanFrame> frames, int timeOut = 0)
+    public int Transmit(IEnumerable<ICanFrame> frames, int timeOut = 0)
     {
         ThrowIfDisposed();
         return _transceiver.Transmit(this, frames, timeOut);
@@ -105,13 +105,14 @@ public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, IBusOwnershi
 
     public CanErrorCounters ErrorCounters() => _hub.GetErrorCounters();
 
-    public IEnumerable<CanReceiveData> Receive(uint count = 1, int timeOut = 0)
+    public IEnumerable<CanReceiveData> Receive(int count = 1, int timeOut = 0)
     {
         ThrowIfDisposed();
+        if (count < 0) throw new ArgumentOutOfRangeException(nameof(count));
         return ReceiveAsync(count, timeOut).GetAwaiter().GetResult();
     }
 
-    public Task<uint> TransmitAsync(IEnumerable<ICanFrame> frames, int timeOut = 0, CancellationToken cancellationToken = default)
+    public Task<int> TransmitAsync(IEnumerable<ICanFrame> frames, int timeOut = 0, CancellationToken cancellationToken = default)
         => Task.Run(() =>
         {
             try
@@ -122,9 +123,10 @@ public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, IBusOwnershi
             catch (Exception ex) { HandleBackgroundException(ex); throw; }
         }, cancellationToken);
 
-    public Task<IReadOnlyList<CanReceiveData>> ReceiveAsync(uint count = 1, int timeOut = 0, CancellationToken cancellationToken = default)
+    public Task<IReadOnlyList<CanReceiveData>> ReceiveAsync(int count = 1, int timeOut = 0, CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
+        if (count < 0) throw new ArgumentOutOfRangeException(nameof(count));
         Interlocked.Increment(ref _subscriberCount);
         Interlocked.Increment(ref _asyncConsumerCount);
         return _asyncRx.ReceiveBatchAsync(count, timeOut, cancellationToken)

@@ -19,10 +19,10 @@ namespace CanKit.Sample.Sniffer
             bool useFd = HasFlag(args, "--fd");
             var range = GetArg(args, "--range");
             var mask = GetArg(args, "--mask");
-            uint bitrate = ParseUInt(GetArg(args, "--bitrate"), 500_000);
-            uint dbitrate = ParseUInt(GetArg(args, "--dbitrate"), 2_000_000);
-            int seconds = (int)ParseUInt(GetArg(args, "--seconds"), 0);
-            bool enableRes = (ParseUInt(GetArg(args, "--res"), 1) == 1U);
+            int bitrate = ParseInt(GetArg(args, "--bitrate"), 500_000);
+            int dbitrate = ParseInt(GetArg(args, "--dbitrate"), 2_000_000);
+            int seconds = ParseInt(GetArg(args, "--seconds"), 0);
+            bool enableRes = (ParseInt(GetArg(args, "--res"), 1) == 1);
 
             using var bus = CanBus.Open(endpoint, cfg =>
             {
@@ -79,7 +79,7 @@ namespace CanKit.Sample.Sniffer
             Console.WriteLine(sb.ToString());
         }
 
-        private static (uint min, uint max, bool ext) ParseRange(string s)
+        private static (int min, int max, bool ext) ParseRange(string s)
         {
             // Example: 0x100-0x200 or 100-200 or x:ext
 #if NET8_0_OR_GREATER
@@ -89,15 +89,15 @@ namespace CanKit.Sample.Sniffer
 #endif
             if (p.Length >= 2)
             {
-                var min = Convert.ToUInt32(p[0], 16);
-                var max = Convert.ToUInt32(p[1].Split([':'])[0], 16);
+                var min = Convert.ToInt32(p[0], 16);
+                var max = Convert.ToInt32(p[1].Split([':'])[0], 16);
                 bool ext = s.EndsWith(":ext", StringComparison.OrdinalIgnoreCase);
                 return (min, max, ext);
             }
             return (0, 0x7FF, false);
         }
 
-        private static (uint acc, uint mask, bool ext) ParseMask(string s)
+        private static (int acc, int mask, bool ext) ParseMask(string s)
         {
             // Example: 0x123:0x7FF or 123:7FF or :ext appended
 #if NET8_0_OR_GREATER
@@ -105,15 +105,14 @@ namespace CanKit.Sample.Sniffer
 #else
             var p = s.Split([':'], StringSplitOptions.RemoveEmptyEntries);
 #endif
-            uint acc = p.Length > 0 ? Convert.ToUInt32(p[0], 16) : 0;
-            uint mask = p.Length > 1 ? Convert.ToUInt32(p[1], 16) : 0x7FF;
+            int acc = p.Length > 0 ? Convert.ToInt32(p[0], 16) : 0;
+            int mask = p.Length > 1 ? Convert.ToInt32(p[1], 16) : 0x7FF;
             bool ext = s.EndsWith(":ext", StringComparison.OrdinalIgnoreCase);
             return (acc, mask, ext);
         }
 
         private static string? GetArg(string[] args, string name) => args.SkipWhile(a => !string.Equals(a, name, StringComparison.OrdinalIgnoreCase)).Skip(1).FirstOrDefault();
         private static bool HasFlag(string[] args, string name) => args.Any(a => string.Equals(a, name, StringComparison.OrdinalIgnoreCase));
-        private static uint ParseUInt(string? s, uint def) => uint.TryParse(s, out var v) ? v : def;
+        private static int ParseInt(string? s, int def) => int.TryParse(s, out var v) ? v : def;
     }
 }
-

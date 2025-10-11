@@ -59,7 +59,7 @@ public sealed class SocketCanBusInitConfigurator
         return this;
     }
 
-    public override SocketCanBusInitConfigurator RangeFilter(uint min, uint max, CanFilterIDType idType = CanFilterIDType.Standard)
+    public override SocketCanBusInitConfigurator RangeFilter(int min, int max, CanFilterIDType idType = CanFilterIDType.Standard)
     {
         if ((Options.EnabledSoftwareFallback & CanFeature.Filters) == 0)
         {

@@ -6,7 +6,7 @@ namespace CanKit.Adapter.PCAN;
 
 public static class PcanUtils
 {
-    public static CanProtocolViolationType ToProtocolViolationType(uint id, ReadOnlySpan<byte> data)
+    public static CanProtocolViolationType ToProtocolViolationType(int id, ReadOnlySpan<byte> data)
     {
         var t = CanProtocolViolationType.None;
 
@@ -75,7 +75,7 @@ public static class PcanUtils
     }
 
 
-    public static FrameErrorType ToFrameErrorType(uint id, ReadOnlySpan<byte> data)
+    public static FrameErrorType ToFrameErrorType(int id, ReadOnlySpan<byte> data)
     {
         var t = FrameErrorType.Unknown;
 

@@ -9,10 +9,10 @@ namespace CanKit.Adapter.Kvaser.Transceivers;
 
 public sealed class KvaserFdTransceiver : ITransceiver
 {
-    public uint Transmit(ICanBus<IBusRTOptionsConfigurator> channel, IEnumerable<ICanFrame> frames, int timeOut = 0)
+    public int Transmit(ICanBus<IBusRTOptionsConfigurator> channel, IEnumerable<ICanFrame> frames, int timeOut = 0)
     {
         var ch = (KvaserBus)channel;
-        uint sent = 0;
+        int sent = 0;
         var startTime = Environment.TickCount;
         foreach (var item in frames)
         {
@@ -70,9 +70,10 @@ public sealed class KvaserFdTransceiver : ITransceiver
         return sent;
     }
 
-    public IEnumerable<CanReceiveData> Receive(ICanBus<IBusRTOptionsConfigurator> bus, uint count = 1, int timeOut = 0)
+    public IEnumerable<CanReceiveData> Receive(ICanBus<IBusRTOptionsConfigurator> bus, int count = 1, int timeOut = 0)
     {
         var ch = (KvaserBus)bus;
+        if (count < 0) throw new ArgumentOutOfRangeException(nameof(count));
         var startTime = Environment.TickCount;
         var recCount = 0;
         while (true)
@@ -104,12 +105,12 @@ public sealed class KvaserFdTransceiver : ITransceiver
                 ICanFrame frame;
                 if (isFd)
                 {
-                    frame = new CanFdFrame((uint)id, data, brs, esi)
+                    frame = new CanFdFrame(id, data, brs, esi)
                     { IsExtendedFrame = isExt, IsErrorFrame = isErr };
                 }
                 else
                 {
-                    frame = new CanClassicFrame((uint)id, data)
+                    frame = new CanClassicFrame(id, data)
                     { IsExtendedFrame = isExt, IsErrorFrame = isErr, IsRemoteFrame = isRtr };
                 }
 

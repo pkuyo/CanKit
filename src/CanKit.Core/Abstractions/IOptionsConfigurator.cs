@@ -218,7 +218,7 @@ public interface IBusInitOptionsConfigurator : ICanOptionsConfigurator
     /// <param name="clockMHz">device clock frequency (设备时钟频率）。</param>
     /// <param name="samplePointPermille"></param>
     /// <returns>Configurator (配置器本身)。</returns>
-    IBusInitOptionsConfigurator Baud(uint baud,
+    IBusInitOptionsConfigurator Baud(int baud,
         uint? clockMHz = null,
         ushort? samplePointPermille = null);
 
@@ -231,7 +231,7 @@ public interface IBusInitOptionsConfigurator : ICanOptionsConfigurator
     /// <param name="nominalSamplePointPermille"></param>
     /// <param name="dataSamplePointPermille"></param>
     /// <returns>Configurator (配置器本身)。</returns>
-    IBusInitOptionsConfigurator Fd(uint abit, uint dbit,
+    IBusInitOptionsConfigurator Fd(int abit, int dbit,
         uint? clockMHz = null,
         ushort? nominalSamplePointPermille = null,
         ushort? dataSamplePointPermille = null);
@@ -255,7 +255,7 @@ public interface IBusInitOptionsConfigurator : ICanOptionsConfigurator
     /// </summary>
     /// <param name="periodMs">Period in ms (统计周期毫秒)。</param>
     /// <returns>Configurator (配置器本身)。</returns>
-    IBusInitOptionsConfigurator BusUsage(uint periodMs = 1000);
+    IBusInitOptionsConfigurator BusUsage(int periodMs = 1000);
 
     /// <summary>
     /// Enable/disable internal termination (启用/禁用内部终端电阻)。
@@ -306,7 +306,7 @@ public interface IBusInitOptionsConfigurator : ICanOptionsConfigurator
     /// <param name="max">Max ID (最大 ID)。</param>
     /// <param name="idType">ID type (ID 类型)。</param>
     /// <returns>Configurator (配置器本身)。</returns>
-    IBusInitOptionsConfigurator RangeFilter(uint min, uint max, CanFilterIDType idType);
+    IBusInitOptionsConfigurator RangeFilter(int min, int max, CanFilterIDType idType);
 
     /// <summary>
     /// Configure filter by acc-code/mask (通过验收码/屏蔽码设置过滤器)。
@@ -315,7 +315,7 @@ public interface IBusInitOptionsConfigurator : ICanOptionsConfigurator
     /// <param name="accMask">Acceptance mask (屏蔽码)。</param>
     /// <param name="idType">ID type (ID 类型)。</param>
     /// <returns>Configurator (配置器本身)。</returns>
-    IBusInitOptionsConfigurator AccMask(uint accCode, uint accMask, CanFilterIDType idType);
+    IBusInitOptionsConfigurator AccMask(int accCode, int accMask, CanFilterIDType idType);
 
     /// <summary>
     /// Enable error information monitoring (启用错误信息监听)。

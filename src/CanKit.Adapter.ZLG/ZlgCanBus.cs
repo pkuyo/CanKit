@@ -139,14 +139,14 @@ namespace CanKit.Adapter.ZLG
             ZlgErr.ThrowIfError(ZLGCAN.ZCAN_ClearBuffer(_nativeHandle), nameof(ZLGCAN.ZCAN_ClearBuffer), _nativeHandle);
         }
 
-        public uint Transmit(IEnumerable<ICanFrame> frames, int timeOut = 0)
+        public int Transmit(IEnumerable<ICanFrame> frames, int timeOut = 0)
         {
             ThrowIfDisposed();
             try
             {
                 var list = frames.ToArray();
                 bool isFirst = true;
-                uint result = 0;
+                int result = 0;
                 var startTime = Environment.TickCount;
                 do
                 {
@@ -155,7 +155,7 @@ namespace CanKit.Adapter.ZLG
                     else
                         Thread.Sleep(Math.Min(Environment.TickCount - startTime, Options.PollingInterval));
 
-                    var count = _transceiver.Transmit(this, new ArraySegment<ICanFrame>(list, (int)result, list.Length - (int)result));
+                    var count = _transceiver.Transmit(this, new ArraySegment<ICanFrame>(list, result, list.Length - result));
                     result += count;
                 } while (result < list.Length && Environment.TickCount - startTime <= timeOut);
 
@@ -194,11 +194,12 @@ namespace CanKit.Adapter.ZLG
             };
         }
 
-        public IEnumerable<CanReceiveData> Receive(uint count = 1, int timeOut = 0)
+        public IEnumerable<CanReceiveData> Receive(int count = 1, int timeOut = 0)
         {
             ThrowIfDisposed();
             IEnumerable<CanReceiveData> Iterator()
             {
+                if (count < 0) throw new ArgumentOutOfRangeException(nameof(count));
                 using var e = _transceiver.Receive(this, count, timeOut).GetEnumerator();
                 while (true)
                 {
@@ -631,7 +632,7 @@ namespace CanKit.Adapter.ZLG
                     var count = GetReceiveCount();
                     if (count > 0)
                     {
-                        var frames = Receive(Math.Min(count, batch));
+                        var frames = Receive((int)Math.Min((uint)count, batch));
                         var useSw = (Options.EnabledSoftwareFallback & CanFeature.Filters) != 0
                                     && Options.Filter.SoftwareFilterRules.Count > 0;
                         var pred = useSw ? _softwareFilterPredicate : null;
@@ -680,19 +681,20 @@ namespace CanKit.Adapter.ZLG
             }
         }
 
-        public Task<uint> TransmitAsync(IEnumerable<ICanFrame> frames, int timeOut = 0, CancellationToken cancellationToken = default)
+        public Task<int> TransmitAsync(IEnumerable<ICanFrame> frames, int timeOut = 0, CancellationToken cancellationToken = default)
             => Task.Run(() =>
             {
                 try { return Transmit(frames, timeOut); }
                 catch (Exception ex) { HandleBackgroundException(ex); throw; }
             }, cancellationToken);
 
-        public Task<IReadOnlyList<CanReceiveData>> ReceiveAsync(uint count = 1, int timeOut = 0, CancellationToken cancellationToken = default)
+        public Task<IReadOnlyList<CanReceiveData>> ReceiveAsync(int count = 1, int timeOut = 0, CancellationToken cancellationToken = default)
         {
             ThrowIfDisposed();
             Interlocked.Increment(ref _subscriberCount);
             Interlocked.Increment(ref _asyncConsumerCount);
             CheckSubscribers(true);
+            if (count < 0) throw new ArgumentOutOfRangeException(nameof(count));
             return _asyncRx.ReceiveBatchAsync(count, timeOut, cancellationToken)
                 .ContinueWith(t =>
                 {

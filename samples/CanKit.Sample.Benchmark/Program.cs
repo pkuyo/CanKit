@@ -17,13 +17,13 @@ namespace CanKit.Sample.Benchmark
             // Usage: Benchmark [--src <ep>] [--dst <ep>] [--frames 10000] [--len 8] [--fd] [--brs]  [--bitrate 500000] [--dbitrate 2000000] [--res 1]
             var src = GetArg(args, "--src") ?? "virtual://alpha/0";
             var dst = GetArg(args, "--dst") ?? "virtual://alpha/1";
-            int frames = (int)ParseUInt(GetArg(args, "--frames"), 50_000);
-            uint bitrate = ParseUInt(GetArg(args, "--bitrate"), 500_000);
-            uint dbitrate = ParseUInt(GetArg(args, "--dbitrate"), 2_000_000);
-            int len = (int)ParseUInt(GetArg(args, "--len"), 8);
+            int frames = ParseInt(GetArg(args, "--frames"), 50_000);
+            int bitrate = ParseInt(GetArg(args, "--bitrate"), 500_000);
+            int dbitrate = ParseInt(GetArg(args, "--dbitrate"), 2_000_000);
+            int len = ParseInt(GetArg(args, "--len"), 8);
             bool fd = HasFlag(args, "--fd");
             bool brs = HasFlag(args, "--brs");
-            bool enableRes = (ParseUInt(GetArg(args, "--res"), 1) == 1U);
+            bool enableRes = (ParseInt(GetArg(args, "--res"), 1) == 1);
             int sleepMsOverride = int.TryParse(GetArg(args, "--sleepms"), out var s) ? s : -1;
             double util = double.TryParse(GetArg(args, "--util"), NumberStyles.Float, CultureInfo.InvariantCulture, out var u) ? u : 0.70;
             double stuff = double.TryParse(GetArg(args, "--stuff"), NumberStyles.Float, CultureInfo.InvariantCulture, out var st) ? st : 1.20;
@@ -78,7 +78,7 @@ namespace CanKit.Sample.Benchmark
                 done.TrySetResult(received);
             }, cts.Token);
 #endif
-            var id = 0x100u;
+            var id = 0x100;
             var payload = new byte[Math.Max(0, Math.Min(len, fd ? 64 : 8))];
             for (int i = 0; i < payload.Length; i++) payload[i] = (byte)(i & 0xFF);
             var frame = fd ? (ICanFrame)new CanFdFrame(id, payload, BRS: brs, ESI: false) : new CanClassicFrame(id, payload);
@@ -119,7 +119,7 @@ namespace CanKit.Sample.Benchmark
         }
 
 
-        private static double FrameTimeUsEstimate(bool isFd, bool brsOn, int bytes, uint arbBitrate, uint dataBitrate, double stuffFactor)
+        private static double FrameTimeUsEstimate(bool isFd, bool brsOn, int bytes, int arbBitrate, int dataBitrate, double stuffFactor)
         {
             bytes = Math.Max(0, Math.Min(bytes, isFd ? 64 : 8));
             if (!isFd)
@@ -138,6 +138,6 @@ namespace CanKit.Sample.Benchmark
         }
         private static string? GetArg(string[] args, string name) => args.SkipWhile(a => !string.Equals(a, name, StringComparison.OrdinalIgnoreCase)).Skip(1).FirstOrDefault();
         private static bool HasFlag(string[] args, string name) => args.Any(a => string.Equals(a, name, StringComparison.OrdinalIgnoreCase));
-        private static uint ParseUInt(string? s, uint def) => uint.TryParse(s, out var v) ? v : def;
+        private static int ParseInt(string? s, int def) => int.TryParse(s, out var v) ? v : def;
     }
 }
