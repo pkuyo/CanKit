@@ -178,7 +178,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
     }
 
 
-    public uint Transmit(IEnumerable<CanTransmitData> frames, int timeOut = 0)
+    public uint Transmit(IEnumerable<ICanFrame> frames, int timeOut = 0)
     {
         ThrowIfDisposed();
         int sendCount = 0;
@@ -213,7 +213,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
             }
 
             wrote = _transceiver.Transmit(this,
-                new ArraySegment<CanTransmitData>(needSend, sendCount, needSend.Length - sendCount));
+                new ArraySegment<ICanFrame>(needSend, sendCount, needSend.Length - sendCount));
             sendCount += (int)wrote;
 
         }
@@ -266,7 +266,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
         return recList;
     }
 
-    public Task<uint> TransmitAsync(IEnumerable<CanTransmitData> frames, int timeOut = 0, CancellationToken cancellationToken = default)
+    public Task<uint> TransmitAsync(IEnumerable<ICanFrame> frames, int timeOut = 0, CancellationToken cancellationToken = default)
         => Task.Run(() =>
         {
             try { return Transmit(frames, timeOut); }
@@ -339,7 +339,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
         return default;
     }
 
-    public IPeriodicTx TransmitPeriodic(CanTransmitData frame, PeriodicTxOptions options)
+    public IPeriodicTx TransmitPeriodic(ICanFrame frame, PeriodicTxOptions options)
     {
         ThrowIfDisposed();
         return new BCMPeriodicTx(this, frame, options, Options);

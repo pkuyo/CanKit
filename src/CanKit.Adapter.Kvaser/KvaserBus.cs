@@ -165,7 +165,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
             "canIoCtl(FLUSH_TX_BUFFER)", "Failed to flush TX buffer");
     }
 
-    public uint Transmit(IEnumerable<CanTransmitData> frames, int timeOut = 0)
+    public uint Transmit(IEnumerable<ICanFrame> frames, int timeOut = 0)
     {
         ThrowIfDisposed();
         try
@@ -178,7 +178,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
         }
     }
 
-    public IPeriodicTx TransmitPeriodic(CanTransmitData frame, PeriodicTxOptions options)
+    public IPeriodicTx TransmitPeriodic(ICanFrame frame, PeriodicTxOptions options)
     {
         ThrowIfDisposed();
         if (KvaserPeriodicTx.TryStart(this, frame, options, out var tx))
@@ -598,7 +598,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
         }
     }
 
-    public Task<uint> TransmitAsync(IEnumerable<CanTransmitData> frames, int timeOut = 0, CancellationToken cancellationToken = default)
+    public Task<uint> TransmitAsync(IEnumerable<ICanFrame> frames, int timeOut = 0, CancellationToken cancellationToken = default)
         => Task.Run(() =>
         {
             try

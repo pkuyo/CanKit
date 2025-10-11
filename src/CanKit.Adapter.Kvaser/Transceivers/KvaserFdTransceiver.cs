@@ -8,21 +8,21 @@ namespace CanKit.Adapter.Kvaser.Transceivers;
 
 public sealed class KvaserFdTransceiver : ITransceiver
 {
-    public uint Transmit(ICanBus<IBusRTOptionsConfigurator> channel, IEnumerable<CanTransmitData> frames, int timeOut = 0)
+    public uint Transmit(ICanBus<IBusRTOptionsConfigurator> channel, IEnumerable<ICanFrame> frames, int timeOut = 0)
     {
         var ch = (KvaserBus)channel;
         uint sent = 0;
         var startTime = Environment.TickCount;
         foreach (var item in frames)
         {
-            var data = item.CanFrame.Data.ToArray();
+            var data = item.Data.ToArray();
             var remainingTime = timeOut > 0
                 ? Math.Max(0, timeOut - (Environment.TickCount - startTime))
                 : timeOut;
             //Canlib.canWrite use data length as DLC
-            var dlc = item.CanFrame.Data.Length;
+            var dlc = item.Data.Length;
             var flags = 0U;
-            if (item.CanFrame is CanFdFrame fd)
+            if (item is CanFdFrame fd)
             {
                 flags = Canlib.canFDMSG_FDF;
                 flags |= (channel.Options.TxRetryPolicy == TxRetryPolicy.NoRetry) ? (uint)Canlib.canMSG_SINGLE_SHOT : 0;
@@ -30,7 +30,7 @@ public sealed class KvaserFdTransceiver : ITransceiver
                 if (fd.BitRateSwitch) flags |= Canlib.canFDMSG_BRS;
                 if (fd.ErrorStateIndicator) flags |= Canlib.canFDMSG_ESI;
             }
-            else if (item.CanFrame is CanClassicFrame classic)
+            else if (item is CanClassicFrame classic)
             {
                 if (classic.IsExtendedFrame) flags |= Canlib.canMSG_EXT;
                 if (classic.IsRemoteFrame) flags |= Canlib.canMSG_RTR;
@@ -38,9 +38,9 @@ public sealed class KvaserFdTransceiver : ITransceiver
 
             var st = timeOut switch
             {
-                0 => Canlib.canWrite(ch.Handle, (int)item.CanFrame.ID, data, dlc, (int)flags),
-                > 0 => Canlib.canWriteWait(ch.Handle, (int)item.CanFrame.ID, data, dlc, (int)flags, remainingTime),
-                < 0 => Canlib.canWriteWait(ch.Handle, (int)item.CanFrame.ID, data, dlc, (int)flags, long.MaxValue),
+                0 => Canlib.canWrite(ch.Handle, (int)item.ID, data, dlc, (int)flags),
+                > 0 => Canlib.canWriteWait(ch.Handle, (int)item.ID, data, dlc, (int)flags, remainingTime),
+                < 0 => Canlib.canWriteWait(ch.Handle, (int)item.ID, data, dlc, (int)flags, long.MaxValue),
             };
             if (st == Canlib.canStatus.canOK)
             {

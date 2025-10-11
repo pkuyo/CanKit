@@ -12,7 +12,7 @@ namespace CanKit.Adapter.SocketCAN.Transceivers;
 
 public sealed class SocketCanFdTransceiver : ITransceiver
 {
-    public uint Transmit(ICanBus<IBusRTOptionsConfigurator> channel, IEnumerable<CanTransmitData> frames, int _ = 0)
+    public uint Transmit(ICanBus<IBusRTOptionsConfigurator> channel, IEnumerable<ICanFrame> frames, int _ = 0)
     {
         var ch = (SocketCanBus)channel;
         var batch = frames.ToArray();
@@ -33,7 +33,7 @@ public sealed class SocketCanFdTransceiver : ITransceiver
 
                 for (int i = 0; i < n; i++)
                 {
-                    var f = batch[i+totalSent].CanFrame;
+                    var f = batch[i+totalSent];
                     if (f is CanFdFrame fdf)
                     {
                         fdBuf[i] = fdf.ToCanFrame();

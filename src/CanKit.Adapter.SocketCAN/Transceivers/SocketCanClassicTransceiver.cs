@@ -11,11 +11,11 @@ namespace CanKit.Adapter.SocketCAN.Transceivers;
 
 public sealed class SocketCanClassicTransceiver : ITransceiver
 {
-    public uint Transmit(ICanBus<IBusRTOptionsConfigurator> channel, IEnumerable<CanTransmitData> frames, int _ = 0)
+    public uint Transmit(ICanBus<IBusRTOptionsConfigurator> channel, IEnumerable<ICanFrame> frames, int _ = 0)
     {
         /*
         var ch = (SocketCanBus)channel;
-        var pool = ArrayPool<CanTransmitData>.Shared;
+        var pool = ArrayPool<ICanFrame>.Shared;
         var buf = pool.Rent();
         var totalSent = 0;
         unsafe
@@ -31,7 +31,7 @@ public sealed class SocketCanClassicTransceiver : ITransceiver
 
                 for (int i = 0; i < n; i++)
                 {
-                    var cf = (CanClassicFrame)batch[i + totalSent].CanFrame;
+                    var cf = (CanClassicFrame)batch[i + totalSent];
                     fr[i] = cf.ToCanFrame();
                     iov[i].iov_base = &fr[i];
                     iov[i].iov_len = (UIntPtr)frameSize;

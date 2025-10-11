@@ -40,7 +40,7 @@ public interface IPeriodicTx : IDisposable
     /// <param name="frame">New frame to send, null to keep unchanged。</param>
     /// <param name="period">New period, null to keep unchanged。</param>
     /// <param name="repeatCount">New remaining count, null to keep unchanged。</param>
-    void Update(CanTransmitData? frame = null, TimeSpan? period = null, int? repeatCount = null);
+    void Update(ICanFrame? frame = null, TimeSpan? period = null, int? repeatCount = null);
 
     /// <summary>
     /// Raised when the task finishes due to reaching the repeat count.
@@ -48,4 +48,3 @@ public interface IPeriodicTx : IDisposable
     /// </summary>
     event EventHandler? Completed;
 }
-

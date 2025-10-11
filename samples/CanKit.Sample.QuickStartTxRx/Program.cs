@@ -76,7 +76,7 @@ namespace CanKit.Sample.QuickStartTxRx
                         ? new CanFdFrame(id, data, BRS: brs, ESI: false) { IsExtendedFrame = extended }
                         : new CanClassicFrame(id, data, isExtendedFrame: extended);
 
-                    var sent = await txBus.TransmitAsync(new[] { new CanTransmitData(f) });
+                    var sent = await txBus.TransmitAsync(new[] { f });
                     Console.WriteLine($"TX {i + 1}/{count}: id=0x{id:X} dlc={f.Dlc} kind={f.FrameKind} sent={sent}");
 
                     await Task.Delay(100);
@@ -152,4 +152,3 @@ namespace CanKit.Sample.QuickStartTxRx
         private static char GetHex(byte v) => (char)(v < 10 ? ('0' + v) : ('A' + (v - 10)));
     }
 }
-

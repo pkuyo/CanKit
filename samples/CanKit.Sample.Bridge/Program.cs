@@ -43,14 +43,14 @@ namespace CanKit.Sample.Bridge
 #if NET8_0_OR_GREATER
             await foreach (var e in from.GetFramesAsync(ct))
             {
-                await to.TransmitAsync(new[] { new CanTransmitData(e.CanFrame) }, 0, ct);
+                await to.TransmitAsync(new[] { e.CanFrame }, 0, ct);
             }
 #else
             while (!ct.IsCancellationRequested)
             {
                 var list = await from.ReceiveAsync(32, 50, ct);
                 foreach (var e in list)
-                    await to.TransmitAsync(new[] { new CanTransmitData(e.CanFrame) }, 0, ct);
+                    await to.TransmitAsync(new[] { e.CanFrame }, 0, ct);
             }
 #endif
         }
@@ -61,4 +61,3 @@ namespace CanKit.Sample.Bridge
         private static uint ParseUInt(string? s, uint def) => uint.TryParse(s, out var v) ? v : def;
     }
 }
-

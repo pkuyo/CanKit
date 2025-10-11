@@ -102,8 +102,8 @@ namespace CanKit.Sample.Benchmark
                     int sleepMs = (int)Math.Round(batchUs / 1000.0);
                     if (sleepMs > 0 && sent > 0) Thread.Sleep(sleepMs);
                 }
-                var list = new CanTransmitData[take];
-                for (int i = 0; i < take; i++) list[i] = new CanTransmitData(frame);
+                var list = new ICanFrame[take];
+                for (int i = 0; i < take; i++) list[i] = frame;
                 await tx.TransmitAsync(list, -1);
                 sent += take;
             }
@@ -141,4 +141,3 @@ namespace CanKit.Sample.Benchmark
         private static uint ParseUInt(string? s, uint def) => uint.TryParse(s, out var v) ? v : def;
     }
 }
-

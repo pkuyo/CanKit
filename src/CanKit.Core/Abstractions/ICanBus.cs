@@ -45,7 +45,7 @@ namespace CanKit.Core.Abstractions
         /// （超时时间，单位毫秒；-1 表示无限等待，0 表示不等待立即返回。实际行为取决于适配器/驱动，并非所有硬件都会遵循。）
         /// </param>
         /// <returns>Number of frames accepted by driver (被底层接受的帧数)。</returns>
-        uint Transmit(IEnumerable<CanTransmitData> frames, int timeOut = 0);
+        uint Transmit(IEnumerable<ICanFrame> frames, int timeOut = 0);
 
         /// <summary>
         /// Asynchronously transmit one or more CAN frames (异步发送一个或多个 CAN 帧)
@@ -58,7 +58,7 @@ namespace CanKit.Core.Abstractions
         /// </param>
         /// <param name="cancellationToken">Cancellation (取消令牌)</param>
         /// <returns>Number of frames accepted by driver (被底层接受的帧数)</returns>
-        Task<uint> TransmitAsync(IEnumerable<CanTransmitData> frames, int timeOut = 0, System.Threading.CancellationToken cancellationToken = default);
+        Task<uint> TransmitAsync(IEnumerable<ICanFrame> frames, int timeOut = 0, System.Threading.CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Schedule a periodic transmit of a single CAN frame.
@@ -67,7 +67,7 @@ namespace CanKit.Core.Abstractions
         /// <param name="frame">The frame to transmit periodically (需要周期发送的帧)。</param>
         /// <param name="options">Periodic transmit options (周期发送参数)。</param>
         /// <returns>A handle to control the periodic task (用于控制周期任务的句柄)。</returns>
-        IPeriodicTx TransmitPeriodic(CanTransmitData frame, PeriodicTxOptions options);
+        IPeriodicTx TransmitPeriodic(ICanFrame frame, PeriodicTxOptions options);
 
         /// <summary>
         /// Get bus usage ratio (获取总线利用率)。

@@ -87,13 +87,13 @@ public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, IBusOwnershi
     }
 
     //non-support time out
-    public uint Transmit(IEnumerable<CanTransmitData> frames, int timeOut = 0)
+    public uint Transmit(IEnumerable<ICanFrame> frames, int timeOut = 0)
     {
         ThrowIfDisposed();
         return _transceiver.Transmit(this, frames, timeOut);
     }
 
-    public IPeriodicTx TransmitPeriodic(CanTransmitData frame, PeriodicTxOptions options)
+    public IPeriodicTx TransmitPeriodic(ICanFrame frame, PeriodicTxOptions options)
     {
         ThrowIfDisposed();
         if ((Options.EnabledSoftwareFallback & CanFeature.CyclicTx) == 0)
@@ -111,7 +111,7 @@ public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, IBusOwnershi
         return ReceiveAsync(count, timeOut).GetAwaiter().GetResult();
     }
 
-    public Task<uint> TransmitAsync(IEnumerable<CanTransmitData> frames, int timeOut = 0, CancellationToken cancellationToken = default)
+    public Task<uint> TransmitAsync(IEnumerable<ICanFrame> frames, int timeOut = 0, CancellationToken cancellationToken = default)
         => Task.Run(() =>
         {
             try

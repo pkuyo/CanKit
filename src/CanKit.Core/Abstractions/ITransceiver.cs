@@ -29,7 +29,7 @@ namespace CanKit.Core.Abstractions
         /// </returns>
         uint Transmit(
             ICanBus<IBusRTOptionsConfigurator> channel,
-            IEnumerable<CanTransmitData> frames,
+            IEnumerable<ICanFrame> frames,
             int timeOut = 0);
 
         /// <summary>

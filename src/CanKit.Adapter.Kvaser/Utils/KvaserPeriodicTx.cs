@@ -14,11 +14,11 @@ public sealed class KvaserPeriodicTx : IPeriodicTx
     private ICanFrame _frame;
     private bool _stopped;
 
-    private KvaserPeriodicTx(KvaserBus bus, int bufNo, CanTransmitData frame, PeriodicTxOptions options)
+    private KvaserPeriodicTx(KvaserBus bus, int bufNo, ICanFrame frame, PeriodicTxOptions options)
     {
         _bus = bus;
         _bufNo = bufNo;
-        _frame = frame.CanFrame;
+        _frame = frame;
 
         Period = options.Period <= TimeSpan.Zero ? TimeSpan.FromMilliseconds(1) : options.Period;
         RepeatCount = options.Repeat;
@@ -32,7 +32,7 @@ public sealed class KvaserPeriodicTx : IPeriodicTx
         StartBuffer();
     }
 
-    public static bool TryStart(KvaserBus bus, CanTransmitData frame, PeriodicTxOptions options, out KvaserPeriodicTx? periodicTx)
+    public static bool TryStart(KvaserBus bus, ICanFrame frame, PeriodicTxOptions options, out KvaserPeriodicTx? periodicTx)
     {
         periodicTx = null;
 
@@ -73,11 +73,11 @@ public sealed class KvaserPeriodicTx : IPeriodicTx
 
     }
 
-    public void Update(CanTransmitData? frame = null, TimeSpan? period = null, int? repeatCount = null)
+    public void Update(ICanFrame? frame = null, TimeSpan? period = null, int? repeatCount = null)
     {
         if (_stopped) throw new CanBusDisposedException();
 
-        if (frame is not null) _frame = frame.Value.CanFrame;
+        if (frame is not null) _frame = frame;
         if (period is not null) Period = period.Value <= TimeSpan.Zero ? TimeSpan.FromMilliseconds(1) : period.Value;
         if (repeatCount is not null) RepeatCount = repeatCount.Value;
 

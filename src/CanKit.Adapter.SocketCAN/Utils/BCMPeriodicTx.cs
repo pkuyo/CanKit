@@ -31,7 +31,7 @@ public sealed class BCMPeriodicTx : IPeriodicTx
 
     public BCMPeriodicTx(
         ICanBus bus,
-        CanTransmitData frame,
+        ICanFrame frame,
         PeriodicTxOptions options,
         SocketCanBusRtConfigurator configurator)
     {
@@ -60,9 +60,9 @@ public sealed class BCMPeriodicTx : IPeriodicTx
         if (_cancelFd < 0)
             Libc.ThrowErrno("eventfd", "Failed to create cancel eventfd");
 
-        if (frame.CanFrame is CanClassicFrame && configurator.ProtocolMode != CanProtocolMode.Can20)
+        if (frame is CanClassicFrame && configurator.ProtocolMode != CanProtocolMode.Can20)
             throw new CanFeatureNotSupportedException(CanFeature.CanClassic, configurator.Features);
-        if (frame.CanFrame is CanFdFrame && configurator.ProtocolMode != CanProtocolMode.CanFd)
+        if (frame is CanFdFrame && configurator.ProtocolMode != CanProtocolMode.CanFd)
             throw new CanFeatureNotSupportedException(CanFeature.CanFd, configurator.Features);
 
 
@@ -74,15 +74,15 @@ public sealed class BCMPeriodicTx : IPeriodicTx
         {
             opcode = Libc.TX_SETUP,
             flags = Libc.SETTIMER | Libc.STARTTIMER | Libc.TX_COUNTEVT
-                    | (frame.CanFrame is CanFdFrame ? Libc.CAN_FD_FRAME : 0u),
+                    | (frame is CanFdFrame ? Libc.CAN_FD_FRAME : 0u),
             count = (options.Repeat < 0) ? 0u : (uint)options.Repeat,
             ival1 = Libc.ToTimeval(ival1),
             ival2 = Libc.ToTimeval(ival2),
-            can_id = frame.CanFrame.ToCanID(),
+            can_id = frame.ToCanID(),
             nframes = 1
         };
 
-        _frame = frame.CanFrame;
+        _frame = frame;
         RepeatCount = options.Repeat;
         Period = period;
 
@@ -115,7 +115,7 @@ public sealed class BCMPeriodicTx : IPeriodicTx
         }
     }
 
-    public void Update(CanTransmitData? frame = null, TimeSpan? period = null, int? repeatCount = null)
+    public void Update(ICanFrame? frame = null, TimeSpan? period = null, int? repeatCount = null)
     {
         if (_fd < 0) throw new CanBusDisposedException();
 
@@ -134,7 +134,7 @@ public sealed class BCMPeriodicTx : IPeriodicTx
         }
         if (frame is not null)
         {
-            _frame = frame.Value.CanFrame;
+            _frame = frame;
         }
 
         var flags = 0u;

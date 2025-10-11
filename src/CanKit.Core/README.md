@@ -33,7 +33,7 @@ using CanKit.Core.Definitions;
 using var bus = CanBus.Open("virtual://demo/0", cfg => cfg.Baud(500_000));
 
 // Transmit a classic CAN frame
-var tx = new CanTransmitData(new CanClassicFrame(0x123, new byte[] { 1, 2, 3 }));
+var tx = new CanClassicFrame(0x123, new byte[] { 1, 2, 3 });
 bus.Transmit(new[] { tx });
 
 // Receive with timeout (ms)

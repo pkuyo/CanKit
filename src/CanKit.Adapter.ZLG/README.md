@@ -52,7 +52,7 @@ using var bus = CanBus.Open(
 );
 
 // Transmit a classic CAN frame (ID 0x123)
-var tx = new CanTransmitData(new CanClassicFrame(0x123, new byte[] { 1, 2, 3 }));
+var tx = new CanClassicFrame(0x123, new byte[] { 1, 2, 3 });
 bus.Transmit(new[] { tx });
 
 // Receive with timeout (ms)

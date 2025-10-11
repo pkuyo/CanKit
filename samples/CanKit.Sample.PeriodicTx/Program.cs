@@ -43,7 +43,7 @@ namespace CanKit.Sample.PeriodicTx
                 ? new CanFdFrame(id, payload, BRS: brs, ESI: false) { IsExtendedFrame = ext }
                 : new CanClassicFrame(id, payload, isExtendedFrame: ext);
 
-            using var periodic = bus.TransmitPeriodic(new CanTransmitData(frame), new PeriodicTxOptions(TimeSpan.FromMilliseconds(period), repeat));
+            using var periodic = bus.TransmitPeriodic(frame, new PeriodicTxOptions(TimeSpan.FromMilliseconds(period), repeat));
             Console.WriteLine($"Periodic TX started: ep={endpoint} id=0x{id:X} dlc={frame.Dlc} fd={fd} brs={brs} period={period}ms count={repeat}");
 
             bus.FrameReceived += (_, e) =>
@@ -91,4 +91,3 @@ namespace CanKit.Sample.PeriodicTx
         }
     }
 }
-

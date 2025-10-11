@@ -71,7 +71,7 @@ bus.FrameReceived += (s, rec) =>
 };
 
 // 发送一帧经典 CAN
-bus.Transmit(new[] { new CanTransmitData(new CanClassicFrame(0x123, new byte[]{ 0x01, 0x02 })) });
+bus.Transmit(new[] { new CanClassicFrame(0x123, new byte[]{ 0x01, 0x02 }) });
 
 // 同步接收（超时 100ms）
 var items = bus.Receive(1, timeOut: 100);
@@ -138,4 +138,3 @@ foreach (var ep in BusEndpointEntry.Enumerate("pcan", "kvaser", "socketcan", "zl
 ## 许可
 
 请参见仓库中的 LICENSE 文件。
-

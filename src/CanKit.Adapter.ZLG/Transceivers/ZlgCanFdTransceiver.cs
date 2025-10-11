@@ -13,7 +13,7 @@ namespace CanKit.Adapter.ZLG.Transceivers
     public sealed class ZlgCanFdTransceiver : IZlgTransceiver
     {
         public uint Transmit(ICanBus<IBusRTOptionsConfigurator> channel,
-            IEnumerable<CanTransmitData> frames, int _ = 0)
+            IEnumerable<ICanFrame> frames, int _ = 0)
         {
             unsafe
             {
@@ -32,7 +32,7 @@ namespace CanKit.Adapter.ZLG.Transceivers
                         sent += ZLGCAN.BATCH_COUNT;
                     }
                     index++;
-                    if(f.CanFrame is not CanFdFrame cf)
+                    if (f is not CanFdFrame cf)
                         continue;
                     cf.ToTransmitData(echo, transmitData, index);
                     index++;
@@ -52,7 +52,7 @@ namespace CanKit.Adapter.ZLG.Transceivers
                 {
 
                     var recCount = ZLGCAN.ZCAN_ReceiveFD(((ZlgCanBus)bus).NativeHandle, buf, count, timeOut);
-                    if(recCount == 0)
+                    if (recCount == 0)
                         yield break;
                     for (int i = 0; i < recCount; i++)
                     {

@@ -139,7 +139,7 @@ namespace CanKit.Adapter.ZLG
             ZlgErr.ThrowIfError(ZLGCAN.ZCAN_ClearBuffer(_nativeHandle), nameof(ZLGCAN.ZCAN_ClearBuffer), _nativeHandle);
         }
 
-        public uint Transmit(IEnumerable<CanTransmitData> frames, int timeOut = 0)
+        public uint Transmit(IEnumerable<ICanFrame> frames, int timeOut = 0)
         {
             ThrowIfDisposed();
             try
@@ -155,7 +155,7 @@ namespace CanKit.Adapter.ZLG
                     else
                         Thread.Sleep(Math.Min(Environment.TickCount - startTime, Options.PollingInterval));
 
-                    var count = _transceiver.Transmit(this, new ArraySegment<CanTransmitData>(list, (int)result, list.Length - (int)result));
+                    var count = _transceiver.Transmit(this, new ArraySegment<ICanFrame>(list, (int)result, list.Length - (int)result));
                     result += count;
                 } while (result < list.Length && Environment.TickCount - startTime <= timeOut);
 
@@ -168,7 +168,7 @@ namespace CanKit.Adapter.ZLG
             }
         }
 
-        public IPeriodicTx TransmitPeriodic(CanTransmitData frame, PeriodicTxOptions options)
+        public IPeriodicTx TransmitPeriodic(ICanFrame frame, PeriodicTxOptions options)
         {
             ThrowIfDisposed();
             return new ZlgPeriodicTx(this, frame, options);
@@ -680,7 +680,7 @@ namespace CanKit.Adapter.ZLG
             }
         }
 
-        public Task<uint> TransmitAsync(IEnumerable<CanTransmitData> frames, int timeOut = 0, CancellationToken cancellationToken = default)
+        public Task<uint> TransmitAsync(IEnumerable<ICanFrame> frames, int timeOut = 0, CancellationToken cancellationToken = default)
             => Task.Run(() =>
             {
                 try { return Transmit(frames, timeOut); }

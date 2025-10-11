@@ -18,7 +18,7 @@ public sealed class ZlgPeriodicTx : IPeriodicTx
     private volatile int _remaining;
     private bool _stopped;
 
-    public ZlgPeriodicTx(ZlgCanBus bus, CanTransmitData frame, PeriodicTxOptions options)
+    public ZlgPeriodicTx(ZlgCanBus bus, ICanFrame frame, PeriodicTxOptions options)
     {
         _bus = bus ?? throw new ArgumentNullException(nameof(bus));
 
@@ -30,12 +30,12 @@ public sealed class ZlgPeriodicTx : IPeriodicTx
         }
 
         // Validate frame type vs channel
-        if (frame.CanFrame is CanClassicFrame && bus.Options.ProtocolMode != CanProtocolMode.Can20)
+        if (frame is CanClassicFrame && bus.Options.ProtocolMode != CanProtocolMode.Can20)
             throw new CanFeatureNotSupportedException(CanFeature.CanClassic, bus.Options.Features);
-        if (frame.CanFrame is CanFdFrame && bus.Options.ProtocolMode != CanProtocolMode.CanFd)
+        if (frame is CanFdFrame && bus.Options.ProtocolMode != CanProtocolMode.CanFd)
             throw new CanFeatureNotSupportedException(CanFeature.CanFd, bus.Options.Features);
 
-        _frame = frame.CanFrame;
+        _frame = frame;
         Period = options.Period <= TimeSpan.Zero ? TimeSpan.FromMilliseconds(1) : options.Period;
         RepeatCount = options.Repeat;
         _remaining = options.Repeat;
@@ -79,10 +79,10 @@ public sealed class ZlgPeriodicTx : IPeriodicTx
         }
     }
 
-    public void Update(CanTransmitData? frame = null, TimeSpan? period = null, int? repeatCount = null)
+    public void Update(ICanFrame? frame = null, TimeSpan? period = null, int? repeatCount = null)
     {
         if (_stopped) throw new CanBusDisposedException();
-        if (frame is not null) _frame = frame.Value.CanFrame;
+        if (frame is not null) _frame = frame;
         if (period is not null) Period = period.Value <= TimeSpan.Zero ? TimeSpan.FromMilliseconds(1) : period.Value;
         if (repeatCount is not null)
         {

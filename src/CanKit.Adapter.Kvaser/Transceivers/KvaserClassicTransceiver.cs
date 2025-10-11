@@ -8,14 +8,14 @@ namespace CanKit.Adapter.Kvaser.Transceivers;
 
 public sealed class KvaserClassicTransceiver : ITransceiver
 {
-    public uint Transmit(ICanBus<IBusRTOptionsConfigurator> channel, IEnumerable<CanTransmitData> frames, int timeOut = 0)
+    public uint Transmit(ICanBus<IBusRTOptionsConfigurator> channel, IEnumerable<ICanFrame> frames, int timeOut = 0)
     {
         var ch = (KvaserBus)channel;
         uint sent = 0;
         var startTime = Environment.TickCount;
         foreach (var item in frames)
         {
-            if (item.CanFrame is not CanClassicFrame cf)
+            if (item is not CanClassicFrame cf)
             {
                 throw new InvalidOperationException("Kvaser classic transceiver requires CanClassicFrame.");
             }

@@ -38,7 +38,7 @@ using CanKit.Core.Definitions;
 // Open a PCAN channel by name (see PCAN-Basic docs), 500 kbps
 using var bus = CanBus.Open("pcan://PCAN_USBBUS1", cfg => cfg.Baud(500_000));
 
-var tx = new CanTransmitData(new CanClassicFrame(0x700, new byte[] { 0x01 }));
+var tx = new CanClassicFrame(0x700, new byte[] { 0x01 });
 bus.Transmit(new[] { tx });
 
 foreach (var rx in bus.Receive(1, 100))

@@ -201,7 +201,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
 
     }
 
-    public IPeriodicTx TransmitPeriodic(CanTransmitData frame, PeriodicTxOptions options)
+    public IPeriodicTx TransmitPeriodic(ICanFrame frame, PeriodicTxOptions options)
     {
         ThrowIfDisposed();
         if ((Options.EnabledSoftwareFallback & CanFeature.CyclicTx) != 0)
@@ -215,14 +215,14 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
         => throw new CanFeatureNotSupportedException(CanFeature.ErrorCounters, Options.Features);
 
     //non-support time out
-    public uint Transmit(IEnumerable<CanTransmitData> frames, int _ = 0)
+    public uint Transmit(IEnumerable<ICanFrame> frames, int _ = 0)
     {
         ThrowIfDisposed();
         return _transceiver.Transmit(this, frames);
     }
 
     //non-support time out
-    public Task<uint> TransmitAsync(IEnumerable<CanTransmitData> frames, int _ = 0, CancellationToken cancellationToken = default)
+    public Task<uint> TransmitAsync(IEnumerable<ICanFrame> frames, int _ = 0, CancellationToken cancellationToken = default)
         => Task.Run(() =>
         {
             try

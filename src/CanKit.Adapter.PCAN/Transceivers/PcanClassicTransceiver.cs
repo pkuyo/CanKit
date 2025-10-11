@@ -7,14 +7,14 @@ namespace CanKit.Adapter.PCAN.Transceivers;
 
 public sealed class PcanClassicTransceiver : ITransceiver
 {
-    public uint Transmit(ICanBus<IBusRTOptionsConfigurator> channel, IEnumerable<CanTransmitData> frames, int timeOut = 0)
+    public uint Transmit(ICanBus<IBusRTOptionsConfigurator> channel, IEnumerable<ICanFrame> frames, int timeOut = 0)
     {
         _ = timeOut;
         var ch = (PcanBus)channel;
         uint sent = 0;
         foreach (var item in frames)
         {
-            if (item.CanFrame is not CanClassicFrame cf)
+            if (item is not CanClassicFrame cf)
             {
                 throw new InvalidOperationException("PCAN classic transceiver requires CanClassicFrame.");
             }

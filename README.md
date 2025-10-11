@@ -72,7 +72,7 @@ bus.FrameReceived += (s, rec) =>
 
 // Transmit a classic CAN frame
 var frame = new CanClassicFrame(0x123, new byte[] { 0x11, 0x22, 0x33 });
-bus.Transmit(new[] { new CanTransmitData(frame) });
+bus.Transmit(new[] { frame });
 
 // Receive (sync)
 var items = bus.Receive(1, timeOut: 100);

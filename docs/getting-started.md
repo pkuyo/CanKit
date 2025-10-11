@@ -53,7 +53,7 @@ bus.FrameReceived += (s, rec) =>
 };
 
 // Send one classic frame
-bus.Transmit(new[] { new CanTransmitData(new CanClassicFrame(0x123, new byte[]{ 0x01, 0x02 })) });
+bus.Transmit(new[] { new CanClassicFrame(0x123, new byte[]{ 0x01, 0x02 }) });
 
 // Receive synchronously (one frame, 100ms timeout)
 var items = bus.Receive(1, timeOut: 100);
@@ -106,7 +106,7 @@ Some adapters support hardware periodic transmit. If not, use software periodic 
 
 ```csharp
 var handle = bus.TransmitPeriodic(
-    new CanTransmitData(new CanClassicFrame(0x321, new byte[]{ 0xAA })),
+    new CanClassicFrame(0x321, new byte[]{ 0xAA }),
     new PeriodicTxOptions { IntervalMs = 100 });
 
 // later

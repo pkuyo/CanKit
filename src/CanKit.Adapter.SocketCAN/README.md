@@ -39,7 +39,7 @@ using CanKit.Core.Definitions;
 // Open can0, set 500 kbps
 using var bus = CanBus.Open("socketcan://can0", cfg => cfg.Baud(500_000));
 
-var tx = new CanTransmitData(new CanClassicFrame(0x123, new byte[] { 1, 2, 3 }));
+var tx = new CanClassicFrame(0x123, new byte[] { 1, 2, 3 });
 bus.Transmit(new[] { tx });
 
 foreach (var rx in bus.Receive(1, 100))
