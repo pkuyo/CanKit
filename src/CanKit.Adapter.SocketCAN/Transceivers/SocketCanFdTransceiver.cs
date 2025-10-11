@@ -23,13 +23,13 @@ public sealed class SocketCanFdTransceiver : ITransceiver
         {
             var sizeClassic = Marshal.SizeOf<Libc.can_frame>();
             var sizeFd = Marshal.SizeOf<Libc.canfd_frame>();
-            Libc.can_frame* cfBuf = stackalloc Libc.can_frame[64];
-            Libc.canfd_frame* fdBuf = stackalloc Libc.canfd_frame[64];
-            Libc.iovec* iov = stackalloc Libc.iovec[64];
-            Libc.mmsghdr* msgs = stackalloc Libc.mmsghdr[64];
+            Libc.can_frame* cfBuf = stackalloc Libc.can_frame[Libc.BATCH_COUNT];
+            Libc.canfd_frame* fdBuf = stackalloc Libc.canfd_frame[Libc.BATCH_COUNT];
+            Libc.iovec* iov = stackalloc Libc.iovec[Libc.BATCH_COUNT];
+            Libc.mmsghdr* msgs = stackalloc Libc.mmsghdr[Libc.BATCH_COUNT];
             while (totalSent < batch.Length)
             {
-                int n = Math.Min(batch.Length - totalSent, 64);
+                int n = Math.Min(batch.Length - totalSent, Libc.BATCH_COUNT);
 
                 for (int i = 0; i < n; i++)
                 {
@@ -98,13 +98,13 @@ public sealed class SocketCanFdTransceiver : ITransceiver
         {
             var sizeClassic = Marshal.SizeOf<Libc.can_frame>();
             var sizeFd = Marshal.SizeOf<Libc.canfd_frame>();
-            Libc.canfd_frame* fdBuf = stackalloc Libc.canfd_frame[64];
-            Libc.iovec* iov = stackalloc Libc.iovec[64];
-            Libc.mmsghdr* msgs = stackalloc Libc.mmsghdr[64];
-            byte* cbase = stackalloc byte[64 * 256];
+            Libc.canfd_frame* fdBuf = stackalloc Libc.canfd_frame[Libc.BATCH_COUNT];
+            Libc.iovec* iov = stackalloc Libc.iovec[Libc.BATCH_COUNT];
+            Libc.mmsghdr* msgs = stackalloc Libc.mmsghdr[Libc.BATCH_COUNT];
+            byte* cbase = stackalloc byte[Libc.BATCH_COUNT * 256];
             while (inf || count > 0)
             {
-                var oneBatch = (int)Math.Max(1, Math.Min(count == 0 ? 64u : count, 64u));
+                var oneBatch = (int)Math.Max(1, Math.Min(count == 0 ? Libc.BATCH_COUNT : count, Libc.BATCH_COUNT));
                 for (int i = 0; i < oneBatch; i++)
                 {
                     iov[i].iov_base = &fdBuf[i];

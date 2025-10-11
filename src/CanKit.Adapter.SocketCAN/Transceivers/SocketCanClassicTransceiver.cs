@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 using System.Runtime.InteropServices;
 using CanKit.Adapter.SocketCAN.Native;
 using CanKit.Adapter.SocketCAN.Utils;
@@ -12,19 +13,21 @@ public sealed class SocketCanClassicTransceiver : ITransceiver
 {
     public uint Transmit(ICanBus<IBusRTOptionsConfigurator> channel, IEnumerable<CanTransmitData> frames, int _ = 0)
     {
+        /*
         var ch = (SocketCanBus)channel;
-        var batch = frames.ToArray();
-        if (batch.Length == 0) return 0;
+        var pool = ArrayPool<CanTransmitData>.Shared;
+        var buf = pool.Rent();
         var totalSent = 0;
         unsafe
         {
+
             var frameSize = Marshal.SizeOf<Libc.can_frame>();
-            Libc.can_frame* fr = stackalloc Libc.can_frame[64];
-            Libc.iovec* iov = stackalloc Libc.iovec[64];
-            Libc.mmsghdr* msgs = stackalloc Libc.mmsghdr[64];
+            Libc.can_frame* fr = stackalloc Libc.can_frame[Libc.BATCH_COUNT];
+            Libc.iovec* iov = stackalloc Libc.iovec[Libc.BATCH_COUNT];
+            Libc.mmsghdr* msgs = stackalloc Libc.mmsghdr[Libc.BATCH_COUNT];
             while (totalSent < batch.Length)
             {
-                int n = Math.Min(batch.Length - totalSent, 64);
+                int n = Math.Min(batch.Length - totalSent, Libc.BATCH_COUNT);
 
                 for (int i = 0; i < n; i++)
                 {
@@ -64,6 +67,8 @@ public sealed class SocketCanClassicTransceiver : ITransceiver
             }
             return (uint)totalSent;
         }
+        */
+        throw new NotImplementedException();
     }
 
     public IEnumerable<CanReceiveData> Receive(ICanBus<IBusRTOptionsConfigurator> bus, uint count = 1, int _ = -1)
@@ -75,13 +80,13 @@ public sealed class SocketCanClassicTransceiver : ITransceiver
         unsafe
         {
             var frameSize = Marshal.SizeOf<Libc.can_frame>();
-            Libc.can_frame* fr = stackalloc Libc.can_frame[64];
-            Libc.iovec* iov = stackalloc Libc.iovec[64];
-            Libc.mmsghdr* msgs = stackalloc Libc.mmsghdr[64];
-            byte* cbase = stackalloc byte[64 * 256];
+            Libc.can_frame* fr = stackalloc Libc.can_frame[Libc.BATCH_COUNT];
+            Libc.iovec* iov = stackalloc Libc.iovec[Libc.BATCH_COUNT];
+            Libc.mmsghdr* msgs = stackalloc Libc.mmsghdr[Libc.BATCH_COUNT];
+            byte* cbase = stackalloc byte[Libc.BATCH_COUNT * 256];
             while (inf || count > 0)
             {
-                var oneBatch = (int)Math.Max(1, Math.Min(count == 0 ? 64u : count, 64u));
+                var oneBatch = (int)Math.Max(1, Math.Min(count == 0 ? Libc.BATCH_COUNT : count, Libc.BATCH_COUNT));
                 for (int i = 0; i < oneBatch; i++)
                 {
                     iov[i].iov_base = &fr[i];

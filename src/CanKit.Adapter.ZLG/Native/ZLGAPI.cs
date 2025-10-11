@@ -15,6 +15,8 @@ namespace CanKit.Adapter.ZLG.Native
 
         public const int CANFD_BRS = 0x01;
         public const int CANFD_ESI = 0x02;
+
+        public const int BATCH_COUNT = 64;
         #region 设备类型
         public static UInt32 ZCAN_PCI9810 = 2;
         public static UInt32 ZCAN_USBCAN1 = 3;
@@ -122,10 +124,10 @@ namespace CanKit.Adapter.ZLG.Native
         public static extern uint ZCAN_GetReceiveNum(ZlgChannelHandle channel_handle, byte type);
 
         [DllImport(DllName, CallingConvention = CallingConvention.StdCall, CharSet = CharSet.Ansi)]
-        public static extern uint ZCAN_Transmit(ZlgChannelHandle channel_handle, ZCAN_Transmit_Data[] pTransmit, uint len);
+        public static unsafe extern uint ZCAN_Transmit(ZlgChannelHandle channel_handle, ZCAN_Transmit_Data* pTransmit, uint len);
 
         [DllImport(DllName, CallingConvention = CallingConvention.StdCall, CharSet = CharSet.Ansi)]
-        public static extern uint ZCAN_TransmitFD(ZlgChannelHandle channel_handle, ZCAN_TransmitFD_Data[] pTransmit, uint len);
+        public static unsafe extern uint ZCAN_TransmitFD(ZlgChannelHandle channel_handle, ZCAN_TransmitFD_Data* pTransmit, uint len);
 
         [DllImport(DllName, CallingConvention = CallingConvention.StdCall, CharSet = CharSet.Ansi)]
         public static extern uint ZCAN_TransmitData(ZlgDeviceHandle device_handle, ZCANDataObj[] pTransmit, uint len);
@@ -133,10 +135,10 @@ namespace CanKit.Adapter.ZLG.Native
         public static extern uint ZCAN_TransmitData(IntPtr device_handle, ZCANDataObj[] pTransmit, uint len);
 
         [DllImport(DllName, CallingConvention = CallingConvention.StdCall, CharSet = CharSet.Ansi)]
-        public static extern uint ZCAN_Receive(ZlgChannelHandle channel_handle, [In, Out] ZCAN_Receive_Data[] pReceive, uint len, int wait_time = -1);
+        public static unsafe extern uint ZCAN_Receive(ZlgChannelHandle channel_handle, [In, Out] ZCAN_Receive_Data[] pReceive, uint len, int wait_time = -1);
 
         [DllImport(DllName, CallingConvention = CallingConvention.StdCall, CharSet = CharSet.Ansi)]
-        public static extern uint ZCAN_ReceiveFD(ZlgChannelHandle channel_handle, [In, Out] ZCAN_ReceiveFD_Data[] pReceive, uint len, int wait_time = -1);
+        public static unsafe extern uint ZCAN_ReceiveFD(ZlgChannelHandle channel_handle, [In, Out] ZCAN_ReceiveFD_Data[] pReceive, uint len, int wait_time = -1);
 
         [DllImport(DllName, CallingConvention = CallingConvention.StdCall, CharSet = CharSet.Ansi)]
         public static extern uint ZCAN_ReceiveData(ZlgDeviceHandle device_handle, [In, Out] ZCANDataObj[] pReceive, uint len, int wait_time);

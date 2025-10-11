@@ -316,49 +316,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
     public void ClearBuffer()
     {
         ThrowIfDisposed();
-        // Drain any pending frames from the socket RX queue
-        var pollFd = new Libc.pollfd { fd = _fd, events = Libc.POLLIN };
-        int iterations = 0;
-        int maxIterations = 64;
-        int readSize = Options.ProtocolMode == CanProtocolMode.CanFd
-            ? Marshal.SizeOf<Libc.canfd_frame>()
-            : Marshal.SizeOf<Libc.can_frame>();
-        unsafe
-        {
-            if (Options.ProtocolMode == CanProtocolMode.CanFd)
-            {
-                Libc.canfd_frame* buf = stackalloc Libc.canfd_frame[1]; // 只分配一次
-                while (iterations++ < maxIterations)
-                {
-                    var pr = Libc.poll(ref pollFd, 1, 0);
-                    if (pr <= 0) break;
-                    var n = Libc.read(_fd, buf, (ulong)readSize);
-                    if (n <= 0)
-                    {
-                        CanKitLogger.LogWarning(
-                            $"SocketCAN: read(FD) returned {n} while draining RX buffer. errno={CanKit.Adapter.SocketCAN.Native.Libc.Errno()}");
-                        break;
-                    }
-                }
-            }
-            else
-            {
-                Libc.can_frame* buf = stackalloc Libc.can_frame[1]; // 只分配一次
-                while (iterations++ < maxIterations)
-                {
-                    var pr = Libc.poll(ref pollFd, 1, 0);
-                    if (pr <= 0) break;
-                    var n = Libc.read(_fd, buf, (ulong)readSize);
-                    if (n <= 0)
-                    {
-                        CanKitLogger.LogWarning(
-                            $"SocketCAN: read(FD) returned {n} while draining RX buffer. errno={CanKit.Adapter.SocketCAN.Native.Libc.Errno()}");
-                        break;
-                    }
-                }
-            }
-        }
-        CanKitLogger.LogDebug("SocketCAN: RX buffer drained.");
+        throw new NotImplementedException();
     }
 
     public float BusUsage() => throw new CanFeatureNotSupportedException(CanFeature.BusUsage, Options.Features);
@@ -938,7 +896,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
         while (true)
         {
             int gotBatch = 0;
-            foreach (var rec in _transceiver.Receive(this, 64))
+            foreach (var rec in _transceiver.Receive(this, Libc.BATCH_COUNT))
             {
                 gotBatch++;
                 var frame = rec.CanFrame;
@@ -982,7 +940,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
                     }
                 }
             }
-            if (gotBatch < 64) break; // drained
+            if (gotBatch < Libc.BATCH_COUNT) break; // drained
         }
     }
 

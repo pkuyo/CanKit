@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
 using CanKit.Adapter.ZLG.Definitions;
@@ -14,26 +15,60 @@ namespace CanKit.Adapter.ZLG.Transceivers
         public uint Transmit(ICanBus<IBusRTOptionsConfigurator> channel,
             IEnumerable<CanTransmitData> frames, int _ = 0)
         {
-            var zcanTransmitData =
-                frames.Select(i => i.CanFrame)
-                    .OfType<CanFdFrame>()
-                    .Select(i => i.ToTransmitData(channel.Options.WorkMode == ChannelWorkMode.Echo))
-                    .ToArray();
+            unsafe
+            {
+                var transmitData = stackalloc ZLGCAN.ZCAN_TransmitFD_Data[ZLGCAN.BATCH_COUNT];
+                var index = 0;
+                long sent = 0;
+                var echo = channel.Options.WorkMode == ChannelWorkMode.Echo;
+                foreach (var f in frames)
+                {
+                    if (index == ZLGCAN.BATCH_COUNT)
+                    {
+                        var re = ZLGCAN.ZCAN_TransmitFD(((ZlgCanBus)channel).NativeHandle, transmitData, ZLGCAN.BATCH_COUNT);
+                        index = 0;
+                        if (re != ZLGCAN.BATCH_COUNT)
+                            return (uint)sent;
+                        sent += ZLGCAN.BATCH_COUNT;
+                    }
+                    index++;
+                    if(f.CanFrame is not CanFdFrame cf)
+                        continue;
+                    cf.ToTransmitData(echo, transmitData, index);
+                    index++;
+                }
+                return (uint)(sent + ZLGCAN.ZCAN_TransmitFD(((ZlgCanBus)channel).NativeHandle, transmitData, (uint)index));
+            }
 
-            return ZLGCAN.ZCAN_TransmitFD(((ZlgCanBus)channel).NativeHandle, zcanTransmitData, (uint)zcanTransmitData.Length);
         }
 
         public IEnumerable<CanReceiveData> Receive(ICanBus<IBusRTOptionsConfigurator> bus, uint count = 1, int timeOut = 0)
         {
-            var data = new ZLGCAN.ZCAN_ReceiveFD_Data[count];
-
-            var recCount = ZLGCAN.ZCAN_ReceiveFD(((ZlgCanBus)bus).NativeHandle, data, count, timeOut);
-
-            return data.Take((int)recCount).Select(i => new CanReceiveData(i.frame.FromReceiveData())
+            var pool = ArrayPool<ZLGCAN.ZCAN_ReceiveFD_Data>.Shared;
+            var buf = pool.Rent(ZLGCAN.BATCH_COUNT);
+            try
             {
-                // ZLG timestamp is in microseconds
-                ReceiveTimestamp = TimeSpan.FromTicks((long)i.timestamp * 10)
-            });
+                while (count > 0)
+                {
+
+                    var recCount = ZLGCAN.ZCAN_ReceiveFD(((ZlgCanBus)bus).NativeHandle, buf, count, timeOut);
+                    if(recCount == 0)
+                        yield break;
+                    for (int i = 0; i < recCount; i++)
+                    {
+                        yield return new CanReceiveData(buf[i].frame.FromReceiveData())
+                        {
+                            // ZLG timestamp is in microseconds
+                            ReceiveTimestamp = TimeSpan.FromTicks((long)buf[i].timestamp * 10)
+                        };
+                    }
+                    count -= recCount;
+                }
+            }
+            finally
+            {
+                pool.Return(buf);
+            }
         }
 
 
