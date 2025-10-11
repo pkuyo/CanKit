@@ -50,7 +50,9 @@ namespace CanKit.Adapter.ZLG.Utils
 
         internal static unsafe CanClassicFrame FromReceiveData(this can_frame frame)
         {
-            var result = new CanClassicFrame(frame.can_id, new byte[frame.can_dlc]);
+            var result = new CanClassicFrame((frame.can_id & ZLGCAN.CAN_EFF_MASK) == 1 ?
+                frame.can_id & ZLGCAN.CAN_EFF_MASK :
+                frame.can_id & ZLGCAN.CAN_SFF_MASK, new byte[frame.can_dlc]);
             fixed (byte* ptr = result.Data.Span)
             {
                 Unsafe.CopyBlockUnaligned(ptr, frame.data, (uint)result.Data.Length);
@@ -60,7 +62,9 @@ namespace CanKit.Adapter.ZLG.Utils
 
         internal static unsafe CanFdFrame FromReceiveData(this canfd_frame frame)
         {
-            var result = new CanFdFrame(frame.can_id, new byte[frame.len],
+            var result = new CanFdFrame((frame.can_id & ZLGCAN.CAN_EFF_MASK) == 1 ?
+                    frame.can_id & ZLGCAN.CAN_EFF_MASK :
+                    frame.can_id & ZLGCAN.CAN_SFF_MASK, new byte[frame.len],
                 (frame.flags & CANFD_BRS) != 0,
                 (frame.flags & CANFD_ESI) != 0);
             fixed (byte* ptr = result.Data.Span)
@@ -76,7 +80,7 @@ namespace CanKit.Adapter.ZLG.Utils
             fixed (byte* ptr = frame.Data.Span)
             {
                 data.frame.can_dlc = frame.Dlc;
-                data.frame.can_id = frame.RawID;
+                data.frame.can_id = frame.ToCanID();
                 data.frame.__pad |= (byte)(echo ? TX_ECHO_FLAG : 0);
                 Unsafe.CopyBlockUnaligned(data.frame.data, ptr, (uint)frame.Data.Length);
                 data.transmit_type = 0;
@@ -90,7 +94,7 @@ namespace CanKit.Adapter.ZLG.Utils
             fixed (byte* ptr = frame.Data.Span)
             {
                 data.frame.len = (byte)frame.Data.Length;
-                data.frame.can_id = frame.RawID;
+                data.frame.can_id = frame.ToCanID();
                 data.frame.flags |= (byte)(echo ? TX_ECHO_FLAG : 0);
                 data.frame.flags |= (byte)(frame.BitRateSwitch ? CANFD_BRS : 0);
                 data.frame.flags |= (byte)(frame.ErrorStateIndicator ? CANFD_ESI : 0);
@@ -123,7 +127,7 @@ namespace CanKit.Adapter.ZLG.Utils
                     timeStamp = 0,
                     frame = new canfd_frame
                     {
-                        can_id = frame.RawID,
+                        can_id = frame.ToCanID(),
                         len = (byte)frame.Data.Length,
                     }
                 };
@@ -132,6 +136,24 @@ namespace CanKit.Adapter.ZLG.Utils
 
             }
             return obj;
+        }
+
+        public static uint ToCanID(this CanClassicFrame frame)
+        {
+            var id = frame.ID;
+            var cid = frame.IsExtendedFrame ? ((frame.ID & CAN_EFF_MASK) | CAN_EFF_FLAG)
+                : (frame.ID & CAN_SFF_MASK);
+            if (frame.IsErrorFrame) cid |= CAN_RTR_FLAG;
+            if (frame.IsErrorFrame) cid |= CAN_ERR_FLAG;
+            return cid;
+        }
+        public static uint ToCanID(this CanFdFrame frame)
+        {
+            var id = frame.ID;
+            var cid = frame.IsExtendedFrame ? ((frame.ID & CAN_EFF_MASK) | CAN_EFF_FLAG)
+                : (frame.ID & CAN_SFF_MASK);
+            if (frame.IsErrorFrame) cid |= CAN_ERR_FLAG;
+            return cid;
         }
     }
 }

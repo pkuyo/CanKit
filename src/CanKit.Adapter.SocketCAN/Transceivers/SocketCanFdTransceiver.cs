@@ -168,7 +168,10 @@ public sealed class SocketCanFdTransceiver : ITransceiver
             bool brs = (buf->flags & Libc.CANFD_BRS) != 0;
             bool esi = (buf->flags & Libc.CANFD_ESI) != 0;
             bool err = (buf->flags & Libc.CAN_ERR_FLAG) != 0;
-            acc.Add(new CanReceiveData(new CanFdFrame(buf->can_id, data, brs, esi) { IsErrorFrame = err })
+            acc.Add(new CanReceiveData(new CanFdFrame((buf->can_id & Libc.CAN_EFF_MASK) == 1 ?
+                    buf->can_id & Libc.CAN_EFF_MASK :
+                    buf->can_id & Libc.CAN_SFF_MASK, data, brs, esi)
+            { IsErrorFrame = err })
             { ReceiveTimestamp = tsSpan });
         }
         else if (n == sizeClassic)
@@ -181,7 +184,10 @@ public sealed class SocketCanFdTransceiver : ITransceiver
                 Buffer.MemoryCopy(cf->data, pData, data2.Length, Math.Min(dataLen, 8));
             }
             bool err = (cf->can_id & Libc.CAN_ERR_FLAG) != 0;
-            acc.Add(new CanReceiveData(new CanClassicFrame(cf->can_id, data2) { IsErrorFrame = err })
+            acc.Add(new CanReceiveData(new CanClassicFrame((cf->can_id & Libc.CAN_EFF_MASK) == 1 ?
+                    cf->can_id & Libc.CAN_EFF_MASK :
+                    cf->can_id & Libc.CAN_SFF_MASK, data2)
+            { IsErrorFrame = err })
             { ReceiveTimestamp = tsSpan });
         }
     }

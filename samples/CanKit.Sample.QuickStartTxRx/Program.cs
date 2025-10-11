@@ -102,7 +102,7 @@ namespace CanKit.Sample.QuickStartTxRx
                 sb.Append("RX ");
                 sb.Append(fr.FrameKind == CanFrameType.CanFd ? "FD" : "CL");
                 sb.Append(' ');
-                sb.Append((fr.RawID & 0x8000_0000) != 0 ? "ext" : "std");
+                sb.Append(fr.IsExtendedFrame ? "ext" : "std");
                 sb.Append(" id=0x").Append(fr.ID.ToString("X"));
                 sb.Append(" dlc=").Append(fr.Dlc);
                 sb.Append(" data=").Append(ToHex(fr.Data.Span));

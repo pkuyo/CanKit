@@ -947,7 +947,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
 
                 if (isErr)
                 {
-                    uint raw = frame.RawID;
+                    uint raw = frame.ToCanID();
                     uint err = raw & Libc.CAN_ERR_MASK;
                     var span = frame.Data.Span;
                     var sysTs = Options.PreferKernelTimestamp && rec.ReceiveTimestamp != TimeSpan.Zero

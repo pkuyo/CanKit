@@ -11,6 +11,14 @@ namespace CanKit.Adapter.ZLG.Native
     public class ZLGCAN
     {
 
+        public const uint CAN_EFF_FLAG = 0x80000000U; // extended frame format
+        public const uint CAN_RTR_FLAG = 0x40000000U; // remote transmission request
+        public const uint CAN_ERR_FLAG = 0x20000000U; // error frame flag
+
+        public const uint CAN_SFF_MASK = 0x000007FFU; // standard frame format mask
+        public const uint CAN_EFF_MASK = 0x1FFFFFFFU; // extended frame format mask
+        public const uint CAN_ERR_MASK = 0x1FFFFFFFU; // error class mask
+
         public const int TX_ECHO_FLAG = 0x20;
 
         public const int CANFD_BRS = 0x01;

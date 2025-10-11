@@ -14,11 +14,6 @@ namespace CanKit.Core.Definitions
         CanFrameType FrameKind { get; }
 
         /// <summary>
-        /// Gets or initializes the raw ID containing all flag bits. (获取或初始化包含所有标志位的原始 ID。)
-        /// </summary>
-        uint RawID { get; init; }
-
-        /// <summary>
         /// Gets or initializes the frame payload data. (获取或初始化帧数据。)
         /// </summary>
         ReadOnlyMemory<byte> Data { get; init; }
@@ -37,6 +32,11 @@ namespace CanKit.Core.Definitions
         /// Indicates whether this is an error frame. (是否为错误帧。)
         /// </summary>
         public bool IsErrorFrame { get; }
+
+        /// <summary>
+        /// Indicates whether the frame uses the extended ID format. (指示该帧是否为扩展帧。)
+        /// </summary>
+        public bool IsExtendedFrame { get; }
     }
 
     /// <summary>
@@ -143,24 +143,20 @@ namespace CanKit.Core.Definitions
     {
         private readonly ReadOnlyMemory<byte> _data;
 
-        /// <summary>
-        /// Creates a Classical CAN frame from a raw ID and data. (通过原始 ID 和数据创建经典帧。)
-        /// </summary>
-        public CanClassicFrame(uint rawIDInit, ReadOnlyMemory<byte> dataInit = default)
-        {
-            RawID = rawIDInit;
-            _data = dataInit;
-        }
 
         /// <summary>
         /// Creates a Classical CAN frame from a standard or extended ID. (通过标准/扩展 ID 创建经典帧。)
         /// </summary>
-        /// <param name="Id">ID without flag bits. (不包含标志位的 ID。)</param>
+        /// <param name="id">ID without flag bits. (不包含标志位的 ID。)</param>
         /// <param name="dataInit">Frame payload. (帧数据。)</param>
         /// <param name="isExtendedFrame">Indicates whether this is an extended frame. (指示是否为扩展帧。)</param>
-        public CanClassicFrame(uint Id, ReadOnlyMemory<byte> dataInit = default, bool isExtendedFrame = false)
+        /// <param name="isRemoteFrame">Indicates whether this is an remote frame.（指示是否为远程帧。）</param>
+        public CanClassicFrame(uint id, ReadOnlyMemory<byte> dataInit = default,
+            bool isExtendedFrame = false,
+            bool isRemoteFrame = false)
         {
-            ID = Id;
+            ID = id;
+            IsRemoteFrame = isRemoteFrame;
             IsExtendedFrame = isExtendedFrame;
             _data = dataInit;
         }
@@ -196,7 +192,7 @@ namespace CanKit.Core.Definitions
         /// <summary>
         /// Gets or initializes the raw ID containing all flag bits. (获取或初始化包含所有标志位的原始 ID。)
         /// </summary>
-        public uint RawID { get; init; }
+        private uint RawID { get; init; }
 
         /// <summary>
         /// Gets or initializes the actual ID with flag bits stripped. (获取或初始化剔除标志位后的实际 ID。)
@@ -249,12 +245,18 @@ namespace CanKit.Core.Definitions
     public readonly struct CanFdFrame : ICanFrame
     {
         /// <summary>
-        /// Initializes a CAN FD frame with a raw ID. (通过原始 ID 初始化 CAN FD 帧。)
+        /// Initializes a CAN FD frame with a ID. (通过原始 ID 初始化 CAN FD 帧。)
         /// </summary>
-        public CanFdFrame(uint rawIdInit, ReadOnlyMemory<byte> dataInit = default, bool BRS = false, bool ESI = false)
+        /// <param name="id">ID without flag bits. (不包含标志位的 ID。)</param>
+        /// <param name="dataInit">Frame payload. (帧数据。)</param>
+        /// <param name="BRS">Indicates whether Bit Rate Switching (BRS).（是否启用BRS。）</param>
+        /// <param name="ESI">ndicates whether the transmitter is in Error State.（发送方是否处于错误状态。）</param>
+        /// <param name="isExtendedFrame">Indicates whether this is an extended frame. (指示是否为扩展帧。)</param>
+        public CanFdFrame(uint id, ReadOnlyMemory<byte> dataInit = default, bool BRS = false, bool ESI = false, bool isExtendedFrame = false)
         {
-            RawID = rawIdInit;
+            ID = id;
             _data = Validate(dataInit);
+            IsExtendedFrame = isExtendedFrame;
             BitRateSwitch = BRS;
             ErrorStateIndicator = ESI;
         }
@@ -267,7 +269,7 @@ namespace CanKit.Core.Definitions
         /// <summary>
         /// Gets or initializes the raw ID containing all flag bits. (获取或初始化包含所有标志位的原始 ID。)
         /// </summary>
-        public uint RawID { get; init; }
+        private uint RawID { get; init; }
 
         /// <summary>
         /// Gets or initializes the actual ID with flag bits stripped. (获取或初始化剔除标志位后的实际 ID。)
