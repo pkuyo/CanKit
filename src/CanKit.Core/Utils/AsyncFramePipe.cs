@@ -98,6 +98,7 @@ public sealed class AsyncFramePipe
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
+            return list;
         }
         finally
         {
@@ -223,7 +224,6 @@ public sealed class AsyncFramePipe
                     var completed = await Task.WhenAny(tcs.Task, delay).ConfigureAwait(false);
                     if (completed == delay) break;
 
-                    // 这里如果 Fault() 触发，会 SetException -> 这行会抛出故障异常
                     await tcs.Task.ConfigureAwait(false);
                 }
                 else
@@ -234,7 +234,7 @@ public sealed class AsyncFramePipe
                         var completed = await Task.WhenAny(tcs.Task, cancelTcs.Task).ConfigureAwait(false);
                         if (completed == cancelTcs.Task) break;
 
-                        await tcs.Task.ConfigureAwait(false); // Fault() 触发会在此抛异常
+                        await tcs.Task.ConfigureAwait(false);
                     }
                 }
             }

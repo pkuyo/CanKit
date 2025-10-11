@@ -13,8 +13,6 @@ internal sealed class VirtualTransceiver : ITransceiver
         foreach (var f in frames)
         {
             // validate frame kind vs protocol mode
-            if (f is CanClassicFrame && channel.Options.ProtocolMode != CanProtocolMode.Can20)
-                continue; // skip mismatched
             if (f is CanFdFrame && channel.Options.ProtocolMode != CanProtocolMode.CanFd)
                 continue;
 

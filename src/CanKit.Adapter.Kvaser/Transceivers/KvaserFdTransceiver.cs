@@ -56,7 +56,7 @@ public sealed class KvaserFdTransceiver : ITransceiver
             }
             else if (st == Canlib.canStatus.canERR_TXBUFOFL)
             {
-                break;
+                return -sent;
             }
             else
             {
@@ -85,11 +85,12 @@ public sealed class KvaserFdTransceiver : ITransceiver
             int id;
             int flags;
             long time;
+            int dlc;
             var st = timeOut switch
             {
-                0 => Canlib.canRead(ch.Handle, out id, data, out _, out flags, out time),
-                > 0 => Canlib.canReadWait(ch.Handle, out id, data, out _, out flags, out time, remainingTime),
-                < 0 => Canlib.canReadWait(ch.Handle, out id, data, out _, out flags, out time, long.MaxValue),
+                0 => Canlib.canRead(ch.Handle, out id, data, out dlc, out flags, out time),
+                > 0 => Canlib.canReadWait(ch.Handle, out id, data, out dlc, out flags, out time, remainingTime),
+                < 0 => Canlib.canReadWait(ch.Handle, out id, data, out dlc, out flags, out time, long.MaxValue),
             };
 
             if (st == Canlib.canStatus.canOK)
@@ -105,12 +106,12 @@ public sealed class KvaserFdTransceiver : ITransceiver
                 ICanFrame frame;
                 if (isFd)
                 {
-                    frame = new CanFdFrame(id, data, brs, esi)
+                    frame = new CanFdFrame(id, new ArraySegment<byte>(data, 0, CanFdFrame.DlcToLen((byte)dlc)), brs, esi)
                     { IsExtendedFrame = isExt, IsErrorFrame = isErr };
                 }
                 else
                 {
-                    frame = new CanClassicFrame(id, data)
+                    frame = new CanClassicFrame(id, new ArraySegment<byte>(data, 0, dlc))
                     { IsExtendedFrame = isExt, IsErrorFrame = isErr, IsRemoteFrame = isRtr };
                 }
 

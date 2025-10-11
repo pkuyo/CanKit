@@ -50,7 +50,8 @@ public readonly struct CanEndpoint
 
         var uri = new Uri(endpoint, UriKind.Absolute);
         var schemePart = uri.Scheme;
-        var pathPart = uri.Host + uri.AbsolutePath.Trim('/');
+        var trim = uri.AbsolutePath.Trim('/');
+        var pathPart = uri.Host + (string.IsNullOrEmpty(trim) ? "" : "/" + trim);
         var frag = string.IsNullOrWhiteSpace(uri.Fragment) ? null : uri.Fragment.TrimStart('#');
 
         var query = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);

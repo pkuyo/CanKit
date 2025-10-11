@@ -29,6 +29,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CanKit.Sample.Bridge", "sam
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CanKit.Sample.Benchmark", "samples\CanKit.Sample.Benchmark\CanKit.Sample.Benchmark.csproj", "{929A28E5-A8DA-4D9D-A07F-C32908BE1489}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CanKit.Sample.DualBusTest", "samples\CanKit.Sample.DualBusTest\CanKit.Sample.DualBusTest.csproj", "{68919334-534B-4A1E-BBF3-5904D7DD6BC6}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -183,6 +185,18 @@ Global
 		{929A28E5-A8DA-4D9D-A07F-C32908BE1489}.Release|x64.Build.0 = Release|x64
 		{929A28E5-A8DA-4D9D-A07F-C32908BE1489}.Release|x86.ActiveCfg = Release|x86
 		{929A28E5-A8DA-4D9D-A07F-C32908BE1489}.Release|x86.Build.0 = Release|x86
+		{68919334-534B-4A1E-BBF3-5904D7DD6BC6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{68919334-534B-4A1E-BBF3-5904D7DD6BC6}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{68919334-534B-4A1E-BBF3-5904D7DD6BC6}.Debug|x64.ActiveCfg = Debug|x64
+		{68919334-534B-4A1E-BBF3-5904D7DD6BC6}.Debug|x64.Build.0 = Debug|x64
+		{68919334-534B-4A1E-BBF3-5904D7DD6BC6}.Debug|x86.ActiveCfg = Debug|x86
+		{68919334-534B-4A1E-BBF3-5904D7DD6BC6}.Debug|x86.Build.0 = Debug|x86
+		{68919334-534B-4A1E-BBF3-5904D7DD6BC6}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{68919334-534B-4A1E-BBF3-5904D7DD6BC6}.Release|Any CPU.Build.0 = Release|Any CPU
+		{68919334-534B-4A1E-BBF3-5904D7DD6BC6}.Release|x64.ActiveCfg = Release|x64
+		{68919334-534B-4A1E-BBF3-5904D7DD6BC6}.Release|x64.Build.0 = Release|x64
+		{68919334-534B-4A1E-BBF3-5904D7DD6BC6}.Release|x86.ActiveCfg = Release|x86
+		{68919334-534B-4A1E-BBF3-5904D7DD6BC6}.Release|x86.Build.0 = Release|x86
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -194,6 +208,7 @@ Global
 		{257943CD-1996-4A83-BFFC-35764A2BEF4D} = {3FBFDE2E-281C-464B-A8DF-E3FFC139F9D4}
 		{3AC474A7-0BC6-42CE-91E8-909EE45CABE3} = {3FBFDE2E-281C-464B-A8DF-E3FFC139F9D4}
 		{929A28E5-A8DA-4D9D-A07F-C32908BE1489} = {3FBFDE2E-281C-464B-A8DF-E3FFC139F9D4}
+		{68919334-534B-4A1E-BBF3-5904D7DD6BC6} = {3FBFDE2E-281C-464B-A8DF-E3FFC139F9D4}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {396C8FA6-957F-420D-B557-636A8389142E}

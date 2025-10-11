@@ -37,9 +37,9 @@ public sealed class KvaserClassicTransceiver : ITransceiver
                 {
                     st = timeOut switch
                     {
-                        0 => CanlibNative.canWrite(ch.Handle, (int)item.ID, ptr, (uint)dlc, flags),
-                        > 0 => CanlibNative.canWriteWait(ch.Handle, (int)item.ID, ptr, (uint)dlc, flags, (uint)remainingTime),
-                        < 0 => CanlibNative.canWriteWait(ch.Handle, (int)item.ID, ptr, (uint)dlc, flags, uint.MaxValue),
+                        0 => CanlibNative.canWrite(ch.Handle, item.ID, ptr, (uint)dlc, flags),
+                        > 0 => CanlibNative.canWriteWait(ch.Handle, item.ID, ptr, (uint)dlc, flags, (uint)remainingTime),
+                        < 0 => CanlibNative.canWriteWait(ch.Handle, item.ID, ptr, (uint)dlc, flags, uint.MaxValue),
                     };
                 }
             }
@@ -49,7 +49,7 @@ public sealed class KvaserClassicTransceiver : ITransceiver
             }
             else if (st == Canlib.canStatus.canERR_TXBUFOFL)
             {
-                break;
+                return -sent;
             }
             else
             {
@@ -77,12 +77,12 @@ public sealed class KvaserClassicTransceiver : ITransceiver
             int id;
             int flags;
             long time;
-            int recCount = 0;
+            int dlc;
             var st = timeOut switch
             {
-                0 => Canlib.canRead(ch.Handle, out id, data, out _, out flags, out time),
-                > 0 => Canlib.canReadWait(ch.Handle, out id, data, out _, out flags, out time, remainingTime),
-                < 0 => Canlib.canReadWait(ch.Handle, out id, data, out _, out flags, out time, long.MaxValue),
+                0 => Canlib.canRead(ch.Handle, out id, data, out dlc, out flags, out time),
+                > 0 => Canlib.canReadWait(ch.Handle, out id, data, out dlc, out flags, out time, remainingTime),
+                < 0 => Canlib.canReadWait(ch.Handle, out id, data, out dlc, out flags, out time, long.MaxValue),
             };
 
             if (st == Canlib.canStatus.canOK)
@@ -91,16 +91,11 @@ public sealed class KvaserClassicTransceiver : ITransceiver
                 var isRtr = (flags & Canlib.canMSG_RTR) != 0;
                 var isErr = (flags & Canlib.canMSG_ERROR_FRAME) != 0;
                 var buf = data;
-                var frame = new CanClassicFrame(id, buf, isExt) { IsRemoteFrame = isRtr, IsErrorFrame = isErr };
+                var frame = new CanClassicFrame(id,new ArraySegment<byte>(buf, 0, dlc), isExt) { IsRemoteFrame = isRtr, IsErrorFrame = isErr };
                 // Convert using configured timer_scale (microseconds per unit)
                 var kch = (KvaserBus)bus;
                 var ticks = time * kch.Options.TimerScaleMicroseconds * 10L; // us -> ticks
                 yield return new CanReceiveData(frame) { ReceiveTimestamp = TimeSpan.FromTicks(ticks) };
-                recCount++;
-                if (recCount == count)
-                {
-                    break;
-                }
             }
             else if (st == Canlib.canStatus.canERR_NOMSG)
             {

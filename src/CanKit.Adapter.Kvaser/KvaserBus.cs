@@ -53,7 +53,6 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
 
         // Configure bit timing and turn bus on
         ConfigureBitrate(_handle, (KvaserBusOptions)options);
-
         var st = Canlib.canBusOn(_handle);
         CanKitLogger.LogInformation("PCAN: Initialize succeeded.");
         if (st != Canlib.canStatus.canOK)
@@ -217,15 +216,13 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
     public IEnumerable<CanReceiveData> Receive(int count = 1, int timeOut = 0)
     {
         ThrowIfDisposed();
-        try
+        if (count < 0) throw new ArgumentOutOfRangeException(nameof(count));
+        if (Volatile.Read(ref _subscriberCount) > 0)
         {
-            if (count < 0) throw new ArgumentOutOfRangeException(nameof(count));
-            return _transceiver.Receive(this, count, timeOut);
+            // To prevent cross-handler contention when subscribing to FrameReceived or ErrorFrameReceived, handle all messages asynchronously.
+            return ReceiveAsync(count, timeOut).GetAwaiter().GetResult();
         }
-        catch (Exception ex)
-        {
-            HandleBackgroundException(ex); throw;
-        }
+        return _transceiver.Receive(this, count, timeOut);
     }
 
     IBusRTOptionsConfigurator ICanBus.Options => Options;
@@ -564,10 +561,12 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
 
                 if (rec.CanFrame.IsErrorFrame)
                 {
-                    var errorCounters = ErrorCounters();
+                    var enableErrorCounter = (Options.Features & CanFeature.ErrorCounters) != 0;
+                    CanErrorCounters? errorCounters = enableErrorCounter ? ErrorCounters() : null;
                     _errorOccured?.Invoke(this, new DefaultCanErrorInfo(
                         FrameErrorType.Unknown,
-                        CanKitExtension.ToControllerStatus(errorCounters.ReceiveErrorCounter, errorCounters.TransmitErrorCounter),
+                        enableErrorCounter ?
+                            CanKitExtension.ToControllerStatus(errorCounters!.Value.ReceiveErrorCounter, errorCounters.Value.TransmitErrorCounter) : CanControllerStatus.Unknown,
                         CanProtocolViolationType.Unknown,
                         FrameErrorLocation.Invalid,
                         DateTime.Now,

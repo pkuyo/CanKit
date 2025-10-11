@@ -51,7 +51,7 @@ namespace CanKit.Adapter.ZLG.Transceivers
                 while (count > 0)
                 {
 
-                    var recCount = ZLGCAN.ZCAN_Receive(((ZlgCanBus)bus).NativeHandle, buf, (uint)count, timeOut);
+                    var recCount = ZLGCAN.ZCAN_Receive(((ZlgCanBus)bus).NativeHandle, buf, (uint)Math.Min(count, ZLGCAN.BATCH_COUNT), timeOut);
                     if (recCount == 0)
                         yield break;
                     for (int i = 0; i < recCount; i++)
