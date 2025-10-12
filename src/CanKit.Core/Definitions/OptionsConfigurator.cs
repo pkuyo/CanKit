@@ -73,6 +73,8 @@ namespace CanKit.Core.Definitions
         public ICanModelProvider Provider => Options.Provider;
         public CanFeature Features => _feature;
         public DeviceType DeviceType => Options.DeviceType;
+        public virtual IDeviceInitOptionsConfigurator Custom(string key, object value) => this;
+
     }
 
     public class BusInitOptionsConfigurator<TChannelOptions, TSelf>
@@ -156,6 +158,8 @@ namespace CanKit.Core.Definitions
 
         IBusInitOptionsConfigurator IBusInitOptionsConfigurator.SetReceiveLoopStopDelayMs(int delayMs)
             => SetReceiveLoopStopDelayMs(delayMs);
+
+        public virtual IBusInitOptionsConfigurator Custom(string key, object value) => this;
 
         public virtual TSelf UseChannelIndex(int index)
         {
@@ -297,7 +301,6 @@ namespace CanKit.Core.Definitions
             Options.AllowErrorInfo = true;
             return (TSelf)this;
         }
-
 
         public virtual TSelf SetAsyncBufferCapacity(int capacity)
         {

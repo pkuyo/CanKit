@@ -1,7 +1,10 @@
+using System;
 using System.Linq;
 using CanKit.Adapter.ZLG.Definitions;
 using CanKit.Adapter.ZLG.Diagnostics;
+using CanKit.Core.Abstractions;
 using CanKit.Core.Definitions;
+using CanKit.Core.Diagnostics;
 using CanKit.Core.Exceptions;
 
 namespace CanKit.Adapter.ZLG.Options;
@@ -26,17 +29,14 @@ public sealed class ZlgBusInitConfigurator
     : BusInitOptionsConfigurator<ZlgBusOptions, ZlgBusInitConfigurator>
 {
 
-    /// <summary>
-    /// Polling interval in ms (轮询间隔，毫秒)。
-    /// </summary>
-    public int PollingInterval => Options.PollingInterval;
+
 
     /// <summary>
     /// Set polling interval (设置轮询间隔)。
     /// </summary>
     /// <param name="newPollingInterval">Interval in ms (间隔毫秒)。</param>
     /// <returns>Configurator (配置器本身)。</returns>
-    public ZlgBusInitConfigurator SetPollingInterval(int newPollingInterval)
+    public ZlgBusInitConfigurator PollingInterval(int newPollingInterval)
     {
         Options.PollingInterval = newPollingInterval;
         return this;
@@ -74,6 +74,20 @@ public sealed class ZlgBusInitConfigurator
 
         return base.RangeFilter(min, max, idType);
     }
+
+    public override IBusInitOptionsConfigurator Custom(string key, object value)
+    {
+        switch (key)
+        {
+            case nameof(PollingInterval):
+                Options.PollingInterval = Convert.ToInt32(value);
+                break;
+            default:
+                CanKitLogger.LogWarning($"ZLG: invalid key: {key}");
+                break;
+        }
+        return this;
+    }
 }
 
 public sealed class ZlgBusRtConfigurator
@@ -83,16 +97,9 @@ public sealed class ZlgBusRtConfigurator
     /// <summary>
     /// Polling interval in ms (轮询间隔，毫秒)。
     /// </summary>
-    public int PollingInterval => Options.PollingInterval;
-
-    /// <summary>
-    /// Set polling interval (设置轮询间隔)。
-    /// </summary>
-    /// <param name="newPollingInterval">Interval in ms (间隔毫秒)。</param>
-    /// <returns>Configurator (配置器本身)。</returns>
-    public ZlgBusRtConfigurator SetPollingInterval(int newPollingInterval)
+    public int PollingInterval
     {
-        Options.PollingInterval = newPollingInterval;
-        return this;
+        get => Options.PollingInterval;
+        set => Options.PollingInterval = value;
     }
 }

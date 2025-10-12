@@ -1,5 +1,6 @@
 using CanKit.Core.Abstractions;
 using CanKit.Core.Definitions;
+using CanKit.Core.Diagnostics;
 using CanKit.Core.Exceptions;
 
 namespace CanKit.Adapter.SocketCAN;
@@ -53,11 +54,6 @@ public sealed class SocketCanBusOptions(ICanModelProvider provider) : IBusOption
 public sealed class SocketCanBusInitConfigurator
     : BusInitOptionsConfigurator<SocketCanBusOptions, SocketCanBusInitConfigurator>
 {
-    public SocketCanBusInitConfigurator PreferKernelTimestamp(bool enable = true)
-    {
-        Options.PreferKernelTimestamp = enable;
-        return this;
-    }
 
     public override SocketCanBusInitConfigurator RangeFilter(int min, int max, CanFilterIDType idType = CanFilterIDType.Standard)
     {
@@ -68,15 +64,22 @@ public sealed class SocketCanBusInitConfigurator
         return base.RangeFilter(min, max, idType);
     }
 
+    public SocketCanBusInitConfigurator PreferKernelTimestamp(bool enable = true)
+    {
+        Options.PreferKernelTimestamp = enable;
+        return this;
+    }
+
     public SocketCanBusInitConfigurator NetLink(bool enable)
     {
         Options.UseNetLink = enable;
         return this;
     }
 
-    public SocketCanBusInitConfigurator SetReceiveBufferCapacity(uint? capacity)
+    public SocketCanBusInitConfigurator ReceiveBufferCapacity(int capacity)
     {
-        Options.ReceiveBufferCapacity = capacity;
+        if(capacity < 0) throw new ArgumentOutOfRangeException(nameof(capacity));
+        Options.ReceiveBufferCapacity = (uint)capacity;
         return this;
     }
 
@@ -86,11 +89,40 @@ public sealed class SocketCanBusInitConfigurator
         return this;
     }
 
+    public override IBusInitOptionsConfigurator Custom(string key, object value)
+    {
+        switch (key)
+        {
+            case nameof(PreferKernelTimestamp):
+                Options.PreferKernelTimestamp = ThrowOrGet<bool>(value);
+                break;
+            case nameof(UseNetLink):
+                Options.UseNetLink = ThrowOrGet<bool>(value);
+                break;
+            case nameof(ReadTimeOut):
+            case nameof(ReadTImeOutMs):
+                Options.ReadTImeOutMs = Convert.ToInt32(value);
+                break;
+            case nameof(ReceiveBufferCapacity):
+                Options.ReceiveBufferCapacity = Convert.ToUInt32(value);
+                break;
+            default:
+                CanKitLogger.LogWarning($"SocketCAN: invalid key: {key}");
+                break;
+        }
+
+        T ThrowOrGet<T>(object value)
+        {
+            if (value is not T t)
+                throw new ArgumentException(nameof(value));
+            return t;
+        }
+        return this;
+    }
+
     public bool UseNetLink => Options.UseNetLink;
 
     public int ReadTImeOutMs => Options.ReadTImeOutMs;
-
-    public uint? ReceiveBufferCapacity => Options.ReceiveBufferCapacity;
 }
 
 public sealed class SocketCanBusRtConfigurator

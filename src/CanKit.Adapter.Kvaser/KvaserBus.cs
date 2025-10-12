@@ -53,6 +53,13 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
 
         // Configure bit timing and turn bus on
         ConfigureBitrate(_handle, (KvaserBusOptions)options);
+
+        if (Options.ReceiveBufferCapacity != null)
+        {
+            object obj = Options.ReceiveBufferCapacity.Value;
+            Canlib.canIoCtl(_handle, Canlib.canIOCTL_SET_RX_QUEUE_SIZE, ref obj);
+        }
+
         var st = Canlib.canBusOn(_handle);
         CanKitLogger.LogInformation("PCAN: Initialize succeeded.");
         if (st != Canlib.canStatus.canOK)

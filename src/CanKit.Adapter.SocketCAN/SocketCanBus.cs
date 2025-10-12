@@ -315,11 +315,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
     }
 #endif
 
-    public void ClearBuffer()
-    {
-        ThrowIfDisposed();
-        throw new NotImplementedException();
-    }
+    public void ClearBuffer() => throw new NotSupportedException("SocketCAN does not support clear buffer");
 
     public float BusUsage() => throw new CanFeatureNotSupportedException(CanFeature.BusUsage, Options.Features);
 

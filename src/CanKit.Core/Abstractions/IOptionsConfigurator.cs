@@ -131,6 +131,13 @@ public interface IDeviceInitOptionsConfigurator : ICanOptionsConfigurator
     /// Device type (设备类型)。
     /// </summary>
     DeviceType DeviceType { get; }
+
+    /// <summary>
+    /// Set custom option value (设置自定义选项值)。
+    /// </summary>
+    /// <param name="key">Option key (选项键)。</param>
+    /// <param name="value">Option value (选项值)。</param>
+    IDeviceInitOptionsConfigurator Custom(string key, object value);
 }
 
 /// <summary>
@@ -348,6 +355,13 @@ public interface IBusInitOptionsConfigurator : ICanOptionsConfigurator
     /// </summary>
     /// <param name="delayMs">Delay in milliseconds (延时时间，毫秒)。</param>
     IBusInitOptionsConfigurator SetReceiveLoopStopDelayMs(int delayMs);
+
+    /// <summary>
+    /// Set custom option value (设置自定义选项值)。
+    /// </summary>
+    /// <param name="key">Option key (选项键)。</param>
+    /// <param name="value">Option value (选项值)。</param>
+    IBusInitOptionsConfigurator Custom(string key, object value);
 }
 
 

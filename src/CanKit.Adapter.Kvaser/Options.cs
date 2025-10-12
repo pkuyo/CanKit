@@ -1,5 +1,6 @@
 using CanKit.Core.Abstractions;
 using CanKit.Core.Definitions;
+using CanKit.Core.Diagnostics;
 
 namespace CanKit.Adapter.Kvaser;
 
@@ -28,6 +29,8 @@ public sealed class KvaserBusOptions(ICanModelProvider provider) : IBusOptions
     public bool AllowErrorInfo { get; set; }
     public int AsyncBufferCapacity { get; set; } = 0;
     public int ReceiveLoopStopDelayMs { get; set; } = 200;
+
+    public int? ReceiveBufferCapacity { get; set; }
 }
 
 public sealed class KvaserBusInitConfigurator
@@ -43,6 +46,40 @@ public sealed class KvaserBusInitConfigurator
         Options.TimerScaleMicroseconds = microseconds;
         return this;
     }
+
+    public KvaserBusInitConfigurator ReceiveBufferCapacity(int capacity)
+    {
+        if(capacity < 0) throw new ArgumentOutOfRangeException(nameof(capacity));
+        Options.ReceiveBufferCapacity = capacity;
+        return this;
+    }
+
+    public override IBusInitOptionsConfigurator Custom(string key, object value)
+    {
+        switch (key)
+        {
+            case nameof(Options.AcceptVirtual):
+            case nameof(AcceptVirtualChannels):
+                Options.AcceptVirtual = ThrowOrGet<bool>(value);
+                break;
+            case nameof(TimerScaleMicroseconds):
+                Options.TimerScaleMicroseconds = Convert.ToInt32(value);
+                break;
+            case nameof(ReceiveBufferCapacity):
+                Options.ReceiveBufferCapacity = Convert.ToInt32(value);
+                break;
+            default:
+                CanKitLogger.LogWarning($"Kvaser: invalid key: {key}");
+                break;
+        }
+        T ThrowOrGet<T>(object value)
+        {
+            if (value is not T t)
+                throw new ArgumentException(nameof(value));
+            return t;
+        }
+        return this;
+    }
 }
 
 public sealed class KvaserBusRtConfigurator
@@ -50,5 +87,7 @@ public sealed class KvaserBusRtConfigurator
 {
     public bool AcceptVirtual => Options.AcceptVirtual;
     public int TimerScaleMicroseconds => Options.TimerScaleMicroseconds;
+
+    public int? ReceiveBufferCapacity => Options.ReceiveBufferCapacity;
 
 }

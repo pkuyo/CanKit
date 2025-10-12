@@ -22,7 +22,7 @@ internal static class SocketCanEndpoint
     {
         // Interpret path as interfaceName, or use query iface= / if=, else index as number
         string iface = ep.Path;
-        uint? rcvbuf = null;
+        int? rcvbuf = null;
         if (string.IsNullOrWhiteSpace(iface))
         {
             if (ep.TryGet("if", out var v) || ep.TryGet("iface", out v))
@@ -31,7 +31,7 @@ internal static class SocketCanEndpoint
             // Use query rcvbuf= / rcvbuf= to set receive buffer cap.
             if (ep.TryGet("rcvbuf", out var u))
             {
-                if (uint.TryParse(u, out var result))
+                if (int.TryParse(u, out var result))
                     rcvbuf = result;
                 else
                 {
@@ -58,8 +58,9 @@ internal static class SocketCanEndpoint
             cfg =>
             {
                 cfg.UseChannelName(iface)
-                    .NetLink(enableNetLink)
-                    .SetReceiveBufferCapacity(rcvbuf);
+                    .NetLink(enableNetLink);
+                if (rcvbuf != null)
+                    cfg.ReceiveBufferCapacity(rcvbuf.Value);
                 configure?.Invoke(cfg);
             });
     }
