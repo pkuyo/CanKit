@@ -25,9 +25,6 @@ public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, IBusOwnershi
 
     private Func<ICanFrame, bool>? _softwareFilterPredicate;
     private bool _useSoftwareFilter;
-    private int _subscriberCount;
-    private int _asyncConsumerCount;
-    private CancellationTokenSource? _stopDelayCts;
 
     private EventHandler<CanReceiveData>? _frameReceived;
     private EventHandler<ICanErrorInfo>? _errorOccurred;
@@ -83,7 +80,6 @@ public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, IBusOwnershi
 
     public void ClearBuffer()
     {
-        while (_rxQueue.TryDequeue(out _)) { }
     }
 
     //non-support time out
@@ -127,40 +123,18 @@ public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, IBusOwnershi
     {
         ThrowIfDisposed();
         if (count < 0) throw new ArgumentOutOfRangeException(nameof(count));
-        Interlocked.Increment(ref _subscriberCount);
-        Interlocked.Increment(ref _asyncConsumerCount);
-        try
-        {
-            return await _asyncRx.ReceiveBatchAsync(count, timeOut, cancellationToken)
-                .ConfigureAwait(false);
-        }
-        finally
-        {
-            var remAsync = Interlocked.Decrement(ref _asyncConsumerCount);
-            var rem = Interlocked.Decrement(ref _subscriberCount);
-            if (rem == 0 && remAsync == 0)
-                RequestStopReceiveDelay();
-        }
+        return await _asyncRx.ReceiveBatchAsync(count, timeOut, cancellationToken)
+            .ConfigureAwait(false);
     }
 
 #if NET8_0_OR_GREATER
-    public async IAsyncEnumerable<CanReceiveData> GetFramesAsync([System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+    public async IAsyncEnumerable<CanReceiveData> GetFramesAsync(
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
-        Interlocked.Increment(ref _subscriberCount);
-        Interlocked.Increment(ref _asyncConsumerCount);
-        try
+        await foreach (var item in _asyncRx.ReadAllAsync(cancellationToken))
         {
-            await foreach (var item in _asyncRx.ReadAllAsync(cancellationToken))
-            {
-                yield return item;
-            }
-        }
-        finally
-        {
-            var remAsync = Interlocked.Decrement(ref _asyncConsumerCount);
-            var rem = Interlocked.Decrement(ref _subscriberCount);
-            if (rem == 0 && remAsync == 0) RequestStopReceiveDelay();
+            yield return item;
         }
     }
 #endif
@@ -173,34 +147,17 @@ public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, IBusOwnershi
     {
         add
         {
-            bool inc = false;
             lock (_evtGate)
             {
-                var before = _frameReceived;
                 _frameReceived += value;
-                if (!ReferenceEquals(before, _frameReceived))
-                {
-                    inc = before == null;
-                    Interlocked.Increment(ref _subscriberCount);
-                }
             }
-            if (inc) CancelPendingStopDelay();
         }
         remove
         {
-            bool needStop = false;
             lock (_evtGate)
             {
-                var before = _frameReceived;
                 _frameReceived -= value;
-                if (!ReferenceEquals(before, _frameReceived))
-                {
-                    var now = Interlocked.Decrement(ref _subscriberCount);
-                    if (now == 0 && Volatile.Read(ref _asyncConsumerCount) == 0)
-                        needStop = true;
-                }
             }
-            if (needStop) RequestStopReceiveDelay();
         }
     }
 
@@ -212,18 +169,10 @@ public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, IBusOwnershi
             {
                 throw new CanBusConfigurationException("ErrorOccurred subscription requires AllowErrorInfo=true in options.");
             }
-            bool inc = false;
             lock (_evtGate)
             {
-                var before = _errorOccurred;
                 _errorOccurred += value;
-                if (!ReferenceEquals(before, _errorOccurred))
-                {
-                    inc = before == null;
-                    Interlocked.Increment(ref _subscriberCount);
-                }
             }
-            if (inc) CancelPendingStopDelay();
         }
         remove
         {
@@ -231,19 +180,10 @@ public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, IBusOwnershi
             {
                 throw new CanBusConfigurationException("ErrorOccurred subscription requires AllowErrorInfo=true in options.");
             }
-            bool needStop = false;
             lock (_evtGate)
             {
-                var before = _errorOccurred;
                 _errorOccurred -= value;
-                if (!ReferenceEquals(before, _errorOccurred))
-                {
-                    var now = Interlocked.Decrement(ref _subscriberCount);
-                    if (now == 0 && Volatile.Read(ref _asyncConsumerCount) == 0)
-                        needStop = true;
-                }
             }
-            if (needStop) RequestStopReceiveDelay();
         }
     }
 
@@ -255,7 +195,6 @@ public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, IBusOwnershi
         try
         {
             _hub.Detach(this);
-            CancelPendingStopDelay();
         }
         finally
         {
@@ -269,10 +208,8 @@ public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, IBusOwnershi
         var pred = _softwareFilterPredicate;
         if (!_useSoftwareFilter || pred is null || pred(data.CanFrame))
         {
-            _rxQueue.Enqueue(data);
             _frameReceived?.Invoke(this, data);
-            if (Volatile.Read(ref _asyncConsumerCount) > 0)
-                _asyncRx.Publish(data);
+            _asyncRx.Publish(data);
         }
     }
 
@@ -281,25 +218,7 @@ public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, IBusOwnershi
         _errorOccurred?.Invoke(this, info);
     }
 
-    private void RequestStopReceiveDelay()
-    {
-        CancelPendingStopDelay();
-        if (Options.ReceiveLoopStopDelayMs <= 0) return;
-        _stopDelayCts = new CancellationTokenSource();
-        var token = _stopDelayCts.Token;
-        _ = Task.Run(async () =>
-        {
-            try { await Task.Delay(Options.ReceiveLoopStopDelayMs, token).ConfigureAwait(false); }
-            catch { /* ignore */ }
-        }, token);
-    }
 
-    private void CancelPendingStopDelay()
-    {
-        try { _stopDelayCts?.Cancel(); }
-        catch { }
-        finally { _stopDelayCts?.Dispose(); _stopDelayCts = null; }
-    }
 
     private void ThrowIfDisposed()
     {
