@@ -405,7 +405,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
 
     private void ThrowIfDisposed()
     {
-        if (_isDisposed) throw new ObjectDisposedException("PCanBus is disposed.");
+        if (_isDisposed) throw new CanBusDisposedException();
     }
 
 

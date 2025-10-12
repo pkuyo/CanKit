@@ -245,6 +245,7 @@ namespace CanKit.Adapter.ZLG
 
                 try
                 {
+                    //StopReceiveLoop();
                     Reset();
                 }
                 catch (CanKitException ex)
@@ -672,7 +673,7 @@ namespace CanKit.Adapter.ZLG
                         errSnap.Invoke(this, errInfo!);
                     }
                 }
-                catch (ObjectDisposedException)
+                catch (CanBusDisposedException)
                 {
                     // 通道或底层已释放，退出
                     break;

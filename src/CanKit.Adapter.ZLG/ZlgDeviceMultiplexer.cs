@@ -75,7 +75,6 @@ internal static class ZlgDeviceMultiplexer
             if (c > 0) return;
             if (_map.TryRemove(_key, out _))
             {
-                try { e.Device.CloseDevice(); } catch { }
                 try { e.Device.Dispose(); } catch { }
             }
         }

@@ -463,7 +463,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
 
     private void ThrowIfDisposed()
     {
-        if (_isDisposed) throw new ObjectDisposedException("KvaserBus is disposed.");
+        if (_isDisposed) throw new CanBusDisposedException();
     }
 
     private void StartReceiveLoopIfNeeded()
