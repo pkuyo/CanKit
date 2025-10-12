@@ -78,7 +78,7 @@ public sealed class SocketCanBusInitConfigurator
 
     public SocketCanBusInitConfigurator ReceiveBufferCapacity(int capacity)
     {
-        if(capacity < 0) throw new ArgumentOutOfRangeException(nameof(capacity));
+        if (capacity < 0) throw new ArgumentOutOfRangeException(nameof(capacity));
         Options.ReceiveBufferCapacity = (uint)capacity;
         return this;
     }
