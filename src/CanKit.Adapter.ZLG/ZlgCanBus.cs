@@ -103,14 +103,12 @@ namespace CanKit.Adapter.ZLG
 
             var handle = ZLGCAN.ZCAN_InitCAN(device.NativeHandler, (uint)Options.ChannelIndex, ref config);
             CanKitLogger.LogInformation("ZLG: Initialize succeeded.");
-
-            ApplyConfigAfterInit(options);
             handle.SetDevice(device.NativeHandler.DangerousGetHandle());
-
-            ZlgErr.ThrowIfInvalid(handle, nameof(ZLGCAN.ZCAN_InitCAN));
             _nativeHandle = handle;
-
+            ZlgErr.ThrowIfInvalid(handle, nameof(ZLGCAN.ZCAN_InitCAN));
             Reset();
+            ApplyConfigAfterInit(options);
+
             ZlgErr.ThrowIfError(ZLGCAN.ZCAN_StartCAN(_nativeHandle), nameof(ZLGCAN.ZCAN_StartCAN), _nativeHandle);
             if (transceiver is not IZlgTransceiver zlg)
                 throw new CanTransceiverMismatchException(typeof(IZlgTransceiver), transceiver.GetType());
@@ -178,8 +176,15 @@ namespace CanKit.Adapter.ZLG
         {
             CanKitErr.ThrowIfNotSupport(Options.Features, CanFeature.BusUsage);
             var ret = ZLGCAN.ZCAN_GetValue(NativeHandle.DeviceHandle, $"{Options.ChannelIndex}/get_bus_usage/1");
-            var busUsage = Marshal.PtrToStructure<ZLGCAN.BusUsage>(ret);
-            return busUsage.nBusUsage / 100f;
+            if (ret != IntPtr.Zero)
+            {
+                var busUsage = Marshal.PtrToStructure<ZLGCAN.BusUsage>(ret);
+                return busUsage.nBusUsage / 100f;
+            }
+            else
+            {
+                return 0;
+            }
         }
 
         public CanErrorCounters ErrorCounters()
@@ -688,20 +693,22 @@ namespace CanKit.Adapter.ZLG
                 catch (Exception ex) { HandleBackgroundException(ex); throw; }
             }, cancellationToken);
 
-        public Task<IReadOnlyList<CanReceiveData>> ReceiveAsync(int count = 1, int timeOut = 0, CancellationToken cancellationToken = default)
+        public async Task<IReadOnlyList<CanReceiveData>> ReceiveAsync(int count = 1, int timeOut = 0, CancellationToken cancellationToken = default)
         {
             ThrowIfDisposed();
             Interlocked.Increment(ref _subscriberCount);
             Interlocked.Increment(ref _asyncConsumerCount);
             CheckSubscribers(true);
             if (count < 0) throw new ArgumentOutOfRangeException(nameof(count));
-            return _asyncRx.ReceiveBatchAsync(count, timeOut, cancellationToken)
-                .ContinueWith(t =>
-                {
-                    var remAsync = Interlocked.Decrement(ref _asyncConsumerCount);
-                    CheckSubscribers(false, true);
-                    return t.Result;
-                }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+            try
+            {
+                return await _asyncRx.ReceiveBatchAsync(count, timeOut, cancellationToken).ConfigureAwait(false);
+            }
+            finally
+            {
+                _ = Interlocked.Decrement(ref _asyncConsumerCount);
+                CheckSubscribers(false, true);
+            }
         }
 
 #if NET8_0_OR_GREATER

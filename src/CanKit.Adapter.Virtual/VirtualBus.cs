@@ -123,20 +123,24 @@ public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, IBusOwnershi
             catch (Exception ex) { HandleBackgroundException(ex); throw; }
         }, cancellationToken);
 
-    public Task<IReadOnlyList<CanReceiveData>> ReceiveAsync(int count = 1, int timeOut = 0, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<CanReceiveData>> ReceiveAsync(int count = 1, int timeOut = 0, CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
         if (count < 0) throw new ArgumentOutOfRangeException(nameof(count));
         Interlocked.Increment(ref _subscriberCount);
         Interlocked.Increment(ref _asyncConsumerCount);
-        return _asyncRx.ReceiveBatchAsync(count, timeOut, cancellationToken)
-            .ContinueWith(t =>
-            {
-                var remAsync = Interlocked.Decrement(ref _asyncConsumerCount);
-                var rem = Interlocked.Decrement(ref _subscriberCount);
-                if (rem == 0 && remAsync == 0) RequestStopReceiveDelay();
-                return t.Result;
-            }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+        try
+        {
+            return await _asyncRx.ReceiveBatchAsync(count, timeOut, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            var remAsync = Interlocked.Decrement(ref _asyncConsumerCount);
+            var rem = Interlocked.Decrement(ref _subscriberCount);
+            if (rem == 0 && remAsync == 0)
+                RequestStopReceiveDelay();
+        }
     }
 
 #if NET8_0_OR_GREATER

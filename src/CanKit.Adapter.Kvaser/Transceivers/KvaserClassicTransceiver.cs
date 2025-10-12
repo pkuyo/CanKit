@@ -23,13 +23,11 @@ public sealed class KvaserClassicTransceiver : ITransceiver
             var remainingTime = timeOut > 0
                 ? Math.Max(0, timeOut - (Environment.TickCount - startTime))
                 : timeOut;
+
             var flags = 0u;
             flags |= (channel.Options.TxRetryPolicy == TxRetryPolicy.NoRetry) ? (uint)Canlib.canMSG_SINGLE_SHOT : 0;
             if (cf.IsExtendedFrame) flags |= Canlib.canMSG_EXT;
             if (cf.IsRemoteFrame) flags |= Canlib.canMSG_RTR;
-
-            var data = cf.Data.ToArray();
-            var dlc = data.Length;
             Canlib.canStatus st;
             unsafe
             {
@@ -37,9 +35,9 @@ public sealed class KvaserClassicTransceiver : ITransceiver
                 {
                     st = timeOut switch
                     {
-                        0 => CanlibNative.canWrite(ch.Handle, item.ID, ptr, (uint)dlc, flags),
-                        > 0 => CanlibNative.canWriteWait(ch.Handle, item.ID, ptr, (uint)dlc, flags, (uint)remainingTime),
-                        < 0 => CanlibNative.canWriteWait(ch.Handle, item.ID, ptr, (uint)dlc, flags, uint.MaxValue),
+                        0 => CanlibNative.canWrite(ch.Handle, item.ID, ptr, (uint)cf.Data.Length, flags),
+                        > 0 => CanlibNative.canWriteWait(ch.Handle, item.ID, ptr, (uint)cf.Data.Length, flags, (uint)remainingTime),
+                        < 0 => CanlibNative.canWriteWait(ch.Handle, item.ID, ptr, (uint)cf.Data.Length, flags, uint.MaxValue),
                     };
                 }
             }
@@ -47,7 +45,8 @@ public sealed class KvaserClassicTransceiver : ITransceiver
             {
                 sent++;
             }
-            else if (st == Canlib.canStatus.canERR_TXBUFOFL)
+            else if (st == Canlib.canStatus.canERR_TXBUFOFL
+                     || st == Canlib.canStatus.canERR_TIMEOUT)
             {
                 return -sent;
             }
@@ -91,7 +90,7 @@ public sealed class KvaserClassicTransceiver : ITransceiver
                 var isRtr = (flags & Canlib.canMSG_RTR) != 0;
                 var isErr = (flags & Canlib.canMSG_ERROR_FRAME) != 0;
                 var buf = data;
-                var frame = new CanClassicFrame(id,new ArraySegment<byte>(buf, 0, dlc), isExt) { IsRemoteFrame = isRtr, IsErrorFrame = isErr };
+                var frame = new CanClassicFrame(id, new ArraySegment<byte>(buf, 0, dlc), isExt) { IsRemoteFrame = isRtr, IsErrorFrame = isErr };
                 // Convert using configured timer_scale (microseconds per unit)
                 var kch = (KvaserBus)bus;
                 var ticks = time * kch.Options.TimerScaleMicroseconds * 10L; // us -> ticks

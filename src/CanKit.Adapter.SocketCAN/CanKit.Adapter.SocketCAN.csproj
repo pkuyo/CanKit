@@ -2,11 +2,11 @@
     <PropertyGroup>
         <ImplicitUsings>enable</ImplicitUsings>
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-        <Version>0.1.0</Version>
+        <Version>0.2.0</Version>
         <Description>SocketCAN adapter for CanKit, offering unified CAN/CAN FD access on Linux via kernel CAN.</Description>
         <PackageTags>CAN;CAN-bus;CANFD;SocketCAN;Linux;CanKit</PackageTags>
         <AssemblyVersion>1.0.0.0</AssemblyVersion>
-        <FileVersion>0.1.0.0</FileVersion>
+        <FileVersion>0.2.0.0</FileVersion>
         <Authors>Pkuyo</Authors>
         <RepositoryUrl>https://github.com/pkuyo/CanKit</RepositoryUrl>
         <PackageReadmeFile>README.md</PackageReadmeFile>

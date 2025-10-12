@@ -42,7 +42,7 @@ public sealed class PcanFdTransceiver : ITransceiver
             PcanStatus st;
             fixed (byte* ptr = item.Data.Span)
             {
-                Unsafe.CopyBlock(pMsg->DATA, ptr, (uint)Math.Min(CanFdFrame.DlcToLen(fd.Dlc),64));
+                Unsafe.CopyBlock(pMsg->DATA, ptr, (uint)Math.Min(CanFdFrame.DlcToLen(fd.Dlc), 64));
                 pMsg->ID = (uint)item.ID;
                 pMsg->MSGTYPE = type;
                 pMsg->DLC = fd.Dlc;
