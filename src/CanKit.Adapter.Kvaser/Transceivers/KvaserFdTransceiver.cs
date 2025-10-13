@@ -89,9 +89,9 @@ public sealed class KvaserFdTransceiver : ITransceiver
 
                 ICanFrame frame = isFd
                     ? new CanFdFrame(id, new ArraySegment<byte>(data, 0, CanFdFrame.DlcToLen((byte)dlc)), brs, esi)
-                        { IsExtendedFrame = isExt, IsErrorFrame = isErr }
+                    { IsExtendedFrame = isExt, IsErrorFrame = isErr }
                     : new CanClassicFrame(id, new ArraySegment<byte>(data, 0, dlc))
-                        { IsExtendedFrame = isExt, IsErrorFrame = isErr, IsRemoteFrame = isRtr };
+                    { IsExtendedFrame = isExt, IsErrorFrame = isErr, IsRemoteFrame = isRtr };
 
                 var kch = (KvaserBus)bus;
                 var ticks = time * kch.Options.TimerScaleMicroseconds * 10L; // us -> ticks

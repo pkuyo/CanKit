@@ -74,7 +74,7 @@ public sealed class KvaserClassicTransceiver : ITransceiver
                 var isRtr = (flags & Canlib.canMSG_RTR) != 0;
                 var isErr = (flags & Canlib.canMSG_ERROR_FRAME) != 0;
                 var frame = new CanClassicFrame(id, new ArraySegment<byte>(data, 0, dlc), isExt)
-                    { IsRemoteFrame = isRtr, IsErrorFrame = isErr };
+                { IsRemoteFrame = isRtr, IsErrorFrame = isErr };
                 var kch = (KvaserBus)bus;
                 var ticks = time * kch.Options.TimerScaleMicroseconds * 10L; // us -> ticks
                 yield return new CanReceiveData(frame) { ReceiveTimestamp = TimeSpan.FromTicks(ticks) };

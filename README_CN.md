@@ -117,7 +117,7 @@ foreach (var ep in BusEndpointEntry.Enumerate("pcan", "kvaser", "socketcan", "zl
 
 ## 行为差异
 
-- 超时语义：部分适配器对 TX 超时不生效（如 PCAN）；Kvaser/SocketCAN 对 TX/RX 超时均支持；ZLG 的 RX 超时传入底层。
+- 超时语义：部分适配器对 TX 超时不生效（如 PCAN, Kvaser）；SocketCAN 对 TX/RX 超时均支持；ZLG 的 RX 超时传入底层。
 - 过滤器：各家支持的过滤类型不同（掩码/范围）；不足可启用软件回退。
 - 错误帧/计数/总线利用率：可用性视适配器与驱动而定。
 - 周期发送：部分设备可使用硬件周期发送；否则用软件周期发送回退。

@@ -156,7 +156,7 @@ public sealed class SocketCanClassicTransceiver : ITransceiver
             ? (fr[idx].can_id & Libc.CAN_EFF_MASK)
             : (fr[idx].can_id & Libc.CAN_SFF_MASK);
         var re = new CanReceiveData(new CanClassicFrame((int)rawId, data, ext))
-            { ReceiveTimestamp = tsSpan };
+        { ReceiveTimestamp = tsSpan };
         result.Add(re);
     }
 

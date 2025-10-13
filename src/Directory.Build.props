@@ -20,7 +20,7 @@
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
 
-    <ReleaseNotesFile>$(MSBuildThisFileDirectory)notes/0.2.0.md</ReleaseNotesFile>
+    <ReleaseNotesFile>$(MSBuildThisFileDirectory)notes/0.2.1.md</ReleaseNotesFile>
     <PackageReleaseNotes>$([System.IO.File]::ReadAllText('$(ReleaseNotesFile)'))</PackageReleaseNotes>
 
     <PackageOutputPath>$(MSBuildThisFileDirectory).artifacts\nuget</PackageOutputPath>

@@ -124,7 +124,7 @@ Read the step-by-step guide, including installing drivers/runtime libraries per 
 
 Different adapters may handle timeouts, filters, error frames, and periodic TX differently:
 
-- Timeouts: some adapters ignore TX timeouts (e.g., PCAN), others honor both TX/RX timeouts (Kvaser, SocketCAN, ZLG for RX).
+- Timeouts: some adapters ignore TX timeouts (e.g., PCAN, Kvaser), others honor both TX/RX timeouts.
 - Filters: mask vs. range support varies; software fallback can be enabled when hardware filtering is limited.
 - Error Frames/Counters/Bus Usage: availability depends on adapter/driver.
 - Periodic TX: hardware-backed on some adapters; otherwise use software periodic TX fallback.

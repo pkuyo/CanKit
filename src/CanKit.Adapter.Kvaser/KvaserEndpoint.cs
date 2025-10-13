@@ -5,6 +5,7 @@ using CanKit.Core.Attributes;
 using CanKit.Core.Endpoints;
 using System;
 using System.Collections.Generic;
+using CanKit.Core.Diagnostics;
 using Kvaser.CanLib;
 
 namespace CanKit.Adapter.Kvaser;
@@ -22,6 +23,8 @@ internal static class KvaserEndpoint
     public static ICanBus Open(CanEndpoint ep, Action<IBusInitOptionsConfigurator>? configure)
     {
         int channel = 0;
+        int? rxBuf = null;
+        int ts = 1000;
         if (!string.IsNullOrWhiteSpace(ep.Path))
         {
             _ = int.TryParse(ep.Path, out channel);
@@ -34,11 +37,33 @@ internal static class KvaserEndpoint
             }
         }
 
+        if (ep.TryGet("rxbuf", out var v1))
+        {
+            if (int.TryParse(v1, out var rx))
+            {
+                rxBuf = rx;
+            }
+            else
+            {
+                CanKitLogger.LogError($"SocketCAN: Invalid rxbuf value:{v1}");
+            }
+        }
+        if (ep.TryGet("ts", out v1))
+        {
+            if (int.TryParse(v1, out var rx))
+            {
+                ts = rx;
+            }
+            else
+            {
+                CanKitLogger.LogError($"SocketCAN: Invalid time scale value:{v1}");
+            }
+        }
         return CanBus.Open<KvaserBus, KvaserBusOptions, KvaserBusInitConfigurator>(
             KvaserDeviceType.CANlib,
             cfg =>
             {
-                cfg.UseChannelIndex(channel);
+                cfg.UseChannelIndex(channel).TimerScaleMicroseconds(ts).ReceiveBufferCapacity(rxBuf);
                 configure?.Invoke(cfg);
             });
     }

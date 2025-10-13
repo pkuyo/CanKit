@@ -47,9 +47,9 @@ public sealed class KvaserBusInitConfigurator
         return this;
     }
 
-    public KvaserBusInitConfigurator ReceiveBufferCapacity(int capacity)
+    public KvaserBusInitConfigurator ReceiveBufferCapacity(int? capacity)
     {
-        if (capacity < 0) throw new ArgumentOutOfRangeException(nameof(capacity));
+        if ((capacity ?? 0) < 0) throw new ArgumentOutOfRangeException(nameof(capacity));
         Options.ReceiveBufferCapacity = capacity;
         return this;
     }
