@@ -207,19 +207,6 @@ public readonly record struct CanBusTiming
 }
 
 /// <summary>
-/// Parameters for sending CAN data. (发送 CAN 数据的参数。)
-/// </summary>
-public readonly record struct CanTransmitData
-{
-    public CanTransmitData(ICanFrame canFrame)
-    {
-        CanFrame = canFrame;
-    }
-    /// <summary>Frame to transmit. (待发送的帧。)</summary>
-    public ICanFrame CanFrame { get; init; }
-}
-
-/// <summary>
 /// Represents a received CAN data event. (接收的 CAN 数据事件。)
 /// </summary>
 public readonly record struct CanReceiveData(ICanFrame CanFrame)

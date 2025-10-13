@@ -214,7 +214,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
 
             wrote = _transceiver.Transmit(this,
                 new ArraySegment<ICanFrame>(needSend, sendCount, needSend.Length - sendCount));
-            sendCount += (int)wrote;
+            sendCount += wrote;
 
         }
 
@@ -226,45 +226,11 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
     {
         ThrowIfDisposed();
         if (count < 0) throw new ArgumentOutOfRangeException(nameof(count));
-        if (timeOut == 0)
+        if (timeOut == 0 && Volatile.Read(ref _subscriberCount) == 0)
             return _transceiver.Receive(this, count);
-        var recList = new List<CanReceiveData>((int)count);
-        var startTime = Environment.TickCount;
-        var pollFd = new Libc.pollfd { fd = _fd, events = Libc.POLLIN };
-        var remainingTime = timeOut;
 
-        while ((timeOut < 0 || remainingTime > 0) && recList.Count < count)
-        {
-            remainingTime = timeOut > 0
-                ? Math.Max(0, timeOut - (Environment.TickCount - startTime))
-                : timeOut;
-
-
-            var pr = Libc.poll(ref pollFd, 1, remainingTime);
-            if (pr < 0)
-            {
-                var errno = Libc.Errno();
-                if (errno == Libc.EINTR) continue;
-                Libc.ThrowErrno("poll(POLLIN)", "Polling for readable socket failed");
-            }
-            if (pr == 0)
-            {
-                break;
-            }
-            if ((pollFd.revents & (Libc.POLLERR | Libc.POLLHUP | Libc.POLLNVAL)) != 0)
-            {
-                Libc.ThrowErrno("poll(POLLIN)", "socket error");
-            }
-
-            var batch = _transceiver.Receive(this, count - recList.Count);
-            foreach (var item in batch)
-            {
-                recList.Add(item);
-                if (recList.Count == count)
-                    break;
-            }
-        }
-        return recList;
+        // To prevent cross-handler contention when subscribing to FrameReceived or ErrorFrameReceived, handle all messages asynchronously.
+        return ReceiveAsync(count, timeOut).GetAwaiter().GetResult();
     }
 
     public Task<int> TransmitAsync(IEnumerable<ICanFrame> frames, int timeOut = 0, CancellationToken cancellationToken = default)
@@ -638,7 +604,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
 
             if (classic.clockMHz != clock.freq / 1_000_000)
             {
-                CanKit.Core.Diagnostics.CanKitLogger.LogWarning(
+                CanKitLogger.LogWarning(
                     $"SocketCanBus: timing clock ({classic.clockMHz} MHz) differs from device clock ({clock.freq / 1_000_000} MHz); using device clock.");
             }
 

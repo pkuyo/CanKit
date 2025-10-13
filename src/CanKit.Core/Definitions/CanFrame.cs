@@ -224,14 +224,6 @@ namespace CanKit.Core.Definitions
         public byte Dlc => (byte)Data.Length;
 
         /// <summary>
-        /// Allows a Classical CAN frame to be used directly as a transmit structure. (允许直接将经典帧用作发送数据结构。)
-        /// </summary>
-        public static implicit operator CanTransmitData(CanClassicFrame value)
-        {
-            return new CanTransmitData(value);
-        }
-
-        /// <summary>
         /// Validates that Classical CAN payload length does not exceed 8 bytes. (校验经典帧数据长度不超过 8 字节。)
         /// </summary>
         private static ReadOnlyMemory<byte> Validate(ReadOnlyMemory<byte> src)

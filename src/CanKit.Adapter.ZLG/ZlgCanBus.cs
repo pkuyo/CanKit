@@ -202,24 +202,12 @@ namespace CanKit.Adapter.ZLG
         public IEnumerable<CanReceiveData> Receive(int count = 1, int timeOut = 0)
         {
             ThrowIfDisposed();
-            IEnumerable<CanReceiveData> Iterator()
+            if (Volatile.Read(ref _subscriberCount) > 0)
             {
-                if (count < 0) throw new ArgumentOutOfRangeException(nameof(count));
-                using var e = _transceiver.Receive(this, count, timeOut).GetEnumerator();
-                while (true)
-                {
-                    bool moved;
-                    try { moved = e.MoveNext(); }
-                    catch (Exception ex)
-                    {
-                        HandleBackgroundException(ex);
-                        throw;
-                    }
-                    if (!moved) yield break;
-                    yield return e.Current;
-                }
+                // To prevent cross-handler contention when subscribing to FrameReceived or ErrorFrameReceived, handle all messages asynchronously.
+                return ReceiveAsync(count, timeOut).GetAwaiter().GetResult();
             }
-            return Iterator();
+            return _transceiver.Receive(this, count, timeOut);
         }
 
         public bool ReadErrorInfo(out ICanErrorInfo? errorInfo)
