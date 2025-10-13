@@ -13,52 +13,114 @@ public sealed class KvaserClassicTransceiver : ITransceiver
     {
         var ch = (KvaserBus)channel;
         int sent = 0;
-        var startTime = Environment.TickCount;
-        foreach (var item in frames)
-        {
-            if (item is not CanClassicFrame cf)
-            {
-                throw new InvalidOperationException("Kvaser classic transceiver requires CanClassicFrame.");
-            }
-            var remainingTime = timeOut > 0
-                ? Math.Max(0, timeOut - (Environment.TickCount - startTime))
-                : timeOut;
 
-            var flags = 0u;
-            flags |= (channel.Options.TxRetryPolicy == TxRetryPolicy.NoRetry) ? (uint)Canlib.canMSG_SINGLE_SHOT : 0;
-            if (cf.IsExtendedFrame) flags |= Canlib.canMSG_EXT;
-            if (cf.IsRemoteFrame) flags |= Canlib.canMSG_RTR;
-            Canlib.canStatus st;
-            unsafe
+        if (timeOut == 0)
+        {
+            foreach (var item in frames)
             {
-                fixed (byte* ptr = item.Data.Span)
+                if (item is not CanClassicFrame cf)
                 {
-                    st = timeOut switch
+                    throw new InvalidOperationException("Kvaser classic transceiver requires CanClassicFrame.");
+                }
+
+                var flags = 0u;
+                flags |= (channel.Options.TxRetryPolicy == TxRetryPolicy.NoRetry) ? (uint)Canlib.canMSG_SINGLE_SHOT : 0;
+                if (cf.IsExtendedFrame) flags |= Canlib.canMSG_EXT;
+                if (cf.IsRemoteFrame) flags |= Canlib.canMSG_RTR;
+
+                Canlib.canStatus st;
+                unsafe
+                {
+                    fixed (byte* ptr = item.Data.Span)
                     {
-                        0 => CanlibNative.canWrite(ch.Handle, item.ID, ptr, (uint)cf.Data.Length, flags),
-                        > 0 => CanlibNative.canWriteWait(ch.Handle, item.ID, ptr, (uint)cf.Data.Length, flags, (uint)remainingTime),
-                        < 0 => CanlibNative.canWriteWait(ch.Handle, item.ID, ptr, (uint)cf.Data.Length, flags, uint.MaxValue),
-                    };
+                        st = CanlibNative.canWrite(ch.Handle, item.ID, ptr, (uint)cf.Data.Length, flags);
+                    }
+                }
+
+                if (st == Canlib.canStatus.canOK)
+                {
+                    sent++;
+                }
+                else if (st == Canlib.canStatus.canERR_TXBUFOFL || st == Canlib.canStatus.canERR_TIMEOUT)
+                {
+                    return -sent;
+                }
+                else
+                {
+                    var msg = "Failed to write frame";
+                    if (Canlib.canGetErrorText(st, out var str) == Canlib.canStatus.canOK)
+                        msg += $". Message:{str}";
+                    KvaserUtils.ThrowIfError(st, "canWrite", msg);
                 }
             }
-            if (st == Canlib.canStatus.canOK)
+            return sent;
+        }
+
+        var startTime = Environment.TickCount;
+        using var e = frames.GetEnumerator();
+        bool hasMore = e.MoveNext();
+
+        while (hasMore)
+        {
+            while (hasMore)
             {
-                sent++;
-            }
-            else if (st == Canlib.canStatus.canERR_TXBUFOFL
-                     || st == Canlib.canStatus.canERR_TIMEOUT)
-            {
-                return -sent;
-            }
-            else
-            {
+                if (e.Current is not CanClassicFrame cf)
+                    throw new InvalidOperationException("Kvaser classic transceiver requires CanClassicFrame.");
+
+                var flags = 0u;
+                flags |= (channel.Options.TxRetryPolicy == TxRetryPolicy.NoRetry) ? (uint)Canlib.canMSG_SINGLE_SHOT : 0;
+                if (cf.IsExtendedFrame) flags |= Canlib.canMSG_EXT;
+                if (cf.IsRemoteFrame) flags |= Canlib.canMSG_RTR;
+
+                Canlib.canStatus st;
+                unsafe
+                {
+                    fixed (byte* ptr = e.Current.Data.Span)
+                    {
+                        st = CanlibNative.canWrite(ch.Handle, e.Current.ID, ptr, (uint)cf.Data.Length, flags);
+                    }
+                }
+
+                if (st == Canlib.canStatus.canOK)
+                {
+                    sent++;
+                    hasMore = e.MoveNext();
+                    continue;
+                }
+                if (st == Canlib.canStatus.canERR_TXBUFOFL)
+                {
+                    break;
+                }
                 var msg = "Failed to write frame";
                 if (Canlib.canGetErrorText(st, out var str) == Canlib.canStatus.canOK)
                     msg += $". Message:{str}";
-                KvaserUtils.ThrowIfError(
-                    st, timeOut != 0 ? "canWriteWait" : "canWrite", msg);
+                KvaserUtils.ThrowIfError(st, "canWrite", msg);
+            }
+
+            if (!hasMore)
+                break;
+            uint remaining;
+            if (timeOut > 0)
+            {
+                remaining = (uint)Math.Max(0, timeOut - (Environment.TickCount - startTime));
+                if (remaining == 0)
+                    break;
+            }
+            else
+            {
+                remaining = uint.MaxValue;
+            }
+
+            var stSync = CanlibNative.canWriteSync(ch.Handle, remaining);
+            if (stSync != Canlib.canStatus.canOK && stSync != Canlib.canStatus.canERR_TIMEOUT)
+            {
+                var msg = "Failed to wait for write sync";
+                if (Canlib.canGetErrorText(stSync, out var str) == Canlib.canStatus.canOK)
+                    msg += $". Message:{str}";
+                KvaserUtils.ThrowIfError(stSync, "canWriteSync", msg);
             }
         }
+
         return sent;
     }
 

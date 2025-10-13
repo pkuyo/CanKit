@@ -40,10 +40,8 @@ internal static class Program
         var count = ParseInt(GetArg(args, "--count"), 2000);
         var frameLen = ParseInt(GetArg(args, "--len"), useFd ? 64 : 8);
         var batchSize = ClampInt(ParseInt(GetArg(args, "--batch"), 64), 1, 4096);
-        var gapMs = ParseInt(GetArg(args, "--gapms"), 1);
+        var gapMs = ParseInt(GetArg(args, "--gapms"), 0);
         var timeOut = ParseInt(GetArg(args, "--timeout"), 1000);
-        var durationS = ParseInt(GetArg(args, "--duration"), 0);
-        var reportMs = ParseInt(GetArg(args, "--report"), 1000);
         var asyncBuf = ParseInt(GetArg(args, "--asyncbuf"), 8192);
         var enableRes = ParseInt(GetArg(args, "--res"), 0) == 1;
 
@@ -78,7 +76,7 @@ internal static class Program
             }
         }
 
-        using var busA = OpenBus(epA, cfg =>
+        var cfgFunc = (IBusInitOptionsConfigurator cfg) =>
         {
             if (useFd)
             {
@@ -89,39 +87,14 @@ internal static class Program
                 cfg.Baud(bitrate).SetProtocolMode(CanProtocolMode.Can20).InternalRes(enableRes);
             }
 
-            cfg.EnableErrorInfo().SetAsyncBufferCapacity(asyncBuf).SetReceiveLoopStopDelayMs(200).InternalRes(true);
+            cfg.EnableErrorInfo().SetAsyncBufferCapacity(asyncBuf).SetReceiveLoopStopDelayMs(200);
             if (softFilter)
             {
                 cfg.SoftwareFeaturesFallBack(CanFeature.Filters);
             }
-        });
-        using var busB = OpenBus(epB, cfg =>
-        {
-            if (useFd)
-            {
-                cfg.Fd(abit, dbit).SetProtocolMode(CanProtocolMode.CanFd).InternalRes(enableRes);
-            }
-            else
-            {
-                cfg.Baud(bitrate).SetProtocolMode(CanProtocolMode.Can20).InternalRes(enableRes);
-            }
-
-            cfg.EnableErrorInfo().SetAsyncBufferCapacity(asyncBuf).SetReceiveLoopStopDelayMs(200).InternalRes(true);
-            if (hasMask)
-            {
-                cfg.AccMask(accCode, accMask, extended ? CanFilterIDType.Extend : CanFilterIDType.Standard);
-            }
-
-            if (hasRange)
-            {
-                cfg.RangeFilter(rangeMin, rangeMax, extended ? CanFilterIDType.Extend : CanFilterIDType.Standard);
-            }
-
-            if (softFilter)
-            {
-                cfg.SoftwareFeaturesFallBack(CanFeature.Filters);
-            }
-        });
+        };
+        using var busA = OpenBus(epA, cfgFunc);
+        using var busB = OpenBus(epB, cfgFunc);
 
         _seqFrames = CreateFrameRing(baseId, extended, useFd, brs, frameLen);
 
@@ -157,12 +130,6 @@ internal static class Program
         foreach (var r in toRun)
         {
             await r(busA, busB);
-        }
-
-        if (durationS > 0)
-        {
-            await LongRun(busA, busB, TimeSpan.FromSeconds(durationS), reportMs, gapMs);
-            return 0;
         }
 
         if (verbose)
@@ -290,70 +257,6 @@ internal static class Program
         PrintSummary(testName, count, verifier, sw.Elapsed, dutReceiver);
     }
 
-    // Long-run test: continuously transmit + verify in both directions, with periodic stats
-    private static async Task LongRun(ICanBus a, ICanBus b, TimeSpan duration, int reportMs, int gapMs)
-    {
-        Console.WriteLine($"== LongRun {duration.TotalSeconds}s, report={reportMs}ms ==");
-
-        var vA = new SequenceVerifier();
-        var vB = new SequenceVerifier();
-        using var sA = SubscribeFrames(a, vA);
-        using var sB = SubscribeFrames(b, vB);
-        using var eA = SubscribeError(a, vA);
-        using var eB = SubscribeError(b, vB);
-
-        using var cts = new CancellationTokenSource(duration);
-        var token = cts.Token;
-
-        var tA = Task.Run(async () =>
-        {
-            var seqSent = 0;
-            while (!token.IsCancellationRequested)
-            {
-                var fr = GetFrame((byte)(seqSent & 0xFF));
-                await a.TransmitAsync([fr]).ConfigureAwait(false);
-                seqSent = (seqSent + 1) & 0xFF;
-                if (gapMs > 0)
-                {
-                    await Task.Delay(TimeSpan.FromMilliseconds(gapMs));
-                }
-            }
-        }, cts.Token);
-
-        var tB = Task.Run(async () =>
-        {
-            var seqSent = 0;
-            while (!token.IsCancellationRequested)
-            {
-                var fr = GetFrame((byte)(seqSent & 0xFF));
-                await b.TransmitAsync([fr]).ConfigureAwait(false);
-                seqSent = (seqSent + 1) & 0xFF;
-                if (gapMs > 0)
-                {
-                    await Task.Delay(TimeSpan.FromMilliseconds(gapMs / 1000.0));
-                }
-            }
-        }, cts.Token);
-
-        var lastA = vA.GetSnapshot();
-        var lastB = vB.GetSnapshot();
-        while (!cts.IsCancellationRequested)
-        {
-            await Task.Delay(Math.Max(100, reportMs), cts.Token).ConfigureAwait(false);
-            var curA = vA.GetSnapshot();
-            var curB = vB.GetSnapshot();
-            Console.WriteLine(
-                $"A: +{curA.received - lastA.received} rx, loss={curA.lost}, dup={curA.duplicates}, ooo={curA.outOfOrder}, bad={curA.badData}, errs={curA.errorFrames}");
-            Console.WriteLine(
-                $"B: +{curB.received - lastB.received} rx, loss={curB.lost}, dup={curB.duplicates}, ooo={curB.outOfOrder}, bad={curB.badData}, errs={curB.errorFrames}");
-            lastA = curA;
-            lastB = curB;
-        }
-
-        cts.Cancel();
-        await Task.WhenAll(Task.WhenAny(tA, Task.CompletedTask), Task.WhenAny(tB, Task.CompletedTask));
-    }
-
     private static void IgnoreCancelException(Task t)
     {
         if (t.Exception != null)
@@ -430,7 +333,7 @@ internal static class Program
 
                 if (gapMs > 0 && i != count - 1)
                 {
-                    await Task.Delay(TimeSpan.FromMilliseconds(gapMs / 1000.0));
+                    await Task.Delay(TimeSpan.FromMilliseconds(gapMs));
                 }
             }
         }

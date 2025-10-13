@@ -21,4 +21,9 @@ internal static class CanlibNative
         uint dlc,
         uint flag,
         uint timeout);
+
+    [DllImport("canlib32")]
+    public static extern Canlib.canStatus canWriteSync(
+        int hnd,
+        uint timeout);
 }
