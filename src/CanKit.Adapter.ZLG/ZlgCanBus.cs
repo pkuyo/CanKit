@@ -93,13 +93,9 @@ namespace CanKit.Adapter.ZLG
                     config.config.can.filter = (byte)mask.FilterIdType;
 
                 }
-                else
-                {
-                    config.config.can.acc_code = 0;
-                    config.config.can.acc_mask = 0xffffffff;
-                }
-
             }
+            config.config.can.acc_code = 0;
+            config.config.can.acc_mask = 0xffffffff;
 
             var handle = ZLGCAN.ZCAN_InitCAN(device.NativeHandler, (uint)Options.ChannelIndex, ref config);
             CanKitLogger.LogInformation("ZLG: Initialize succeeded.");
@@ -535,7 +531,7 @@ namespace CanKit.Adapter.ZLG
         }
 
 
-        public uint GetReceiveCount()
+        public int GetReceiveCount()
         {
             ThrowIfDisposed();
 
@@ -545,8 +541,7 @@ namespace CanKit.Adapter.ZLG
                 CanProtocolMode.CanFd => ZlgFrameType.CanFd,
                 _ => ZlgFrameType.CanClassic
             };
-
-            return ZLGCAN.ZCAN_GetReceiveNum(_nativeHandle, (byte)zlgFilterType);
+            return (int)ZLGCAN.ZCAN_GetReceiveNum(_nativeHandle, (byte)zlgFilterType);
         }
 
         private void ThrowIfDisposed()
@@ -615,18 +610,18 @@ namespace CanKit.Adapter.ZLG
         {
             while (!token.IsCancellationRequested)
             {
-                if (Volatile.Read(ref _subscriberCount) <= 0)
+                if (Volatile.Read(ref _subscriberCount) <= 0 && Volatile.Read(ref _asyncConsumerCount) <= 0)
                 {
                     break;
                 }
 
                 try
                 {
-                    const uint batch = 256;
+                    const int batch = 64;
                     var count = GetReceiveCount();
                     if (count > 0)
                     {
-                        var frames = Receive((int)Math.Min((uint)count, batch));
+                        var frames = _transceiver.Receive(this, Math.Min(count, batch));
                         var useSw = (Options.EnabledSoftwareFallback & CanFeature.Filters) != 0
                                     && Options.Filter.SoftwareFilterRules.Count > 0;
                         var pred = useSw ? _softwareFilterPredicate : null;

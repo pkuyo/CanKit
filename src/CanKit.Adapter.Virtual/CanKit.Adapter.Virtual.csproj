@@ -6,7 +6,7 @@
         <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
         <Version>0.2.1</Version>
         <Description>Virtual in-process CAN adapter for CanKit for development, testing, and simulation.</Description>
-        <PackageTags>CAN;CAN-bus;CANFD;;Adapter;CanKit</PackageTags>
+        <PackageTags>CAN;can bus;CANFD;;Adapter;CanKit</PackageTags>
         <AssemblyVersion>1.0.0.0</AssemblyVersion>
         <FileVersion>0.2.1.0</FileVersion>
         <Authors>Pkuyo</Authors>

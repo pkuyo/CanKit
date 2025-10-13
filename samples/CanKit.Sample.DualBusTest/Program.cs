@@ -40,7 +40,7 @@ internal static class Program
         var count = ParseInt(GetArg(args, "--count"), 2000);
         var frameLen = ParseInt(GetArg(args, "--len"), useFd ? 64 : 8);
         var batchSize = ClampInt(ParseInt(GetArg(args, "--batch"), 64), 1, 4096);
-        var gapUs = ParseInt(GetArg(args, "--gapus"), 0);
+        var gapMs = ParseInt(GetArg(args, "--gapms"), 1);
         var timeOut = ParseInt(GetArg(args, "--timeout"), 1000);
         var durationS = ParseInt(GetArg(args, "--duration"), 0);
         var reportMs = ParseInt(GetArg(args, "--report"), 1000);
@@ -131,27 +131,27 @@ internal static class Program
 
         if (all || mode.Equals("tx-sync", StringComparison.OrdinalIgnoreCase))
         {
-            toRun.Add((a, b) => Test_DUT_Tx(a, b, count, batchSize, gapUs, timeOut, asyncTx: false, verbose));
+            toRun.Add((a, b) => Test_DUT_Tx(a, b, count, batchSize, gapMs, timeOut, asyncTx: false, verbose));
         }
 
         if (all || mode.Equals("tx-async", StringComparison.OrdinalIgnoreCase))
         {
-            toRun.Add((a, b) => Test_DUT_Tx(a, b, count, batchSize, gapUs, timeOut, asyncTx: true, verbose));
+            toRun.Add((a, b) => Test_DUT_Tx(a, b, count, batchSize, gapMs, timeOut, asyncTx: true, verbose));
         }
 
         if (all || mode.Equals("rx-sync", StringComparison.OrdinalIgnoreCase))
         {
-            toRun.Add((a, b) => Test_DUT_Rx(a, b, count, batchSize, gapUs, timeOut, false, verbose));
+            toRun.Add((a, b) => Test_DUT_Rx(a, b, count, batchSize, gapMs, timeOut, false, verbose));
         }
 
         if (all || mode.Equals("rx-async", StringComparison.OrdinalIgnoreCase))
         {
-            toRun.Add((a, b) => Test_DUT_Rx(a, b, count, batchSize, gapUs, timeOut, true, verbose));
+            toRun.Add((a, b) => Test_DUT_Rx(a, b, count, batchSize, gapMs, timeOut, true, verbose));
         }
 
         if (mode.Equals("event", StringComparison.OrdinalIgnoreCase))
         {
-            toRun.Add((a, b) => Test_DUT_Rx_Event(a, b, count, batchSize, gapUs, timeOut, verbose));
+            toRun.Add((a, b) => Test_DUT_Rx_Event(a, b, count, batchSize, gapMs, timeOut, verbose));
         }
 
         foreach (var r in toRun)
@@ -161,7 +161,7 @@ internal static class Program
 
         if (durationS > 0)
         {
-            await LongRun(busA, busB, TimeSpan.FromSeconds(durationS), reportMs, gapUs);
+            await LongRun(busA, busB, TimeSpan.FromSeconds(durationS), reportMs, gapMs);
             return 0;
         }
 
@@ -178,7 +178,7 @@ internal static class Program
 
     // Test: DUT(B) sending many frames; tester(A) receives and verifies
     private static async Task Test_DUT_Tx(ICanBus testerReceiver, ICanBus dutSender,
-        int count, int batchSize, int gapUs, int rxTimeout, bool asyncTx, bool verbose)
+        int count, int batchSize, int gapMs, int rxTimeout, bool asyncTx, bool verbose)
     {
         var testName = asyncTx ? "DUT TX async" : "DUT TX sync";
         if (verbose)
@@ -195,7 +195,7 @@ internal static class Program
 
         var recTask = Task.Run(async () => await Receive(testerReceiver, verifier, count, token));
 
-        await SendBurst(dutSender, count, batchSize, gapUs, asyncTx);
+        await SendBurst(dutSender, count, batchSize, gapMs, asyncTx);
         await Task.Delay(rxTimeout);
         cts.Cancel();
 
@@ -207,7 +207,7 @@ internal static class Program
 
     // Test: DUT(B) receiving many frames; tester(A) sends; verify on DUT(B)
     private static async Task Test_DUT_Rx(ICanBus testerSender, ICanBus dutReceiver,
-        int count, int batchSize, int gapUs, int rxTimeout, bool asyncRx, bool verbose)
+        int count, int batchSize, int gapMs, int rxTimeout, bool asyncRx, bool verbose)
     {
         var testName = asyncRx ? "DUT RX async" : "DUT RX sync";
         if (verbose)
@@ -252,7 +252,7 @@ internal static class Program
             }
         }, cts.Token);
 
-        await SendBurst(testerSender, count, batchSize, gapUs, true);
+        await SendBurst(testerSender, count, batchSize, gapMs, true);
         await Task.Delay(rxTimeout);
         cts.Cancel();
 
@@ -264,7 +264,7 @@ internal static class Program
 
     // Test: DUT(B) receiving via event handler only; tester(A) sends
     private static async Task Test_DUT_Rx_Event(ICanBus testerSender, ICanBus dutReceiver,
-        int count, int batchSize, int gapUs, int rxTimeout, bool verbose)
+        int count, int batchSize, int gapMs, int rxTimeout, bool verbose)
     {
         const string testName = "DUT RX event";
         if (verbose)
@@ -280,7 +280,7 @@ internal static class Program
         var token = cts.Token;
 
         var recTask = Task.Run(async () => await Receive(dutReceiver, verifier, count, token));
-        await SendBurst(testerSender, count, batchSize, gapUs, true);
+        await SendBurst(testerSender, count, batchSize, gapMs, true);
         await Task.Delay(rxTimeout);
         cts.Cancel();
 
@@ -291,7 +291,7 @@ internal static class Program
     }
 
     // Long-run test: continuously transmit + verify in both directions, with periodic stats
-    private static async Task LongRun(ICanBus a, ICanBus b, TimeSpan duration, int reportMs, int gapUs)
+    private static async Task LongRun(ICanBus a, ICanBus b, TimeSpan duration, int reportMs, int gapMs)
     {
         Console.WriteLine($"== LongRun {duration.TotalSeconds}s, report={reportMs}ms ==");
 
@@ -313,9 +313,9 @@ internal static class Program
                 var fr = GetFrame((byte)(seqSent & 0xFF));
                 await a.TransmitAsync([fr]).ConfigureAwait(false);
                 seqSent = (seqSent + 1) & 0xFF;
-                if (gapUs > 0)
+                if (gapMs > 0)
                 {
-                    await Task.Delay(TimeSpan.FromMilliseconds(gapUs / 1000.0));
+                    await Task.Delay(TimeSpan.FromMilliseconds(gapMs));
                 }
             }
         }, cts.Token);
@@ -328,9 +328,9 @@ internal static class Program
                 var fr = GetFrame((byte)(seqSent & 0xFF));
                 await b.TransmitAsync([fr]).ConfigureAwait(false);
                 seqSent = (seqSent + 1) & 0xFF;
-                if (gapUs > 0)
+                if (gapMs > 0)
                 {
-                    await Task.Delay(TimeSpan.FromMilliseconds(gapUs / 1000.0));
+                    await Task.Delay(TimeSpan.FromMilliseconds(gapMs / 1000.0));
                 }
             }
         }, cts.Token);
@@ -370,7 +370,7 @@ internal static class Program
 
     private static IDisposable SubscribeError(ICanBus bus, SequenceVerifier verifier)
     {
-        EventHandler<ICanErrorInfo> onErr = (_, _) => { verifier.RecordError(); };
+        EventHandler<ICanErrorInfo> onErr = (_, info) => { verifier.RecordError(info); };
         bus.ErrorFrameReceived += onErr;
         return new ActionOnDispose(() => bus.ErrorFrameReceived -= onErr);
     }
@@ -395,7 +395,7 @@ internal static class Program
         }
     }
 
-    private static async Task SendBurst(ICanBus tx, int count, int batchSize, int gapUs, bool asyncTx)
+    private static async Task SendBurst(ICanBus tx, int count, int batchSize, int gapMs, bool asyncTx)
     {
         var seq = 0;
         var queue = new Queue<ICanFrame>(batchSize);
@@ -428,9 +428,9 @@ internal static class Program
                     if (queue.Count == 0) break;
                 }
 
-                if (gapUs > 0 && i != count - 1)
+                if (gapMs > 0 && i != count - 1)
                 {
-                    await Task.Delay(TimeSpan.FromMilliseconds(gapUs / 1000.0));
+                    await Task.Delay(TimeSpan.FromMilliseconds(gapMs / 1000.0));
                 }
             }
         }
@@ -608,7 +608,7 @@ internal static class Program
             }
         }
 
-        public void RecordError()
+        public void RecordError(ICanErrorInfo info)
         {
             lock (_lock)
             {

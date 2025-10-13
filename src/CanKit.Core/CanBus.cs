@@ -4,6 +4,7 @@ using CanKit.Core.Definitions;
 using CanKit.Core.Endpoints;
 using CanKit.Core.Exceptions;
 using CanKit.Core.Registry;
+using CanKit.Core.Utils;
 
 namespace CanKit.Core;
 
