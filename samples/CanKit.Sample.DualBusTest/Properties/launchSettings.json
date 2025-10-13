@@ -1,9 +1,0 @@
-{
-  "profiles": {
-    "CanKit.Sample.DualBusTest": {
-      "commandName": "Project",
-      "commandLineArgs": "--b zlg://ZCAN_USBCANFD_200U?index=0#ch1 --a zlg://ZCAN_USBCANFD_200U?index=0#ch0",
-      "nativeDebugging": true
-    }
-  }
-}

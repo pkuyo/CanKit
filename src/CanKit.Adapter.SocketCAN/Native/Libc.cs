@@ -150,9 +150,10 @@ internal static class Libc
     public const byte CANFD_ESI = 0x02; // error state indicator
 
     // socket option
-    public const int SO_TIMESTAMP = 29;
+    public const int SO_SNDBUF = 8;
     public const int SO_RCVBUF = 8;
     public const int SO_SNDTIMEO = 21;
+    public const int SO_TIMESTAMP = 29;
     public const int SO_TIMESTAMPNS = 35;
     public const int SO_TIMESTAMPING = 37;
     public const int SOF_TIMESTAMPING_SOFTWARE      = 1 << 4;

@@ -48,6 +48,11 @@ public sealed class SocketCanBusOptions(ICanModelProvider provider) : IBusOption
     /// esired per-socket receive buffer capacity (in bytes) for the  CAN socket.
     /// </summary>
     public uint? ReceiveBufferCapacity { get; set; }
+
+    /// <summary>
+    /// esired per-socket transmit buffer capacity (in bytes) for the  CAN socket.
+    /// </summary>
+    public uint? TransmitBufferCapacity { get; set; }
 }
 
 
@@ -82,7 +87,12 @@ public sealed class SocketCanBusInitConfigurator
         Options.ReceiveBufferCapacity = (uint)capacity;
         return this;
     }
-
+    public SocketCanBusInitConfigurator TransmitBufferCapacity(int capacity)
+    {
+        if (capacity < 0) throw new ArgumentOutOfRangeException(nameof(capacity));
+        Options.TransmitBufferCapacity = (uint)capacity;
+        return this;
+    }
     public SocketCanBusInitConfigurator ReadTimeOut(int ms)
     {
         Options.ReadTImeOutMs = ms;
@@ -105,6 +115,9 @@ public sealed class SocketCanBusInitConfigurator
                 break;
             case nameof(ReceiveBufferCapacity):
                 Options.ReceiveBufferCapacity = Convert.ToUInt32(value);
+                break;
+            case nameof(TransmitBufferCapacity):
+                Options.TransmitBufferCapacity = Convert.ToUInt32(value);
                 break;
             default:
                 CanKitLogger.LogWarning($"SocketCAN: invalid key: {key}");
@@ -135,4 +148,6 @@ public sealed class SocketCanBusRtConfigurator
     public int ReadTImeOutMs => Options.ReadTImeOutMs;
 
     public uint? ReceiveBufferCapacity => Options.ReceiveBufferCapacity;
+
+    public uint? TransmitBufferCapacity => Options.TransmitBufferCapacity;
 }

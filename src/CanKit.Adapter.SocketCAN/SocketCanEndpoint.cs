@@ -22,24 +22,33 @@ internal static class SocketCanEndpoint
     {
         // Interpret path as interfaceName, or use query iface= / if=, else index as number
         string iface = ep.Path;
-        int? rcvbuf = null;
+        int? rxBuf = null;
+        int? txBuf = null;
         if (string.IsNullOrWhiteSpace(iface))
         {
             if (ep.TryGet("if", out var v) || ep.TryGet("iface", out v))
                 iface = v!;
-
-            // Use query rcvbuf= / rcvbuf= to set receive buffer cap.
-            if (ep.TryGet("rcvbuf", out var u))
+        }
+        // Use query rxbuf= / rxbuf= to set receive buffer cap.
+        if (ep.TryGet("rxbuf", out var u))
+        {
+            if (int.TryParse(u, out var result))
+                rxBuf = result;
+            else
             {
-                if (int.TryParse(u, out var result))
-                    rcvbuf = result;
-                else
-                {
-                    CanKitLogger.LogError($"SocketCAN: Invalid rcvbuf value:{u}");
-                }
+                CanKitLogger.LogError($"SocketCAN: Invalid rxbuf value:{u}");
             }
         }
 
+        if (ep.TryGet("txbuf", out var u1))
+        {
+            if (int.TryParse(u1, out var result))
+                txBuf = result;
+            else
+            {
+                CanKitLogger.LogError($"SocketCAN: Invalid txbuf value:{u}");
+            }
+        }
         bool enableNetLink = false;
         // use #netlink/#nl to conifg CanBus by libsocketcan
         if (!string.IsNullOrWhiteSpace(ep.Fragment))
@@ -59,8 +68,8 @@ internal static class SocketCanEndpoint
             {
                 cfg.UseChannelName(iface)
                     .NetLink(enableNetLink);
-                if (rcvbuf != null)
-                    cfg.ReceiveBufferCapacity(rcvbuf.Value);
+                if (rxBuf != null) cfg.ReceiveBufferCapacity(rxBuf.Value);
+                if (txBuf != null) cfg.TransmitBufferCapacity(txBuf.Value);
                 configure?.Invoke(cfg);
             });
     }

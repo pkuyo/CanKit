@@ -63,9 +63,12 @@ namespace CanKit.Sample.Benchmark
             {
                 await foreach (var e in rx.GetFramesAsync(cts.Token))
                 {
-                    if (Interlocked.Increment(ref received) >= frames) { done.TrySetResult(received); break; }
-                    if (cts.Token.IsCancellationRequested) { break; }
+                    if (Interlocked.Increment(ref received) >= frames) { break; }
                 }
+            }, cts.Token).ContinueWith((t) =>
+            {
+                _ = t.Exception;
+                done.TrySetResult(received);
             });
 #else
             var rxTask = Task.Run(async () =>
@@ -76,7 +79,11 @@ namespace CanKit.Sample.Benchmark
                     Interlocked.Add(ref received, list.Count);
                 }
                 done.TrySetResult(received);
-            }, cts.Token);
+            }, cts.Token).ContinueWith((t) =>
+            {
+                _ = t.Exception;
+                done.TrySetResult(received);
+            });
 #endif
             var id = 0x100;
             var payload = new byte[Math.Max(0, Math.Min(len, fd ? 64 : 8))];

@@ -157,7 +157,19 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
         if (Options.ReceiveBufferCapacity != null)
         {
             var cap = (int)Options.ReceiveBufferCapacity.Value;
-            Libc.setsockopt(_fd, Libc.SOL_CAN_RAW, Libc.SO_RCVBUF, ref cap, (uint)Marshal.SizeOf<int>());
+            if (Libc.setsockopt(_fd, Libc.SOL_SOCKET, Libc.SO_RCVBUF, ref cap, (uint)Marshal.SizeOf<int>()) != Libc.OK)
+            {
+                throw new CanBusConfigurationException("setsockopt(SO_RCVBUF) failed.");
+            }
+        }
+
+        if (Options.TransmitBufferCapacity != null)
+        {
+            var cap = (int)Options.TransmitBufferCapacity.Value;
+            if (Libc.setsockopt(_fd, Libc.SOL_SOCKET, Libc.SO_SNDBUF, ref cap, (uint)Marshal.SizeOf<int>()) != Libc.OK)
+            {
+                throw new CanBusConfigurationException("setsockopt(SO_SNDBUF) failed.");
+            }
         }
 
         // Cache software filter predicate for event loop
@@ -185,7 +197,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
         var startTime = Environment.TickCount;
         var pollFd = new Libc.pollfd { fd = _fd, events = Libc.POLLOUT };
         var needSend = frames.ToArray();
-        var wrote = _transceiver.Transmit(this, needSend.Skip(sendCount));
+        var wrote = _transceiver.Transmit(this, needSend);
         sendCount = wrote;
         var remainingTime = timeOut;
         while ((timeOut < 0 || remainingTime > 0) && sendCount < needSend.Length)
@@ -226,8 +238,6 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
     {
         ThrowIfDisposed();
         if (count < 0) throw new ArgumentOutOfRangeException(nameof(count));
-        if (timeOut == 0 && Volatile.Read(ref _subscriberCount) == 0)
-            return _transceiver.Receive(this, count);
 
         // To prevent cross-handler contention when subscribing to FrameReceived or ErrorFrameReceived, handle all messages asynchronously.
         return ReceiveAsync(count, timeOut).GetAwaiter().GetResult();
@@ -241,21 +251,25 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
             catch (Exception ex) { HandleBackgroundException(ex); throw; }
         }, cancellationToken);
 
-    public Task<IReadOnlyList<CanReceiveData>> ReceiveAsync(int count = 1, int timeOut = 0, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<CanReceiveData>> ReceiveAsync(int count = 1, int timeOut = 0, CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
         if (count < 0) throw new ArgumentOutOfRangeException(nameof(count));
         Interlocked.Increment(ref _subscriberCount);
         Interlocked.Increment(ref _asyncConsumerCount);
         StartReceiveLoopIfNeeded();
-        return _asyncRx.ReceiveBatchAsync(count, timeOut, cancellationToken)
-            .ContinueWith(t =>
-            {
-                var remAsync = Interlocked.Decrement(ref _asyncConsumerCount);
-                var rem = Interlocked.Decrement(ref _subscriberCount);
-                if (rem == 0 && remAsync == 0) RequestStopReceiveLoop();
-                return t.Result;
-            }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+        try
+        {
+            return await _asyncRx.ReceiveBatchAsync(count, timeOut, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            var remAsync = Interlocked.Decrement(ref _asyncConsumerCount);
+            var rem = Interlocked.Decrement(ref _subscriberCount);
+            if (rem == 0 && remAsync == 0)
+                RequestStopReceiveLoop();
+        }
     }
 
 #if NET8_0_OR_GREATER

@@ -32,7 +32,7 @@ public sealed class SocketCanFdTransceiver : ITransceiver
                     int sent;
                     do
                     {
-                        sent = Libc.sendmmsg(ch.FileDescriptor, msgs, 64, 0);
+                        sent = Libc.sendmmsg(ch.FileDescriptor, msgs, Libc.BATCH_COUNT, 0);
                     } while (sent < 0 && Libc.Errno() == Libc.EINTR);
                     if (sent < 0)
                     {
@@ -108,26 +108,26 @@ public sealed class SocketCanFdTransceiver : ITransceiver
             Libc.iovec* iov = stackalloc Libc.iovec[Libc.BATCH_COUNT];
             Libc.mmsghdr* msgs = stackalloc Libc.mmsghdr[Libc.BATCH_COUNT];
             byte* cbase = stackalloc byte[Libc.BATCH_COUNT * 256];
+            for (int i = 0; i < Libc.BATCH_COUNT; i++)
+            {
+                iov[i].iov_base = &fdBuf[i];
+                iov[i].iov_len = (UIntPtr)sizeFd;
+                msgs[i].msg_hdr = new Libc.msghdr
+                {
+                    msg_name = null,
+                    msg_namelen = 0,
+                    msg_iov = &iov[i],
+                    msg_iovlen = (UIntPtr)1,
+                    msg_control = preferTs ? (cbase + (i * 256)) : null,
+                    msg_controllen = preferTs ? (UIntPtr)256 : UIntPtr.Zero,
+                    msg_flags = 0
+                };
+                msgs[i].msg_len = 0;
+            }
+
             while (inf || count > 0)
             {
-                var oneBatch = (int)Math.Max(1, Math.Min(count == 0 ? Libc.BATCH_COUNT : count, Libc.BATCH_COUNT));
-                for (int i = 0; i < oneBatch; i++)
-                {
-                    iov[i].iov_base = &fdBuf[i];
-                    iov[i].iov_len = (UIntPtr)sizeFd;
-                    msgs[i].msg_hdr = new Libc.msghdr
-                    {
-                        msg_name = null,
-                        msg_namelen = 0,
-                        msg_iov = &iov[i],
-                        msg_iovlen = (UIntPtr)1,
-                        msg_control = preferTs ? (cbase + (i * 256)) : null,
-                        msg_controllen = preferTs ? (UIntPtr)256 : UIntPtr.Zero,
-                        msg_flags = 0
-                    };
-                    msgs[i].msg_len = 0;
-                }
-
+                var oneBatch = Math.Max(1, Math.Min(count == 0 ? Libc.BATCH_COUNT : count, Libc.BATCH_COUNT));
                 int recvd;
                 do
                 {
@@ -174,10 +174,11 @@ public sealed class SocketCanFdTransceiver : ITransceiver
             bool brs = (buf->flags & Libc.CANFD_BRS) != 0;
             bool esi = (buf->flags & Libc.CANFD_ESI) != 0;
             bool err = (buf->flags & Libc.CAN_ERR_FLAG) != 0;
-            var rawIdFd = ((buf->can_id & Libc.CAN_EFF_MASK) == 1)
+            bool ext = (buf->can_id & Libc.CAN_EFF_FLAG) != 0;
+            var rawIdFd = (ext)
                 ? (buf->can_id & Libc.CAN_EFF_MASK)
                 : (buf->can_id & Libc.CAN_SFF_MASK);
-            acc.Add(new CanReceiveData(new CanFdFrame(unchecked((int)rawIdFd), data, brs, esi)
+            acc.Add(new CanReceiveData(new CanFdFrame((int)rawIdFd, data, brs, esi, ext)
             { IsErrorFrame = err })
             { ReceiveTimestamp = tsSpan });
         }
@@ -191,10 +192,11 @@ public sealed class SocketCanFdTransceiver : ITransceiver
                 Buffer.MemoryCopy(cf->data, pData, data2.Length, Math.Min(dataLen, 8));
             }
             bool err = (cf->can_id & Libc.CAN_ERR_FLAG) != 0;
-            var rawIdC = ((cf->can_id & Libc.CAN_EFF_MASK) == 1)
+            bool ext = (buf->can_id & Libc.CAN_EFF_FLAG) != 0;
+            var rawIdC = (ext)
                 ? (cf->can_id & Libc.CAN_EFF_MASK)
                 : (cf->can_id & Libc.CAN_SFF_MASK);
-            acc.Add(new CanReceiveData(new CanClassicFrame(unchecked((int)rawIdC), data2)
+            acc.Add(new CanReceiveData(new CanClassicFrame((int)rawIdC, data2, ext)
             { IsErrorFrame = err })
             { ReceiveTimestamp = tsSpan });
         }
