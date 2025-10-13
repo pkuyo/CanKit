@@ -10,9 +10,8 @@ namespace CanKit.Adapter.PCAN.Transceivers;
 
 public sealed class PcanClassicTransceiver : ITransceiver
 {
-    public unsafe int Transmit(ICanBus<IBusRTOptionsConfigurator> channel, IEnumerable<ICanFrame> frames, int timeOut = 0)
+    public unsafe int Transmit(ICanBus<IBusRTOptionsConfigurator> channel, IEnumerable<ICanFrame> frames, int _ = 0)
     {
-        _ = timeOut;
         var ch = (PcanBus)channel;
         int sent = 0;
         var pMsg = stackalloc PcanBasicNative.TpcanMsg[1];
@@ -49,6 +48,10 @@ public sealed class PcanClassicTransceiver : ITransceiver
             {
                 sent++;
             }
+            else if (st is PcanStatus.TransmitBufferFull or PcanStatus.TransmitQueueFull)
+            {
+                break;
+            }
             else
             {
                 PcanUtils.ThrowIfError(st, "Write(Classic)", $"PCAN: transmit frame failed. Channel:{((PcanBus)channel).Handle}");
@@ -57,9 +60,8 @@ public sealed class PcanClassicTransceiver : ITransceiver
         return sent;
     }
 
-    public IEnumerable<CanReceiveData> Receive(ICanBus<IBusRTOptionsConfigurator> bus, int count = 1, int timeOut = 0)
+    public IEnumerable<CanReceiveData> Receive(ICanBus<IBusRTOptionsConfigurator> bus, int count = 1, int _ = 0)
     {
-        _ = timeOut;
         var ch = (PcanBus)bus;
         if (count < 0) throw new ArgumentOutOfRangeException(nameof(count));
         for (int i = 0; i < count; i++)

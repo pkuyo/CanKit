@@ -24,9 +24,7 @@ namespace CanKit.Sample.Benchmark
             bool fd = HasFlag(args, "--fd");
             bool brs = HasFlag(args, "--brs");
             bool enableRes = (ParseInt(GetArg(args, "--res"), 1) == 1);
-            int sleepMsOverride = int.TryParse(GetArg(args, "--sleepms"), out var s) ? s : -1;
-            double util = double.TryParse(GetArg(args, "--util"), NumberStyles.Float, CultureInfo.InvariantCulture, out var u) ? u : 0.70;
-            double stuff = double.TryParse(GetArg(args, "--stuff"), NumberStyles.Float, CultureInfo.InvariantCulture, out var st) ? st : 1.20;
+            int gapMs = int.TryParse(GetArg(args, "--gapms"), out var s) ? s : -1;
 
             using var rx = CanBus.Open(dst, cfg =>
             {
@@ -55,7 +53,9 @@ namespace CanKit.Sample.Benchmark
             });
 
             var done = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var sw = Stopwatch.StartNew();
             int received = 0;
+            long lastReceived = sw.ElapsedTicks;
             var cts = new CancellationTokenSource();
 #if NET8_0_OR_GREATER
 
@@ -64,6 +64,7 @@ namespace CanKit.Sample.Benchmark
                 await foreach (var e in rx.GetFramesAsync(cts.Token))
                 {
                     if (Interlocked.Increment(ref received) >= frames) { break; }
+                    Interlocked.Exchange(ref lastReceived, sw.ElapsedTicks);
                 }
             }, cts.Token).ContinueWith((t) =>
             {
@@ -77,6 +78,7 @@ namespace CanKit.Sample.Benchmark
                 {
                     var list = await rx.ReceiveAsync(256, 10);
                     Interlocked.Add(ref received, list.Count);
+                    Interlocked.Exchange(ref lastReceived, sw.ElapsedTicks);
                 }
                 done.TrySetResult(received);
             }, cts.Token).ContinueWith((t) =>
@@ -90,38 +92,33 @@ namespace CanKit.Sample.Benchmark
             for (int i = 0; i < payload.Length; i++) payload[i] = (byte)(i & 0xFF);
             var frame = fd ? (ICanFrame)new CanFdFrame(id, payload, BRS: brs, ESI: false) : new CanClassicFrame(id, payload);
 
-            double perFrameUs = FrameTimeUsEstimate(fd, brs, payload.Length, bitrate, dbitrate, stuff);
-            double perFramePeriodUs = perFrameUs / util;
 
-            var sw = Stopwatch.StartNew();
             const int batch = 64;
             int sent = 0;
             while (sent < frames)
             {
                 int take = Math.Min(batch, frames - sent);
-                if (sleepMsOverride >= 0)
+                if (gapMs >= 0)
                 {
-                    if (sent > 0) Thread.Sleep(sleepMsOverride);
+                    if (sent > 0) Thread.Sleep(gapMs);
                 }
                 else
                 {
-                    double batchUs = perFramePeriodUs * take;
-                    int sleepMs = (int)Math.Round(batchUs / 1000.0);
-                    if (sleepMs > 0 && sent > 0) Thread.Sleep(sleepMs);
+                    Thread.Sleep(1);
                 }
                 var list = new ICanFrame[take];
                 for (int i = 0; i < take; i++) list[i] = frame;
-                await tx.TransmitAsync(list, -1);
+                take = await tx.TransmitAsync(list, -1);
                 sent += take;
             }
             cts.CancelAfter(TimeSpan.FromMilliseconds(1000));
             var totalRx = await done.Task; // wait until received expected
             sw.Stop();
-
-            double secs = Math.Max(1e-6, sw.Elapsed.TotalSeconds);
-            double rate = totalRx / secs;
+            var totalTime = TimeSpan.FromTicks(lastReceived);
+            var secs = Math.Max(1e-6, totalTime.TotalSeconds);
+            var rate = totalRx / secs;
             Console.WriteLine($"Frames: {frames}, Received:{received} Bytes/Frame: {payload.Length}, FD={fd}, BRS={brs}");
-            Console.WriteLine($"Elapsed: {sw.Elapsed.TotalMilliseconds:F1} ms, Throughput: {rate:F0} frames/s");
+            Console.WriteLine($"Elapsed: {totalTime.TotalMilliseconds:F1} ms, Throughput: {rate:F0} frames/s");
             return 0;
         }
 

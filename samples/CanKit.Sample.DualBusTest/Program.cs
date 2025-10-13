@@ -18,7 +18,11 @@ internal static class Program
     private const int DefaultFdDataBitrate = 8_000_000; // 8M data
 
     private static ICanFrame[]? _seqFrames;
-
+    private static int _batchSize;
+    private static int _gapMs;
+    private static int _rxTimeout;
+    private static bool _verbose;
+    private static int _count;
     private static async Task<int> Main(string[] args)
     {
         // Usage (examples at bottom):
@@ -32,22 +36,25 @@ internal static class Program
         var brs = HasFlag(args, "--brs");
         var extended = HasFlag(args, "--ext");
         var softFilter = HasFlag(args, "--softfilter");
-        var verbose = !HasFlag(args, "--quiet");
 
         var bitrate = ParseInt(GetArg(args, "--bitrate"), DefaultClassicBitrate);
         var abit = ParseInt(GetArg(args, "--abit"), DefaultFdArbBitrate);
         var dbit = ParseInt(GetArg(args, "--dbit"), DefaultFdDataBitrate);
-        var count = ParseInt(GetArg(args, "--count"), 2000);
+
         var frameLen = ParseInt(GetArg(args, "--len"), useFd ? 64 : 8);
-        var batchSize = ClampInt(ParseInt(GetArg(args, "--batch"), 64), 1, 4096);
-        var gapMs = ParseInt(GetArg(args, "--gapms"), 0);
-        var timeOut = ParseInt(GetArg(args, "--timeout"), 1000);
+
         var asyncBuf = ParseInt(GetArg(args, "--asyncbuf"), 8192);
         var enableRes = ParseInt(GetArg(args, "--res"), 0) == 1;
 
         // Filtering config (optional)
         var hasMask = TryGetTwoInts(args, "--mask", out var accCode, out var accMask);
         var hasRange = TryGetTwoInts(args, "--range", out var rangeMin, out var rangeMax);
+
+        _batchSize = ClampInt(ParseInt(GetArg(args, "--batch"), 64), 1, 4096);
+        _gapMs = ParseInt(GetArg(args, "--gapms"), 0);
+        _rxTimeout = ParseInt(GetArg(args, "--timeout"), 1000);
+        _verbose = !HasFlag(args, "--quiet");
+        _count = ParseInt(GetArg(args, "--count"), 2000);
 
         // Base ID (low 8 bits reserved for seq 0..255)
         var defaultBaseIdStd = 0x100; // keep low 8 bits zero
@@ -59,7 +66,7 @@ internal static class Program
         // Which tests to run
         var mode = (GetArg(args, "--mode") ?? "all").ToLowerInvariant();
 
-        if (verbose)
+        if (_verbose)
         {
             Console.WriteLine($"DualBusTest: A={epA} (tester), B={epB} (DUT), mode={mode}");
             Console.WriteLine(useFd
@@ -104,27 +111,27 @@ internal static class Program
 
         if (all || mode.Equals("tx-sync", StringComparison.OrdinalIgnoreCase))
         {
-            toRun.Add((a, b) => Test_DUT_Tx(a, b, count, batchSize, gapMs, timeOut, asyncTx: false, verbose));
+            toRun.Add((a, b) => Test_DUT_Tx(a, b, asyncTx: false));
         }
 
         if (all || mode.Equals("tx-async", StringComparison.OrdinalIgnoreCase))
         {
-            toRun.Add((a, b) => Test_DUT_Tx(a, b, count, batchSize, gapMs, timeOut, asyncTx: true, verbose));
+            toRun.Add((a, b) => Test_DUT_Tx(a, b, asyncTx: true));
         }
 
         if (all || mode.Equals("rx-sync", StringComparison.OrdinalIgnoreCase))
         {
-            toRun.Add((a, b) => Test_DUT_Rx(a, b, count, batchSize, gapMs, timeOut, false, verbose));
+            toRun.Add((a, b) => Test_DUT_Rx(a, b, false));
         }
 
         if (all || mode.Equals("rx-async", StringComparison.OrdinalIgnoreCase))
         {
-            toRun.Add((a, b) => Test_DUT_Rx(a, b, count, batchSize, gapMs, timeOut, true, verbose));
+            toRun.Add((a, b) => Test_DUT_Rx(a, b, true));
         }
 
         if (mode.Equals("event", StringComparison.OrdinalIgnoreCase))
         {
-            toRun.Add((a, b) => Test_DUT_Rx_Event(a, b, count, batchSize, gapMs, timeOut, verbose));
+            toRun.Add((a, b) => Test_DUT_Rx_Event(a, b));
         }
 
         foreach (var r in toRun)
@@ -132,7 +139,7 @@ internal static class Program
             await r(busA, busB);
         }
 
-        if (verbose)
+        if (_verbose)
         {
             Console.WriteLine("All selected tests completed.");
         }
@@ -144,13 +151,12 @@ internal static class Program
         CanBus.Open(endpoint, configure);
 
     // Test: DUT(B) sending many frames; tester(A) receives and verifies
-    private static async Task Test_DUT_Tx(ICanBus testerReceiver, ICanBus dutSender,
-        int count, int batchSize, int gapMs, int rxTimeout, bool asyncTx, bool verbose)
+    private static async Task Test_DUT_Tx(ICanBus testerReceiver, ICanBus dutSender, bool asyncTx)
     {
         var testName = asyncTx ? "DUT TX async" : "DUT TX sync";
-        if (verbose)
+        if (_verbose)
         {
-            Console.WriteLine($"== {testName} :: Send {count} frames, recv verify on tester ==");
+            Console.WriteLine($"== {testName} :: Send {_count} frames, recv verify on tester ==");
         }
 
         var verifier = new SequenceVerifier();
@@ -159,27 +165,39 @@ internal static class Program
         var sw = Stopwatch.StartNew();
         using var cts = new CancellationTokenSource();
         var token = cts.Token;
+        var lastReceived = sw.ElapsedTicks;
+        var recTask = Task.Run(async () =>
+        {
+            while (verifier.Received < _count && !token.IsCancellationRequested)
+            {
+                var batch =
+                    await testerReceiver.ReceiveAsync(Math.Min(256, _count - verifier.Received), 10, token).ConfigureAwait(false);
+                foreach (var d in batch)
+                {
+                    verifier.Feed(d.CanFrame);
+                    Interlocked.Exchange(ref lastReceived, sw.ElapsedTicks);
+                }
+            }
+        });
 
-        var recTask = Task.Run(async () => await Receive(testerReceiver, verifier, count, token));
+        await SendBurst(dutSender, asyncTx);
 
-        await SendBurst(dutSender, count, batchSize, gapMs, asyncTx);
-        await Task.Delay(rxTimeout);
+        await Task.Delay(_rxTimeout);
         cts.Cancel();
 
-        await recTask.ContinueWith(IgnoreCancelException);
+        try { await recTask; }
+        catch (OperationCanceledException) { }
 
         sw.Stop();
-        PrintSummary(testName, count, verifier, sw.Elapsed, testerReceiver);
+        PrintSummary(testName, _count, verifier, TimeSpan.FromTicks(lastReceived), testerReceiver);
     }
 
-    // Test: DUT(B) receiving many frames; tester(A) sends; verify on DUT(B)
-    private static async Task Test_DUT_Rx(ICanBus testerSender, ICanBus dutReceiver,
-        int count, int batchSize, int gapMs, int rxTimeout, bool asyncRx, bool verbose)
+    private static async Task Test_DUT_Rx(ICanBus testerSender, ICanBus dutReceiver, bool asyncRx)
     {
         var testName = asyncRx ? "DUT RX async" : "DUT RX sync";
-        if (verbose)
+        if (_verbose)
         {
-            Console.WriteLine($"== {testName} :: Send {count} frames from tester, verify on DUT ==");
+            Console.WriteLine($"== {testName} :: Send {_count} frames from tester, verify on DUT ==");
         }
 
         var verifier = new SequenceVerifier();
@@ -189,54 +207,54 @@ internal static class Program
 
         using var cts = new CancellationTokenSource();
         var token = cts.Token;
-
+        var lastReceived = sw.ElapsedTicks;
         var recTask = Task.Run(async () =>
         {
             if (asyncRx)
             {
-                // Using ReceiveAsync in batches\
-                while (verifier.Received < count && !token.IsCancellationRequested)
+                while (verifier.Received < _count && !token.IsCancellationRequested)
                 {
                     var list = await dutReceiver
-                        .ReceiveAsync(Math.Min(256, count - verifier.Received), 200)
+                        .ReceiveAsync(Math.Min(256, _count - verifier.Received), 10)
                         .ConfigureAwait(false);
                     foreach (var d in list)
                     {
                         verifier.Feed(d.CanFrame);
+                        Interlocked.Exchange(ref lastReceived, sw.ElapsedTicks);
                     }
                 }
             }
             else
             {
                 // Using synchronous Receive
-                while (verifier.Received < count && !token.IsCancellationRequested)
+                while (verifier.Received < _count && !token.IsCancellationRequested)
                 {
-                    foreach (var d in dutReceiver.Receive(Math.Min(256, count - verifier.Received), 200))
+                    foreach (var d in dutReceiver.Receive(Math.Min(256, _count - verifier.Received), 10))
                     {
                         verifier.Feed(d.CanFrame);
+                        Interlocked.Exchange(ref lastReceived, sw.ElapsedTicks);
                     }
                 }
             }
         }, cts.Token);
 
-        await SendBurst(testerSender, count, batchSize, gapMs, true);
-        await Task.Delay(rxTimeout);
+        await SendBurst(testerSender, true);
+        await Task.Delay(_rxTimeout);
         cts.Cancel();
 
-        await recTask.ContinueWith(IgnoreCancelException);
+        try { await recTask; }
+        catch (OperationCanceledException) { /* ignore */ }
 
-        sw.Stop();
-        PrintSummary(testName, count, verifier, sw.Elapsed, dutReceiver);
+        PrintSummary(testName, _count, verifier, TimeSpan.FromTicks(lastReceived), dutReceiver);
     }
 
     // Test: DUT(B) receiving via event handler only; tester(A) sends
-    private static async Task Test_DUT_Rx_Event(ICanBus testerSender, ICanBus dutReceiver,
-        int count, int batchSize, int gapMs, int rxTimeout, bool verbose)
+    private static async Task Test_DUT_Rx_Event(ICanBus testerSender, ICanBus dutReceiver)
     {
         const string testName = "DUT RX event";
-        if (verbose)
+        if (_verbose)
         {
-            Console.WriteLine($"== {testName} :: Send {count} frames from tester, verify on DUT(event) ==");
+            Console.WriteLine($"== {testName} :: Send {_count} frames from tester, verify on DUT(event) ==");
         }
 
         var verifier = new SequenceVerifier();
@@ -245,30 +263,30 @@ internal static class Program
         var sw = Stopwatch.StartNew();
         using var cts = new CancellationTokenSource();
         var token = cts.Token;
+        var lastReceived = sw.Elapsed.Ticks;
 
-        var recTask = Task.Run(async () => await Receive(dutReceiver, verifier, count, token));
-        await SendBurst(testerSender, count, batchSize, gapMs, true);
-        await Task.Delay(rxTimeout);
-        cts.Cancel();
-
-        await recTask.ContinueWith(IgnoreCancelException);
-
-        sw.Stop();
-        PrintSummary(testName, count, verifier, sw.Elapsed, dutReceiver);
-    }
-
-    private static void IgnoreCancelException(Task t)
-    {
-        if (t.Exception != null)
+        var recTask = Task.Run(async () =>
         {
-            foreach (var e in t.Exception.InnerExceptions)
+            while (verifier.Received < _count && !token.IsCancellationRequested)
             {
-                if (e is not OperationCanceledException)
+                var batch = await dutReceiver
+                    .ReceiveAsync(Math.Min(256, _count - verifier.Received), 10, token).ConfigureAwait(false);
+                foreach (var d in batch)
                 {
-                    throw t.Exception;
+                    verifier.Feed(d.CanFrame);
+                    Interlocked.Exchange(ref lastReceived, sw.Elapsed.Ticks);
                 }
             }
-        }
+        });
+        await SendBurst(testerSender, true);
+        await Task.Delay(_rxTimeout);
+        cts.Cancel();
+
+        try { await recTask; }
+        catch (OperationCanceledException) { /* ignore */ }
+
+        sw.Stop();
+        PrintSummary(testName, _count, verifier, TimeSpan.FromTicks(lastReceived), dutReceiver);
     }
 
     private static IDisposable SubscribeError(ICanBus bus, SequenceVerifier verifier)
@@ -278,64 +296,35 @@ internal static class Program
         return new ActionOnDispose(() => bus.ErrorFrameReceived -= onErr);
     }
 
-    private static IDisposable SubscribeFrames(ICanBus bus, SequenceVerifier verifier)
-    {
-        EventHandler<CanReceiveData> onRx = (_, e) => verifier.Feed(e.CanFrame);
-        bus.FrameReceived += onRx;
-        return new ActionOnDispose(() => bus.FrameReceived -= onRx);
-    }
-
-    private static async Task Receive(ICanBus bus, SequenceVerifier verifier, int expected, CancellationToken ct)
-    {
-        while (verifier.Received < expected && !ct.IsCancellationRequested)
-        {
-            var batch =
-                await bus.ReceiveAsync(Math.Min(256, expected - verifier.Received), 200, ct).ConfigureAwait(false);
-            foreach (var d in batch)
-            {
-                verifier.Feed(d.CanFrame);
-            }
-        }
-    }
-
-    private static async Task SendBurst(ICanBus tx, int count, int batchSize, int gapMs, bool asyncTx)
+    private static async Task SendBurst(ICanBus tx, bool asyncTx)
     {
         var seq = 0;
-        var queue = new Queue<ICanFrame>(batchSize);
+        var queue = new Queue<ICanFrame>(_batchSize);
 
-        for (var i = 0; i < count; i++)
+        for (var i = 0; i < _count; i++)
         {
             var fr = GetFrame((byte)(seq & 0xFF));
             queue.Enqueue(fr);
             seq = (seq + 1) & 0xFF;
 
-            if (queue.Count >= batchSize || i == count - 1)
+            if (queue.Count >= _batchSize || i == _count - 1)
             {
                 while (queue.Count > 0)
                 {
                     int send = asyncTx
-                        ? await tx.TransmitAsync(queue, 100).ConfigureAwait(false)
-                        : tx.Transmit(queue, 100);
-
-                    var overflow = send < 0;
-                    if (overflow) send = -send;
+                        ? await tx.TransmitAsync(queue, 20).ConfigureAwait(false)
+                        : tx.Transmit(queue, 20);
 
                     for (var j = 0; j < send && queue.Count > 0; j++)
                         queue.Dequeue();
+                    if (queue.Count == 0)
+                        break;
 
-                    if (overflow)
-                    {
-                        Thread.Yield();
-                        continue;
-                    }
-                    if (queue.Count == 0) break;
-                }
-
-                if (gapMs > 0 && i != count - 1)
-                {
-                    await Task.Delay(TimeSpan.FromMilliseconds(gapMs));
+                    await Task.Delay(1);
                 }
             }
+            if (_gapMs > 0 && i != _count - 1)
+                await tx.TransmitAsync(queue, 20);
         }
     }
 

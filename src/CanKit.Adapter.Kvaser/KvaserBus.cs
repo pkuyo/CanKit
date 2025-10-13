@@ -224,12 +224,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
     {
         ThrowIfDisposed();
         if (count < 0) throw new ArgumentOutOfRangeException(nameof(count));
-        if (Volatile.Read(ref _subscriberCount) > 0)
-        {
-            // To prevent cross-handler contention when subscribing to FrameReceived or ErrorFrameReceived, handle all messages asynchronously.
-            return ReceiveAsync(count, timeOut).GetAwaiter().GetResult();
-        }
-        return _transceiver.Receive(this, count, timeOut);
+        return ReceiveAsync(count, timeOut).GetAwaiter().GetResult();
     }
 
     IBusRTOptionsConfigurator ICanBus.Options => Options;
