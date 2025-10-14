@@ -27,7 +27,7 @@ public class PCIECANFDProvider(DeviceType deviceType) : ZlgCanProvider
                                                  CanFeature.CyclicTx |
                                                  CanFeature.CanFd;
 
-    public override ZlgFeature ZlgFeature => ZlgFeature.RangeFilter;
+    public override ZlgFeature ZlgFeature => ZlgFeature.RangeFilter | ZlgFeature.MergeReceive;
 }
 
 

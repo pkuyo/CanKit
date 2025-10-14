@@ -10,9 +10,9 @@ using CanKit.Core.Definitions;
 
 namespace CanKit.Adapter.ZLG.Transceivers
 {
-    public sealed class ZlgCanFdTransceiver : IZlgTransceiver
+    public sealed class ZlgCanFdTransceiver : ITransceiver
     {
-        public int Transmit(ICanBus<IBusRTOptionsConfigurator> channel,
+        public int Transmit(ICanBus<IBusRTOptionsConfigurator> bus,
             IEnumerable<ICanFrame> frames, int _ = 0)
         {
             unsafe
@@ -20,12 +20,12 @@ namespace CanKit.Adapter.ZLG.Transceivers
                 var transmitData = stackalloc ZLGCAN.ZCAN_TransmitFD_Data[ZLGCAN.BATCH_COUNT];
                 var index = 0;
                 int sent = 0;
-                var echo = channel.Options.WorkMode == ChannelWorkMode.Echo;
+                var echo = bus.Options.WorkMode == ChannelWorkMode.Echo;
                 foreach (var f in frames)
                 {
                     if (index == ZLGCAN.BATCH_COUNT)
                     {
-                        var re = ZLGCAN.ZCAN_TransmitFD(((ZlgCanBus)channel).NativeHandle, transmitData, ZLGCAN.BATCH_COUNT);
+                        var re = ZLGCAN.ZCAN_TransmitFD(((ZlgCanBus)bus).NativeHandle, transmitData, ZLGCAN.BATCH_COUNT);
                         index = 0;
                         if (re != ZLGCAN.BATCH_COUNT)
                             return sent;
@@ -37,7 +37,7 @@ namespace CanKit.Adapter.ZLG.Transceivers
                     cf.ToTransmitData(echo, transmitData, index);
                     index++;
                 }
-                return (int)(sent + ZLGCAN.ZCAN_TransmitFD(((ZlgCanBus)channel).NativeHandle, transmitData, (uint)index));
+                return (int)(sent + ZLGCAN.ZCAN_TransmitFD(((ZlgCanBus)bus).NativeHandle, transmitData, (uint)index));
             }
 
         }
@@ -71,8 +71,5 @@ namespace CanKit.Adapter.ZLG.Transceivers
                 pool.Return(buf);
             }
         }
-
-
-        public ZlgFrameType FrameType => ZlgFrameType.CanFd;
     }
 }

@@ -9,9 +9,9 @@ namespace CanKit.Adapter.Kvaser.Transceivers;
 
 public sealed class KvaserClassicTransceiver : ITransceiver
 {
-    public int Transmit(ICanBus<IBusRTOptionsConfigurator> channel, IEnumerable<ICanFrame> frames, int _)
+    public int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, IEnumerable<ICanFrame> frames, int _)
     {
-        var ch = (KvaserBus)channel;
+        var ch = (KvaserBus)bus;
         int sent = 0;
         foreach (var item in frames)
         {
@@ -21,7 +21,7 @@ public sealed class KvaserClassicTransceiver : ITransceiver
             }
 
             var flags = 0u;
-            flags |= (channel.Options.TxRetryPolicy == TxRetryPolicy.NoRetry) ? (uint)Canlib.canMSG_SINGLE_SHOT : 0;
+            flags |= (bus.Options.TxRetryPolicy == TxRetryPolicy.NoRetry) ? (uint)Canlib.canMSG_SINGLE_SHOT : 0;
             if (cf.IsExtendedFrame) flags |= Canlib.canMSG_EXT;
             if (cf.IsRemoteFrame) flags |= Canlib.canMSG_RTR;
 

@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using CanKit.Adapter.SocketCAN.Native;
 using CanKit.Core.Definitions;
 
@@ -42,10 +43,10 @@ internal static class SocketCanExtension
         unsafe
         {
             var src = cf.Data.Span;
-            var copy = Math.Min(src.Length, 8);
+            var copy = (uint)Math.Min(src.Length, 8);
             fixed (byte* pSrc = src)
             {
-                Buffer.MemoryCopy(pSrc, frame.data, 8, copy);
+                Unsafe.CopyBlockUnaligned(frame.data, pSrc, copy);
             }
         }
 
@@ -69,7 +70,7 @@ internal static class SocketCanExtension
             var copy = Math.Min(src.Length, 64);
             fixed (byte* pSrc = src)
             {
-                Buffer.MemoryCopy(pSrc, frame.data, 64, copy);
+                Unsafe.CopyBlockUnaligned(frame.data, pSrc, (uint)copy);
             }
         }
         return frame;

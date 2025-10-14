@@ -1,4 +1,6 @@
 using CanKit.Adapter.ZLG.Definitions;
+using CanKit.Adapter.ZLG.Options;
+using CanKit.Adapter.ZLG.Providers;
 using CanKit.Adapter.ZLG.Transceivers;
 using CanKit.Core.Abstractions;
 using CanKit.Core.Attributes;
@@ -34,11 +36,13 @@ public sealed class ZlgCanFactory : ICanFactory
     {
         if (configurator.Provider is not ZlgCanProvider provider)
             throw new CanProviderMismatchException(typeof(ZlgCanProvider), configurator.Provider?.GetType() ?? typeof(ICanModelProvider));
-        /*
-        if (busOptions.ProtocolMode == CanProtocolMode.Merged &&
-            (configurator.Features & CanFeature.MergeReceive) != 0U)
-            return new ZlgMergeTransceiver();
-        */
+
+        if (configurator.Provider is PCIECANFDProvider or PCIECANFD200UProvider)
+            return new ZlgCanMergeTransceiver(); //Only support merge receive
+
+        if (((ZlgBusInitConfigurator)busOptions).EnableMergeReceive)
+            return new ZlgCanMergeTransceiver();
+
         if (busOptions.ProtocolMode == CanProtocolMode.Can20
             && (uint)(configurator.Features & CanFeature.CanClassic) != 0U)
             return new ZlgCanClassicTransceiver();

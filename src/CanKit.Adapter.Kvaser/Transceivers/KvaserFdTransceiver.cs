@@ -9,9 +9,9 @@ namespace CanKit.Adapter.Kvaser.Transceivers;
 
 public sealed class KvaserFdTransceiver : ITransceiver
 {
-    public int Transmit(ICanBus<IBusRTOptionsConfigurator> channel, IEnumerable<ICanFrame> frames, int _ = 0)
+    public int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, IEnumerable<ICanFrame> frames, int _ = 0)
     {
-        var ch = (KvaserBus)channel;
+        var ch = (KvaserBus)bus;
         int sent = 0;
 
         foreach (var item in frames)
@@ -21,7 +21,7 @@ public sealed class KvaserFdTransceiver : ITransceiver
             if (item is CanFdFrame fd)
             {
                 flags = Canlib.canFDMSG_FDF;
-                flags |= (channel.Options.TxRetryPolicy == TxRetryPolicy.NoRetry) ? (uint)Canlib.canMSG_SINGLE_SHOT : 0;
+                flags |= (bus.Options.TxRetryPolicy == TxRetryPolicy.NoRetry) ? (uint)Canlib.canMSG_SINGLE_SHOT : 0;
                 if (fd.IsExtendedFrame) flags |= Canlib.canMSG_EXT;
                 if (fd.BitRateSwitch) flags |= Canlib.canFDMSG_BRS;
                 if (fd.ErrorStateIndicator) flags |= Canlib.canFDMSG_ESI;

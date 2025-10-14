@@ -6,17 +6,17 @@ namespace CanKit.Adapter.Virtual;
 
 internal sealed class VirtualTransceiver : ITransceiver
 {
-    public int Transmit(ICanBus<IBusRTOptionsConfigurator> channel, IEnumerable<ICanFrame> frames, int timeOut = 0)
+    public int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, IEnumerable<ICanFrame> frames, int timeOut = 0)
     {
-        if (channel is not VirtualBus bus) return 0;
+        if (bus is not VirtualBus vBus) return 0;
         int n = 0;
         foreach (var f in frames)
         {
             // validate frame kind vs protocol mode
-            if (f is CanFdFrame && channel.Options.ProtocolMode != CanProtocolMode.CanFd)
+            if (f is CanFdFrame && vBus.Options.ProtocolMode != CanProtocolMode.CanFd)
                 continue;
 
-            bus.Hub.Broadcast(bus, f);
+            vBus.Hub.Broadcast(vBus, f);
             n++;
         }
         return n;

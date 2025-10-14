@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -96,19 +97,19 @@ public sealed class BCMPeriodicTx : IPeriodicTx
             if (_frame is CanClassicFrame classic)
             {
                 var fr = classic.ToCanFrame();
-                Buffer.MemoryCopy(&fr, buf + headSize, frameSize, frameSize);
+                Unsafe.CopyBlockUnaligned(buf + headSize, &fr, (uint)frameSize);
             }
             else if (_frame is CanFdFrame fd)
             {
                 var fr = fd.ToCanFrame();
-                Buffer.MemoryCopy(&fr, buf + headSize, frameSize, frameSize);
+                Unsafe.CopyBlockUnaligned(buf + headSize, &fr, (uint)frameSize);
             }
             else
             {
                 throw new NotSupportedException("protocol mode not supported");
             }
 
-            Buffer.MemoryCopy(&head, buf, headSize, headSize);
+            Unsafe.CopyBlockUnaligned(buf, &head, (uint)headSize);
             var wrote = Libc.write(_fd, buf, (ulong)(headSize + frameSize));
             if (wrote != headSize + frameSize)
                 Libc.ThrowErrno("write(BCM TX_SETUP)", "Failed to setup BCM periodic transmission");
@@ -171,13 +172,13 @@ public sealed class BCMPeriodicTx : IPeriodicTx
                 {
                     var sz = Marshal.SizeOf<Libc.can_frame>();
                     var fr = classic.ToCanFrame();
-                    Buffer.MemoryCopy(&fr, buf + headSize, sz, sz);
+                    Unsafe.CopyBlockUnaligned(buf + headSize, &fr, (uint)sz);
                 }
                 else if (_frame is CanFdFrame fd)
                 {
                     var sz = Marshal.SizeOf<Libc.canfd_frame>();
                     var fr = fd.ToCanFrame();
-                    Buffer.MemoryCopy(&fr, buf + headSize, sz, sz);
+                    Unsafe.CopyBlockUnaligned(buf + headSize, &fr, (uint)sz);
                 }
                 else
                 {
@@ -185,7 +186,7 @@ public sealed class BCMPeriodicTx : IPeriodicTx
                 }
             }
 
-            Buffer.MemoryCopy(&head, buf, headSize, headSize);
+            Unsafe.CopyBlockUnaligned(buf, &head, (uint)headSize);
             var wrote = Libc.write(_fd, buf, (ulong)bufSize);
             if (wrote != bufSize)
                 Libc.ThrowErrno("write(BCM TX_SETUP)", "Failed to update BCM periodic transmission");
@@ -245,7 +246,7 @@ public sealed class BCMPeriodicTx : IPeriodicTx
             unsafe
             {
                 var buf = stackalloc byte[size];
-                Buffer.MemoryCopy(&head, buf, size, size);
+                Unsafe.CopyBlockUnaligned(buf, &head, (uint)size);
                 var wrote = Libc.write(_fd, buf, (ulong)size);
                 if (wrote != size)
                     Libc.ThrowErrno("write(BCM TX_DELETE)", "Failed to delete BCM periodic transmission");

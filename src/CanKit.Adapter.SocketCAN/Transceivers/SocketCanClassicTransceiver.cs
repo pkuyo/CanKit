@@ -1,6 +1,7 @@
 using System;
 using System.Buffers;
 using System.Globalization;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
 using CanKit.Adapter.SocketCAN.Native;
@@ -13,10 +14,10 @@ namespace CanKit.Adapter.SocketCAN.Transceivers;
 
 public sealed class SocketCanClassicTransceiver : ITransceiver
 {
-    public int Transmit(ICanBus<IBusRTOptionsConfigurator> channel, IEnumerable<ICanFrame> frames, int _ = 0)
+    public int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, IEnumerable<ICanFrame> frames, int _ = 0)
     {
 
-        var ch = (SocketCanBus)channel;
+        var ch = (SocketCanBus)bus;
         var totalSent = 0;
         var index = 0;
         unsafe
@@ -81,17 +82,33 @@ public sealed class SocketCanClassicTransceiver : ITransceiver
 
     public IEnumerable<CanReceiveData> Receive(ICanBus<IBusRTOptionsConfigurator> bus, int count = 1, int _ = -1)
     {
-        var result = new List<CanReceiveData>();
+        if (count < 0) throw new ArgumentOutOfRangeException(nameof(count));
+
+        var batchResult = new List<CanReceiveData>(Libc.BATCH_COUNT);
         var ch = (SocketCanBus)bus;
         var preferTs = ch.Options.PreferKernelTimestamp;
-        if (count < 0) throw new ArgumentOutOfRangeException(nameof(count));
-        bool inf = count == 0;
-        unsafe
+        var inf = count == 0;
+        while (inf || count > 0)
         {
-            var frameSize = Marshal.SizeOf<Libc.can_frame>();
-            Libc.can_frame* fr = stackalloc Libc.can_frame[Libc.BATCH_COUNT];
-            Libc.iovec* iov = stackalloc Libc.iovec[Libc.BATCH_COUNT];
-            Libc.mmsghdr* msgs = stackalloc Libc.mmsghdr[Libc.BATCH_COUNT];
+            var end = ReceiveBatch(ch.FileDescriptor, Math.Min(Libc.BATCH_COUNT, count), preferTs, batchResult);
+            count -= batchResult.Count;
+            foreach (var r in batchResult)
+                yield return r;
+            batchResult.Clear();
+            if (end)
+                yield break;
+        }
+    }
+
+    private static unsafe bool ReceiveBatch(int fd, int oneBatch, bool preferTs, List<CanReceiveData> result)
+    {
+        var frameSize = Marshal.SizeOf<Libc.can_frame>();
+        Libc.can_frame* fr = stackalloc Libc.can_frame[Libc.BATCH_COUNT];
+        Libc.iovec* iov = stackalloc Libc.iovec[Libc.BATCH_COUNT];
+        Libc.mmsghdr* msgs = stackalloc Libc.mmsghdr[Libc.BATCH_COUNT];
+        int recvd;
+        if (preferTs)
+        {
             byte* cbase = stackalloc byte[Libc.BATCH_COUNT * 256];
             for (int i = 0; i < Libc.BATCH_COUNT; i++)
             {
@@ -103,40 +120,68 @@ public sealed class SocketCanClassicTransceiver : ITransceiver
                     msg_namelen = 0,
                     msg_iov = &iov[i],
                     msg_iovlen = (UIntPtr)1,
-                    msg_control = preferTs ? (cbase + (i * 256)) : null,
-                    msg_controllen = preferTs ? (UIntPtr)256 : UIntPtr.Zero,
+                    msg_control = (cbase + (i * 256)),
+                    msg_controllen = (UIntPtr)256,
                     msg_flags = 0
                 };
                 msgs[i].msg_len = 0;
             }
-            while (inf || count > 0)
+            do
             {
-                var oneBatch = (int)Math.Max(1, Math.Min(count == 0 ? Libc.BATCH_COUNT : count, Libc.BATCH_COUNT));
-                int recvd;
-                do
-                {
-                    recvd = Libc.recvmmsg(ch.FileDescriptor, msgs, (uint)oneBatch, 0, null);
-                }
-                while (recvd < 0 && Libc.Errno() == Libc.EINTR);
-                if (recvd < 0)
-                {
-                    var errno = Libc.Errno();
-                    if (errno == Libc.EAGAIN) return result;
-                    Libc.ThrowErrno("recvmmsg(FD)", "Failed to read classic CAN frames");
-                }
-
-                count -= recvd;
-                for (int i = 0; i < recvd; i++)
-                {
-                    var msg = msgs[i].msg_hdr;
-                    var tsSpan = ExtractTimestamp(ref msg);
-                    BuildClassic(fr, i, (int)msgs[i].msg_len, tsSpan, result);
-                }
+                recvd = Libc.recvmmsg(fd, msgs, (uint)oneBatch, 0, null);
+            }
+            while (recvd < 0 && Libc.Errno() == Libc.EINTR);
+            if (recvd < 0)
+            {
+                var errno = Libc.Errno();
+                if (errno == Libc.EAGAIN) return true;
+                Libc.ThrowErrno("recvmmsg(FD)", "Failed to read classic CAN frames");
+            }
+            for (int i = 0; i < recvd; i++)
+            {
+                var msg = msgs[i].msg_hdr;
+                var tsSpan = ExtractTimestamp(ref msg);
+                BuildClassic(fr, i, (int)msgs[i].msg_len, tsSpan, result);
             }
         }
-        return result;
+        else
+        {
+            for (int i = 0; i < Libc.BATCH_COUNT; i++)
+            {
+                iov[i].iov_base = &fr[i];
+                iov[i].iov_len = (UIntPtr)frameSize;
+                msgs[i].msg_hdr = new Libc.msghdr
+                {
+                    msg_name = null,
+                    msg_namelen = 0,
+                    msg_iov = &iov[i],
+                    msg_iovlen = (UIntPtr)1,
+                    msg_control = null,
+                    msg_controllen = UIntPtr.Zero,
+                    msg_flags = 0
+                };
+                msgs[i].msg_len = 0;
+            }
+            do
+            {
+                recvd = Libc.recvmmsg(fd, msgs, (uint)oneBatch, 0, null);
+            }
+            while (recvd < 0 && Libc.Errno() == Libc.EINTR);
+            if (recvd < 0)
+            {
+                var errno = Libc.Errno();
+                if (errno == Libc.EAGAIN) return true;
+                Libc.ThrowErrno("recvmmsg(FD)", "Failed to read classic CAN frames");
+            }
+            for (int i = 0; i < recvd; i++)
+            {
+                var msg = msgs[i].msg_hdr;
+                var tsSpan = ExtractTimestamp(ref msg);
+                BuildClassic(fr, i, (int)msgs[i].msg_len, tsSpan, result);
+            }
+        }
+        return false;
     }
-
     private static unsafe void BuildClassic(Libc.can_frame* fr, int idx, int n, TimeSpan tsSpan, List<CanReceiveData> result)
     {
         if (n <= 0) return;
@@ -149,7 +194,7 @@ public sealed class SocketCanClassicTransceiver : ITransceiver
         var data = dataLen == 0 ? Array.Empty<byte>() : new byte[dataLen];
         fixed (byte* pData = data)
         {
-            Buffer.MemoryCopy(fr[idx].data, pData, data.Length, Math.Min(dataLen, 64));
+            Unsafe.CopyBlockUnaligned(pData, fr[idx].data, (uint)Math.Min(dataLen, 64));
         }
         bool ext = (fr[idx].can_id & Libc.CAN_EFF_FLAG) != 0;
         var rawId = ((fr[idx].can_id & Libc.CAN_EFF_FLAG) != 0)

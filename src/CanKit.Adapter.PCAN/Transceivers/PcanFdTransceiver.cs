@@ -11,9 +11,9 @@ namespace CanKit.Adapter.PCAN.Transceivers;
 
 public sealed class PcanFdTransceiver : ITransceiver
 {
-    public unsafe int Transmit(ICanBus<IBusRTOptionsConfigurator> channel, IEnumerable<ICanFrame> frames, int _ = 0)
+    public unsafe int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, IEnumerable<ICanFrame> frames, int _ = 0)
     {
-        var ch = (PcanBus)channel;
+        var ch = (PcanBus)bus;
         int sent = 0;
         var pMsg = stackalloc PcanBasicNative.TpcanMsgFd[1];
         foreach (var item in frames)
@@ -57,7 +57,7 @@ public sealed class PcanFdTransceiver : ITransceiver
             }
             else
             {
-                PcanUtils.ThrowIfError(st, "Write(FD)", $"PCAN: transmit frame failed. Channel:{((PcanBus)channel).Handle}");
+                PcanUtils.ThrowIfError(st, "Write(FD)", $"PCAN: transmit frame failed. Channel:{((PcanBus)bus).Handle}");
             }
         }
         return sent;

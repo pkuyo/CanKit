@@ -16,7 +16,7 @@ namespace CanKit.Core.Abstractions
         /// <summary>
         /// Sends one or more CAN frames via the specified channel. （通过指定通道发送一个或多个 CAN 帧）
         /// </summary>
-        /// <param name="channel">The channel on which to transmit. （执行发送操作的通道）</param>
+        /// <param name="bus">The channel on which to transmit. （执行发送操作的通道）</param>
         /// <param name="frames">The frames to transmit. （需要发送的帧集合）</param>
         /// <param name="timeOut">
         /// Timeout in milliseconds; use -1 for an infinite wait, and 0 to return immediately without waiting.
@@ -28,7 +28,7 @@ namespace CanKit.Core.Abstractions
         /// （成功写入硬件的帧数量；若发生超时，可能小于请求数量。）
         /// </returns>
         int Transmit(
-            ICanBus<IBusRTOptionsConfigurator> channel,
+            ICanBus<IBusRTOptionsConfigurator> bus,
             IEnumerable<ICanFrame> frames,
             int timeOut = 0);
 

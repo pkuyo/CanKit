@@ -7,8 +7,14 @@ namespace CanKit.Adapter.ZLG.Options
     public sealed class ZlgBusOptions(ICanModelProvider provider) : IBusOptions
     {
 
-        public bool SoftwareFilterEnabled { get; set; }
+        /// <summary>
+        /// merge receive, one device only call one times (合并接收，一个设备只需要启用一次)
+        /// </summary>
+        public bool? MergeReceive { get; set; } = false;
 
+        /// <summary>
+        /// Polling interval in ms (轮询间隔，毫秒)。
+        /// </summary>
         public int PollingInterval { get; set; } = 20;
 
         public ICanModelProvider Provider => provider;

@@ -29,16 +29,26 @@ public sealed class ZlgBusInitConfigurator
     : BusInitOptionsConfigurator<ZlgBusOptions, ZlgBusInitConfigurator>
 {
 
-
+    public bool EnableMergeReceive => Options.MergeReceive ?? false;
 
     /// <summary>
     /// Set polling interval (设置轮询间隔)。
     /// </summary>
     /// <param name="newPollingInterval">Interval in ms (间隔毫秒)。</param>
-    /// <returns>Configurator (配置器本身)。</returns>
     public ZlgBusInitConfigurator PollingInterval(int newPollingInterval)
     {
         Options.PollingInterval = newPollingInterval;
+        return this;
+    }
+    /// <summary>
+    /// Enable or disable merge receive （启用或禁用mergeReceive）
+    /// </summary>
+    /// <param name="newEnable">新的启用状态（全设备使用）。</param>
+    public ZlgBusInitConfigurator MergeReceive(bool newEnable)
+    {
+        if (Provider is ZlgCanProvider provider)
+            ZlgErr.ThrowIfNotSupport(provider.ZlgFeature, ZlgFeature.MergeReceive);
+        Options.MergeReceive = newEnable;
         return this;
     }
 
@@ -54,8 +64,7 @@ public sealed class ZlgBusInitConfigurator
                 throw new CanFilterConfigurationException(
                     "ZLG channels only support a single mask filter rule.(without software filter)");
 
-            if (Provider is ZlgCanProvider provider)
-                ZlgErr.ThrowIfNotSupport(provider.ZlgFeature, ZlgFeature.MaskFilter);
+            ZlgErr.ThrowIfNotSupport(((ZlgCanProvider)Provider).ZlgFeature, ZlgFeature.MaskFilter);
         }
         return base.AccMask(accCode, accMask, idType);
     }
@@ -67,9 +76,7 @@ public sealed class ZlgBusInitConfigurator
             if (Filter.FilterRules.Any(i => i is FilterRule.Mask))
                 throw new CanFilterConfigurationException(
                     "ZLG channels only supports the same type of filter rule.(without software filter)");
-
-            if (Provider is ZlgCanProvider provider)
-                ZlgErr.ThrowIfNotSupport(provider.ZlgFeature, ZlgFeature.RangeFilter);
+            ZlgErr.ThrowIfNotSupport(((ZlgCanProvider)Provider).ZlgFeature, ZlgFeature.RangeFilter);
         }
 
         return base.RangeFilter(min, max, idType);
@@ -102,4 +109,9 @@ public sealed class ZlgBusRtConfigurator
         get => Options.PollingInterval;
         set => Options.PollingInterval = value;
     }
+
+    /// <summary>
+    /// merge receive, one device only call one times (合并接收，一个设备只需要启用一次)
+    /// </summary>
+    public bool? MergeReceive => Options.MergeReceive;
 }

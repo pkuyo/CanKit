@@ -29,7 +29,7 @@ namespace CanKit.Adapter.ZLG
 
         private readonly ZlgChannelHandle _nativeHandle;
 
-        private readonly IZlgTransceiver _transceiver;
+        private readonly ITransceiver _transceiver;
 
         private EventHandler<ICanErrorInfo>? _errorOccurred;
 
@@ -106,9 +106,7 @@ namespace CanKit.Adapter.ZLG
             ApplyConfigAfterInit(options);
 
             ZlgErr.ThrowIfError(ZLGCAN.ZCAN_StartCAN(_nativeHandle), nameof(ZLGCAN.ZCAN_StartCAN), _nativeHandle);
-            if (transceiver is not IZlgTransceiver zlg)
-                throw new CanTransceiverMismatchException(typeof(IZlgTransceiver), transceiver.GetType());
-            _transceiver = zlg;
+            _transceiver = transceiver;
             CanKitLogger.LogDebug("ZLG: Initial options applied.");
         }
 
@@ -363,6 +361,16 @@ namespace CanKit.Adapter.ZLG
                     $"channel {Options.ChannelIndex}");
             }
 
+            if (zlgOption.MergeReceive.HasValue)
+            {
+                ZlgErr.ThrowIfError(
+                    ZLGCAN.ZCAN_SetValue(
+                        _devicePtr,
+                        Options.ChannelIndex + "/set_device_recv_merge",
+                        zlgOption.MergeReceive.Value ? "1" : "0"),
+                    "ZCAN_SetValue(canfd_abit_baud_rate)");
+            }
+
             if (zlgOption.ProtocolMode == CanProtocolMode.CanFd)
             {
                 ZLGCAN.ZCAN_SetValue(_devicePtr, Options.ChannelIndex + "/canfd_standard", "0");
@@ -485,7 +493,7 @@ namespace CanKit.Adapter.ZLG
 
                     foreach (var rule in zlgOption.Filter.filterRules.Skip(1))
                     {
-                        if (zlgOption.SoftwareFilterEnabled)
+                        if (zlgOption.EnabledSoftwareFallback.HasFlag(CanFeature.Filters))
                         {
                             zlgOption.Filter.softwareFilter.Add(rule);
                         }
@@ -535,13 +543,7 @@ namespace CanKit.Adapter.ZLG
         {
             ThrowIfDisposed();
 
-            var zlgFilterType = Options.ProtocolMode switch
-            {
-                //CanProtocolMode.Merged => ZlgFrameType.Any,
-                CanProtocolMode.CanFd => ZlgFrameType.CanFd,
-                _ => ZlgFrameType.CanClassic
-            };
-            return (int)ZLGCAN.ZCAN_GetReceiveNum(_nativeHandle, (byte)zlgFilterType);
+            return (int)ZLGCAN.ZCAN_GetReceiveNum(_nativeHandle, (byte)Options.ProtocolMode);
         }
 
         private void ThrowIfDisposed()

@@ -19,7 +19,7 @@ public sealed class USBCANFDProvider(DeviceType deviceType) : ZlgCanProvider
                                                  CanFeature.ListenOnly |
                                                  CanFeature.CanFd;
 
-    public override ZlgFeature ZlgFeature => ZlgFeature.RangeFilter;
+    public override ZlgFeature ZlgFeature => ZlgFeature.RangeFilter | ZlgFeature.MergeReceive;
 }
 
 public sealed class USBCANFDProviderGroup : ICanModelProviderGroup
