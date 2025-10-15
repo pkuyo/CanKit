@@ -56,7 +56,6 @@ internal static class ZlgEndpoint
             var d = provider.Factory.CreateDevice(devOpt);
             if (d == null)
                 throw new CanFactoryException(CanKitErrorCode.DeviceCreationFailed, $"Factory '{provider.Factory.GetType().FullName}' returned null device.");
-            d.OpenDevice();
             return d;
         });
 

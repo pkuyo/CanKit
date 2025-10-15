@@ -9,26 +9,18 @@ namespace CanKit.Adapter.ZLG
 {
     public sealed class ZlgCanDevice : ICanDevice<ZlgDeviceRTOptionsConfigurator>
     {
-        private bool _isDeviceOpen = false;
 
         private bool _isDisposed;
 
-        private ZlgDeviceHandle _nativeHandler = new();
+        private readonly ZlgDeviceHandle _nativeHandler = new();
 
-        private IDeviceOptions _options;
+        private readonly IDeviceOptions _options;
 
         public ZlgCanDevice(IDeviceOptions options)
         {
             Options = new ZlgDeviceRTOptionsConfigurator();
             Options.Init((ZlgDeviceOptions)options);
             _options = options;
-        }
-
-
-        public ZlgDeviceHandle NativeHandler => _nativeHandler;
-
-        public void OpenDevice()
-        {
             ThrowIfDisposed();
             var zdt = (ZlgDeviceType)Options.DeviceType;
             var ptr = ZLGCAN.ZCAN_OpenDevice((uint)zdt.Code, Options.DeviceIndex, 0);
@@ -37,19 +29,14 @@ namespace CanKit.Adapter.ZLG
             {
                 _nativeHandler = handle;
                 ApplyConfig(_options);
-                _isDeviceOpen = true;
                 return;
             }
 
             ZlgErr.ThrowIfInvalid(handle, nameof(ZLGCAN.ZCAN_OpenDevice));
         }
 
-        public void CloseDevice()
-        {
-            ThrowIfDisposed();
-            _isDeviceOpen = false;
-            _nativeHandler.Close();
-        }
+
+        public ZlgDeviceHandle NativeHandler => _nativeHandler;
 
 
         public void Dispose()
@@ -58,16 +45,13 @@ namespace CanKit.Adapter.ZLG
             {
 
                 ThrowIfDisposed();
-                _nativeHandler?.Dispose();
+                _nativeHandler.Dispose();
             }
             finally
             {
-                _isDeviceOpen = false;
                 _isDisposed = true;
             }
         }
-
-        public bool IsDeviceOpen => _isDeviceOpen;
 
         public ZlgDeviceRTOptionsConfigurator Options { get; }
 

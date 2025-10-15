@@ -31,7 +31,6 @@ namespace CanKit.Adapter.ZLG.Transceivers
                             return sent;
                         sent += ZLGCAN.BATCH_COUNT;
                     }
-                    index++;
                     if (f is not CanFdFrame cf)
                         continue;
                     cf.ToTransmitData(echo, transmitData, index);

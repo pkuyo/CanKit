@@ -72,8 +72,6 @@ public static class CanBus
             throw new CanFactoryException(CanKitErrorCode.DeviceCreationFailed, $"Factory '{provider.Factory.GetType().FullName}' returned null device.");
         }
 
-        device.OpenDevice();
-
         var transceiver = provider.Factory.CreateTransceivers(device.Options, typedInitCfg);
         if (transceiver == null)
         {
@@ -108,7 +106,6 @@ public static class CanBus
         {
             try
             {
-                _device?.CloseDevice();
                 _device?.Dispose();
             }
             finally

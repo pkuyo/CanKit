@@ -7,25 +7,11 @@ namespace CanKit.Core.Abstractions
     /// </summary>
     public interface ICanDevice : IDisposable
     {
-        /// <summary>
-        /// Whether device is open (设备是否已打开)。
-        /// </summary>
-        bool IsDeviceOpen { get; }
 
         /// <summary>
         /// Real-time device options configurator (运行时设备选项配置器)。
         /// </summary>
         IDeviceRTOptionsConfigurator Options { get; }
-
-        /// <summary>
-        /// Open device and prepare channels (打开设备并准备通道)。
-        /// </summary>
-        void OpenDevice();
-
-        /// <summary>
-        /// Close device and release resources (关闭设备并释放资源)。
-        /// </summary>
-        void CloseDevice();
     }
 
     /// <summary>
