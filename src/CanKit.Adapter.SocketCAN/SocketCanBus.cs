@@ -1,6 +1,8 @@
+using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using System.Text;
 using CanKit.Adapter.SocketCAN.Diagnostics;
+using CanKit.Adapter.SocketCAN.Definitions;
 using CanKit.Adapter.SocketCAN.Native;
 using CanKit.Adapter.SocketCAN.Utils;
 using CanKit.Core.Abstractions;
@@ -16,15 +18,14 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
     private readonly object _evtGate = new();
 
     private readonly IBusOptions _options;
-
     private readonly ITransceiver _transceiver;
-    private int _epfd = -1;
-    private int _cancelFd = -1;
+    private FileDescriptorHandle _epfd = new();
+    private FileDescriptorHandle _cancelFd = new();
     private CancellationTokenSource? _epollCts;
     private Task? _epollTask;
     private EventHandler<ICanErrorInfo>? _errorOccurred;
     private Libc.epoll_event[] _events = new Libc.epoll_event[8];
-    private int _fd;
+    private FileDescriptorHandle _fd;
     private string _ifName;
     private EventHandler<CanReceiveData>? _frameReceived;
 
@@ -66,7 +67,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
         CanKitLogger.LogDebug("SocketCAN: Initial options applied.");
     }
 
-    internal int FileDescriptor => _fd;
+    internal FileDescriptorHandle Handle => _fd!;
 
     public void AttachOwner(IDisposable owner)
     {
@@ -115,7 +116,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
                 }
             }
         }
-        var tv = Libc.ToTimeval(TimeSpan.FromMilliseconds(Options.ReadTImeOutMs));
+        var tv = SocketCanExtension.ToTimeval(TimeSpan.FromMilliseconds(Options.ReadTImeOutMs));
 
         unsafe
         {
@@ -195,7 +196,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
         ThrowIfDisposed();
         int sendCount = 0;
         var startTime = Environment.TickCount;
-        var pollFd = new Libc.pollfd { fd = _fd, events = Libc.POLLOUT };
+        var pollFd = new Libc.pollfd { fd = _fd.DangerousGetHandle().ToInt32(), events = Libc.POLLOUT };
         var needSend = frames.ToArray();
         var wrote = _transceiver.Transmit(this, needSend);
         sendCount = wrote;
@@ -329,12 +330,10 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
         try
         {
             StopReceiveLoop();
-            if (_fd >= 0)
-                Libc.close(_fd);
+            _fd.Dispose();
         }
         finally
         {
-            _fd = -1;
             _isDisposed = true;
             try { _owner?.Dispose(); } catch { /*ignore for dispose*/ }
             _owner = null;
@@ -450,11 +449,11 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
         }
     }
 
-    private int CreateAndBind(string? ifName, CanProtocolMode mode, bool preferKernelTs)
+    private FileDescriptorHandle CreateAndBind(string? ifName, CanProtocolMode mode, bool preferKernelTs)
     {
         // create raw socket
         var fd = Libc.socket(Libc.AF_CAN, Libc.SOCK_RAW, Libc.CAN_RAW);
-        if (fd < 0)
+        if (fd.IsInvalid)
         {
             throw new CanBusCreationException("socket(AF_CAN, SOCK_RAW, CAN_RAW) failed.");
         }
@@ -517,7 +516,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
                 if (Libc.setsockopt(fd, Libc.SOL_CAN_RAW, Libc.CAN_RAW_ERR_FILTER,
                         ref errMask, (uint)Marshal.SizeOf<int>()) != 0)
                 {
-                    Libc.close(fd);
+                    fd.Dispose();
                     throw new CanBusCreationException("setsockopt(CAN_RAW_ERR_FILTER) failed.");
                 }
             }
@@ -532,7 +531,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
 
             if (Libc.bind(fd, ref addr, Marshal.SizeOf<Libc.sockaddr_can>()) != 0)
             {
-                Libc.close(fd);
+                fd.Dispose();
                 throw new CanBusCreationException($"bind({ifName}) failed.");
             }
 
@@ -540,7 +539,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
         }
         catch
         {
-            try { Libc.close(fd); } catch { /* ignored */ }
+            try { fd.Dispose(); } catch { /* ignored */ }
             throw;
         }
     }
@@ -707,25 +706,25 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
 
     private void StartReceiveLoopIfNeeded()
     {
-        if (_epollTask is { IsCompleted: false } || _fd < 0)
+        if (_epollTask is { IsCompleted: false } || _fd.IsInvalid)
             return;
 
         _epfd = Libc.epoll_create1(Libc.EPOLL_CLOEXEC);
-        if (_epfd < 0)
+        if (_epfd.IsInvalid)
         {
             Libc.ThrowErrno("epoll_create1", "Failed to create epoll instance");
         }
 
         // create cancel eventfd for immediate epoll wake on stop
         _cancelFd = Libc.eventfd(0, Libc.EFD_NONBLOCK | Libc.EFD_CLOEXEC);
-        if (_cancelFd < 0)
+        if (_cancelFd.IsInvalid)
         {
             Libc.ThrowErrno("eventfd", "Failed to create eventfd for cancellation");
         }
 #if NET8_0_OR_GREATER
-        var ev = new Libc.epoll_event { events = Libc.EPOLLIN, data = (IntPtr)_fd };
+        var ev = new Libc.epoll_event { events = Libc.EPOLLIN, data = _fd.DangerousGetHandle() };
 #else
-        var ev = new Libc.epoll_event { events = Libc.EPOLLIN | Libc.EPOLLERR, data = (IntPtr)_fd };
+        var ev = new Libc.epoll_event { events = Libc.EPOLLIN | Libc.EPOLLERR, data = _fd.DangerousGetHandle() };
 #endif
         if (Libc.epoll_ctl(_epfd, Libc.EPOLL_CTL_ADD, _fd, ref ev) < 0)
         {
@@ -733,7 +732,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
         }
 
         // add cancel fd to epoll
-        var evCancel = new Libc.epoll_event { events = Libc.EPOLLIN, data = (IntPtr)_cancelFd };
+        var evCancel = new Libc.epoll_event { events = Libc.EPOLLIN, data = _cancelFd.DangerousGetHandle() };
         if (Libc.epoll_ctl(_epfd, Libc.EPOLL_CTL_ADD, _cancelFd, ref evCancel) < 0)
         {
             Libc.ThrowErrno("epoll_ctl(EPOLL_CTL_ADD)", "failed to add cancelfd to epoll instance");
@@ -756,7 +755,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
             // wake epoll_wait immediately via eventfd
             try
             {
-                if (_cancelFd >= 0)
+                if (!_cancelFd.IsInvalid)
                 {
                     unsafe
                     {
@@ -771,16 +770,12 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
         catch { /*ignored*/ }
         finally
         {
-            if (_epfd >= 0)
-                Libc.close(_epfd);
-            if (_cancelFd >= 0)
-                Libc.close(_cancelFd);
+            _epfd.Dispose();
+            _cancelFd.Dispose();
 
             _epollTask = null;
             _epollCts?.Dispose();
             _epollCts = null;
-            _epfd = -1;
-            _cancelFd = -1;
             CanKitLogger.LogDebug("SocketCAN: epoll loop stopped.");
         }
     }
@@ -830,7 +825,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
                 for (int i = 0; i < n; i++)
                 {
                     var fd = (int)_events[i].data;
-                    if (fd == _cancelFd)
+                    if (fd == _cancelFd.DangerousGetHandle().ToInt32())
                     {
                         try
                         {
@@ -844,7 +839,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
                         continue;
                     }
 
-                    if ((_events[i].events & Libc.EPOLLIN) != 0 && fd == _fd)
+                    if ((_events[i].events & Libc.EPOLLIN) != 0 && fd == _fd.DangerousGetHandle().ToInt32())
                     {
                         DrainReceive();
                     }

@@ -1,10 +1,9 @@
 using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Threading;
-using System.Threading.Tasks;
 using CanKit.Adapter.SocketCAN.Diagnostics;
 using CanKit.Adapter.SocketCAN.Native;
+using CanKit.Adapter.SocketCAN.Definitions;
 using CanKit.Core.Abstractions;
 using CanKit.Core.Definitions;
 using CanKit.Core.Diagnostics;
@@ -20,10 +19,10 @@ public sealed class BCMPeriodicTx : IPeriodicTx
     private EventHandler? _completed;
 
     private SocketCanBusRtConfigurator _configurator;
-    private int _fd;
-    private int _queryFd = -1;
-    private int _cancelFd = -1;
-    private int _epfd = -1;
+    private FileDescriptorHandle _fd;
+    private FileDescriptorHandle _queryFd;
+    private FileDescriptorHandle _cancelFd;
+    private FileDescriptorHandle _epfd = new();
     private Libc.epoll_event[] _events = new Libc.epoll_event[4];
 
     private ICanFrame _frame;
@@ -39,7 +38,7 @@ public sealed class BCMPeriodicTx : IPeriodicTx
         _configurator = configurator;
 
         _fd = Libc.socket(Libc.AF_CAN, Libc.SOCK_DGRAM, Libc.CAN_BCM);
-        if (_fd < 0)
+        if (_fd.IsInvalid)
             Libc.ThrowErrno("socket(AF_CAN, SOCK_DGRAM, CAN_BCM)", "Failed to create BCM socket");
 
         var addr = new Libc.sockaddr_can { can_family = (ushort)Libc.AF_CAN, can_ifindex = configurator.ChannelIndex };
@@ -50,7 +49,7 @@ public sealed class BCMPeriodicTx : IPeriodicTx
 
 
         _queryFd = Libc.socket(Libc.AF_CAN, Libc.SOCK_DGRAM, Libc.CAN_BCM);
-        if (_queryFd < 0)
+        if (_queryFd.IsInvalid)
             Libc.ThrowErrno("socket(AF_CAN, SOCK_DGRAM, CAN_BCM)", "Failed to create BCM query socket");
         if (Libc.connect(_queryFd, ref addr, saSize) < 0)
             Libc.ThrowErrno("connect(SOCKADDR_CAN)", $"Failed to connect BCM query socket to '{configurator.ChannelIndex}'");
@@ -58,7 +57,7 @@ public sealed class BCMPeriodicTx : IPeriodicTx
 
 
         _cancelFd = Libc.eventfd(0, Libc.EFD_CLOEXEC | Libc.EFD_NONBLOCK);
-        if (_cancelFd < 0)
+        if (_cancelFd.IsInvalid)
             Libc.ThrowErrno("eventfd", "Failed to create cancel eventfd");
 
         if (frame is CanClassicFrame && configurator.ProtocolMode != CanProtocolMode.Can20)
@@ -77,8 +76,8 @@ public sealed class BCMPeriodicTx : IPeriodicTx
             flags = Libc.SETTIMER | Libc.STARTTIMER | Libc.TX_COUNTEVT
                     | (frame is CanFdFrame ? Libc.CAN_FD_FRAME : 0u),
             count = (options.Repeat < 0) ? 0u : (uint)options.Repeat,
-            ival1 = Libc.ToTimeval(ival1),
-            ival2 = Libc.ToTimeval(ival2),
+            ival1 = SocketCanExtension.ToTimeval(ival1),
+            ival2 = SocketCanExtension.ToTimeval(ival2),
             can_id = frame.ToCanID(),
             nframes = 1
         };
@@ -118,7 +117,7 @@ public sealed class BCMPeriodicTx : IPeriodicTx
 
     public void Update(ICanFrame? frame = null, TimeSpan? period = null, int? repeatCount = null)
     {
-        if (_fd < 0) throw new CanBusDisposedException();
+        if (_fd.IsInvalid) throw new CanBusDisposedException();
 
         if (period is not null)
             Period = period.Value <= TimeSpan.Zero ? TimeSpan.FromMilliseconds(1) : period.Value;
@@ -152,8 +151,8 @@ public sealed class BCMPeriodicTx : IPeriodicTx
             opcode = Libc.TX_SETUP,
             flags = flags,
             count = (RepeatCount < 0) ? 0u : (uint)newCount,
-            ival1 = Libc.ToTimeval((RepeatCount < 0) ? TimeSpan.Zero : Period), // repeat config times and stop
-            ival2 = Libc.ToTimeval((RepeatCount < 0) ? Period : TimeSpan.Zero), // immediately enter ival2 for infinite loop
+            ival1 = SocketCanExtension.ToTimeval((RepeatCount < 0) ? TimeSpan.Zero : Period), // repeat config times and stop
+            ival2 = SocketCanExtension.ToTimeval((RepeatCount < 0) ? Period : TimeSpan.Zero), // immediately enter ival2 for infinite loop
             can_id = _frame.ToCanID(),
             nframes = (uint)(includeFrame ? 1 : 0)
         };
@@ -198,7 +197,7 @@ public sealed class BCMPeriodicTx : IPeriodicTx
     {
         get
         {
-            if (_queryFd < 0) throw new CanBusDisposedException();
+            if (_queryFd.IsInvalid) throw new CanBusDisposedException();
 
             Libc.bcm_msg_head head = new Libc.bcm_msg_head
             {
@@ -219,7 +218,7 @@ public sealed class BCMPeriodicTx : IPeriodicTx
 
                 if (head.opcode != Libc.TX_STATUS)
                 {
-                    // 按需处理：此处保持最小化，不抛
+                    // No-op; non-TX_STATUS is ignored
                 }
                 return (int)head.count;
             }
@@ -228,7 +227,7 @@ public sealed class BCMPeriodicTx : IPeriodicTx
 
     public void Stop()
     {
-        if (_fd < 0) return;
+        if (_fd.IsInvalid) return;
 
         try
         {
@@ -259,10 +258,10 @@ public sealed class BCMPeriodicTx : IPeriodicTx
         finally
         {
             StopMonitor(true);
-            TryClose(ref _fd);
-            TryClose(ref _queryFd);
-            TryClose(ref _cancelFd);
-            TryClose(ref _epfd);
+            _fd.Dispose();
+            _queryFd.Dispose();
+            _cancelFd.Dispose();
+            _epfd.Dispose();
         }
     }
 
@@ -306,7 +305,7 @@ public sealed class BCMPeriodicTx : IPeriodicTx
 
     private void StartMonitor()
     {
-        if (_fd < 0 || _readTask is { IsCompleted: false }) return;
+        if (_fd.IsInvalid || _readTask is { IsCompleted: false }) return;
         if (RepeatCount < 0) return;
         EnsureEpoll();
 
@@ -321,7 +320,7 @@ public sealed class BCMPeriodicTx : IPeriodicTx
     private void EnsureMonitorIfNeeded()
     {
         if (_completed is null) return;
-        if (_fd < 0) return;
+        if (_fd.IsInvalid) return;
         if (RepeatCount < 0) return; // infinite => no completion
         if (_readTask is { IsCompleted: false }) return;
         StartMonitor();
@@ -334,7 +333,7 @@ public sealed class BCMPeriodicTx : IPeriodicTx
             lock (_evtGate)
             {
                 _readCts?.Cancel();
-                if (_cancelFd >= 0)
+                if (!_cancelFd.IsInvalid)
                 {
                     unsafe
                     {
@@ -352,24 +351,24 @@ public sealed class BCMPeriodicTx : IPeriodicTx
             _readTask = null;
             _readCts?.Dispose();
             _readCts = null;
-
-            TryClose(ref _epfd);
+            if(disposing)
+                _epfd.Dispose();
         }
     }
 
     private void EnsureEpoll()
     {
-        if (_epfd >= 0) return;
+        if (!_epfd.IsInvalid) return;
 
         _epfd = Libc.epoll_create1(Libc.EPOLL_CLOEXEC);
-        if (_epfd < 0)
+        if (_epfd.IsInvalid)
             Libc.ThrowErrno("epoll_create1", "Failed to create epoll");
 
 
         var ev1 = new Libc.epoll_event
         {
             events = Libc.EPOLLIN | Libc.EPOLLERR,
-            data = (IntPtr)_fd
+            data = _fd.DangerousGetHandle()
         };
         if (Libc.epoll_ctl(_epfd, Libc.EPOLL_CTL_ADD, _fd, ref ev1) < 0)
             Libc.ThrowErrno("epoll_ctl(ADD)", "Failed to add BCM fd to epoll");
@@ -377,7 +376,7 @@ public sealed class BCMPeriodicTx : IPeriodicTx
         var ev2 = new Libc.epoll_event
         {
             events = Libc.EPOLLIN,
-            data = (IntPtr)_cancelFd
+            data = _cancelFd.DangerousGetHandle()
         };
         if (Libc.epoll_ctl(_epfd, Libc.EPOLL_CTL_ADD, _cancelFd, ref ev2) < 0)
             Libc.ThrowErrno("epoll_ctl(ADD)", "Failed to add cancel fd to epoll");
@@ -390,7 +389,7 @@ public sealed class BCMPeriodicTx : IPeriodicTx
 
         int headSize = Marshal.SizeOf<Libc.bcm_msg_head>();
         var buf = stackalloc byte[headSize];
-        while (!token.IsCancellationRequested && _fd >= 0 && _epfd >= 0)
+        while (!token.IsCancellationRequested && !_fd.IsInvalid && !_epfd.IsInvalid)
         {
             int n = Libc.epoll_wait(_epfd, _events, _events.Length, -1);
             if (n < 0)
@@ -409,7 +408,7 @@ public sealed class BCMPeriodicTx : IPeriodicTx
             {
                 int fd = (int)_events[i].data;
 
-                if (fd == _cancelFd)
+                if (fd == _cancelFd.DangerousGetHandle().ToInt32())
                 {
                     ulong tmp;
                     _ = Libc.read(_cancelFd, &tmp, sizeof(ulong));
@@ -450,7 +449,7 @@ public sealed class BCMPeriodicTx : IPeriodicTx
         }
     }
 
-    private static void TrySetNonBlocking(int fd)
+    private static void TrySetNonBlocking(FileDescriptorHandle fd)
     {
         try
         {
@@ -461,9 +460,4 @@ public sealed class BCMPeriodicTx : IPeriodicTx
         catch { /* ignore */ }
     }
 
-    private static void TryClose(ref int fd)
-    {
-        try { if (fd >= 0) Libc.close(fd); } catch { }
-        fd = -1;
-    }
 }

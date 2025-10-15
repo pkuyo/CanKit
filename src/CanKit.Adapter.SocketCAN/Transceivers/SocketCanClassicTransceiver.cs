@@ -5,6 +5,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
 using CanKit.Adapter.SocketCAN.Native;
+using CanKit.Adapter.SocketCAN.Definitions;
 using CanKit.Adapter.SocketCAN.Utils;
 using CanKit.Core.Abstractions;
 using CanKit.Core.Definitions;
@@ -33,7 +34,7 @@ public sealed class SocketCanClassicTransceiver : ITransceiver
                     int sent;
                     do
                     {
-                        sent = Libc.sendmmsg(ch.FileDescriptor, msgs, Libc.BATCH_COUNT, 0);
+                        sent = Libc.sendmmsg(ch.Handle, msgs, Libc.BATCH_COUNT, 0);
                     } while (sent < 0 && Libc.Errno() == Libc.EINTR);
                     if (sent < 0)
                     {
@@ -66,7 +67,7 @@ public sealed class SocketCanClassicTransceiver : ITransceiver
             int s;
             do
             {
-                s = Libc.sendmmsg(ch.FileDescriptor, msgs, (uint)index, 0);
+                s = Libc.sendmmsg(ch.Handle, msgs, (uint)index, 0);
             } while (s < 0 && Libc.Errno() == Libc.EINTR);
             if (s < 0)
             {
@@ -90,7 +91,7 @@ public sealed class SocketCanClassicTransceiver : ITransceiver
         var inf = count == 0;
         while (inf || count > 0)
         {
-            var end = ReceiveBatch(ch.FileDescriptor, Math.Min(Libc.BATCH_COUNT, count), preferTs, batchResult);
+            var end = ReceiveBatch(ch.Handle, Math.Min(Libc.BATCH_COUNT, count), preferTs, batchResult);
             count -= batchResult.Count;
             foreach (var r in batchResult)
                 yield return r;
@@ -100,7 +101,7 @@ public sealed class SocketCanClassicTransceiver : ITransceiver
         }
     }
 
-    private static unsafe bool ReceiveBatch(int fd, int oneBatch, bool preferTs, List<CanReceiveData> result)
+    private static unsafe bool ReceiveBatch(FileDescriptorHandle fd, int oneBatch, bool preferTs, List<CanReceiveData> result)
     {
         var frameSize = Marshal.SizeOf<Libc.can_frame>();
         Libc.can_frame* fr = stackalloc Libc.can_frame[Libc.BATCH_COUNT];

@@ -75,4 +75,32 @@ internal static class SocketCanExtension
         }
         return frame;
     }
+
+    public static uint ToCanID(this CanClassicFrame frame)
+    {
+        var id = (uint)frame.ID;
+        var cid = frame.IsExtendedFrame ? ((id & Libc.CAN_EFF_MASK) | Libc.CAN_EFF_FLAG)
+            :  (id & Libc.CAN_SFF_MASK);
+        if (frame.IsRemoteFrame)      cid |= Libc.CAN_RTR_FLAG;
+        if (frame.IsErrorFrame)      cid |= Libc.CAN_ERR_FLAG;
+        return cid;
+    }
+
+    public static uint ToCanID(this ICanFrame frame)
+    {
+        var id = (uint)frame.ID;
+        var cid = frame.IsExtendedFrame ? ((id & Libc.CAN_EFF_MASK) | Libc.CAN_EFF_FLAG)
+            :  (id & Libc.CAN_SFF_MASK);
+        if (frame.IsErrorFrame)      cid |= Libc.CAN_ERR_FLAG;
+        return cid;
+    }
+
+    public static Libc.timeval ToTimeval(TimeSpan t)
+    {
+        return new Libc.timeval
+        {
+            tv_sec = (int)Math.Floor(t.TotalSeconds),
+            tv_usec = (int)((t - TimeSpan.FromSeconds(Math.Floor(t.TotalSeconds))).TotalMilliseconds * 1000.0)
+        };
+    }
 }

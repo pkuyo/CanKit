@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Text;
 using CanKit.Adapter.SocketCAN.Diagnostics;
+using CanKit.Adapter.SocketCAN.Definitions;
 using CanKit.Core.Definitions;
 using CanKit.Core.Exceptions;
 // @formatter:off
@@ -283,44 +284,44 @@ internal static class Libc
     }
 
     [DllImport("libc", SetLastError = true)]
-    public static extern int socket(int domain, int type, int protocol);
+    public static extern FileDescriptorHandle socket(int domain, int type, int protocol);
 
     [DllImport("libc", SetLastError = true)]
-    public static extern int bind(int sockfd, ref sockaddr_can addr, int addrlen);
+    public static extern int bind(FileDescriptorHandle sockfd, ref sockaddr_can addr, int addrlen);
 
 
     [DllImport("libc", SetLastError = true)]
-    public static extern int connect(int sockfd, ref sockaddr_can addr, int addrlen);
+    public static extern int connect(FileDescriptorHandle sockfd, ref sockaddr_can addr, int addrlen);
 
     [DllImport("libc", SetLastError = true)]
-    public static extern int fcntl(int fd, int cmd, int arg);
+    public static extern int fcntl(FileDescriptorHandle fd, int cmd, int arg);
 
     [DllImport("libc", SetLastError = true)]
-    public static extern int setsockopt(int sockfd, int level, int optname, ref int optval, uint optlen);
+    public static extern int setsockopt(FileDescriptorHandle sockfd, int level, int optname, ref int optval, uint optlen);
 
     [DllImport("libc", SetLastError = true)]
-    public static unsafe extern int setsockopt(int sockfd, int level, int optname, void* optval, uint optlen);
+    public static unsafe extern int setsockopt(FileDescriptorHandle sockfd, int level, int optname, void* optval, uint optlen);
 
     [DllImport("libc", SetLastError = true)]
-    public static extern int ioctl(int fd, uint request, ref int argp);
+    public static extern int ioctl(FileDescriptorHandle fd, uint request, ref int argp);
 
     [DllImport("libc", SetLastError = true)]
-    public static extern int ioctl(int fd, uint request, IntPtr argp);
+    public static extern int ioctl(FileDescriptorHandle fd, uint request, IntPtr argp);
 
     [DllImport("libc", SetLastError = true)]
-    public static unsafe extern long read(int fd, void* buf, ulong count);
+    public static unsafe extern long read(FileDescriptorHandle fd, void* buf, ulong count);
 
     [DllImport("libc", SetLastError = true)]
-    public static unsafe extern long write(int fd, void* buf, ulong count);
+    public static unsafe extern long write(FileDescriptorHandle fd, void* buf, ulong count);
 
     [DllImport("libc", SetLastError = true)]
-    public static unsafe extern long recvmsg(int sockfd, msghdr* msg, int flags);
+    public static unsafe extern long recvmsg(FileDescriptorHandle sockfd, msghdr* msg, int flags);
 
     [DllImport("libc", SetLastError = true)]
-    public static unsafe extern int recvmmsg(int sockfd, mmsghdr* msgvec, uint vlen, int flags, timespec* timeout);
+    public static unsafe extern int recvmmsg(FileDescriptorHandle sockfd, mmsghdr* msgvec, uint vlen, int flags, timespec* timeout);
 
     [DllImport("libc", SetLastError = true)]
-    public static unsafe extern int sendmmsg(int sockfd, mmsghdr* msgvec, uint vlen, int flags);
+    public static unsafe extern int sendmmsg(FileDescriptorHandle sockfd, mmsghdr* msgvec, uint vlen, int flags);
 
     [DllImport("libc", SetLastError = true)]
     public static extern int close(int fd);
@@ -329,16 +330,16 @@ internal static class Libc
     public static extern int poll(ref pollfd fds, uint nfds, int timeout);
 
     [DllImport("libc", SetLastError = true)]
-    public static extern int epoll_create1(int flags);
+    public static extern FileDescriptorHandle epoll_create1(int flags);
 
     [DllImport("libc", SetLastError = true)]
-    public static extern int epoll_ctl(int epfd, int op, int fd, ref epoll_event ev);
+    public static extern int epoll_ctl(FileDescriptorHandle epfd, int op, FileDescriptorHandle fd, ref epoll_event ev);
 
     [DllImport("libc", SetLastError = true)]
-    public static extern int epoll_wait(int epfd, [In, Out] epoll_event[] events, int maxevents, int timeout);
+    public static extern int epoll_wait(FileDescriptorHandle epfd, [In, Out] epoll_event[] events, int maxevents, int timeout);
 
     [DllImport("libc", SetLastError = true)]
-    public static extern int eventfd(uint initval, int flags);
+    public static extern FileDescriptorHandle eventfd(uint initval, int flags);
 
 
     [DllImport("libc", SetLastError = true, CharSet = CharSet.Ansi)]
@@ -404,31 +405,5 @@ internal static class Libc
     public static void ThrowErrno(string operation, string message, int errno)
     {
         throw new SocketCanNativeException(operation, message, (uint)errno);
-    }
-    public static uint ToCanID(this CanClassicFrame frame)
-    {
-        var id = (uint)frame.ID;
-        var cid = frame.IsExtendedFrame ? ((id & CAN_EFF_MASK) | CAN_EFF_FLAG)
-                               :  (id & CAN_SFF_MASK);
-        if (frame.IsRemoteFrame)      cid |= CAN_RTR_FLAG;
-        if (frame.IsErrorFrame)      cid |= CAN_ERR_FLAG;
-        return cid;
-    }
-    public static uint ToCanID(this ICanFrame frame)
-    {
-        var id = (uint)frame.ID;
-        var cid = frame.IsExtendedFrame ? ((id & CAN_EFF_MASK) | CAN_EFF_FLAG)
-                               :  (id & CAN_SFF_MASK);
-        if (frame.IsErrorFrame)      cid |= CAN_ERR_FLAG;
-        return cid;
-    }
-
-    public static timeval ToTimeval(TimeSpan t)
-    {
-        return new timeval
-        {
-            tv_sec = (int)Math.Floor(t.TotalSeconds),
-            tv_usec = (int)((t - TimeSpan.FromSeconds(Math.Floor(t.TotalSeconds))).TotalMilliseconds * 1000.0)
-        };
     }
 }

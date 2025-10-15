@@ -256,3 +256,8 @@ public readonly record struct CanErrorCounters
     /// </summary>
     public override string ToString() => $"TEC:{TransmitErrorCounter}, REC:{ReceiveErrorCounter}";
 }
+
+public readonly struct BusNativeHandle
+{
+
+}
