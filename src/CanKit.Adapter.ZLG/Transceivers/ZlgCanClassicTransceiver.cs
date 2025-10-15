@@ -25,7 +25,7 @@ namespace CanKit.Adapter.ZLG.Transceivers
                 {
                     if (index == ZLGCAN.BATCH_COUNT)
                     {
-                        var re = ZLGCAN.ZCAN_Transmit(((ZlgCanBus)bus).NativeHandle, transmitData, ZLGCAN.BATCH_COUNT);
+                        var re = ZLGCAN.ZCAN_Transmit(((ZlgCanBus)bus).Handle, transmitData, ZLGCAN.BATCH_COUNT);
                         index = 0;
                         if (re != ZLGCAN.BATCH_COUNT)
                             return sent;
@@ -36,7 +36,7 @@ namespace CanKit.Adapter.ZLG.Transceivers
                     cf.ToTransmitData(echo, transmitData, index);
                     index++;
                 }
-                return (int)(sent + ZLGCAN.ZCAN_Transmit(((ZlgCanBus)bus).NativeHandle, transmitData, (uint)index));
+                return (int)(sent + ZLGCAN.ZCAN_Transmit(((ZlgCanBus)bus).Handle, transmitData, (uint)index));
             }
 
         }
@@ -51,7 +51,7 @@ namespace CanKit.Adapter.ZLG.Transceivers
                 while (count > 0)
                 {
 
-                    var recCount = ZLGCAN.ZCAN_Receive(((ZlgCanBus)bus).NativeHandle, buf, (uint)Math.Min(count, ZLGCAN.BATCH_COUNT), timeOut);
+                    var recCount = ZLGCAN.ZCAN_Receive(((ZlgCanBus)bus).Handle, buf, (uint)Math.Min(count, ZLGCAN.BATCH_COUNT), timeOut);
                     if (recCount == 0)
                         yield break;
                     for (int i = 0; i < recCount; i++)

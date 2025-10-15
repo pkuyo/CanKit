@@ -31,6 +31,7 @@ public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, IBusOwnershi
     private IDisposable? _owner;
     private bool _disposed;
 
+
     internal VirtualBus(IBusOptions options, ITransceiver transceiver)
     {
         Options = new VirtualBusRtConfigurator();
@@ -71,6 +72,8 @@ public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, IBusOwnershi
             ? FilterRule.Build(Options.Filter.FilterRules)
             : null;
     }
+
+    public BusNativeHandle NativeHandle { get; } = default;
 
     public void Reset()
     {

@@ -26,6 +26,15 @@ namespace CanKit.Core.Abstractions
         public BusState BusState { get; }
 
         /// <summary>
+        /// Gets the native handle for the underlying bus/channel, primarily for interop
+        /// with vendor SDKs or OS APIs. Platform- and adapter-specific; treat it as an
+        /// opaque identifier and do not cache it beyond the lifetime of this instance.
+        /// （获取底层总线/通道的原生句柄，主要用于与厂商 SDK 或系统 API 互操作。
+        /// 该值依赖平台与适配器实现，应视为不透明标识，不应在实例释放后继续缓存使用。）
+        /// </summary>
+        public BusNativeHandle NativeHandle { get; }
+
+        /// <summary>
         /// Reset the channel to initial state (复位通道到初始状态)。
         /// </summary>
         void Reset();

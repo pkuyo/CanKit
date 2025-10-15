@@ -257,7 +257,21 @@ public readonly record struct CanErrorCounters
     public override string ToString() => $"TEC:{TransmitErrorCounter}, REC:{ReceiveErrorCounter}";
 }
 
-public readonly struct BusNativeHandle
+/// <summary>
+/// Opaque native bus/channel handle returned by adapters/drivers, used for
+/// interop with vendor SDKs or OS APIs. The underlying value is platform-
+/// specific (e.g., pointer, handle or file descriptor). Treat it as an
+/// opaque identifier and avoid using it after the bus is disposed.
+/// （由适配器/驱动返回的不透明原生总线/通道句柄，用于与厂商 SDK 或系统 API 互操作。
+/// 其实际含义依赖平台（如指针、句柄或文件描述符），应视为不透明标识，在总线释放后不要继续使用。）
+/// </summary>
+/// <param name="value">Raw native handle value.（原始句柄值）</param>
+public readonly struct BusNativeHandle(nint value)
 {
+    /// <summary>
+    /// Raw native handle value. (原始句柄值)
+    /// </summary>
+    public readonly nint HandleValue = value;
 
+    public override string ToString() => $"0x{HandleValue:x}";
 }

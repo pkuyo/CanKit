@@ -76,8 +76,8 @@ public sealed class BCMPeriodicTx : IPeriodicTx
             flags = Libc.SETTIMER | Libc.STARTTIMER | Libc.TX_COUNTEVT
                     | (frame is CanFdFrame ? Libc.CAN_FD_FRAME : 0u),
             count = (options.Repeat < 0) ? 0u : (uint)options.Repeat,
-            ival1 = SocketCanExtension.ToTimeval(ival1),
-            ival2 = SocketCanExtension.ToTimeval(ival2),
+            ival1 = SocketCanUtils.ToTimeval(ival1),
+            ival2 = SocketCanUtils.ToTimeval(ival2),
             can_id = frame.ToCanID(),
             nframes = 1
         };
@@ -151,8 +151,8 @@ public sealed class BCMPeriodicTx : IPeriodicTx
             opcode = Libc.TX_SETUP,
             flags = flags,
             count = (RepeatCount < 0) ? 0u : (uint)newCount,
-            ival1 = SocketCanExtension.ToTimeval((RepeatCount < 0) ? TimeSpan.Zero : Period), // repeat config times and stop
-            ival2 = SocketCanExtension.ToTimeval((RepeatCount < 0) ? Period : TimeSpan.Zero), // immediately enter ival2 for infinite loop
+            ival1 = SocketCanUtils.ToTimeval((RepeatCount < 0) ? TimeSpan.Zero : Period), // repeat config times and stop
+            ival2 = SocketCanUtils.ToTimeval((RepeatCount < 0) ? Period : TimeSpan.Zero), // immediately enter ival2 for infinite loop
             can_id = _frame.ToCanID(),
             nframes = (uint)(includeFrame ? 1 : 0)
         };
@@ -351,7 +351,7 @@ public sealed class BCMPeriodicTx : IPeriodicTx
             _readTask = null;
             _readCts?.Dispose();
             _readCts = null;
-            if(disposing)
+            if (disposing)
                 _epfd.Dispose();
         }
     }

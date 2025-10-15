@@ -23,13 +23,13 @@ public class ZlgCanMergeTransceiver : ITransceiver
         {
             if (index == ZLGCAN.BATCH_COUNT)
             {
-                sent += (int)ZLGCAN.ZCAN_TransmitData(canBus.NativeHandle.DeviceHandle, buf, ZLGCAN.BATCH_COUNT);
+                sent += (int)ZLGCAN.ZCAN_TransmitData(canBus.Handle.DeviceHandle, buf, ZLGCAN.BATCH_COUNT);
                 index = 0;
             }
             frame.ToZCANObj(canBus, &buf[index]);
             index++;
         }
-        return sent + (int)ZLGCAN.ZCAN_TransmitData(canBus.NativeHandle.DeviceHandle, buf, (uint)index);
+        return sent + (int)ZLGCAN.ZCAN_TransmitData(canBus.Handle.DeviceHandle, buf, (uint)index);
     }
 
 
@@ -45,13 +45,13 @@ public class ZlgCanMergeTransceiver : ITransceiver
             {
                 var remaining = timeOut < 0 ? -1 : timeOut - Environment.TickCount + startTick;
                 var rec = 0;
-                rec = (int)ZLGCAN.ZCAN_ReceiveData(canBus.NativeHandle.DeviceHandle, buf,
+                rec = (int)ZLGCAN.ZCAN_ReceiveData(canBus.Handle.DeviceHandle, buf,
                     Math.Min(ZLGCAN.BATCH_COUNT, (uint)count), remaining);
 
                 count -= rec;
                 for (int i = 0; i < rec; i++)
                 {
-                    yield return ZlgNativeExtension.FromZCANData(in buf[i]);
+                    yield return ZlgUtils.FromZCANData(in buf[i]);
                 }
             }
         }

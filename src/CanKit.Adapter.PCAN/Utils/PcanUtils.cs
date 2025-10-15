@@ -110,4 +110,6 @@ public static class PcanUtils
         if (status != PcanStatus.OK)
             throw new PcanCanException(operation, message, status);
     }
+
+    public static PcanChannel PcanHandle(this BusNativeHandle handle) => (PcanChannel)handle.HandleValue;
 }

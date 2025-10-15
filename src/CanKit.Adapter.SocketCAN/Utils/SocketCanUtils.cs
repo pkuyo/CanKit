@@ -4,7 +4,7 @@ using CanKit.Core.Definitions;
 
 namespace CanKit.Adapter.SocketCAN.Utils;
 
-internal static class SocketCanExtension
+internal static class SocketCanUtils
 {
     public static LibSocketCan.can_bittiming ToCanBitTiming(this CanPhaseTiming timing, uint clock)
     {
@@ -80,9 +80,9 @@ internal static class SocketCanExtension
     {
         var id = (uint)frame.ID;
         var cid = frame.IsExtendedFrame ? ((id & Libc.CAN_EFF_MASK) | Libc.CAN_EFF_FLAG)
-            :  (id & Libc.CAN_SFF_MASK);
-        if (frame.IsRemoteFrame)      cid |= Libc.CAN_RTR_FLAG;
-        if (frame.IsErrorFrame)      cid |= Libc.CAN_ERR_FLAG;
+            : (id & Libc.CAN_SFF_MASK);
+        if (frame.IsRemoteFrame) cid |= Libc.CAN_RTR_FLAG;
+        if (frame.IsErrorFrame) cid |= Libc.CAN_ERR_FLAG;
         return cid;
     }
 
@@ -90,8 +90,8 @@ internal static class SocketCanExtension
     {
         var id = (uint)frame.ID;
         var cid = frame.IsExtendedFrame ? ((id & Libc.CAN_EFF_MASK) | Libc.CAN_EFF_FLAG)
-            :  (id & Libc.CAN_SFF_MASK);
-        if (frame.IsErrorFrame)      cid |= Libc.CAN_ERR_FLAG;
+            : (id & Libc.CAN_SFF_MASK);
+        if (frame.IsErrorFrame) cid |= Libc.CAN_ERR_FLAG;
         return cid;
     }
 
@@ -103,4 +103,6 @@ internal static class SocketCanExtension
             tv_usec = (int)((t - TimeSpan.FromSeconds(Math.Floor(t.TotalSeconds))).TotalMilliseconds * 1000.0)
         };
     }
+
+    public static int SocketCANHandle(this BusNativeHandle handle) => (int)handle.HandleValue;
 }

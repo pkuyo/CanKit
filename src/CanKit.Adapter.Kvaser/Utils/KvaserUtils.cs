@@ -1,4 +1,5 @@
-﻿using CanKit.Core.Exceptions;
+﻿using CanKit.Core.Definitions;
+using CanKit.Core.Exceptions;
 using Kvaser.CanLib;
 
 namespace CanKit.Adapter.Kvaser.Utils;
@@ -105,4 +106,6 @@ public static class KvaserUtils
             }
         }
     }
+
+    public static int KvaserHandle(this BusNativeHandle handle) => (int)handle.HandleValue;
 }

@@ -62,12 +62,16 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
         // Create socket & bind
         _fd = CreateAndBind(Options.ChannelName, Options.ProtocolMode, Options.PreferKernelTimestamp);
 
+        NativeHandle = new BusNativeHandle(_fd.DangerousGetHandle());
+
         // Apply socket options
         ApplySocketConfig(options);
         CanKitLogger.LogDebug("SocketCAN: Initial options applied.");
     }
 
     internal FileDescriptorHandle Handle => _fd!;
+
+    public BusNativeHandle NativeHandle { get; }
 
     public void AttachOwner(IDisposable owner)
     {
@@ -116,7 +120,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
                 }
             }
         }
-        var tv = SocketCanExtension.ToTimeval(TimeSpan.FromMilliseconds(Options.ReadTImeOutMs));
+        var tv = SocketCanUtils.ToTimeval(TimeSpan.FromMilliseconds(Options.ReadTImeOutMs));
 
         unsafe
         {
@@ -180,6 +184,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
             ? FilterRule.Build(Options.Filter.SoftwareFilterRules)
             : null;
     }
+
 
     public void Reset()
     {

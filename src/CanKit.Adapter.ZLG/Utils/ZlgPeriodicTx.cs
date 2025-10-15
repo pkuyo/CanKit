@@ -134,8 +134,8 @@ public sealed class ZlgPeriodicTx : IPeriodicTx
             };
 
             var path = $"{chan}/auto_send";
-            var ret = ZLGCAN.ZCAN_SetValue(_bus.NativeHandle.DeviceHandle, path, (IntPtr)(&obj));
-            ZlgErr.ThrowIfError(ret, "ZCAN_SetValue(auto_send)", _bus.NativeHandle);
+            var ret = ZLGCAN.ZCAN_SetValue(_bus.Handle.DeviceHandle, path, (IntPtr)(&obj));
+            ZlgErr.ThrowIfError(ret, "ZCAN_SetValue(auto_send)", _bus.Handle);
         }
         else if (frame is CanFdFrame fd)
         {
@@ -148,8 +148,8 @@ public sealed class ZlgPeriodicTx : IPeriodicTx
             };
 
             var path = $"{chan}/auto_send_canfd";
-            var ret = ZLGCAN.ZCAN_SetValue(_bus.NativeHandle.DeviceHandle, path, (IntPtr)(&obj));
-            ZlgErr.ThrowIfError(ret, "ZCAN_SetValue(auto_send_canfd)", _bus.NativeHandle);
+            var ret = ZLGCAN.ZCAN_SetValue(_bus.Handle.DeviceHandle, path, (IntPtr)(&obj));
+            ZlgErr.ThrowIfError(ret, "ZCAN_SetValue(auto_send_canfd)", _bus.Handle);
         }
         else
         {
@@ -157,7 +157,7 @@ public sealed class ZlgPeriodicTx : IPeriodicTx
         }
 
 
-        ZlgErr.ThrowIfError(ZLGCAN.ZCAN_SetValue(_bus.NativeHandle.DeviceHandle, $"{chan}/apply_auto_send", "0"),
-            "ZCAN_SetValue(apply_auto_send)", _bus.NativeHandle);
+        ZlgErr.ThrowIfError(ZLGCAN.ZCAN_SetValue(_bus.Handle.DeviceHandle, $"{chan}/apply_auto_send", "0"),
+            "ZCAN_SetValue(apply_auto_send)", _bus.Handle);
     }
 }

@@ -32,7 +32,7 @@ namespace CanKit.Adapter.ZLG.Utils
         ZLG_125K = 125_000,
         ZLG_100K = 100_000,
     }
-    internal static class ZlgNativeExtension
+    internal static class ZlgUtils
     {
 
         internal static unsafe void StructCopyToBuffer<T>(T src, byte* dst, uint count) where T : unmanaged
@@ -243,5 +243,7 @@ namespace CanKit.Adapter.ZLG.Utils
         }
         private static unsafe CanReceiveData FromZCANDataFd(in ZCANDataObj pObj)
             => new CanReceiveData(pObj.data.fdData.frame.FromReceiveData());
+
+        public static IntPtr SocketCANHandle(this BusNativeHandle handle) => handle.HandleValue;
     }
 }

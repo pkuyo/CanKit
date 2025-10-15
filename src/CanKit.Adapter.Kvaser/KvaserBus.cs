@@ -51,6 +51,8 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
             throw new CanBusCreationException($"Kvaser canOpenChannel failed: handle={_handle}");
         }
 
+        NativeHandle = new BusNativeHandle(_handle);
+
         // Configure bit timing and turn bus on
         ConfigureBitrate(_handle, (KvaserBusOptions)options);
 
@@ -74,6 +76,9 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
     }
 
     public int Handle => _handle;
+
+
+    public BusNativeHandle NativeHandle { get; }
 
     public void AttachOwner(IDisposable owner)
     {

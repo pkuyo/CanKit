@@ -27,7 +27,7 @@ namespace CanKit.Adapter.ZLG
 
         private readonly object _evtGate = new();
 
-        private readonly ZlgChannelHandle _nativeHandle;
+        private readonly ZlgChannelHandle _handle;
 
         private readonly ITransceiver _transceiver;
 
@@ -100,35 +100,37 @@ namespace CanKit.Adapter.ZLG
             var handle = ZLGCAN.ZCAN_InitCAN(device.NativeHandler, (uint)Options.ChannelIndex, ref config);
             CanKitLogger.LogInformation("ZLG: Initialize succeeded.");
             handle.SetDevice(device.NativeHandler.DangerousGetHandle());
-            _nativeHandle = handle;
+            _handle = handle;
+            NativeHandle = new BusNativeHandle(_handle.DangerousGetHandle());
             ZlgErr.ThrowIfInvalid(handle, nameof(ZLGCAN.ZCAN_InitCAN));
             Reset();
             ApplyConfigAfterInit(options);
 
-            ZlgErr.ThrowIfError(ZLGCAN.ZCAN_StartCAN(_nativeHandle), nameof(ZLGCAN.ZCAN_StartCAN), _nativeHandle);
+            ZlgErr.ThrowIfError(ZLGCAN.ZCAN_StartCAN(_handle), nameof(ZLGCAN.ZCAN_StartCAN), _handle);
             _transceiver = transceiver;
             CanKitLogger.LogDebug("ZLG: Initial options applied.");
         }
 
-        public ZlgChannelHandle NativeHandle => _nativeHandle;
+        public ZlgChannelHandle Handle => _handle;
 
         public void AttachOwner(IDisposable owner)
         {
             _owner = owner;
         }
 
+        public BusNativeHandle NativeHandle { get; }
 
         public void Reset()
         {
             ThrowIfDisposed();
-            ZlgErr.ThrowIfError(ZLGCAN.ZCAN_ResetCAN(_nativeHandle), nameof(ZLGCAN.ZCAN_ResetCAN), _nativeHandle);
+            ZlgErr.ThrowIfError(ZLGCAN.ZCAN_ResetCAN(_handle), nameof(ZLGCAN.ZCAN_ResetCAN), _handle);
         }
 
 
         public void ClearBuffer()
         {
             ThrowIfDisposed();
-            ZlgErr.ThrowIfError(ZLGCAN.ZCAN_ClearBuffer(_nativeHandle), nameof(ZLGCAN.ZCAN_ClearBuffer), _nativeHandle);
+            ZlgErr.ThrowIfError(ZLGCAN.ZCAN_ClearBuffer(_handle), nameof(ZLGCAN.ZCAN_ClearBuffer), _handle);
         }
 
         public int Transmit(IEnumerable<ICanFrame> frames, int timeOut = 0)
@@ -169,7 +171,7 @@ namespace CanKit.Adapter.ZLG
         public float BusUsage()
         {
             CanKitErr.ThrowIfNotSupport(Options.Features, CanFeature.BusUsage);
-            var ret = ZLGCAN.ZCAN_GetValue(NativeHandle.DeviceHandle, $"{Options.ChannelIndex}/get_bus_usage/1");
+            var ret = ZLGCAN.ZCAN_GetValue(Handle.DeviceHandle, $"{Options.ChannelIndex}/get_bus_usage/1");
             if (ret != IntPtr.Zero)
             {
                 var busUsage = Marshal.PtrToStructure<ZLGCAN.BusUsage>(ret);
@@ -185,7 +187,7 @@ namespace CanKit.Adapter.ZLG
         {
             //CanKitErr.ThrowIfNotSupport(Options.Features, CanFeature.ErrorCounters); always true
 
-            ZLGCAN.ZCAN_ReadChannelErrInfo(_nativeHandle, out var errInfo);
+            ZLGCAN.ZCAN_ReadChannelErrInfo(_handle, out var errInfo);
             return new CanErrorCounters()
             {
                 TransmitErrorCounter = errInfo.passive_ErrData[1],
@@ -207,7 +209,7 @@ namespace CanKit.Adapter.ZLG
         public bool ReadErrorInfo(out ICanErrorInfo? errorInfo)
         {
             errorInfo = null;
-            if (ZLGCAN.ZCAN_ReadChannelErrInfo(_nativeHandle, out var errInfo) != ZlgErr.StatusOk ||
+            if (ZLGCAN.ZCAN_ReadChannelErrInfo(_handle, out var errInfo) != ZlgErr.StatusOk ||
                 errInfo.error_code == 0)
                 return false;
             errorInfo = ZlgErr.ToErrorInfo(errInfo);
@@ -543,7 +545,7 @@ namespace CanKit.Adapter.ZLG
         {
             ThrowIfDisposed();
 
-            return (int)ZLGCAN.ZCAN_GetReceiveNum(_nativeHandle, (byte)Options.ProtocolMode);
+            return (int)ZLGCAN.ZCAN_GetReceiveNum(_handle, (byte)Options.ProtocolMode);
         }
 
         private void ThrowIfDisposed()

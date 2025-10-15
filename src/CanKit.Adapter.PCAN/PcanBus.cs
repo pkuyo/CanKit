@@ -47,7 +47,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
         _asyncRx = new AsyncFramePipe(Options.AsyncBufferCapacity > 0 ? Options.AsyncBufferCapacity : null);
 
         _handle = ParseHandle();
-
+        NativeHandle = new BusNativeHandle((int)_handle);
         try
         {
             if (Api.GetValue(_handle, PcanParameter.ChannelCondition, out uint raw) == PcanStatus.OK)
@@ -135,6 +135,8 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
 
     internal PcanChannel Handle => _handle;
 
+    public BusNativeHandle NativeHandle { get; }
+
     public void AttachOwner(IDisposable owner)
     {
         _owner = owner;
@@ -183,7 +185,6 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
                 "SetAllowErrorFrames", "PcanBus enable error frames failed");
         }
     }
-
 
     public void Reset()
     {
