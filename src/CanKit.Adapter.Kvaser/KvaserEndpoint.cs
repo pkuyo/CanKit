@@ -6,7 +6,7 @@ using CanKit.Core.Endpoints;
 using System;
 using System.Collections.Generic;
 using CanKit.Core.Diagnostics;
-using Kvaser.CanLib;
+using CanKit.Adapter.Kvaser.Native;
 
 namespace CanKit.Adapter.Kvaser;
 
@@ -87,20 +87,20 @@ internal static class KvaserEndpoint
                     string? serial = null;
                     try
                     {
-                        if (Canlib.canGetChannelData(i, Canlib.canCHANNELDATA_CHANNEL_NAME, out var obj) == Canlib.canStatus.canOK && obj is string s)
+                        if (Canlib.GetChannelName(i, out var s) == Canlib.canStatus.canOK)
                             name = s;
                     }
                     catch { }
                     try
                     {
-                        if (Canlib.canGetChannelData(i, Canlib.canCHANNELDATA_CARD_UPC_NO, out var objEan) == Canlib.canStatus.canOK && objEan is string e)
+                        if (Canlib.GetEanString(i, Canlib.canCHANNELDATA_CARD_UPC_NO, out var e) == Canlib.canStatus.canOK)
                             ean = e;
                     }
                     catch { }
                     try
                     {
-                        if (Canlib.canGetChannelData(i, Canlib.canCHANNELDATA_CARD_SERIAL_NO, out var objSn) == Canlib.canStatus.canOK && objSn is string sn)
-                            serial = sn;
+                        if (Canlib.GetUInt32Pair(i, Canlib.canCHANNELDATA_CARD_SERIAL_NO, out uint hi, out uint lo) == Canlib.canStatus.canOK)
+                            serial = $"0x{hi:X8}{lo:X8}";
                     }
                     catch { }
 

@@ -20,11 +20,7 @@
         <PackageReference Include="CanKit.Core" Version="0.1.0"/>
     </ItemGroup>
 
-    <ItemGroup>
-        <!-- Note: The official Kvaser .NET wrapper (canlibCLSNET) is typically supplied with the CANlib SDK. -->
-        <PackageReference Include="Kvaser.CanLib" Version="1.16.851"/>
-    </ItemGroup>
-
+    <!-- Removed dependency on Kvaser.CanLib; using direct P/Invoke to canlib32.dll -->
 
     <ItemGroup>
         <None Include="buildTransitive\**\*.*" Pack="true" PackagePath="buildTransitive\"/>

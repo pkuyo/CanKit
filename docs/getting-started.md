@@ -23,7 +23,7 @@ CanKit.Core auto-discovers adapter assemblies from your references (via a small 
 ## 2) Install Drivers / Native Runtimes
 
 - PCAN (Windows): install PCAN drivers + PCAN-Basic.
-- Kvaser (Windows/Linux): install Kvaser CANlib (driver + SDK). And add `CANLib.Net` to your NuGet package sources. Ensure `canlib` can be loaded.
+- Kvaser (Windows/Linux): install Kvaser CANlib (driver + SDK). Ensure `canlib` can be loaded.
 - SocketCAN (Linux): enable SocketCAN and create/configure an interface (e.g., `ip link add dev can0 type can bitrate 500000; ip link set can0 up`). And install `libsocketcan`.
 - ZLG (Windows): ensure `zlgcan.dll` is available in your process load path with matching bitness (x86/x64).
 - Virtual: no driver needed.

@@ -114,8 +114,8 @@ Read the step-by-step guide, including installing drivers/runtime libraries per 
 ## Adapter Notes (Quick)
 
 - PCAN (Windows): install PCAN drivers and PCAN-Basic; the native PCANBasic.dll must be loadable (x86/x64 must match your process).
-- Kvaser (Windows/Linux): install Kvaser Driver + CANlib; And **make sure to add `CANLib.Net` to your NuGet package sources**. ensure canlib is loadable and channel accessible.
-- SocketCAN (Linux): enable SocketCAN, configure the interface (ip link…), and install libsocketcan for netlink-based config (`#netlink`).
+- Kvaser (Windows/Linux): install Kvaser Driver + CANlib; ensure canlib is loadable and channel accessible.
+- SocketCAN (Linux): enable SocketCAN, configure the interface (ip link...), and install libsocketcan for netlink-based config (`#netlink`).
 - ZLG (Windows): ensure zlgcan.dll is present and bitness matches your process. It is **strongly recommended** to compile as an x86 application. For some older devices (e.g., USBCAN1/2), not enabling this may prevent the device from starting properly.
 - Virtual: no driver needed.
 

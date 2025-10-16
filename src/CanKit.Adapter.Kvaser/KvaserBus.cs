@@ -6,7 +6,7 @@ using CanKit.Core.Abstractions;
 using CanKit.Core.Definitions;
 using CanKit.Core.Diagnostics;
 using CanKit.Core.Exceptions;
-using Kvaser.CanLib;
+using CanKit.Adapter.Kvaser.Native;
 using CanKit.Core.Utils;
 
 namespace CanKit.Adapter.Kvaser;
@@ -59,8 +59,8 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
 
         if (Options.ReceiveBufferCapacity != null)
         {
-            object obj = Options.ReceiveBufferCapacity.Value;
-            Canlib.canIoCtl(_handle, Canlib.canIOCTL_SET_RX_QUEUE_SIZE, ref obj);
+            int obj = Options.ReceiveBufferCapacity.Value;
+            Canlib.canIoCtl(_handle, Canlib.canIOCTL_SET_RX_QUEUE_SIZE, ref obj, (uint)Marshal.SizeOf<int>());
         }
 
         var st = Canlib.canBusOn(_handle);
@@ -100,7 +100,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
                 {
                     // Kvaser uses mask-based filters via canAccept
                     int ext = mask.FilterIdType == CanFilterIDType.Extend ? 1 : 0;
-                    var st = Canlib.canSetAcceptanceFilter(_handle, (int)mask.AccCode, (int)mask.AccMask, ext);
+                    var st = Canlib.canSetAcceptanceFilter(_handle, mask.AccCode, mask.AccMask, ext);
                     if (st != Canlib.canStatus.canOK)
                     {
                         throw new CanBusConfigurationException($"Kvaser canSetAcceptanceFilter failed: {st}");
@@ -140,9 +140,9 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
                 var fi = typeof(Canlib).GetField("canIOCTL_SET_TIMER_SCALE", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
                 if (fi != null)
                 {
-                    var code = (int)(fi.GetValue(null) ?? 0);
-                    object val = kc.TimerScaleMicroseconds;
-                    var st2 = Canlib.canIoCtl(_handle, code, ref val);
+                    var code = (uint)(fi.GetValue(null) ?? 0);
+                    int val = kc.TimerScaleMicroseconds;
+                    var st2 = Canlib.canIoCtl(_handle, code, ref val, (uint)Marshal.SizeOf<int>());
                     if (st2 != Canlib.canStatus.canOK)
                     {
                         CanKitLogger.LogWarning($"Kvaser: canIoCtl(SET_TIMER_SCALE) failed: {st2}");
@@ -170,10 +170,9 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
     public void ClearBuffer()
     {
         ThrowIfDisposed();
-        object? obj = null;
-        KvaserUtils.ThrowIfError(Canlib.canIoCtl(_handle, Canlib.canIOCTL_FLUSH_RX_BUFFER, ref obj),
+        KvaserUtils.ThrowIfError(Canlib.canIoCtl(_handle, Canlib.canIOCTL_FLUSH_RX_BUFFER, IntPtr.Zero, 0U),
             "canIoCtl(FLUSH_RX_BUFFER)", "Failed to flush RX buffer");
-        KvaserUtils.ThrowIfError(Canlib.canIoCtl(_handle, Canlib.canIOCTL_FLUSH_TX_BUFFER, ref obj),
+        KvaserUtils.ThrowIfError(Canlib.canIoCtl(_handle, Canlib.canIOCTL_FLUSH_TX_BUFFER, IntPtr.Zero, 0U),
             "canIoCtl(FLUSH_TX_BUFFER)", "Failed to flush TX buffer");
     }
 
@@ -207,7 +206,8 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
         CanKitErr.ThrowIfNotSupport(Options.Features, CanFeature.BusUsage);
         KvaserUtils.ThrowIfError(Canlib.canRequestBusStatistics(_handle), "canRequestBusStatistics",
             "Failed to request bus usage");
-        KvaserUtils.ThrowIfError(Canlib.canGetBusStatistics(_handle, out var stat), "canRequestBusStatistics",
+        KvaserUtils.ThrowIfError(Canlib.canGetBusStatistics(_handle, out var stat,
+                (UIntPtr)(uint)Marshal.SizeOf<Canlib.canBusStatistics>()), "canRequestBusStatistics",
             "Failed to get bus usage");
         return stat.busLoad / 100f;
     }
@@ -221,8 +221,8 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
             "canReadErrorCounters", "Failed to read error counters");
         return new CanErrorCounters()
         {
-            TransmitErrorCounter = tx,
-            ReceiveErrorCounter = rx
+            TransmitErrorCounter = (int)tx,
+            ReceiveErrorCounter = (int)rx
         };
     }
 
@@ -364,8 +364,8 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
                 {
                     try
                     {
-                        Canlib.canGetChannelData(i, Canlib.canCHANNELDATA_CHANNEL_NAME, out var obj);
-                        if (obj is string name && !string.IsNullOrWhiteSpace(name) &&
+                        Canlib.GetChannelName(i, out var name);
+                        if (!string.IsNullOrWhiteSpace(name) &&
                             string.Equals(name, opt.ChannelName, StringComparison.OrdinalIgnoreCase))
                         {
                             return Canlib.canOpenChannel(i, flags);
@@ -391,7 +391,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
             if (classic.Nominal.Segments is { } seg)
             {
                 var st = Canlib.canSetBusParams(handle, (int)seg.BitRate(80),
-                    (int)seg.Tseg1, (int)seg.Tseg2, (int)seg.Sjw, 1);
+                    (int)seg.Tseg1, (int)seg.Tseg2, (int)seg.Sjw, 1, 0);
                 if (st != Canlib.canStatus.canOK)
                 {
                     throw new CanBusConfigurationException($"Kvaser canSetBusParams (classic segments) failed: {st}");
@@ -404,7 +404,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
                 {
                     throw new CanBusConfigurationException($"Unsupported classic bitrate: {classic.Nominal.Bitrate!.Value} bps for Kvaser predefined constants.");
                 }
-                var st = Canlib.canSetBusParams(handle, mapped, 0, 0, 0, 0);
+                var st = Canlib.canSetBusParams(handle, mapped, 0, 0, 0, 0, 0);
                 if (st != Canlib.canStatus.canOK)
                 {
                     throw new CanBusConfigurationException($"Kvaser canSetBusParams (classic predefined) failed: {st}");
@@ -417,7 +417,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
             if (fd.Nominal.Segments is { } seg)
             {
                 var st = Canlib.canSetBusParams(handle, (int)seg.BitRate(80),
-                    (int)seg.Tseg1, (int)seg.Tseg2, (int)seg.Sjw, 1);
+                    (int)seg.Tseg1, (int)seg.Tseg2, (int)seg.Sjw, 1, 0);
                 if (st != Canlib.canStatus.canOK)
                 {
                     throw new CanBusConfigurationException($"Kvaser canSetBusParams (FD nominal segments) failed: {st}");
@@ -430,7 +430,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
                 {
                     throw new CanBusConfigurationException($"Unsupported FD nominal bitrate: {fd.Nominal.Bitrate!.Value} bps for Kvaser predefined constants.");
                 }
-                var st = Canlib.canSetBusParams(handle, mapped, 0, 0, 0, 0);
+                var st = Canlib.canSetBusParams(handle, mapped, 0, 0, 0, 0, 0);
                 if (st != Canlib.canStatus.canOK)
                 {
                     throw new CanBusConfigurationException($"Kvaser canSetBusParams (FD nominal predefined) failed: {st}");
@@ -472,7 +472,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
         if (_notifyActive) return;
         _kvCallback ??= KvNotifyCallback;
         var mask = (Canlib.canNOTIFY_RX | (Options.AllowErrorInfo ? Canlib.canNOTIFY_ERROR : 0));
-        KvaserUtils.ThrowIfError(Canlib.kvSetNotifyCallback(_handle, _kvCallback, IntPtr.Zero, mask),
+        KvaserUtils.ThrowIfError(Canlib.kvSetNotifyCallback(_handle, _kvCallback, IntPtr.Zero, (uint)mask),
             "kvSetNotifyCallback", "Failed to register notify callback");
         _notifyActive = true;
     }
@@ -483,8 +483,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
         try
         {
             _asyncRx.Clear();
-            // Unregister by clearing mask or null callback depending on API behavior
-            _ = Canlib.kvSetNotifyCallback(_handle, _kvCallback, IntPtr.Zero, 0);
+            _ = Canlib.kvSetNotifyCallback(_handle, _kvCallback!, IntPtr.Zero, 0);
         }
         catch { /* ignore */ }
         finally
@@ -683,13 +682,12 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
 
     private void UpdateDynamicFeatures()
     {
-        var status = Canlib.canGetChannelData(_handle, Canlib.canCHANNELDATA_CHANNEL_CAP, out var capsObj);
-        if (status != Canlib.canStatus.canOK || capsObj is null)
+        var status = Canlib.GetUInt32(_handle, Canlib.canCHANNELDATA_CHANNEL_CAP, out var caps);
+        if (status != Canlib.canStatus.canOK)
         {
             CanKitLogger.LogError($"Canlib.canGetChannelData failed. Status:{status}, Channel:{_handle}");
             return;
         }
-        uint caps = (uint)capsObj;
         var features = CanFeature.CanClassic | CanFeature.Filters | CanFeature.Echo | CanFeature.ErrorFrame;
         if ((caps & Canlib.canCHANNEL_CAP_CAN_FD) != 0 ||
             (caps & Canlib.canCHANNEL_CAP_CAN_FD_NONISO) != 0)

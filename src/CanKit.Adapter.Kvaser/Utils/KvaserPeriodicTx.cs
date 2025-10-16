@@ -3,7 +3,7 @@ using CanKit.Core.Abstractions;
 using CanKit.Core.Definitions;
 using CanKit.Core.Diagnostics;
 using CanKit.Core.Exceptions;
-using Kvaser.CanLib;
+using CanKit.Adapter.Kvaser.Native;
 
 namespace CanKit.Adapter.Kvaser.Utils;
 
@@ -37,7 +37,7 @@ public sealed class KvaserPeriodicTx : IPeriodicTx
         periodicTx = null;
 
         // Allocate object buffer of periodic TX type; index is returned as integer (negative => error)
-        int bufNo = (int)Canlib.canObjBufAllocate(bus.Handle, Canlib.canObjBufType.PERIODIC_TX);
+        int bufNo = (int)Canlib.canObjBufAllocate(bus.Handle, (int)Canlib.canObjBufType.PERIODIC_TX);
         if (bufNo < 0)
         {
             CanKitLogger.LogDebug($"Kvaser: canObjBufAllocate failed: {(Canlib.canStatus)bufNo}");
@@ -119,7 +119,7 @@ public sealed class KvaserPeriodicTx : IPeriodicTx
         if (_bufNo < 0) return;
 
         var us = (int)Math.Max(1, (long)Math.Round(period.TotalMilliseconds * 1000.0));
-        KvaserUtils.ThrowIfError(Canlib.canObjBufSetPeriod(_bus.Handle, _bufNo, us), "canObjBufSetPeriod", "Failed to set period");
+        KvaserUtils.ThrowIfError(Canlib.canObjBufSetPeriod(_bus.Handle, _bufNo, (uint)us), "canObjBufSetPeriod", "Failed to set period");
 
         int id = (int)frame.ID;
         var data = frame.Data.ToArray();
@@ -141,7 +141,7 @@ public sealed class KvaserPeriodicTx : IPeriodicTx
             if (_bus.Options.TxRetryPolicy == TxRetryPolicy.NoRetry) flags |= Canlib.canMSG_SINGLE_SHOT;
         }
 
-        KvaserUtils.ThrowIfError(Canlib.canObjBufWrite(_bus.Handle, _bufNo, id, data, dlc, (int)flags),
+        KvaserUtils.ThrowIfError(Canlib.canObjBufWrite(_bus.Handle, _bufNo, id, data, (uint)dlc, flags),
             "canObjBufWrite", "Failed to write periodic frame");
     }
 }

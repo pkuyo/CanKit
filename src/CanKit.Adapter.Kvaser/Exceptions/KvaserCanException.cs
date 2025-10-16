@@ -1,5 +1,5 @@
 using CanKit.Core.Exceptions;
-using Kvaser.CanLib;
+using CanKit.Adapter.Kvaser.Native;
 
 namespace CanKit.Adapter.Kvaser.Exceptions;
 
@@ -19,4 +19,3 @@ public sealed class KvaserCanException : CanNativeCallException
     /// </summary>
     public Canlib.canStatus Status { get; }
 }
-

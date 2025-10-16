@@ -1,6 +1,6 @@
 ﻿using CanKit.Core.Definitions;
 using CanKit.Core.Exceptions;
-using Kvaser.CanLib;
+using CanKit.Adapter.Kvaser.Native;
 
 namespace CanKit.Adapter.Kvaser.Utils;
 

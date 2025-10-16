@@ -3,7 +3,6 @@ using CanKit.Adapter.Kvaser.Native;
 using CanKit.Adapter.Kvaser.Utils;
 using CanKit.Core.Abstractions;
 using CanKit.Core.Definitions;
-using Kvaser.CanLib;
 
 namespace CanKit.Adapter.Kvaser.Transceivers;
 
@@ -37,7 +36,7 @@ public sealed class KvaserFdTransceiver : ITransceiver
             {
                 fixed (byte* ptr = item.Data.Span)
                 {
-                    st = CanlibNative.canWrite(ch.Handle, (int)item.ID, ptr, (uint)dlc, flags);
+                    st = Canlib.canWrite(ch.Handle, item.ID, ptr, (uint)dlc, flags);
                 }
             }
 
@@ -75,7 +74,7 @@ public sealed class KvaserFdTransceiver : ITransceiver
             byte[] data = new byte[64];
             int id;
             int flags;
-            long time;
+            uint time;
             int dlc;
             var st = Canlib.canRead(ch.Handle, out id, data, out dlc, out flags, out time);
             if (st == Canlib.canStatus.canOK)
