@@ -1,0 +1,78 @@
+# CI: Build and Test on Windows and Linux with CAN setup
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  windows:
+    name: Windows (Virtual)
+    runs-on: windows-latest
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_CLI_TELEMETRY_OPTOUT: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Configure endpoints
+        shell: pwsh
+        run: |
+          $virtual = 'virtual://alpha/0|virtual://alpha/1|true'
+          "CANKIT_TEST_ENDPOINT_PAIRS=$virtual" | Out-File -FilePath $Env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Restore
+        run: dotnet restore CanKit.sln
+
+      - name: Test (net8.0)
+        run: dotnet test CanKit.sln -c Release -f net8.0 --logger "trx;LogFileName=TestResults.trx"
+
+      - name: Upload Test Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-windows
+          path: '**/TestResults.trx'
+
+  linux:
+    name: Ubuntu (Virtual)
+    runs-on: ubuntu-latest
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_CLI_TELEMETRY_OPTOUT: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      
+      - name: Configure endpoints
+        run: |
+          set -e
+          VIRTUAL='virtual://alpha/0|virtual://alpha/1|true'
+          echo "CANKIT_TEST_ENDPOINT_PAIRS=${VIRTUAL}" >> "$GITHUB_ENV"
+          # SOCKETCAN='socketcan://vcan0|socketcan://vcan1|true' 
+          # echo "CANKIT_TEST_ENDPOINT_PAIRS=${VIRTUAL};${SOCKETCAN}" >> "$GITHUB_ENV"
+
+      - name: Restore
+        run: dotnet restore CanKit.sln
+
+      - name: Test (net8.0)
+        run: dotnet test CanKit.sln -c Release -f net8.0 --logger "trx;LogFileName=TestResults.trx"
+
+      - name: Upload Test Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-ubuntu
+          path: '**/TestResults.trx'
+
