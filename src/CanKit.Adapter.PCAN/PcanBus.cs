@@ -1,7 +1,4 @@
-
-#if NETSTANDARD2_0
 using System.Runtime.InteropServices;
-#endif
 using CanKit.Core.Abstractions;
 using CanKit.Core.Definitions;
 using CanKit.Core.Diagnostics;
@@ -37,6 +34,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
     private readonly AsyncFramePipe _asyncRx;
     private int _asyncConsumerCount;
     private CancellationTokenSource? _stopDelayCts;
+    private int _asyncBufferingLinger;
 
 
     internal PcanBus(IBusOptions options, ITransceiver transceiver)
@@ -99,19 +97,6 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
         // Apply initial options
         ApplyConfig(options);
         CanKitLogger.LogDebug("PCAN: Initial options applied.");
-#if NET8_0_OR_GREATER
-#if WINDOWS
-        _recEvent = new EventWaitHandle(false, EventResetMode.AutoReset);
-#else
-        var ok = Api.GetValue(_handle, PcanParameter.ReceiveEvent, out uint evHandle);
-        if (ok != PcanStatus.OK)
-            throw new InvalidOperationException($"Get ReceiveEvent failed: {ok}");
-
-        _recEvent = new EventWaitHandle(false, EventResetMode.AutoReset);
-        _recEvent.SafeWaitHandle.Close();
-        _recEvent.SafeWaitHandle = new SafeWaitHandle(new IntPtr(evHandle), false);
-#endif
-#else
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
             _recEvent = new EventWaitHandle(false, EventResetMode.AutoReset);
@@ -126,8 +111,6 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
             _recEvent.SafeWaitHandle?.Close();
             _recEvent.SafeWaitHandle = new SafeWaitHandle(new IntPtr(evHandle), false);
         }
-
-#endif
     }
 
 
@@ -246,6 +229,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
         if (count < 0) throw new ArgumentOutOfRangeException(nameof(count));
         Interlocked.Increment(ref _subscriberCount);
         Interlocked.Increment(ref _asyncConsumerCount);
+        Volatile.Write(ref _asyncBufferingLinger, 0);
         StartReceiveLoopIfNeeded();
 
         try
@@ -258,7 +242,10 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
             var remAsync = Interlocked.Decrement(ref _asyncConsumerCount);
             var rem = Interlocked.Decrement(ref _subscriberCount);
             if (rem == 0 && remAsync == 0)
+            {
+                Volatile.Write(ref _asyncBufferingLinger, 1);
                 RequestStopReceiveLoop();
+            }
         }
     }
 
@@ -268,6 +255,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
         ThrowIfDisposed();
         Interlocked.Increment(ref _subscriberCount);
         Interlocked.Increment(ref _asyncConsumerCount);
+        Volatile.Write(ref _asyncBufferingLinger, 0);
         StartReceiveLoopIfNeeded();
         try
         {
@@ -280,7 +268,11 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
         {
             var remAsync = Interlocked.Decrement(ref _asyncConsumerCount);
             var rem = Interlocked.Decrement(ref _subscriberCount);
-            if (rem == 0 && remAsync == 0) RequestStopReceiveLoop();
+            if (rem == 0 && remAsync == 0)
+            {
+                Volatile.Write(ref _asyncBufferingLinger, 1);
+                RequestStopReceiveLoop();
+            }
         }
     }
 #endif
@@ -415,22 +407,12 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
         if (_pollTask != null) return;
         _pollCts = new CancellationTokenSource();
         var token = _pollCts.Token;
-
-#if NET8_0_OR_GREATER
-#if WINDOWS
-        _recEvent = new EventWaitHandle(false, EventResetMode.AutoReset);
-        var h = (uint)_recEvent.SafeWaitHandle.DangerousGetHandle().ToInt32();
-        PcanUtils.ThrowIfError(Api.SetValue(_handle, PcanParameter.ReceiveEvent, h), "SetValue(ReceiveEvent)",
-                "Start PcanBus receive loop failed");
-#endif
-#else
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
             var h = (uint)_recEvent.SafeWaitHandle.DangerousGetHandle().ToInt32();
             PcanUtils.ThrowIfError(Api.SetValue(_handle, PcanParameter.ReceiveEvent, h), "SetValue(ReceiveEvent)",
                 "Start PcanBus receive loop failed");
         }
-#endif
         _pollTask = Task.Run(() => PollLoop(token), token);
         CanKitLogger.LogDebug("PCAN: Poll loop started.");
     }
@@ -439,16 +421,11 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
     {
         try
         {
-#if NETSTANDARD2_0
+            _asyncRx.Clear();
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
                 Api.SetValue(_handle, PcanParameter.ReceiveEvent, 0);
             }
-#else
-#if WINDOWS
-            Api.SetValue(_handle, PcanParameter.ReceiveEvent, 0);
-#endif
-#endif
             _pollCts?.Cancel();
             _pollTask?.Wait(200);
         }
@@ -458,6 +435,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
             _pollTask = null;
             _pollCts?.Dispose();
             _pollCts = null;
+            Volatile.Write(ref _asyncBufferingLinger, 0);
             CanKitLogger.LogDebug("PCAN: Poll loop stopped.");
         }
     }
@@ -494,7 +472,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
         {
             while (!token.IsCancellationRequested)
             {
-                if (Volatile.Read(ref _subscriberCount) <= 0)
+                if (Volatile.Read(ref _subscriberCount) == 0 && Volatile.Read(ref _asyncBufferingLinger) == 0)
                 {
                     break;
                 }
@@ -548,11 +526,15 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
                 }
 
                 var pred = _softwareFilterPredicate;
-                if (!_useSoftwareFilter || pred is null || !pred(rec.CanFrame))
+                if (_useSoftwareFilter && pred is not null && !pred(rec.CanFrame))
                 {
-                    _frameReceived?.Invoke(this, rec);
-                    if (Volatile.Read(ref _asyncConsumerCount) > 0)
-                        _asyncRx.Publish(rec);
+                    continue;
+                }
+
+                _frameReceived?.Invoke(this, rec);
+                if (Volatile.Read(ref _asyncConsumerCount) > 0 || Volatile.Read(ref _asyncBufferingLinger) == 1)
+                {
+                    _asyncRx.Publish(rec);
                 }
             }
 

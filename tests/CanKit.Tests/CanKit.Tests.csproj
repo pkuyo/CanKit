@@ -1,11 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
     <IsPackable>false</IsPackable>
     <AssemblyName>CanKit.Tests</AssemblyName>
     <RootNamespace>CanKit.Tests</RootNamespace>
     <LangVersion>12</LangVersion>
     <Nullable>enable</Nullable>
+    <TargetFrameworks>net8.0;net48</TargetFrameworks>
   </PropertyGroup>
 
   <ItemGroup>

@@ -209,11 +209,14 @@ public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, IBusOwnershi
     internal void InternalDeliver(CanReceiveData data)
     {
         var pred = _softwareFilterPredicate;
-        if (!_useSoftwareFilter || pred is null || pred(data.CanFrame))
+        if (_useSoftwareFilter && pred is not null && !pred(data.CanFrame))
         {
-            _frameReceived?.Invoke(this, data);
-            _asyncRx.Publish(data);
+            return;
         }
+
+        _frameReceived?.Invoke(this, data);
+        _asyncRx.Publish(data);
+
     }
 
     internal void InternalInjectError(ICanErrorInfo info)

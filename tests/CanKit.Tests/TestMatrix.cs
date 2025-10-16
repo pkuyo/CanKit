@@ -16,7 +16,11 @@ public static partial class TestMatrix
         {
             foreach (var part in env.Split([';', '\n', '\r'], StringSplitOptions.RemoveEmptyEntries))
             {
+#if NET5_0_OR_GREATER
                 var pair = part.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+#else
+                var pair = part.Split(['|'], StringSplitOptions.RemoveEmptyEntries);
+#endif
                 if (pair.Length == 3 && bool.TryParse(pair[2], out var hasFd))
                 {
                     yield return [pair[0], pair[1], $"env:{pair[0]}->{pair[1]}", hasFd];

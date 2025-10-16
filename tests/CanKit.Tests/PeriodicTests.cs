@@ -13,8 +13,10 @@ public class PeriodicTests : IClassFixture<TestAssemblyLoader>
 {
     [Theory]
     [MemberData(nameof(TestMatrix.Pairs), MemberType = typeof(TestMatrix))]
-    public async Task Periodic_Send_Completes_Exact_Count_And_Stops(string epA, string epB, string _, bool hasFd)
+    public async Task Periodic_Send_Completes_Exact_Count_And_Stops(string epA, string epB, string endpoint, bool hasFd)
     {
+        _ = hasFd;
+        _ = endpoint;
         using var rx = TestHelpers.OpenClassic(epA);
         using var tx = TestHelpers.OpenClassic(epB);
 

@@ -45,7 +45,7 @@ internal static class TestHelpers
         var ring = new ICanFrame[256];
         for (var seq = 0; seq < 256; seq++)
         {
-            var payload = new byte[Math.Clamp(len, 0, 8)];
+            var payload = new byte[Math.Min(Math.Max(len, 0), 8)];
             if (payload.Length > 0) payload[0] = (byte)seq;
             for (var i = 1; i < payload.Length; i++) payload[i] = (byte)(i ^ seq);
             ring[seq] = new CanClassicFrame((int)(baseId | (uint)seq), payload, extended, rtr);
@@ -55,7 +55,7 @@ internal static class TestHelpers
 
     public static ICanFrame[] CreateFdSeq(uint baseId, bool extended, bool brs, int len)
     {
-        len = Math.Clamp(len, 0, 64);
+        len = Math.Min(Math.Max(len, 0), 64);
         var ring = new ICanFrame[256];
         for (var seq = 0; seq < 256; seq++)
         {
@@ -143,7 +143,7 @@ internal static class TestHelpers
             {
                 while (queue.Count > 0)
                 {
-                    int send = await tx.TransmitAsync(queue, 20).ConfigureAwait(false);
+                    int send = await tx.TransmitAsync(queue, 20);
 
                     for (var j = 0; j < send && queue.Count > 0; j++)
                         queue.Dequeue();

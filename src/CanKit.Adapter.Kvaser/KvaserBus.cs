@@ -32,6 +32,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
     private readonly AsyncFramePipe _asyncRx;
     private int _asyncConsumerCount;
     private CancellationTokenSource? _stopDelayCts;
+    private int _asyncBufferingLinger;
 
     internal KvaserBus(IBusOptions options, ITransceiver transceiver)
     {
@@ -176,12 +177,12 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
             "canIoCtl(FLUSH_TX_BUFFER)", "Failed to flush TX buffer");
     }
 
-    public int Transmit(IEnumerable<ICanFrame> frames, int timeOut = 0)
+    public int Transmit(IEnumerable<ICanFrame> frames, int _ = 0)
     {
         ThrowIfDisposed();
         try
         {
-            return _transceiver.Transmit(this, frames, timeOut);
+            return _transceiver.Transmit(this, frames);
         }
         catch (Exception ex)
         {
@@ -481,6 +482,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
         if (!_notifyActive) return;
         try
         {
+            _asyncRx.Clear();
             // Unregister by clearing mask or null callback depending on API behavior
             _ = Canlib.kvSetNotifyCallback(_handle, _kvCallback, IntPtr.Zero, 0);
         }
@@ -488,6 +490,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
         finally
         {
             _notifyActive = false;
+            Volatile.Write(ref _asyncBufferingLinger, 0);
             CanKitLogger.LogDebug("Kvaser: Notify callback unregistered.");
         }
     }
@@ -520,7 +523,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
     private void KvNotifyCallback(int handle, IntPtr context, int notifyEvent)
     {
         if (handle != _handle) return;
-        if (Volatile.Read(ref _subscriberCount) <= 0) return;
+        if (Volatile.Read(ref _subscriberCount) <= 0 && Volatile.Read(ref _asyncBufferingLinger) == 0) return;
 
 
         Interlocked.Increment(ref _pending);
@@ -598,19 +601,19 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
                     }
                 }
                 _frameReceived?.Invoke(this, rec);
-                if (Volatile.Read(ref _asyncConsumerCount) > 0)
+                if (Volatile.Read(ref _asyncConsumerCount) > 0 || Volatile.Read(ref _asyncBufferingLinger) == 1)
                     _asyncRx.Publish(rec);
             }
             if (!any) break;
         }
     }
 
-    public Task<int> TransmitAsync(IEnumerable<ICanFrame> frames, int timeOut = 0, CancellationToken cancellationToken = default)
+    public Task<int> TransmitAsync(IEnumerable<ICanFrame> frames, int _ = 0, CancellationToken cancellationToken = default)
         => Task.Run(() =>
         {
             try
             {
-                return Transmit(frames, timeOut);
+                return Transmit(frames);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
             catch (Exception ex) { HandleBackgroundException(ex); throw; }
@@ -622,6 +625,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
         if (count < 0) throw new ArgumentOutOfRangeException(nameof(count));
         Interlocked.Increment(ref _subscriberCount);
         Interlocked.Increment(ref _asyncConsumerCount);
+        Volatile.Write(ref _asyncBufferingLinger, 0);
         StartReceiveLoopIfNeeded();
         try
         {
@@ -633,7 +637,10 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
             var remAsync = Interlocked.Decrement(ref _asyncConsumerCount);
             var rem = Interlocked.Decrement(ref _subscriberCount);
             if (rem == 0 && remAsync == 0)
+            {
+                Volatile.Write(ref _asyncBufferingLinger, 1);
                 RequestStopReceiveLoop();
+            }
         }
     }
 
@@ -652,6 +659,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
         ThrowIfDisposed();
         Interlocked.Increment(ref _subscriberCount);
         Interlocked.Increment(ref _asyncConsumerCount);
+        Volatile.Write(ref _asyncBufferingLinger, 0);
         StartReceiveLoopIfNeeded();
         try
         {
@@ -664,7 +672,11 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
         {
             var remAsync = Interlocked.Decrement(ref _asyncConsumerCount);
             var rem = Interlocked.Decrement(ref _subscriberCount);
-            if (rem == 0 && remAsync == 0) RequestStopReceiveLoop();
+            if (rem == 0 && remAsync == 0)
+            {
+                Volatile.Write(ref _asyncBufferingLinger, 1);
+                RequestStopReceiveLoop();
+            }
         }
     }
 #endif

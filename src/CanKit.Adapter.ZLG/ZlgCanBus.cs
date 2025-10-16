@@ -49,6 +49,7 @@ namespace CanKit.Adapter.ZLG
         private readonly AsyncFramePipe _asyncRx;
         private int _asyncConsumerCount;
         private CancellationTokenSource? _stopDelayCts;
+        private int _asyncBufferingLinger;
 
         internal ZlgCanBus(ZlgCanDevice device, IBusOptions options, ITransceiver transceiver)
         {
@@ -573,6 +574,7 @@ namespace CanKit.Adapter.ZLG
         {
             try
             {
+                _asyncRx.Clear();
                 _pollCts?.Cancel();
                 _pollTask?.Wait(500);
             }
@@ -582,6 +584,7 @@ namespace CanKit.Adapter.ZLG
                 _pollTask = null;
                 _pollCts?.Dispose();
                 _pollCts = null;
+                Volatile.Write(ref _asyncBufferingLinger, 0);
             }
         }
 
@@ -614,7 +617,7 @@ namespace CanKit.Adapter.ZLG
         {
             while (!token.IsCancellationRequested)
             {
-                if (Volatile.Read(ref _subscriberCount) <= 0 && Volatile.Read(ref _asyncConsumerCount) <= 0)
+                if (Volatile.Read(ref _subscriberCount) <= 0 && Volatile.Read(ref _asyncBufferingLinger) == 0)
                 {
                     break;
                 }
@@ -641,7 +644,7 @@ namespace CanKit.Adapter.ZLG
                                 var evSnap = Volatile.Read(ref _frameReceived);
                                 evSnap?.Invoke(this, frame);
 
-                                if (Volatile.Read(ref _asyncConsumerCount) > 0)
+                                if (Volatile.Read(ref _asyncConsumerCount) > 0 || Volatile.Read(ref _asyncBufferingLinger) == 1)
                                     _asyncRx.Publish(frame);
                             }
                             catch (Exception ex)
@@ -694,8 +697,8 @@ namespace CanKit.Adapter.ZLG
             }
             finally
             {
-                _ = Interlocked.Decrement(ref _asyncConsumerCount);
-                CheckSubscribers(false, true);
+                var decrement = Interlocked.Decrement(ref _asyncConsumerCount);
+                CheckSubscribers(false, true, decrement == 0);
             }
         }
 
@@ -715,18 +718,18 @@ namespace CanKit.Adapter.ZLG
             finally
             {
                 var remAsync = Interlocked.Decrement(ref _asyncConsumerCount);
-                var rem = Interlocked.Decrement(ref _subscriberCount);
-                CheckSubscribers(false);
+                CheckSubscribers(false, true, remAsync == 0);
             }
         }
 #endif
 
-        private void CheckSubscribers(bool isIncrease, bool step = false)
+        private void CheckSubscribers(bool isIncrease, bool step = false, bool asLinger = false)
         {
             if (step)
             {
                 if (isIncrease)
                 {
+                    Volatile.Write(ref _asyncBufferingLinger, 0);
                     if (Interlocked.Increment(ref _subscriberCount) == 1)
                     {
                         StartReceiveLoopIfNeeded();
@@ -741,14 +744,18 @@ namespace CanKit.Adapter.ZLG
                         now = 0;
                     }
 
-                    if (now == 0 && Volatile.Read(ref _asyncConsumerCount) == 0)
+                    if (now == 0 && asLinger)
+                    {
+                        Volatile.Write(ref _asyncBufferingLinger, 1);
                         RequestStopReceiveLoop();
+                    }
                 }
             }
             else
             {
                 if (isIncrease)
                 {
+                    Volatile.Write(ref _asyncBufferingLinger, 0);
                     if (Volatile.Read(ref _subscriberCount) == 1)
                     {
                         StartReceiveLoopIfNeeded();

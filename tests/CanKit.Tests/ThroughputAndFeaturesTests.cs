@@ -16,12 +16,15 @@ public class ThroughputAndFeaturesTests : IClassFixture<TestAssemblyLoader>
     // 单次64和128的发送批次（CAN2.0）
     [Theory]
     [MemberData(nameof(TestMatrix.CombinedOneShotClassic), MemberType = typeof(TestMatrix))]
-    public async Task OneShot_Batch_Classic_64_And_128(string epA, string epB, string _, bool hasFd,
+    public async Task OneShot_Batch_Classic_64_And_128(string epA, string epB, string endpoint, bool hasFd,
         int len, bool rtr, bool ide)
     {
+        _ = hasFd;
+        _ = endpoint;
         using var rx = TestHelpers.OpenClassic(epA);
         using var tx = TestHelpers.OpenClassic(epB);
 
+        var re = TestMatrix.Pairs().ToArray();
         var ring = TestHelpers.CreateClassicSeq(0x100, ide, rtr, len);
         foreach (var batchSize in new[] { 64, 128 })
         {
@@ -31,7 +34,6 @@ public class ThroughputAndFeaturesTests : IClassFixture<TestAssemblyLoader>
             await TestHelpers.SendBurstAsync(tx, frames, gapMs: 0);
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
             var rec = await TestHelpers.ReceiveUntilAsync(rx, v, batchSize, 2000, cts.Token);
-
             rec.Should().Be(batchSize);
             v.Lost.Should().Be(0);
             v.BadData.Should().Be(0);
@@ -208,8 +210,10 @@ public class ThroughputAndFeaturesTests : IClassFixture<TestAssemblyLoader>
     // Filter: range
     [Theory]
     [MemberData(nameof(TestMatrix.Pairs), MemberType = typeof(TestMatrix))]
-    public async Task Filter_Range_Work(string epA, string epB, string _, bool hasFd)
+    public async Task Filter_Range_Work(string epA, string epB, string endpoint, bool hasFd)
     {
+        _ = hasFd;
+        _ = endpoint;
         var rangeFilter = new CanFilter();
         rangeFilter.filterRules.Add(new FilterRule.Range(0x300, 0x30F, CanFilterIDType.Standard));
 

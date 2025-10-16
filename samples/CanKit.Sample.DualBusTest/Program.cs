@@ -166,6 +166,7 @@ internal static class Program
         using var cts = new CancellationTokenSource();
         var token = cts.Token;
         var lastReceived = sw.ElapsedTicks;
+        var hasReceived = false;
         var recTask = Task.Run(async () =>
         {
             while (verifier.Received < _count && !token.IsCancellationRequested)
@@ -174,7 +175,13 @@ internal static class Program
                     await testerReceiver.ReceiveAsync(Math.Min(256, _count - verifier.Received), 10, token).ConfigureAwait(false);
                 foreach (var d in batch)
                 {
+                    hasReceived = true;
                     verifier.Feed(d.CanFrame);
+                    Interlocked.Exchange(ref lastReceived, sw.ElapsedTicks);
+                }
+
+                if (!hasReceived)
+                {
                     Interlocked.Exchange(ref lastReceived, sw.ElapsedTicks);
                 }
             }

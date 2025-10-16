@@ -155,11 +155,12 @@ namespace CanKit.Core.Utils
 
                 // 发送
                 var sendStart = sw.Elapsed;
-                TrySendOnce();
+                if (TrySendOnce())
+                {
 
-                RecordJitter(sendStart - target);
-
-                if (DecreaseAndMaybeFinish()) break;
+                    RecordJitter(sendStart - target);
+                    if (DecreaseAndMaybeFinish()) break;
+                }
 
                 // 跳过落拍，保持绝对对齐
                 n = Math.Max(n + 1, (long)Math.Floor((sw.Elapsed - t0).Ticks / (double)period.Ticks) + 1);
@@ -169,17 +170,22 @@ namespace CanKit.Core.Utils
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void TrySendOnce()
+        private bool TrySendOnce()
         {
             try
             {
                 lock (_gate)
                 {
                     _txBuf[0] = _frame;
-                    _ = _bus.Transmit(_txBuf);
+                    var re = _bus.Transmit(_txBuf);
+                    return re == 1;
                 }
             }
-            catch { /*ignore*/ }
+            catch
+            {
+                /*ignore*/
+                return false;
+            }
         }
 
         private bool DecreaseAndMaybeFinish()
@@ -425,7 +431,7 @@ namespace CanKit.Core.Utils
             if (hTimer != 0)
             {
                 long due100Ns = -(long)(due.TotalMilliseconds * 10_000.0);
-                if (!Win32.SetWaitableTimerEx(hTimer, ref due100Ns, 0, 0, 0, 0, tolerableDelayMs))
+                if (!Win32.SetWaitableTimerEx(hTimer, ref due100Ns, 0, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, tolerableDelayMs))
                 {
                     Thread.Sleep(due); // 退化
                     return;
@@ -442,10 +448,10 @@ namespace CanKit.Core.Utils
         {
             try
             {
-                var h = Win32.CreateWaitableTimerEx(0, null,
+                var h = Win32.CreateWaitableTimerEx(IntPtr.Zero, null,
                     Win32.CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, Win32.TIMER_ALL_ACCESS);
                 if (h != 0) return h;
-                return Win32.CreateWaitableTimerEx(0, null, 0, Win32.TIMER_ALL_ACCESS);
+                return Win32.CreateWaitableTimerEx(IntPtr.Zero, null, 0, Win32.TIMER_ALL_ACCESS);
             }
             catch { return 0; }
         }
@@ -477,15 +483,30 @@ namespace CanKit.Core.Utils
 
         private static class Win32
         {
-            [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-            internal static extern nint CreateWaitableTimerEx(nint lpTimerAttributes, string? lpTimerName, uint dwFlags, uint dwDesiredAccess);
+            [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+            public static extern nint CreateWaitableTimerEx(
+                IntPtr lpTimerAttributes,
+                string? lpTimerName,
+                uint dwFlags,
+                uint dwDesiredAccess);
 
             [DllImport("kernel32.dll", SetLastError = true)]
-            internal static extern bool SetWaitableTimerEx(nint hTimer, ref long pDueTime100ns, int periodMs,
-                nint pfnCompletionRoutine, nint lpArg, nint wakeContext, uint tolerableDelayMs);
+            [return: MarshalAs(UnmanagedType.Bool)]
+            public static extern bool SetWaitableTimerEx(
+                nint hTimer,
+                ref long lpDueTime,
+                int lPeriod,
+                IntPtr pfnCompletionRoutine,
+                IntPtr lpArgToCompletionRoutine,
+                IntPtr pReasonContext,
+                uint dwFlagsOrTolerableDelay
+            );
 
             [DllImport("kernel32.dll", SetLastError = true)]
-            internal static extern uint WaitForSingleObject(nint hHandle, uint milliseconds);
+            public static extern uint WaitForSingleObject(
+                nint hHandle,
+                uint dwMilliseconds);
+
 
             [DllImport("kernel32.dll", SetLastError = true)]
             internal static extern bool CloseHandle(nint hObject);

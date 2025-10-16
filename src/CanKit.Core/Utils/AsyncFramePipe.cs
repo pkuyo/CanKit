@@ -46,6 +46,13 @@ public sealed class AsyncFramePipe
         _ = _channel.Writer.TryWrite(frame);
     }
 
+    public void Clear()
+    {
+        while (_channel.Reader.TryRead(out _))
+        {
+        }
+    }
+
     public async Task<IReadOnlyList<CanReceiveData>> ReceiveBatchAsync(
         int count, int timeoutMs, CancellationToken cancellationToken)
     {
@@ -82,6 +89,10 @@ public sealed class AsyncFramePipe
                     {
                         var item = await readTask.ConfigureAwait(false);
                         list.Add(item);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        return list;
                     }
                     catch (ChannelClosedException cce)
                     {
@@ -185,7 +196,12 @@ public sealed class AsyncFramePipe
                 _ = t.TrySetResult(true);
             }
     }
-
+    public void Clear()
+    {
+        while (_queue.TryDequeue(out _))
+        {
+        }
+    }
     public async Task<IReadOnlyList<CanReceiveData>> ReceiveBatchAsync(
         int count, int timeoutMs, CancellationToken cancellationToken)
     {
