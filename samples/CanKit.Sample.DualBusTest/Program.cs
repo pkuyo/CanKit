@@ -318,13 +318,15 @@ internal static class Program
                     for (var j = 0; j < send && queue.Count > 0; j++)
                         queue.Dequeue();
                     if (queue.Count == 0)
+                    {
+                        if (_gapMs > 0 && i != _count - 1)
+                            await Task.Delay(_gapMs);
                         break;
+                    }
 
                     await Task.Delay(1);
                 }
             }
-            if (_gapMs > 0 && i != _count - 1)
-                await tx.TransmitAsync(queue, 20);
         }
     }
 

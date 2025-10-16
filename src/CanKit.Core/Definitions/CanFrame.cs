@@ -156,6 +156,7 @@ namespace CanKit.Core.Definitions
             bool isRemoteFrame = false)
         {
             if (id < 0) throw new ArgumentOutOfRangeException(nameof(id));
+            if (dataInit.Length > 8) throw new ArgumentOutOfRangeException(nameof(dataInit));
             ID = id;
             IsRemoteFrame = isRemoteFrame;
             IsExtendedFrame = isExtendedFrame;

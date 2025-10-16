@@ -204,7 +204,7 @@ public partial class CanRegistry
 #endif
 
         }
-        catch { /* 忽略非托管/不兼容/重复加载等 */ }
+        catch {/* ignore any preload reflection errors */ }
     }
 
     private void RegisterEndPoint(Assembly asm)

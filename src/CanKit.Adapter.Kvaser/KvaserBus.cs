@@ -672,9 +672,10 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
     private void UpdateDynamicFeatures()
     {
         var status = Canlib.canGetChannelData(_handle, Canlib.canCHANNELDATA_CHANNEL_CAP, out var capsObj);
-        if (status != Canlib.canStatus.canOK)
+        if (status != Canlib.canStatus.canOK || capsObj is null)
         {
             CanKitLogger.LogError($"Canlib.canGetChannelData failed. Status:{status}, Channel:{_handle}");
+            return;
         }
         uint caps = (uint)capsObj;
         var features = CanFeature.CanClassic | CanFeature.Filters | CanFeature.Echo | CanFeature.ErrorFrame;
