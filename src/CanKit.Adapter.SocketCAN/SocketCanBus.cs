@@ -723,7 +723,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
     {
         if (_epollTask is { IsCompleted: false } || _fd.IsInvalid)
             return;
-
+        DrainReceive();
         _epfd = Libc.epoll_create1(Libc.EPOLL_CLOEXEC);
         if (_epfd.IsInvalid)
         {

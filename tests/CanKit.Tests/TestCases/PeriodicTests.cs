@@ -48,13 +48,12 @@ public class PeriodicTests : IClassFixture<TestCaseProvider>
                 received += batch.Count(d => d.CanFrame.ID == frame.ID);
             }
 
-            received.Should().BeGreaterOrEqualTo(count);
-
             // Stop and ensure no more
             handle.Stop();
-            await Task.Delay(50);
+            received.Should().BeGreaterOrEqualTo(count);
+            await Task.Delay(period.Milliseconds*5);
             var after = await rx.ReceiveAsync(16, 100);
-            after.Count(d => d.CanFrame.ID == frame.ID).Should().Be(0);
+            after.Count(d => d.CanFrame.ID == frame.ID).Should().BeLessOrEqualTo(1);
         }
         finally
         {

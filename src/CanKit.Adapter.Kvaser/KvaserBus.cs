@@ -33,6 +33,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
     private int _asyncConsumerCount;
     private CancellationTokenSource? _stopDelayCts;
     private int _asyncBufferingLinger;
+    private readonly Func<ICanFrame, bool> _pred;
 
     internal KvaserBus(IBusOptions options, ITransceiver transceiver)
     {
@@ -73,6 +74,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
 
         // Apply initial options
         ApplyConfig(options);
+        _pred = FilterRule.Build(Options.Filter.SoftwareFilterRules);
         CanKitLogger.LogDebug("Kvaser: Initial options applied.");
     }
 
@@ -353,6 +355,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
     {
         int flags = 0;
         if (opt.AcceptVirtual) flags |= Canlib.canOPEN_ACCEPT_VIRTUAL;
+        if (opt.ProtocolMode == CanProtocolMode.CanFd) flags |= Canlib.canOPEN_CAN_FD;
         // Try name lookup if provided
         if (!string.IsNullOrWhiteSpace(opt.ChannelName))
         {
@@ -470,6 +473,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
     private void StartReceiveLoopIfNeeded()
     {
         if (_notifyActive) return;
+        DrainReceive();
         _kvCallback ??= KvNotifyCallback;
         var mask = (Canlib.canNOTIFY_RX | (Options.AllowErrorInfo ? Canlib.canNOTIFY_ERROR : 0));
         KvaserUtils.ThrowIfError(Canlib.kvSetNotifyCallback(_handle, _kvCallback, IntPtr.Zero, (uint)mask),
@@ -590,11 +594,10 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
                     continue;
                 }
 
-                var useSw = (Options.EnabledSoftwareFallback & CanFeature.Filters) != 0 && Options.Filter.SoftwareFilterRules.Count > 0;
+                var useSw = (Options.EnabledSoftwareFallback & CanFeature.Filters) != 0 && _pred is not null;
                 if (useSw)
                 {
-                    var pred = FilterRule.Build(Options.Filter.SoftwareFilterRules);
-                    if (!pred(rec.CanFrame))
+                    if (!_pred!(rec.CanFrame))
                     {
                         continue;
                     }

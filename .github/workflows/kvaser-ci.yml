@@ -1,0 +1,79 @@
+name: CI-adapter-kvaser
+
+on:
+  push:
+    paths:
+      - 'src/CanKit.Core/**'
+      - 'src/CanKit.Adapter.Kvaser/**'
+      - 'tests/CanKit.Tests/**'
+  pull_request:
+    paths:
+      - 'src/CanKit.Core/**'
+      - 'src/CanKit.Adapter.Kvaser/**'
+      - 'tests/CanKit.Tests/**'
+jobs:
+  windows:
+    name: Kvaser (windows)
+    runs-on: windows-latest
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_CLI_TELEMETRY_OPTOUT: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Configure endpoints
+        shell: pwsh
+        run: |
+          "CANKIT_TEST_ADAPTERS=CanKit.Adapter.Kvaser" | Out-File -FilePath $Env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Restore
+        run: dotnet restore CanKit.sln
+
+      - name: Test (net8.0)
+        run: dotnet test CanKit.sln -c Fake -f net8.0 --logger "trx;LogFileName=TestResults.trx"
+
+      - name: Upload Test Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-windows
+          path: '**/TestResults.trx'
+  linux:
+    name: Kvaser (Ubuntu)
+    runs-on: ubuntu-latest
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_CLI_TELEMETRY_OPTOUT: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      
+      - name: Configure endpoints
+        run: |
+          set -e
+          echo "CANKIT_TEST_ADAPTERS=CanKit.Adapter.Kvaser" >> "$GITHUB_ENV"
+
+      - name: Restore
+        run: dotnet restore CanKit.sln
+
+      - name: Test (net8.0)
+        run: dotnet test CanKit.sln -c Fake -f net8.0 --logger "trx;LogFileName=TestResults.trx"
+
+      - name: Upload Test Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-ubuntu
+          path: '**/TestResults.trx'
+

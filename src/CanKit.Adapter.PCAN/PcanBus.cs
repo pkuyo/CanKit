@@ -406,6 +406,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
     {
         if (_pollTask != null) return;
         _pollCts = new CancellationTokenSource();
+        DrainReceive();
         var token = _pollCts.Token;
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {

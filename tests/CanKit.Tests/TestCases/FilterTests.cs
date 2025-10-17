@@ -20,9 +20,6 @@ public class FilterTests : IClassFixture<TestCaseProvider>
     {
         _ = hasFd;
         _ = endpoint;
-        var rangeFilter = new CanFilter();
-        rangeFilter.filterRules.Add(new FilterRule.Range(0x300, 0x30F, CanFilterIDType.Standard));
-
         using var rx = Core.CanBus.Open(epA, cfg =>
         {
             cfg.SetProtocolMode(CanProtocolMode.Can20).Baud(500_000);

@@ -87,7 +87,7 @@ public sealed class KvaserFdTransceiver : ITransceiver
                 var isRtr = (flags & Canlib.canMSG_RTR) != 0;
 
                 ICanFrame frame = isFd
-                    ? new CanFdFrame(id, new ArraySegment<byte>(data, 0, CanFdFrame.DlcToLen((byte)dlc)), brs, esi)
+                    ? new CanFdFrame(id, new ArraySegment<byte>(data, 0, (byte)dlc), brs, esi)
                     { IsExtendedFrame = isExt, IsErrorFrame = isErr }
                     : new CanClassicFrame(id, new ArraySegment<byte>(data, 0, dlc))
                     { IsExtendedFrame = isExt, IsErrorFrame = isErr, IsRemoteFrame = isRtr };
