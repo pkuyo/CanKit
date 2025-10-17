@@ -1,15 +1,13 @@
 using System;
-using System.Buffers;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using CanKit.Core;
 using CanKit.Core.Abstractions;
 using CanKit.Core.Definitions;
 
-namespace CanKit.Tests;
+namespace CanKit.Tests.Utils;
 
 internal static class TestHelpers
 {

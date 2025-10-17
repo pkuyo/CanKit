@@ -3,9 +3,9 @@ using CanKit.Core.Definitions;
 using FluentAssertions;
 using Xunit;
 
-namespace CanKit.Tests;
+namespace CanKit.Tests.TestCases;
 
-public class InvalidInputTests : IClassFixture<TestAssemblyLoader>
+public class InvalidInputTests : IClassFixture<TestCaseProvider>
 {
     [Fact]
     public void Classic_Data_Length_Over_8_Should_Throw()

@@ -7,7 +7,7 @@
     <Nullable>enable</Nullable>
     <TargetFrameworks>net8.0;net48</TargetFrameworks>
     <Configurations>Debug;Release;Fake</Configurations>
-    <Platforms>AnyCPU</Platforms>
+    <Platforms>AnyCPU;X86;X64</Platforms>
   </PropertyGroup>
 
   <ItemGroup>

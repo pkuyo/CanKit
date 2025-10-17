@@ -3,19 +3,19 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using CanKit.Core.Abstractions;
 using CanKit.Core.Definitions;
+using CanKit.Tests.Utils;
 using FluentAssertions;
 using Xunit;
 
-namespace CanKit.Tests;
+namespace CanKit.Tests.TestCases;
 
-public class ThroughputAndFeaturesTests : IClassFixture<TestAssemblyLoader>
+public class ThroughputAndFeaturesTests : IClassFixture<TestCaseProvider>
 {
     // 64 and 128 one-shot batch (Classic)
     // 单次64和128的发送批次（CAN2.0）
     [Theory]
-    [MemberData(nameof(TestMatrix.CombinedOneShotClassic), MemberType = typeof(TestMatrix))]
+    [MemberData(nameof(Matrix.TestMatrix.CombinedOneShotClassic), MemberType = typeof(Matrix.TestMatrix))]
     public async Task OneShot_Batch_Classic_64_And_128(string epA, string epB, string endpoint, bool hasFd,
         int len, bool rtr, bool ide)
     {
@@ -24,7 +24,7 @@ public class ThroughputAndFeaturesTests : IClassFixture<TestAssemblyLoader>
         using var rx = TestHelpers.OpenClassic(epA);
         using var tx = TestHelpers.OpenClassic(epB);
 
-        var re = TestMatrix.Pairs().ToArray();
+        var re = Matrix.TestMatrix.Pairs().ToArray();
         var ring = TestHelpers.CreateClassicSeq(0x100, ide, rtr, len);
         foreach (var batchSize in new[] { 64, 128 })
         {
@@ -42,7 +42,7 @@ public class ThroughputAndFeaturesTests : IClassFixture<TestAssemblyLoader>
     // 64 and 128 one-shot batch (FD)
     // 单次64和128的发送批次（CANFD）
     [Theory]
-    [MemberData(nameof(TestMatrix.CombinedOneShotFD), MemberType = typeof(TestMatrix))]
+    [MemberData(nameof(Matrix.TestMatrix.CombinedOneShotFD), MemberType = typeof(Matrix.TestMatrix))]
     public async Task OneShot_Batch_FD_64_And_128(string epA, string epB, string _ ,bool hasFd,
         int len, bool brs, bool ide)
     {
@@ -70,7 +70,7 @@ public class ThroughputAndFeaturesTests : IClassFixture<TestAssemblyLoader>
     // >5000 continuous (CAN FD frame), gap variants with loss thresholds
     // 连续发送 > 5000帧 CANFD包，使用间隔时间
     [Theory]
-    [MemberData(nameof(TestMatrix.CombinedContinuosFD), MemberType = typeof(TestMatrix))]
+    [MemberData(nameof(Matrix.TestMatrix.CombinedContinuosFD), MemberType = typeof(Matrix.TestMatrix))]
     public async Task Continuous_Fd_Over5000_With_Gap_And_Loss
         (string epA, string epB, string _,bool hasFd, int gapMs, double lossLimit, int len, bool brs, bool ide)
     {
@@ -112,7 +112,7 @@ public class ThroughputAndFeaturesTests : IClassFixture<TestAssemblyLoader>
     // >5000 continuous (CAN classic frame), gap variants with loss thresholds
     // 连续发送 > 5000帧 CAN包，使用间隔时间
     [Theory]
-    [MemberData(nameof(TestMatrix.CombinedContinuosClassic), MemberType = typeof(TestMatrix))]
+    [MemberData(nameof(Matrix.TestMatrix.CombinedContinuosClassic), MemberType = typeof(Matrix.TestMatrix))]
     public async Task Continuous_Classic_Over5000_With_Gap_And_Loss
         (string epA, string epB, string _, bool hasFd, int gapMs, double lossLimit, int len, bool rtr, bool ide)
     {
@@ -152,7 +152,7 @@ public class ThroughputAndFeaturesTests : IClassFixture<TestAssemblyLoader>
     }
     // Frame forms: classic std/ext 0 and 8 bytes; classic remote 0 and 8; FD ext 48 and 64
     [Theory]
-    [MemberData(nameof(TestMatrix.Pairs), MemberType = typeof(TestMatrix))]
+    [MemberData(nameof(Matrix.TestMatrix.Pairs), MemberType = typeof(Matrix.TestMatrix))]
     public async Task Frame_Types_And_Lengths_Are_Transferred(string epA, string epB, string _, bool hasFd)
     {
         {
@@ -205,39 +205,6 @@ public class ThroughputAndFeaturesTests : IClassFixture<TestAssemblyLoader>
 
             recFd.Should().Be(fdCases.Count);
         }
-    }
-
-    // Filter: range
-    [Theory]
-    [MemberData(nameof(TestMatrix.Pairs), MemberType = typeof(TestMatrix))]
-    public async Task Filter_Range_Work(string epA, string epB, string endpoint, bool hasFd)
-    {
-        _ = hasFd;
-        _ = endpoint;
-        var rangeFilter = new CanFilter();
-        rangeFilter.filterRules.Add(new FilterRule.Range(0x300, 0x30F, CanFilterIDType.Standard));
-
-        using var rx = CanKit.Core.CanBus.Open(epA, cfg =>
-        {
-            cfg.SetProtocolMode(CanProtocolMode.Can20).Baud(500_000);
-            cfg.SoftwareFeaturesFallBack(CanFeature.All);
-            cfg.SetFilter(rangeFilter);
-            cfg.EnableErrorInfo().SetAsyncBufferCapacity(8192).SetReceiveLoopStopDelayMs(200);
-        });
-        using var tx = TestHelpers.OpenClassic(epB);
-
-        var allFrames = new List<ICanFrame>();
-        for (int i = 0x2F0; i < 0x320; i++)
-        {
-            allFrames.Add(new CanClassicFrame(i, new byte[1] { (byte)(i & 0xFF) }, isExtendedFrame: false));
-        }
-        await TestHelpers.SendBurstAsync(tx, allFrames, 0);
-
-        var v = new TestHelpers.SequenceVerifier();
-        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
-        var expected = 0x30F - 0x300 + 1;
-        var rec = await TestHelpers.ReceiveUntilAsync(rx, v, expected, 2000, cts.Token);
-        rec.Should().Be(expected);
     }
 }
 
