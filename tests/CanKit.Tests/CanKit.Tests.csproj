@@ -6,6 +6,8 @@
     <LangVersion>12</LangVersion>
     <Nullable>enable</Nullable>
     <TargetFrameworks>net8.0;net48</TargetFrameworks>
+    <Configurations>Debug;Release;Fake</Configurations>
+    <Platforms>AnyCPU</Platforms>
   </PropertyGroup>
 
   <ItemGroup>

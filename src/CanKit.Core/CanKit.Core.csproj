@@ -3,7 +3,7 @@
     <OutputType>Library</OutputType>
 	<Platforms>AnyCPU</Platforms>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <Configurations>Debug;Release</Configurations>
+    <Configurations>Debug;Release;Fake</Configurations>
     <Version>0.2.1</Version>
     <Description>Core abstractions and utilities for CanKit: unified CAN bus API, endpoints, frames, filters, timing, and helpers.</Description>
     <PackageTags>CAN;can bus;CANFD;Core;CanKit</PackageTags>

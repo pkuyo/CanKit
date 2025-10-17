@@ -4,6 +4,7 @@
     <OutputType>Exe</OutputType>
     <RootNamespace>CanKit.Sample.QuickStartTxRx</RootNamespace>
     <Platforms>AnyCPU;x64;x86</Platforms>
+    <Configurations>Debug;Release;Fake</Configurations>
   </PropertyGroup>
 
   <ItemGroup>

@@ -5,6 +5,7 @@
     <RootNamespace>CanKit.Sample.DualBusTest</RootNamespace>
     <Platforms>AnyCPU;x64;x86</Platforms>
     <TargetFrameworks>net8.0;net8.0-windows</TargetFrameworks>
+    <Configurations>Debug;Release;Fake</Configurations>
   </PropertyGroup>
 
   <ItemGroup>

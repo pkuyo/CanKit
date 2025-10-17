@@ -1,3 +1,4 @@
+﻿#if !FAKE
 using System.Runtime.InteropServices;
 // @formatter:off
 #nullable disable
@@ -206,3 +207,4 @@ namespace CanKit.Adapter.SocketCAN.Native
         public static unsafe extern int can_get_link_stats(string name, out rtnl_link_stats64 rls);
     }
 }
+#endif

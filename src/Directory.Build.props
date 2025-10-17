@@ -25,4 +25,8 @@
 
     <PackageOutputPath>$(MSBuildThisFileDirectory).artifacts\nuget</PackageOutputPath>
   </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Fake'">
+    <DefineConstants>$(DefineConstants);FAKE</DefineConstants>
+  </PropertyGroup>
 </Project>

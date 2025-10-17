@@ -10,6 +10,8 @@
         <Authors>Pkuyo</Authors>
         <RepositoryUrl>https://github.com/pkuyo/CanKit</RepositoryUrl>
         <PackageReadmeFile>README.md</PackageReadmeFile>
+        <Configurations>Debug;Release;Fake</Configurations>
+        <Platforms>AnyCPU</Platforms>
     </PropertyGroup>
 
     <ItemGroup Condition="'$(UseLocalProjectReferences)'=='true'">

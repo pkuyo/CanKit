@@ -1,3 +1,4 @@
+#if !FAKE
 using System.Runtime.InteropServices;
 using System.Text;
 using CanKit.Adapter.SocketCAN.Diagnostics;
@@ -407,3 +408,4 @@ internal static class Libc
         throw new SocketCanNativeException(operation, message, (uint)errno);
     }
 }
+#endif
