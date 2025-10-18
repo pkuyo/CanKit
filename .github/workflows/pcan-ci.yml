@@ -40,7 +40,7 @@ jobs:
         run: dotnet restore CanKit.sln
 
       - name: Test (${{ matrix.tfm }})
-        run: dotnet test CanKit.sln -c Release -f ${{ matrix.tfm }} --logger "trx;LogFileName=TestResults-${{ matrix.tfm }}.trx"
+        run: dotnet test CanKit.sln -c Fake -f ${{ matrix.tfm }} --logger "trx;LogFileName=TestResults-${{ matrix.tfm }}.trx"
 
       - name: Upload Test Results (${{ matrix.tfm }})
         if: always()
@@ -48,7 +48,7 @@ jobs:
         with:
           name: test-results-windows-${{ matrix.tfm }}
           path: '**/TestResults-${{ matrix.tfm }}.trx'
-          
+
   linux:
     name: PCAN (Ubuntu)
     runs-on: ubuntu-latest
