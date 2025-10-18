@@ -42,10 +42,12 @@ namespace CanKit.Adapter.ZLG.Utils
 
         internal static unsafe CanClassicFrame FromReceiveData(this can_frame frame)
         {
-            var id = ((frame.can_id & ZLGCAN.CAN_EFF_MASK) == 1)
+            var ext = (frame.can_id & ZLGCAN.CAN_EFF_FLAG) != 0;
+            var rtr = (frame.can_id & ZLGCAN.CAN_RTR_FLAG) != 0;
+            var id = ext
                 ? (frame.can_id & ZLGCAN.CAN_EFF_MASK)
                 : (frame.can_id & ZLGCAN.CAN_SFF_MASK);
-            var result = new CanClassicFrame((int)id, new byte[frame.can_dlc]);
+            var result = new CanClassicFrame((int)id, new byte[frame.can_dlc], ext, rtr);
             fixed (byte* ptr = result.Data.Span)
             {
                 Unsafe.CopyBlockUnaligned(ptr, frame.data, (uint)result.Data.Length);
@@ -55,12 +57,14 @@ namespace CanKit.Adapter.ZLG.Utils
 
         internal static unsafe CanFdFrame FromReceiveData(this canfd_frame frame)
         {
-            var id = ((frame.can_id & ZLGCAN.CAN_EFF_MASK) == 1)
+            var ext = (frame.can_id & ZLGCAN.CAN_EFF_FLAG) != 0;
+            var id = ext
                 ? (frame.can_id & ZLGCAN.CAN_EFF_MASK)
                 : (frame.can_id & ZLGCAN.CAN_SFF_MASK);
             var result = new CanFdFrame((int)id, new byte[frame.len],
                 (frame.flags & CANFD_BRS) != 0,
-                (frame.flags & CANFD_ESI) != 0);
+                (frame.flags & CANFD_ESI) != 0,
+                ext);
             fixed (byte* ptr = result.Data.Span)
             {
                 Unsafe.CopyBlockUnaligned(ptr, frame.data, (uint)result.Data.Length);
@@ -152,10 +156,12 @@ namespace CanKit.Adapter.ZLG.Utils
             if (frame is CanClassicFrame classicFrame)
             {
                 classicFrame.ToZCANData(canBus, pObj);
+                return;
             }
             else if (frame is CanFdFrame canFdFrame)
             {
                 canFdFrame.ToZCANData(canBus, pObj);
+                return;
             }
 
             throw new NotSupportedException("Unsupported frame type for ZLGCAN");
@@ -163,7 +169,7 @@ namespace CanKit.Adapter.ZLG.Utils
 
         private static unsafe void ToZCANData(this CanClassicFrame frame, ZlgCanBus canBus, ZCANDataObj* pObj)
         {
-            var data = pObj->data.fdData;
+            ref var data = ref pObj->data.fdData;
             fixed (byte* ptr = frame.Data.Span)
             {
                 data.frame.can_id = frame.ToCanID();
@@ -173,13 +179,16 @@ namespace CanKit.Adapter.ZLG.Utils
                 data.frame.can_id = frame.ToCanID();
                 data.frame.flags |= (byte)(canBus.Options.WorkMode == ChannelWorkMode.Echo ? TX_ECHO_FLAG : 0);
                 data.txEchoRequest = canBus.Options.WorkMode == ChannelWorkMode.Echo;
-                Unsafe.CopyBlockUnaligned(data.frame.data, ptr, frame.Dlc);
+                fixed (byte* dst = data.frame.data)
+                {
+                    Unsafe.CopyBlockUnaligned(dst, ptr, frame.Dlc);
+                }
             }
         }
 
         private static unsafe void ToZCANData(this CanFdFrame frame, ZlgCanBus canBus, ZCANDataObj* pObj)
         {
-            var data = pObj->data.fdData;
+            ref var data = ref pObj->data.fdData;
             fixed (byte* ptr = frame.Data.Span)
             {
                 data.frame.can_id = frame.ToCanID();
@@ -190,7 +199,10 @@ namespace CanKit.Adapter.ZLG.Utils
                 data.frame.flags |= (byte)(canBus.Options.WorkMode == ChannelWorkMode.Echo ? TX_ECHO_FLAG : 0);
                 data.frame.flags |= (byte)(frame.BitRateSwitch ? CANFD_BRS : 0);
                 data.frame.flags |= (byte)(frame.ErrorStateIndicator ? CANFD_ESI : 0);
-                Unsafe.CopyBlockUnaligned(data.frame.data, ptr, (uint)CanFdFrame.DlcToLen(frame.Dlc));
+                fixed (byte* dst = data.frame.data)
+                {
+                    Unsafe.CopyBlockUnaligned(dst, ptr, (uint)CanFdFrame.DlcToLen(frame.Dlc));
+                }
             }
         }
 
@@ -230,10 +242,12 @@ namespace CanKit.Adapter.ZLG.Utils
         private static unsafe CanReceiveData FromZCANDataClassic(in ZCANDataObj pObj)
         {
             var frame = pObj.data.fdData.frame;
-            var id = ((frame.can_id & ZLGCAN.CAN_EFF_MASK) == 1)
+            var rtr = (frame.can_id & ZLGCAN.CAN_RTR_FLAG) != 0;
+            var ext = (frame.can_id & ZLGCAN.CAN_EFF_FLAG) != 0;
+            var id = ext
                 ? (frame.can_id & ZLGCAN.CAN_EFF_MASK)
                 : (frame.can_id & ZLGCAN.CAN_SFF_MASK);
-            var result = new CanClassicFrame((int)id, new byte[frame.len]);
+            var result = new CanClassicFrame((int)id, new byte[frame.len], ext, rtr);
             fixed (byte* ptr = result.Data.Span)
             {
                 Unsafe.CopyBlockUnaligned(ptr, frame.data, (uint)result.Data.Length);
@@ -244,6 +258,6 @@ namespace CanKit.Adapter.ZLG.Utils
         private static unsafe CanReceiveData FromZCANDataFd(in ZCANDataObj pObj)
             => new CanReceiveData(pObj.data.fdData.frame.FromReceiveData());
 
-        public static IntPtr SocketCANHandle(this BusNativeHandle handle) => handle.HandleValue;
+        public static IntPtr ZLGHandle(this BusNativeHandle handle) => handle.HandleValue;
     }
 }

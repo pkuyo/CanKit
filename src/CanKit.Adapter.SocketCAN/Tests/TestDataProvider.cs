@@ -10,7 +10,8 @@ public class TestDataProvider : ITestDataProvider
         [("socketcan://vcan0", "socketcan://vcan1", true)];
 
     public IEnumerable<(ITestDataProvider.FilterMask[] filters, ITestDataProvider.FilterFrame[] frames, int exceptResult
-        )> MaskFilterCases { get; } =
+        )> MaskFilterCases
+    { get; } =
     [
         // Case 1: 标准帧 — 精确匹配（11 位 ID）
         // accMask = 0x7FF 覆盖全部 11 位，只有 0x123 且为标准帧能通过
@@ -143,6 +144,7 @@ public class TestDataProvider : ITestDataProvider
     ];
 
     public IEnumerable<(ICanFrame frame, TimeSpan period, float deviation)> PeriodicPeriodCases { get; } = [];
+    public (int aBit, int dBit)? BaudRate { get; } = null;
 
     public Action<IBusInitOptionsConfigurator>? TestBusInitFunc { get; } = (cfg) =>
     {

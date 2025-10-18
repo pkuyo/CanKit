@@ -22,15 +22,15 @@ public class FilterTests : IClassFixture<TestCaseProvider>
         _ = endpoint;
         using var rx = Core.CanBus.Open(epA, cfg =>
         {
-            TestCaseProvider.Provider.TestBusInitFunc?.Invoke(cfg);
-            cfg.SetProtocolMode(CanProtocolMode.Can20).Baud(500_000);
+            cfg.SetProtocolMode(CanProtocolMode.Can20).Baud(TestCaseProvider.AbitRate);
             cfg.SoftwareFeaturesFallBack(CanFeature.All);
             foreach(var r in range)
             {
                 cfg.RangeFilter(r.Min, r.Max, (CanFilterIDType)r.Ide);
             }
 
-            cfg.EnableErrorInfo().SetAsyncBufferCapacity(8192).SetReceiveLoopStopDelayMs(200);
+            cfg.EnableErrorInfo().SetAsyncBufferCapacity(8192);
+            TestCaseProvider.Provider.TestBusInitFunc?.Invoke(cfg);
         });
         using var tx = TestHelpers.OpenClassic(epB);
 
@@ -55,13 +55,11 @@ public class FilterTests : IClassFixture<TestCaseProvider>
     {
         _ = hasFd;
         _ = endpoint;
-        var rangeFilter = new CanFilter();
-        rangeFilter.filterRules.Add(new FilterRule.Range(0x300, 0x30F, CanFilterIDType.Standard));
 
         using var rx = Core.CanBus.Open(epA, cfg =>
         {
             TestCaseProvider.Provider.TestBusInitFunc?.Invoke(cfg);
-            cfg.SetProtocolMode(CanProtocolMode.Can20).Baud(500_000);
+            cfg.SetProtocolMode(CanProtocolMode.Can20).Baud(TestCaseProvider.AbitRate);
             cfg.SoftwareFeaturesFallBack(CanFeature.All);
             foreach(var r in masks)
             {

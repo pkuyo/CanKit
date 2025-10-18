@@ -11,26 +11,25 @@ namespace CanKit.Tests.Utils;
 
 internal static class TestHelpers
 {
-    public static ICanBus OpenClassic(string endpoint, bool enableFallbackAll = true, int bitrate = 500_000,
+    public static ICanBus OpenClassic(string endpoint, bool enableFallbackAll = true,
         int asyncBuf = 8192)
         => CanBus.Open(endpoint, cfg =>
         {
-            cfg.SetProtocolMode(CanProtocolMode.Can20).Baud(bitrate);
-            TestCaseProvider.Provider.TestBusInitFunc?.Invoke(cfg);
+            cfg.SetProtocolMode(CanProtocolMode.Can20).Baud(TestCaseProvider.AbitRate);
             if (enableFallbackAll) cfg.SoftwareFeaturesFallBack(CanFeature.All);
             cfg.EnableErrorInfo().SetAsyncBufferCapacity(asyncBuf).SetReceiveLoopStopDelayMs(200);
+            TestCaseProvider.Provider.TestBusInitFunc?.Invoke(cfg);
         });
 
-    public static ICanBus OpenFd(string endpoint, bool enableFallbackAll = true,
-        int abit = 1_000_000, int dbit = 8_000_000, int asyncBuf = 8192)
+    public static ICanBus OpenFd(string endpoint, bool enableFallbackAll = true, int asyncBuf = 8192)
     {
 
         return CanBus.Open(endpoint, cfg =>
         {
-            cfg.SetProtocolMode(CanProtocolMode.CanFd).Fd(abit, dbit);
-            TestCaseProvider.Provider.TestBusInitFunc?.Invoke(cfg);
+            cfg.SetProtocolMode(CanProtocolMode.CanFd).Fd(TestCaseProvider.AbitRate, TestCaseProvider.DbitRate);
             if (enableFallbackAll) cfg.SoftwareFeaturesFallBack(CanFeature.All);
             cfg.EnableErrorInfo().SetAsyncBufferCapacity(asyncBuf).SetReceiveLoopStopDelayMs(200);
+            TestCaseProvider.Provider.TestBusInitFunc?.Invoke(cfg);
         });
 
     }

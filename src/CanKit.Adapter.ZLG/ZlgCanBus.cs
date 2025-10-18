@@ -137,30 +137,7 @@ namespace CanKit.Adapter.ZLG
         public int Transmit(IEnumerable<ICanFrame> frames, int timeOut = 0)
         {
             ThrowIfDisposed();
-            try
-            {
-                var list = frames.ToArray();
-                bool isFirst = true;
-                int result = 0;
-                var startTime = Environment.TickCount;
-                do
-                {
-                    if (isFirst)
-                        isFirst = false;
-                    else
-                        Thread.Sleep(Math.Min(Environment.TickCount - startTime, Options.PollingInterval));
-
-                    var count = _transceiver.Transmit(this, new ArraySegment<ICanFrame>(list, result, list.Length - result));
-                    result += count;
-                } while (result < list.Length && Environment.TickCount - startTime <= timeOut);
-
-                return result;
-            }
-            catch (Exception ex)
-            {
-                HandleBackgroundException(ex);
-                throw;
-            }
+            return _transceiver.Transmit(this, frames);
         }
 
         public IPeriodicTx TransmitPeriodic(ICanFrame frame, PeriodicTxOptions options)
@@ -199,12 +176,10 @@ namespace CanKit.Adapter.ZLG
         public IEnumerable<CanReceiveData> Receive(int count = 1, int timeOut = 0)
         {
             ThrowIfDisposed();
-            if (Volatile.Read(ref _subscriberCount) > 0)
-            {
-                // To prevent cross-handler contention when subscribing to FrameReceived or ErrorFrameReceived, handle all messages asynchronously.
-                return ReceiveAsync(count, timeOut).GetAwaiter().GetResult();
-            }
-            return _transceiver.Receive(this, count, timeOut);
+
+            // To prevent cross-handler contention when subscribing to FrameReceived or ErrorFrameReceived, handle all messages asynchronously.
+            return ReceiveAsync(count, timeOut).GetAwaiter().GetResult();
+
         }
 
         public bool ReadErrorInfo(out ICanErrorInfo? errorInfo)
@@ -481,7 +456,11 @@ namespace CanKit.Adapter.ZLG
             var zlgOption = (ZlgBusOptions)options;
             if (zlgOption.Filter.filterRules.Count > 0)
             {
-                if (zlgOption.Filter.filterRules[0] is FilterRule.Mask mask)
+                if (zlgOption.Filter.filterRules[0] is FilterRule.Mask mask
+#if !FAKE
+                    && zlgOption.ZlgFeature.HasFlag(ZlgFeature.MaskFilter)
+#endif
+                    )
                 {
                     ZlgErr.ThrowIfError(
                         ZLGCAN.ZCAN_SetValue(
@@ -506,12 +485,11 @@ namespace CanKit.Adapter.ZLG
                 {
                     foreach (var rule in zlgOption.Filter.filterRules)
                     {
-                        if (rule is not FilterRule.Range range)
+                        if (rule is not FilterRule.Range range || !zlgOption.ZlgFeature.HasFlag(ZlgFeature.RangeFilter))
                         {
                             zlgOption.Filter.softwareFilter.Add(rule);
                             continue;
                         }
-
                         ZlgErr.ThrowIfError(
                             ZLGCAN.ZCAN_SetValue(
                                 _devicePtr,
@@ -530,12 +508,15 @@ namespace CanKit.Adapter.ZLG
                             "ZCAN_SetValue(filter_end)");
                     }
 
-                    ZlgErr.ThrowIfError(
-                        ZLGCAN.ZCAN_SetValue(
-                            _devicePtr,
-                            Options.ChannelIndex + "/filter_ack",
-                            "1"),
-                        "ZCAN_SetValue(filter_ack)");
+                    if (zlgOption.ZlgFeature.HasFlag(ZlgFeature.RangeFilter))
+                    {
+                        ZlgErr.ThrowIfError(
+                            ZLGCAN.ZCAN_SetValue(
+                                _devicePtr,
+                                Options.ChannelIndex + "/filter_ack",
+                                "1"),
+                            "ZCAN_SetValue(filter_ack)");
+                    }
                 }
                 _softwareFilterPredicate = FilterRule.Build(Options.Filter.SoftwareFilterRules);
             }
@@ -574,6 +555,7 @@ namespace CanKit.Adapter.ZLG
         {
             try
             {
+                Console.WriteLine("Stopping receive loop");
                 _asyncRx.Clear();
                 _pollCts?.Cancel();
                 _pollTask?.Wait(500);
@@ -640,7 +622,6 @@ namespace CanKit.Adapter.ZLG
                                 {
                                     continue;
                                 }
-
                                 var evSnap = Volatile.Read(ref _frameReceived);
                                 evSnap?.Invoke(this, frame);
 
@@ -689,7 +670,8 @@ namespace CanKit.Adapter.ZLG
             ThrowIfDisposed();
             Interlocked.Increment(ref _subscriberCount);
             Interlocked.Increment(ref _asyncConsumerCount);
-            CheckSubscribers(true);
+            Volatile.Write(ref _asyncBufferingLinger, 0);
+            StartReceiveLoopIfNeeded();
             if (count < 0) throw new ArgumentOutOfRangeException(nameof(count));
             try
             {
@@ -697,8 +679,13 @@ namespace CanKit.Adapter.ZLG
             }
             finally
             {
-                var decrement = Interlocked.Decrement(ref _asyncConsumerCount);
-                CheckSubscribers(false, true, decrement == 0);
+                var remAsync = Interlocked.Decrement(ref _asyncConsumerCount);
+                var rem = Interlocked.Decrement(ref _subscriberCount);
+                if (rem == 0 && remAsync == 0)
+                {
+                    Volatile.Write(ref _asyncBufferingLinger, 1);
+                    RequestStopReceiveLoop();
+                }
             }
         }
 
@@ -706,8 +693,9 @@ namespace CanKit.Adapter.ZLG
         public async IAsyncEnumerable<CanReceiveData> GetFramesAsync([System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
             ThrowIfDisposed();
+            Interlocked.Increment(ref _subscriberCount);
             Interlocked.Increment(ref _asyncConsumerCount);
-            CheckSubscribers(true, true);
+            Volatile.Write(ref _asyncBufferingLinger, 0);
             try
             {
                 await foreach (var item in _asyncRx.ReadAllAsync(cancellationToken))
@@ -718,59 +706,15 @@ namespace CanKit.Adapter.ZLG
             finally
             {
                 var remAsync = Interlocked.Decrement(ref _asyncConsumerCount);
-                CheckSubscribers(false, true, remAsync == 0);
+                var rem = Interlocked.Decrement(ref _subscriberCount);
+                if (rem == 0 && remAsync == 0)
+                {
+                    Volatile.Write(ref _asyncBufferingLinger, 1);
+                    RequestStopReceiveLoop();
+                }
             }
         }
 #endif
-
-        private void CheckSubscribers(bool isIncrease, bool step = false, bool asLinger = false)
-        {
-            if (step)
-            {
-                if (isIncrease)
-                {
-                    Volatile.Write(ref _asyncBufferingLinger, 0);
-                    if (Interlocked.Increment(ref _subscriberCount) == 1)
-                    {
-                        StartReceiveLoopIfNeeded();
-                    }
-                }
-                else
-                {
-                    var now = Interlocked.Decrement(ref _subscriberCount);
-                    if (now < 0)
-                    {
-                        Interlocked.Exchange(ref _subscriberCount, 0);
-                        now = 0;
-                    }
-
-                    if (now == 0 && asLinger)
-                    {
-                        Volatile.Write(ref _asyncBufferingLinger, 1);
-                        RequestStopReceiveLoop();
-                    }
-                }
-            }
-            else
-            {
-                if (isIncrease)
-                {
-                    Volatile.Write(ref _asyncBufferingLinger, 0);
-                    if (Volatile.Read(ref _subscriberCount) == 1)
-                    {
-                        StartReceiveLoopIfNeeded();
-                    }
-                }
-                else
-                {
-                    if (Volatile.Read(ref _subscriberCount) == 0 && Volatile.Read(ref _asyncConsumerCount) == 0)
-                    {
-                        RequestStopReceiveLoop();
-                    }
-                }
-            }
-        }
-
 
         internal int GetAutoSendIndex()
         {

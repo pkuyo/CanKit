@@ -144,6 +144,9 @@ namespace CanKit.Core.Definitions
         IBusInitOptionsConfigurator IBusInitOptionsConfigurator.AccMask(int accCode, int accMask, CanFilterIDType idType)
             => AccMask(accCode, accMask, idType);
 
+        IBusInitOptionsConfigurator IBusInitOptionsConfigurator.AccMask(uint accCode, uint accMask, CanFilterIDType idType)
+            => AccMask(accCode, accMask, idType);
+
         IBusInitOptionsConfigurator IBusInitOptionsConfigurator.EnableErrorInfo()
             => EnableErrorInfo();
 
@@ -295,7 +298,12 @@ namespace CanKit.Core.Definitions
             Options.Filter.filterRules.Add(new FilterRule.Mask((uint)accCode, (uint)accMask, idType));
             return (TSelf)this;
         }
-
+        public virtual TSelf AccMask(uint accCode, uint accMask, CanFilterIDType idType = CanFilterIDType.Standard)
+        {
+            CanKitErr.ThrowIfNotSupport(_feature, CanFeature.Filters);
+            Options.Filter.filterRules.Add(new FilterRule.Mask(accCode, accMask, idType));
+            return (TSelf)this;
+        }
         public virtual TSelf EnableErrorInfo()
         {
             Options.AllowErrorInfo = true;
@@ -311,7 +319,7 @@ namespace CanKit.Core.Definitions
         }
         public virtual TSelf SetReceiveLoopStopDelayMs(int milliseconds)
         {
-            if (milliseconds <= 0)
+            if (milliseconds < 0)
                 throw new ArgumentOutOfRangeException(nameof(milliseconds));
             Options.ReceiveLoopStopDelayMs = milliseconds;
             return (TSelf)this;

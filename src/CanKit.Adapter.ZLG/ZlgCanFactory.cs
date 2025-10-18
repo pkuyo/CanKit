@@ -38,7 +38,10 @@ public sealed class ZlgCanFactory : ICanFactory
             throw new CanProviderMismatchException(typeof(ZlgCanProvider), configurator.Provider?.GetType() ?? typeof(ICanModelProvider));
 
         if (configurator.Provider is PCIECANFDProvider or PCIECANFD200UProvider)
+        {
+            ((ZlgBusInitConfigurator)busOptions).MergeReceive(true);
             return new ZlgCanMergeTransceiver(); //Only support merge receive
+        }
 
         if (((ZlgBusInitConfigurator)busOptions).EnableMergeReceive)
             return new ZlgCanMergeTransceiver();

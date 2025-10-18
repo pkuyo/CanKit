@@ -14,6 +14,7 @@ public class TestDataProvider : ITestDataProvider
     public IEnumerable<(ICanFrame frame, TimeSpan period, int count)> PeriodicCountCases { get; } = [];
 
     public IEnumerable<(ICanFrame frame, TimeSpan period, float deviation)> PeriodicPeriodCases { get; } = [];
+    public (int aBit, int dBit)? BaudRate { get; } = null;
     public Action<IBusInitOptionsConfigurator>? TestBusInitFunc { get; } = null;
 }
 

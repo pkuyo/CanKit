@@ -95,6 +95,8 @@ public sealed class ZlgBusInitConfigurator
         }
         return this;
     }
+
+    public ZlgFeature ZlgFeature => Options.ZlgFeature;
 }
 
 public sealed class ZlgBusRtConfigurator
@@ -114,4 +116,6 @@ public sealed class ZlgBusRtConfigurator
     /// merge receive, one device only call one times (合并接收，一个设备只需要启用一次)
     /// </summary>
     public bool? MergeReceive => Options.MergeReceive;
+
+    public ZlgFeature ZlgFeature => Options.ZlgFeature;
 }

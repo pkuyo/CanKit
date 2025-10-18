@@ -1,3 +1,5 @@
+// Real ZLG zlgcan.dll interop (disabled in FAKE builds)
+#if !FAKE
 // @formatter:off
 #nullable disable
 #pragma warning disable IDE0055
@@ -438,3 +440,4 @@ namespace CanKit.Adapter.ZLG.Native
         }
     }
 }
+#endif

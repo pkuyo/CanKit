@@ -13,15 +13,19 @@ on:
       - 'tests/CanKit.Tests/**'
 jobs:
   windows:
-    name: Kvaser (windows)
+    name: Kvaser (windows) – ${{ matrix.tfm }}
     runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        tfm: [net8.0, net48]
     env:
       DOTNET_NOLOGO: true
       DOTNET_CLI_TELEMETRY_OPTOUT: true
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-        
+
       - name: Setup .NET SDK
         uses: actions/setup-dotnet@v4
         with:
@@ -35,15 +39,16 @@ jobs:
       - name: Restore
         run: dotnet restore CanKit.sln
 
-      - name: Test (net8.0)
-        run: dotnet test CanKit.sln -c Fake -f net8.0 --logger "trx;LogFileName=TestResults.trx"
+      - name: Test (${{ matrix.tfm }})
+        run: dotnet test CanKit.sln -c Release -f ${{ matrix.tfm }} --logger "trx;LogFileName=TestResults-${{ matrix.tfm }}.trx"
 
-      - name: Upload Test Results
+      - name: Upload Test Results (${{ matrix.tfm }})
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-results-windows
-          path: '**/TestResults.trx'
+          name: test-results-windows-${{ matrix.tfm }}
+          path: '**/TestResults-${{ matrix.tfm }}.trx'
+
   linux:
     name: Kvaser (Ubuntu)
     runs-on: ubuntu-latest

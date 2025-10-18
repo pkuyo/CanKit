@@ -18,6 +18,8 @@ public interface ITestDataProvider
 
     public IEnumerable<(ICanFrame frame, TimeSpan period, float deviation)> PeriodicPeriodCases { get; }
 
+    public (int aBit, int dBit)? BaudRate { get; }
+
     public Action<IBusInitOptionsConfigurator>? TestBusInitFunc { get; }
 
     public record FilterRange(int Min, int Max, int Ide);

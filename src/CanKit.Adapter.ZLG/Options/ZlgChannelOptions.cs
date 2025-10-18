@@ -1,4 +1,5 @@
-﻿using CanKit.Core.Abstractions;
+﻿using CanKit.Adapter.ZLG.Definitions;
+using CanKit.Core.Abstractions;
 using CanKit.Core.Attributes;
 using CanKit.Core.Definitions;
 
@@ -37,5 +38,6 @@ namespace CanKit.Adapter.ZLG.Options
         public bool BusUsageEnabled { get; set; }
         public uint BusUsagePeriodTime { get; set; } = 200;
         public TxRetryPolicy TxRetryPolicy { get; set; } = TxRetryPolicy.AlwaysRetry;
+        public ZlgFeature ZlgFeature { get; } = ((ZlgCanProvider)provider).ZlgFeature;
     }
 }

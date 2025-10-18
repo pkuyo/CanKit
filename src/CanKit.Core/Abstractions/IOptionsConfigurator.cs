@@ -323,7 +323,7 @@ public interface IBusInitOptionsConfigurator : ICanOptionsConfigurator
     /// <param name="idType">ID type (ID 类型)。</param>
     /// <returns>Configurator (配置器本身)。</returns>
     IBusInitOptionsConfigurator AccMask(int accCode, int accMask, CanFilterIDType idType);
-
+    IBusInitOptionsConfigurator AccMask(uint accCode, uint accMask, CanFilterIDType idType);
     /// <summary>
     /// Enable error information monitoring (启用错误信息监听)。
     /// </summary>

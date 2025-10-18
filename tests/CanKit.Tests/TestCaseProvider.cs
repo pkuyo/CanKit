@@ -32,8 +32,14 @@ public class TestCaseProvider : IDisposable
                 Provider = new EmptyTestDataProvider();
             }
 
+            AbitRate = Provider.BaudRate?.aBit ?? 1_000_000;
+            DbitRate = Provider.BaudRate?.dBit ?? 8_000_000;
         }
     }
+
+    public static int AbitRate { get; }
+
+    public static int DbitRate { get; }
 
     public static ITestDataProvider Provider { get; }
 

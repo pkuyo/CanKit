@@ -11,5 +11,6 @@ public class EmptyTestDataProvider : ITestDataProvider
     public IEnumerable<(ITestDataProvider.FilterMask[] filters, ITestDataProvider.FilterFrame[] frames, int exceptResult)> MaskFilterCases { get; } = [];
     public IEnumerable<(ICanFrame frame, TimeSpan period, int count)> PeriodicCountCases { get; } = [];
     public IEnumerable<(ICanFrame frame, TimeSpan period, float deviation)> PeriodicPeriodCases { get; } = [];
+    public (int aBit, int dBit)? BaudRate { get; } = null;
     public Action<IBusInitOptionsConfigurator>? TestBusInitFunc { get; } = null;
 }

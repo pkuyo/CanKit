@@ -153,7 +153,7 @@ public static class Canlib
         public int Dlc;
         public uint Flags;
         public int PeriodUs = 1000;
-        public Timer? Timer;
+        public Timer Timer;
     }
 
     private sealed class Handle
@@ -163,7 +163,7 @@ public static class Canlib
         public bool BusOn;
         public int TimerScaleUs = 1000; // default
         public int RxQueueSize = 0; // 0 => unlimited
-        public kvCallbackDelegate? Callback;
+        public kvCallbackDelegate Callback;
         public IntPtr CallbackCtx = IntPtr.Zero;
         public uint CallbackMask = 0;
         public readonly ConcurrentQueue<Frame> Rx = new();
@@ -251,7 +251,7 @@ public static class Canlib
 
     public static canStatus canClose(int hnd)
     {
-        Handle? h;
+        Handle h;
         lock (World.Gate)
         {
             if (!World.Handles.TryGetValue(hnd, out h)) return canStatus.canERR_INVHANDLE;

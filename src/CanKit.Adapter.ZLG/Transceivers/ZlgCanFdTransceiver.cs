@@ -45,13 +45,16 @@ namespace CanKit.Adapter.ZLG.Transceivers
         {
             var pool = ArrayPool<ZLGCAN.ZCAN_ReceiveFD_Data>.Shared;
             var buf = pool.Rent(ZLGCAN.BATCH_COUNT);
+            if (count < 0) throw new ArgumentOutOfRangeException(nameof(count));
+            var startTime = Environment.TickCount;
             try
             {
-                if (count < 0) throw new ArgumentOutOfRangeException(nameof(count));
                 while (count > 0)
                 {
-
-                    var recCount = ZLGCAN.ZCAN_ReceiveFD(((ZlgCanBus)bus).Handle, buf, (uint)count, timeOut);
+                    var remaining = timeOut - Environment.TickCount + startTime;
+                    if (timeOut == -1)
+                        remaining = -1;
+                    var recCount = ZLGCAN.ZCAN_ReceiveFD(((ZlgCanBus)bus).Handle, buf, (uint)count, remaining);
                     if (recCount == 0)
                         yield break;
                     for (int i = 0; i < recCount; i++)

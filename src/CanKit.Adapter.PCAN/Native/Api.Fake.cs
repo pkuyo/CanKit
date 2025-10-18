@@ -89,7 +89,7 @@ namespace Peak.Can.Basic
 
     public enum PcanParameter
     {
-        MessageFilter =4,
+        MessageFilter = 4,
         ReceiveEvent = 3,
         ChannelCondition = 13,
         ChannelFeatures = 22,
@@ -230,7 +230,7 @@ namespace Peak.Can.Basic
 
         private static bool Match(ChannelState s, bool ext, uint id)
         {
-            if(s.FilterStatus == ParameterValue.Filter.Close)
+            if (s.FilterStatus == ParameterValue.Filter.Close)
                 return false;
             if (s.FilterStatus == ParameterValue.Filter.Open)
                 return true;
