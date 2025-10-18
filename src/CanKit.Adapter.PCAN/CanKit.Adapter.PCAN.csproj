@@ -4,11 +4,11 @@
         <ImplicitUsings>enable</ImplicitUsings>
         <LangVersion>latest</LangVersion>
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-        <Version>0.3.0</Version>
+        <Version>$(CanKitCoreVersion)</Version>
         <Description>Peak PCAN (PCAN-Basic) adapter for CanKit, providing unified bus access to PCAN hardware on Windows.</Description>
         <PackageTags>CAN;can bus;CANFD;PCAN;Peak;PCAN-Basic;CanKit</PackageTags>
         <AssemblyVersion>1.0.0.0</AssemblyVersion>
-        <FileVersion>0.3.0.0</FileVersion>
+        <FileVersion>$(CanKitCoreVersion).0</FileVersion>
         <Authors>Pkuyo</Authors>
         <RepositoryUrl>https://github.com/pkuyo/CanKit</RepositoryUrl>
         <PackageReadmeFile>README.md</PackageReadmeFile>
@@ -21,7 +21,7 @@
     </ItemGroup>
 
     <ItemGroup Condition="'$(UseLocalProjectReferences)'!='true'">
-        <PackageReference Include="CanKit.Core" Version="0.1.0"/>
+        <PackageReference Include="CanKit.Core" Version="$(CanKitCoreVersion)"/>
     </ItemGroup>
     
     <ItemGroup Condition="'$(Configuration)'!='Fake'">

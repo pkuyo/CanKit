@@ -22,7 +22,7 @@
     </ItemGroup>
 
     <ItemGroup Condition="'$(UseLocalProjectReferences)'!='true'">
-        <PackageReference Include="CanKit.Core" Version="0.1.0"/>
+        <PackageReference Include="CanKit.Core" Version="$(CanKitCoreVersion)"/>
     </ItemGroup>
 
     <ItemGroup>

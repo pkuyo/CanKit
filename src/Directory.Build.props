@@ -14,7 +14,7 @@
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
 
     <UseLocalProjectReferences Condition="'$(UseLocalProjectReferences)'==''">true</UseLocalProjectReferences>
-
+    <CanKitCoreVersion>0.3.1</CanKitCoreVersion>
     <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
