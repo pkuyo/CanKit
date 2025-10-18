@@ -609,7 +609,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
         {
             var bit = timing.Fd.Value.Nominal.Bitrate!.Value;
             var samplePoint = timing.Fd.Value.Nominal.SamplePointPermille ?? 800;
-            var segment = BitTimingSolver.FromSamplePoint(clock, bit, samplePoint);
+            var segment = BitTimingSolver.FromSamplePoint(clock, bit, samplePoint/1000.0);
             nominalSeg.Tseg1 = segment.Tseg1;
             nominalSeg.Tseg2 = segment.Tseg2;
             nominalSeg.Brp = segment.Brp;
@@ -629,7 +629,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
         {
             var bit = timing.Fd.Value.Nominal.Bitrate!.Value;
             var samplePoint = timing.Fd.Value.Nominal.SamplePointPermille ?? 800;
-            var segment = BitTimingSolver.FromSamplePoint(clock, bit, samplePoint);
+            var segment = BitTimingSolver.FromSamplePoint(clock, bit, samplePoint/1000.0);
             dataSeg.Tseg1 = segment.Tseg1;
             dataSeg.Tseg2 = segment.Tseg2;
             dataSeg.Brp = segment.Brp;

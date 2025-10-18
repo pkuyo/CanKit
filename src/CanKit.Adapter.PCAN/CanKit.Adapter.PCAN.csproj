@@ -24,7 +24,7 @@
         <PackageReference Include="CanKit.Core" Version="0.1.0"/>
     </ItemGroup>
     
-    <ItemGroup>
+    <ItemGroup Condition="'$(Configuration)'!='Fake'">
         <PackageReference Include="Peak.PCANBasic.NET" Version="4.10.1.968"/>
     </ItemGroup>
     

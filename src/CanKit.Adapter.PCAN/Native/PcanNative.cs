@@ -1,4 +1,6 @@
-﻿using System.Runtime.InteropServices;
+// Real PCAN-Basic interop (disabled in FAKE builds)
+#if !FAKE
+using System.Runtime.InteropServices;
 using Peak.Can.Basic.BackwardCompatibility;
 
 
@@ -67,3 +69,5 @@ internal static class PcanBasicNative
         return TimeSpan.FromTicks((long)totalUs * 10);
     }
 }
+#endif
+
