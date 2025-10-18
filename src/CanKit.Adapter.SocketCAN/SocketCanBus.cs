@@ -930,7 +930,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
                     }
                 }
             }
-            if (gotBatch < Libc.BATCH_COUNT) break; // drained
+            if (gotBatch == 0) break; // drained
         }
     }
 

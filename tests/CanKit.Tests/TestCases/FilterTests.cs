@@ -22,6 +22,7 @@ public class FilterTests : IClassFixture<TestCaseProvider>
         _ = endpoint;
         using var rx = Core.CanBus.Open(epA, cfg =>
         {
+            TestCaseProvider.Provider.TestBusInitFunc?.Invoke(cfg);
             cfg.SetProtocolMode(CanProtocolMode.Can20).Baud(500_000);
             cfg.SoftwareFeaturesFallBack(CanFeature.All);
             foreach(var r in range)
@@ -59,6 +60,7 @@ public class FilterTests : IClassFixture<TestCaseProvider>
 
         using var rx = Core.CanBus.Open(epA, cfg =>
         {
+            TestCaseProvider.Provider.TestBusInitFunc?.Invoke(cfg);
             cfg.SetProtocolMode(CanProtocolMode.Can20).Baud(500_000);
             cfg.SoftwareFeaturesFallBack(CanFeature.All);
             foreach(var r in masks)

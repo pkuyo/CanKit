@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using CanKit.Core.Abstractions;
 using CanKit.Core.Definitions;
 
 namespace CanKit.Tests;
@@ -16,6 +17,8 @@ public interface ITestDataProvider
     public IEnumerable<(ICanFrame frame, TimeSpan period, int count)> PeriodicCountCases { get; }
 
     public IEnumerable<(ICanFrame frame, TimeSpan period, float deviation)> PeriodicPeriodCases { get; }
+
+    public Action<IBusInitOptionsConfigurator>? TestBusInitFunc { get; }
 
     public record FilterRange(int Min, int Max, int Ide);
     public record FilterFrame(int Id, int Ide);

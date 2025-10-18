@@ -1,4 +1,5 @@
-﻿using CanKit.Core.Definitions;
+﻿using CanKit.Core.Abstractions;
+using CanKit.Core.Definitions;
 using CanKit.Tests;
 
 namespace CanKit.Adapter.Kvaser.Tests;
@@ -152,4 +153,5 @@ public class TestDataProvider : ITestDataProvider
     ];
 
     public IEnumerable<(ICanFrame frame, TimeSpan period, float deviation)> PeriodicPeriodCases { get; } = [];
+    public Action<IBusInitOptionsConfigurator>? TestBusInitFunc { get; } = null;
 }

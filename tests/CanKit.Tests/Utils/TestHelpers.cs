@@ -16,6 +16,7 @@ internal static class TestHelpers
         => CanBus.Open(endpoint, cfg =>
         {
             cfg.SetProtocolMode(CanProtocolMode.Can20).Baud(bitrate);
+            TestCaseProvider.Provider.TestBusInitFunc?.Invoke(cfg);
             if (enableFallbackAll) cfg.SoftwareFeaturesFallBack(CanFeature.All);
             cfg.EnableErrorInfo().SetAsyncBufferCapacity(asyncBuf).SetReceiveLoopStopDelayMs(200);
         });
@@ -27,6 +28,7 @@ internal static class TestHelpers
         return CanBus.Open(endpoint, cfg =>
         {
             cfg.SetProtocolMode(CanProtocolMode.CanFd).Fd(abit, dbit);
+            TestCaseProvider.Provider.TestBusInitFunc?.Invoke(cfg);
             if (enableFallbackAll) cfg.SoftwareFeaturesFallBack(CanFeature.All);
             cfg.EnableErrorInfo().SetAsyncBufferCapacity(asyncBuf).SetReceiveLoopStopDelayMs(200);
         });

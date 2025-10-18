@@ -1,4 +1,5 @@
-﻿using CanKit.Core.Definitions;
+﻿using CanKit.Core.Abstractions;
+using CanKit.Core.Definitions;
 using CanKit.Tests;
 
 namespace CanKit.Adapter.SocketCAN.Tests;
@@ -8,8 +9,8 @@ public class TestDataProvider : ITestDataProvider
     public IEnumerable<(string epA, string epB, bool isFd)> EndpointPairs { get; } =
         [("socketcan://vcan0", "socketcan://vcan1", true)];
 
-    public IEnumerable<(ITestDataProvider.FilterMask[] filters, ITestDataProvider.FilterFrame[] frames, int exceptResult)> MaskFilterCases
-    { get; } =
+    public IEnumerable<(ITestDataProvider.FilterMask[] filters, ITestDataProvider.FilterFrame[] frames, int exceptResult
+        )> MaskFilterCases { get; } =
     [
         // Case 1: 标准帧 — 精确匹配（11 位 ID）
         // accMask = 0x7FF 覆盖全部 11 位，只有 0x123 且为标准帧能通过
@@ -142,4 +143,11 @@ public class TestDataProvider : ITestDataProvider
     ];
 
     public IEnumerable<(ICanFrame frame, TimeSpan period, float deviation)> PeriodicPeriodCases { get; } = [];
+
+    public Action<IBusInitOptionsConfigurator>? TestBusInitFunc { get; } = (cfg) =>
+    {
+        var scfg = (SocketCanBusInitConfigurator)cfg;
+        scfg.ReceiveBufferCapacity(6000 * (64 + 4))
+            .TransmitBufferCapacity(6000 * (64 + 4));
+    };
 }
