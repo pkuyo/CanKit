@@ -1,17 +1,30 @@
 # CanKit
+[![Nuget](https://img.shields.io/nuget/v/CanKit.Core.svg?logo=nuget)](https://www.nuget.org/packages/CanKit.Core/)
+[![NuGet Downloads](https://img.shields.io/nuget/dt/CanKit.Core.svg?logo=nuget)](https://www.nuget.org/packages/CanKit.Core)
+[![.NET Standard 2.0](https://img.shields.io/badge/.NET%20Standard-2.0-512BD4?logo=dotnet&logoColor=white)](#)
+[![.NET 8](https://img.shields.io/badge/.NET-8.0-512BD4?logo=dotnet&logoColor=white)](#)
 
-CanKit is an unified .NET abstraction for working with multiple CAN adapters through a single, consistent API. 
+[![CI-adapter-kvaser](https://github.com/pkuyo/CanKit/actions/workflows/kvaser-ci.yml/badge.svg)](https://github.com/pkuyo/CanKit/actions/workflows/kvaser-ci.yml)
+[![CI-adapter-pcan](https://github.com/pkuyo/CanKit/actions/workflows/pcan-ci.yml/badge.svg)](https://github.com/pkuyo/CanKit/actions/workflows/pcan-ci.yml)
+[![CI-adapter-socketcan](https://github.com/pkuyo/CanKit/actions/workflows/socketcan-ci.yml/badge.svg)](https://github.com/pkuyo/CanKit/actions/workflows/socketcan-ci.yml)
+[![CI-adapter-virtual](https://github.com/pkuyo/CanKit/actions/workflows/virtual-ci.yml/badge.svg)](https://github.com/pkuyo/CanKit/actions/workflows/virtual-ci.yml)
+
+
+
+**CanKit** is an unified, cross-platform, multi-vendor, high-performance c# CAN communication library.
 
 It supports opening buses via endpoint strings or strongly-typed helpers, and exposes common operations (send/receive, filters, periodic TX, error monitoring) across adapters.
 
-- Adapters: PCAN-Basic (Peak), Kvaser CANlib, SocketCAN (Linux), ZLG(周立功)
-- Targets: .NET Standard 2.0 and .NET 8 (incl. net8.0-windows)
+- Adapters: PCAN-Basic (Peak CAN), CANlib(Kvaser), SocketCAN (Linux), ZLG(周立功)
 
 For Chinese readers, see: [README_CN.md](README_CN.md)
 
 
 ## Features
 
+- Performance and backpressure
+  - High-throughput pipeline with backpressure-aware async APIs
+  - Configurable buffering to avoid overload and drop
 - Unified API surface
   - Open by endpoint or typed helpers; enumerate endpoints
   - Classic CAN 2.0 and CAN FD frames
@@ -102,7 +115,13 @@ foreach (var ep in BusEndpointEntry.Enumerate("pcan", "kvaser", "socketcan", "zl
     Console.WriteLine($"{ep.Title ?? ep.Endpoint} -> {ep.Endpoint}");
 }
 ```
+## Query Device Capabilities
+```csharp
+using CanKit.Core;
 
+var capability = CanBus.QueryCapabilities("kvaser://0");
+Console.WriteLine($"support: {capability.Features}")
+```
 
 ## Getting Started
 

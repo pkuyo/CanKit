@@ -1,12 +1,22 @@
 # CanKit
 
-CanKit 提供一个统一 .NET 抽象，用于在同一套 API 下访问多家 CAN 适配器。
+
+
+[![Nuget](https://img.shields.io/nuget/v/CanKit.Core.svg?logo=nuget)](https://www.nuget.org/packages/CanKit.Core/)
+[![NuGet Downloads](https://img.shields.io/nuget/dt/CanKit.Core.svg?logo=nuget)](https://www.nuget.org/packages/CanKit.Core)
+[![.NET Standard 2.0](https://img.shields.io/badge/.NET%20Standard-2.0-512BD4?logo=dotnet&logoColor=white)](#)
+[![.NET 8](https://img.shields.io/badge/.NET-8.0-512BD4?logo=dotnet&logoColor=white)](#)
+
+[![CI-adapter-kvaser](https://github.com/pkuyo/CanKit/actions/workflows/kvaser-ci.yml/badge.svg)](https://github.com/pkuyo/CanKit/actions/workflows/kvaser-ci.yml)
+[![CI-adapter-pcan](https://github.com/pkuyo/CanKit/actions/workflows/pcan-ci.yml/badge.svg)](https://github.com/pkuyo/CanKit/actions/workflows/pcan-ci.yml)
+[![CI-adapter-socketcan](https://github.com/pkuyo/CanKit/actions/workflows/socketcan-ci.yml/badge.svg)](https://github.com/pkuyo/CanKit/actions/workflows/socketcan-ci.yml)
+[![CI-adapter-virtual](https://github.com/pkuyo/CanKit/actions/workflows/virtual-ci.yml/badge.svg)](https://github.com/pkuyo/CanKit/actions/workflows/virtual-ci.yml)
+
+**CanKit** 是一个统一的、跨平台的、支持多厂商的高性能 c# CAN 通信库。
 
 支持通过 Endpoint 字符串或强类型入口打开总线，并在不同适配器上提供尽可能一致的收发、过滤、周期发送、错误帧与诊断体验。
 
-- 适配器：PCAN-Basic（Peak）、Kvaser CANlib、SocketCAN（Linux）、ZLG(周立功)
-- 目标框架：.NET Standard 2.0、.NET 8（含 net8.0-windows）
-
+ - 适配厂商：PCAN-Basic (Peak CAN), CANlib(Kvaser), SocketCAN (Linux), ZLG(周立功)
 
 ## 安装
 
@@ -29,6 +39,9 @@ dotnet add package CanKit.Adapter.Virtual
 
 ## 特性（Features）
 
+- 高性能与背压
+  - 高吞吐流水线，背压友好的异步接口
+  - 可配置缓冲容量，避免过载与丢帧
 - 统一 API
   - Endpoint 打开或强类型打开；支持枚举 Endpoint
   - 支持经典 CAN 2.0 与 CAN FD 帧类型
@@ -105,6 +118,13 @@ foreach (var ep in BusEndpointEntry.Enumerate("pcan", "kvaser", "socketcan", "zl
 }
 ```
 
+## 查询设备支持功能
+```csharp
+using CanKit.Core;
+
+var capability = CanBus.QueryCapabilities("kvaser://0");
+Console.WriteLine($"support: {capability.Features}")
+```
 
 ## 适配器说明
 
