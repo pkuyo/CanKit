@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using CanKit.Adapter.ZLG.Options;
 using CanKit.Core.Abstractions;
 using CanKit.Core.Attributes;
 using CanKit.Core.Definitions;
@@ -17,27 +18,19 @@ namespace CanKit.Adapter.ZLG;
 [CanEndPoint("zlg", [])]
 internal static class ZlgEndpoint
 {
-    public static ICanBus Open(CanEndpoint ep, Action<IBusInitOptionsConfigurator>? configure)
+    public static PreparedBusContext Prepare(CanEndpoint ep, Action<IBusInitOptionsConfigurator>? configure)
     {
-        // 路径匹配 DeviceType.Id 或其去前缀的尾部，例如：
-        //   zlg://ZLG.ZCAN_USBCANFD_200U?index=0#ch1
-        //   zlg://ZCAN_USBCANFD_200U?index=0#ch1
-        //   zlg://USBCANFD-200U?index=0#ch1
         var dt = ResolveDeviceType(ep.Path);
         var provider = CanRegistry.Registry.Resolve(dt);
 
         var (devOpt, devCfg) = provider.GetDeviceOptions();
-        // 从查询参数设置设备索引
         uint devIndex = 0;
         if (ep.TryGet("index", out var s) && !string.IsNullOrWhiteSpace(s))
         {
             _ = uint.TryParse(s, NumberStyles.Integer, CultureInfo.InvariantCulture, out devIndex);
         }
-
-        // 设备选项可能与 Provider 相关；若可用则尝试写入 index/tx_timeout/merge
         TrySetDeviceIndex(devOpt, devIndex);
 
-        // 从片段解析通道索引（支持 '#chX' 或 '#X'）
         int chIndex = 0;
         if (!string.IsNullOrWhiteSpace(ep.Fragment))
         {
@@ -50,8 +43,20 @@ internal static class ZlgEndpoint
         var (chOpt, chCfg) = provider.GetChannelOptions();
         configure?.Invoke(chCfg);
         chCfg.UseChannelIndex(chIndex);
+
+        return new PreparedBusContext(provider, devOpt, devCfg, chOpt, chCfg);
+    }
+
+    public static ICanBus Open(CanEndpoint ep, Action<IBusInitOptionsConfigurator>? configure)
+    {
+        // 路径匹配 DeviceType.Id 或其去前缀的尾部，例如：
+        //   zlg://ZLG.ZCAN_USBCANFD_200U?index=0#ch1
+        //   zlg://ZCAN_USBCANFD_200U?index=0#ch1
+        //   zlg://USBCANFD-200U?index=0#ch1
+        var (provider, devOpt, _, chOpt, chCfg) = Prepare(ep, configure);
+
         // 获取设备租约（同设备的多个通道共享）
-        var (device, lease) = ZlgDeviceMultiplexer.Acquire(dt, devIndex, () =>
+        var (device, lease) = ZlgDeviceMultiplexer.Acquire(devOpt.DeviceType, ((ZlgDeviceOptions)devOpt).DeviceIndex, () =>
         {
             var d = provider.Factory.CreateDevice(devOpt);
             if (d == null)
@@ -63,16 +68,13 @@ internal static class ZlgEndpoint
         if (transceiver == null)
             throw new CanFactoryException(CanKitErrorCode.TransceiverMismatch, $"Factory '{provider.Factory.GetType().FullName}' returned null transceiver.");
 
-        var channel = provider.Factory.CreateBus(device, chOpt, transceiver);
+        var channel = provider.Factory.CreateBus(device, chOpt, transceiver, provider);
         if (channel == null)
             throw new CanBusCreationException($"Factory '{provider.Factory.GetType().FullName}' returned null channel.");
 
-        if (channel is not ICanBus bus)
-            throw new CanBusCreationException($"Created channel type '{channel.GetType().FullName}' does not implement ICanBus.");
-
         if (channel is IBusOwnership own)
             own.AttachOwner(lease);
-        return bus;
+        return channel;
     }
 
     private static DeviceType ResolveDeviceType(string path)
@@ -96,12 +98,7 @@ internal static class ZlgEndpoint
     {
         try
         {
-            var prop = devOpt.GetType().GetProperty("DeviceIndex");
-            if (prop != null && prop.CanWrite)
-            {
-                object boxed = Convert.ChangeType(index, prop.PropertyType, CultureInfo.InvariantCulture);
-                prop.SetValue(devOpt, boxed);
-            }
+            ((ZlgDeviceOptions)devOpt).DeviceIndex = index;
         }
         catch
         {

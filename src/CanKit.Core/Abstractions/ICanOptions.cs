@@ -9,9 +9,9 @@ namespace CanKit.Core.Abstractions
     public interface ICanOptions
     {
         /// <summary>
-        /// Model provider owning these options (选项对应的模型提供者)。
+        /// Features supported by current options (当前设备/通道选项支持的功能)。
         /// </summary>
-        ICanModelProvider Provider { get; }
+        CanFeature Features { get; set; }
     }
 
     /// <summary>
@@ -82,6 +82,9 @@ namespace CanKit.Core.Abstractions
         /// </summary>
         CanFeature EnabledSoftwareFallback { get; set; }
 
+        /// Capability report combining built-in CanFeature and optional custom feature bag.
+        /// (能力报告，包含内置的 CanFeature 与可选的自定义能力键值对。)
+        Capability Capabilities { get; set; }
 
         /// <summary>
         /// Enable error information monitoring  (启用错误信息监听)。

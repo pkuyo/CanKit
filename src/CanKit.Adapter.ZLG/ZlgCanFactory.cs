@@ -6,6 +6,7 @@ using CanKit.Core.Abstractions;
 using CanKit.Core.Attributes;
 using CanKit.Core.Definitions;
 using CanKit.Core.Exceptions;
+using CanKit.Core.Registry;
 
 namespace CanKit.Adapter.ZLG;
 
@@ -17,13 +18,14 @@ public sealed class ZlgCanFactory : ICanFactory
         return new ZlgCanDevice(options);
     }
 
-    public ICanBus CreateBus(ICanDevice device, IBusOptions options, ITransceiver transceiver)
+    public ICanBus CreateBus(ICanDevice device, IBusOptions options, ITransceiver transceiver,
+        ICanModelProvider provider)
     {
 
         if (device is not ZlgCanDevice zlgCanDevice)
             throw new CanFactoryDeviceMismatchException(typeof(ZlgCanDevice), device?.GetType() ?? typeof(ICanDevice));
 
-        return new ZlgCanBus(zlgCanDevice, options, transceiver);
+        return new ZlgCanBus(zlgCanDevice, options, transceiver, provider);
     }
 
     public bool Support(DeviceType deviceType)
@@ -34,10 +36,8 @@ public sealed class ZlgCanFactory : ICanFactory
     public ITransceiver CreateTransceivers(IDeviceRTOptionsConfigurator configurator,
         IBusInitOptionsConfigurator busOptions)
     {
-        if (configurator.Provider is not ZlgCanProvider provider)
-            throw new CanProviderMismatchException(typeof(ZlgCanProvider), configurator.Provider?.GetType() ?? typeof(ICanModelProvider));
 
-        if (configurator.Provider is PCIECANFDProvider or PCIECANFD200UProvider)
+        if (CanRegistry.Registry.Resolve(configurator.DeviceType) is PCIECANFDProvider or PCIECANFD200UProvider)
         {
             ((ZlgBusInitConfigurator)busOptions).MergeReceive(true);
             return new ZlgCanMergeTransceiver(); //Only support merge receive
@@ -65,7 +65,7 @@ public sealed class ZlgCanFactory : ICanFactory
         {
             throw new CanFactoryException(
                 CanKitErrorCode.FeatureNotSupported,
-                $"Protocol mode '{busOptions.ProtocolMode}' is not supported by provider '{provider.DeviceType.Id}'.");
+                $"Protocol mode '{busOptions.ProtocolMode}' is not supported by '{configurator.DeviceType.Id}'.");
         }
 
         throw new CanFeatureNotSupportedException(requiredFeature, configurator.Features);

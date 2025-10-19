@@ -51,7 +51,7 @@ namespace CanKit.Adapter.ZLG
         private CancellationTokenSource? _stopDelayCts;
         private int _asyncBufferingLinger;
 
-        internal ZlgCanBus(ZlgCanDevice device, IBusOptions options, ITransceiver transceiver)
+        internal ZlgCanBus(ZlgCanDevice device, IBusOptions options, ITransceiver transceiver, ICanModelProvider provider)
         {
             _devicePtr = device.NativeHandler.DangerousGetHandle();
 
@@ -61,12 +61,6 @@ namespace CanKit.Adapter.ZLG
             CanKitLogger.LogInformation($"ZLG: Initializing channel '{Options.ChannelName?? Options.ChannelIndex.ToString()}', Mode={Options.ProtocolMode}...");
             ApplyConfig(options);
             ZLGCAN.ZCAN_SetValue(_devicePtr, options.ChannelIndex+"clear_auto_send", "0");
-            var provider = Options.Provider as ZlgCanProvider;
-
-            if (provider is null)
-            {
-                CanKitLogger.LogWarning($"provider is not ZlgCanProvider, Device={device.Options.DeviceType}, DeviceIndex={device.Options.DeviceIndex}, ChannelIndex={options.ChannelIndex}");
-            }
 
             ZLGCAN.ZCAN_CHANNEL_INIT_CONFIG config = new ZLGCAN.ZCAN_CHANNEL_INIT_CONFIG
             {
@@ -458,7 +452,7 @@ namespace CanKit.Adapter.ZLG
             {
                 if (zlgOption.Filter.filterRules[0] is FilterRule.Mask mask
 #if !FAKE
-                    && zlgOption.ZlgFeature.HasFlag(ZlgFeature.MaskFilter)
+                    && zlgOption.ZlgFeatures.HasFlag(ZlgFeature.MaskFilter)
 #endif
                     )
                 {
@@ -485,7 +479,7 @@ namespace CanKit.Adapter.ZLG
                 {
                     foreach (var rule in zlgOption.Filter.filterRules)
                     {
-                        if (rule is not FilterRule.Range range || !zlgOption.ZlgFeature.HasFlag(ZlgFeature.RangeFilter))
+                        if (rule is not FilterRule.Range range || !zlgOption.ZlgFeatures.HasFlag(ZlgFeature.RangeFilter))
                         {
                             zlgOption.Filter.softwareFilter.Add(rule);
                             continue;
@@ -508,7 +502,7 @@ namespace CanKit.Adapter.ZLG
                             "ZCAN_SetValue(filter_end)");
                     }
 
-                    if (zlgOption.ZlgFeature.HasFlag(ZlgFeature.RangeFilter))
+                    if (zlgOption.ZlgFeatures.HasFlag(ZlgFeature.RangeFilter))
                     {
                         ZlgErr.ThrowIfError(
                             ZLGCAN.ZCAN_SetValue(

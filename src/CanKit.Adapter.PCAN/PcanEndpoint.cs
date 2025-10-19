@@ -3,9 +3,11 @@ using CanKit.Core;
 using CanKit.Core.Abstractions;
 using CanKit.Core.Attributes;
 using CanKit.Core.Endpoints;
+using CanKit.Core.Registry;
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using CanKit.Core.Exceptions;
 using Peak.Can.Basic;
 using Peak.Can.Basic.BackwardCompatibility;
 
@@ -20,7 +22,7 @@ namespace CanKit.Adapter.PCAN;
 [CanEndPoint("pcan", ["pcanbasic", "peak"])]
 internal static class PcanEndpoint
 {
-    public static ICanBus Open(CanEndpoint ep, Action<IBusInitOptionsConfigurator>? configure)
+    public static PreparedBusContext Prepare(CanEndpoint ep, Action<IBusInitOptionsConfigurator>? configure)
     {
         string ch = ep.Path;
         if (string.IsNullOrWhiteSpace(ch))
@@ -28,14 +30,25 @@ internal static class PcanEndpoint
             if (ep.TryGet("ch", out var v) || ep.TryGet("channel", out v) || ep.TryGet("bus", out v))
                 ch = v!;
         }
+        var provider = CanRegistry.Registry.Resolve(PcanDeviceType.PCANBasic);
+        var (devOpt, devCfg) = provider.GetDeviceOptions();
+        var (chOpt, chCfg) = provider.GetChannelOptions();
+        chCfg.UseChannelName(ch);
+        configure?.Invoke(chCfg);
+        return new PreparedBusContext(provider, devOpt, devCfg, chOpt, chCfg);
+    }
 
+    public static ICanBus Open(CanEndpoint ep, Action<IBusInitOptionsConfigurator>? configure)
+    {
+        var (provider, devOpt, _, chOpt, chCfg) = Prepare(ep, configure);
+        var device = provider.Factory.CreateDevice(devOpt);
+
+        if (device == null)
+        {
+            throw new CanFactoryException(CanKitErrorCode.DeviceCreationFailed, $"Factory '{provider.Factory.GetType().FullName}' returned null device.");
+        }
         return CanBus.Open<PcanBus, PcanBusOptions, PcanBusInitConfigurator>(
-            PcanDeviceType.PCANBasic,
-            cfg =>
-            {
-                cfg.UseChannelName(ch);
-                configure?.Invoke(cfg);
-            });
+            device, (PcanBusOptions)chOpt, (PcanBusInitConfigurator)chCfg);
     }
 
     /// <summary>

@@ -11,7 +11,6 @@ namespace CanKit.Core.Definitions
             IDeviceRTOptionsConfigurator
         where TDeviceOptions : class, IDeviceOptions
     {
-        public ICanModelProvider Provider => Options.Provider;
         public CanFeature Features => _feature;
         public DeviceType DeviceType => Options.DeviceType;
     }
@@ -24,7 +23,6 @@ namespace CanKit.Core.Definitions
       where TChannelOptions : class, IBusOptions
       where TSelf : BusRtOptionsConfigurator<TChannelOptions, TSelf>
     {
-        public ICanModelProvider Provider => Options.Provider;
         public CanFeature Features => _feature;
         public int ChannelIndex => Options.ChannelIndex;
         public string? ChannelName => Options.ChannelName;
@@ -70,7 +68,6 @@ namespace CanKit.Core.Definitions
         where TDeviceOptions : class, IDeviceOptions
         where TSelf : DeviceInitOptionsConfigurator<TDeviceOptions, TSelf>
     {
-        public ICanModelProvider Provider => Options.Provider;
         public CanFeature Features => _feature;
         public DeviceType DeviceType => Options.DeviceType;
         public virtual IDeviceInitOptionsConfigurator Custom(string key, object value) => this;
@@ -83,7 +80,6 @@ namespace CanKit.Core.Definitions
       where TChannelOptions : class, IBusOptions
       where TSelf : BusInitOptionsConfigurator<TChannelOptions, TSelf>
     {
-        public ICanModelProvider Provider => Options.Provider;
         public CanFeature Features => _feature;
         public int ChannelIndex => Options.ChannelIndex;
         public string? ChannelName => Options.ChannelName;

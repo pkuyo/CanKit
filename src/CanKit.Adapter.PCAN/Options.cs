@@ -19,9 +19,11 @@ public sealed class PcanBusOptions(ICanModelProvider provider) : IBusOptions
     public CanProtocolMode ProtocolMode { get; set; } = CanProtocolMode.Can20;
     public CanFilter Filter { get; set; } = new();
     public CanFeature EnabledSoftwareFallback { get; set; }
+    public Capability Capabilities { get; set; } = new Capability(provider.StaticFeatures);
     public bool AllowErrorInfo { get; set; }
     public int AsyncBufferCapacity { get; set; } = 0;
     public int ReceiveLoopStopDelayMs { get; set; } = 200;
+    public CanFeature Features { get; set; } = provider.StaticFeatures;
 }
 
 public sealed class PcanBusInitConfigurator

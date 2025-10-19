@@ -16,9 +16,10 @@ public sealed class SocketCanFactory : ICanFactory
         return new NullDevice<NullDeviceOptions>(options);
     }
 
-    public ICanBus CreateBus(ICanDevice device, IBusOptions options, ITransceiver transceiver)
+    public ICanBus CreateBus(ICanDevice device, IBusOptions options, ITransceiver transceiver,
+        ICanModelProvider provider)
     {
-        return new SocketCanBus(options, transceiver);
+        return new SocketCanBus(options, transceiver, provider);
     }
 
     public ITransceiver CreateTransceivers(IDeviceRTOptionsConfigurator deviceOptions, IBusInitOptionsConfigurator busOptions)

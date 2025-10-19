@@ -44,7 +44,10 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
         _transceiver = transceiver;
         _asyncRx = new AsyncFramePipe(Options.AsyncBufferCapacity > 0 ? Options.AsyncBufferCapacity : null);
 
-        _handle = ParseHandle();
+        _handle = PcanProvider.ParseHandle(Options.ChannelName!);
+        options.Capabilities = PcanProvider.QueryCapabilities(_handle, Options.Features);
+        options.Features = options.Capabilities.Features;
+
         NativeHandle = new BusNativeHandle((int)_handle);
         try
         {
@@ -64,8 +67,6 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
             throw new CanBusCreationException("PCAN handle is invalid");
         }
 
-        // Update runtime capabilities
-        UpdateDynamicFeatures();
         CanKitLogger.LogInformation($"PCAN: Initializing on '{_handle}', Mode={options.ProtocolMode}, Features={Options.Features}");
 
 
@@ -637,87 +638,5 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
             dataSeg.Sjw = segment.Sjw;
         }
         return new BitrateFD((BitrateFD.ClockFrequency)(clock * 1_000_000), nominalSeg, dataSeg);
-    }
-
-    private PcanChannel ParseHandle()
-    {
-        var s = Options.ChannelName!.Trim();
-        if (string.IsNullOrWhiteSpace(s))
-        {
-            throw new CanBusCreationException("PCAN channel must not be empty.");
-        }
-
-        // PcanChannel.NoneBus
-        if (s.Equals("PCAN_NONEBUS", StringComparison.OrdinalIgnoreCase) ||
-            s.Equals("NONEBUS", StringComparison.OrdinalIgnoreCase) ||
-            s.Equals("NONE", StringComparison.OrdinalIgnoreCase) ||
-            s == "0")
-            return 0;
-
-        if (IsAllDigits(s))
-        {
-            if (int.TryParse(s, out var raw) && Enum.IsDefined(typeof(PcanChannel), raw))
-                return (PcanChannel)raw;
-            throw new CanBusCreationException($"Unknown PCAN channel value '{s}'.");
-        }
-
-        // Enum names: Usb01, Pci02
-        if (Enum.TryParse<PcanChannel>(s, ignoreCase: true, out var named))
-            return named;
-
-        // PCAN names: PCAN_USBBUSn, PCAN_PCIBUSn, PCAN_LANBUSn
-        var upper = s.ToUpperInvariant();
-
-        PcanChannel FromIndex(string kind, int idx)
-        {
-            if (idx <= 0)
-                throw new CanBusCreationException($"Channel index must start from 1 for {kind} (got {idx}).");
-            var name = kind + idx.ToString("00"); // Usb01 / Pci02 / Lan12
-            if (Enum.TryParse<PcanChannel>(name, ignoreCase: true, out var ch))
-                return ch;
-            throw new CanBusCreationException($"Unknown PCAN channel '{s}'.");
-        }
-
-        var m = System.Text.RegularExpressions.Regex.Match(upper, @"^(?:PCAN_)?USB(?:BUS)?(?<n>\d+)$");
-        if (m.Success && int.TryParse(m.Groups["n"].Value, out var usbN))
-            return FromIndex("Usb", usbN);
-
-        m = System.Text.RegularExpressions.Regex.Match(upper, @"^(?:PCAN_)?PCI(?:BUS)?(?<n>\d+)$");
-        if (m.Success && int.TryParse(m.Groups["n"].Value, out var pciN))
-            return FromIndex("Pci", pciN);
-
-        m = System.Text.RegularExpressions.Regex.Match(upper, @"^(?:PCAN_)?LAN(?:BUS)?(?<n>\d+)$");
-        if (m.Success && int.TryParse(m.Groups["n"].Value, out var lanN))
-            return FromIndex("Lan", lanN);
-
-        throw new CanBusCreationException($"Unknown PCAN channel '{s}'.");
-
-        static bool IsAllDigits(string t)
-        {
-            if (t.Any(ch => ch is < '0' or > '9'))
-            {
-                return false;
-            }
-            return t.Length > 0;
-        }
-    }
-
-    private void UpdateDynamicFeatures()
-    {
-        // Query channel features and removed not-supported ones
-        if (Api.GetValue(_handle, PcanParameter.ChannelFeatures, out uint feature) == PcanStatus.OK)
-        {
-            var feats = (PcanDeviceFeatures)feature;
-            CanFeature dyn = Options.Features;
-            if ((feats & PcanDeviceFeatures.FlexibleDataRate) == 0)
-            {
-                dyn &= ~CanFeature.CanFd;
-            }
-            Options.UpdateDynamicFeatures(dyn);
-        }
-        else
-        {
-            CanKitLogger.LogWarning($"PCAN: PcanBus get channel features failed. Channel={_handle}");
-        }
     }
 }

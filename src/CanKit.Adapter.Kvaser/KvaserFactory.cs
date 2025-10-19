@@ -14,9 +14,10 @@ public sealed class KvaserFactory : ICanFactory
         return new NullDevice<NullDeviceOptions>(options);
     }
 
-    public ICanBus CreateBus(ICanDevice device, IBusOptions options, ITransceiver transceiver)
+    public ICanBus CreateBus(ICanDevice device, IBusOptions options, ITransceiver transceiver,
+        ICanModelProvider provider)
     {
-        return new KvaserBus(options, transceiver);
+        return new KvaserBus(options, transceiver, provider);
     }
 
     public ITransceiver CreateTransceivers(IDeviceRTOptionsConfigurator deviceOptions, IBusInitOptionsConfigurator busOptions)

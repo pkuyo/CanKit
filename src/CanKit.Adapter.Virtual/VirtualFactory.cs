@@ -12,7 +12,8 @@ public sealed class VirtualFactory : ICanFactory
         return new NullDevice<NullDeviceOptions>(options);
     }
 
-    public ICanBus CreateBus(ICanDevice device, IBusOptions options, ITransceiver transceiver)
+    public ICanBus CreateBus(ICanDevice device, IBusOptions options, ITransceiver transceiver,
+        ICanModelProvider provider)
     {
         return new VirtualBus(options, transceiver);
     }

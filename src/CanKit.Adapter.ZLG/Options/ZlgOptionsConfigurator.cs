@@ -31,6 +31,7 @@ public sealed class ZlgBusInitConfigurator
 
     public bool EnableMergeReceive => Options.MergeReceive ?? false;
 
+
     /// <summary>
     /// Set polling interval (设置轮询间隔)。
     /// </summary>
@@ -46,8 +47,7 @@ public sealed class ZlgBusInitConfigurator
     /// <param name="newEnable">新的启用状态（全设备使用）。</param>
     public ZlgBusInitConfigurator MergeReceive(bool newEnable)
     {
-        if (Provider is ZlgCanProvider provider)
-            ZlgErr.ThrowIfNotSupport(provider.ZlgFeature, ZlgFeature.MergeReceive);
+        ZlgErr.ThrowIfNotSupport(ZlgFeatures, ZlgFeature.MergeReceive);
         Options.MergeReceive = newEnable;
         return this;
     }
@@ -64,7 +64,7 @@ public sealed class ZlgBusInitConfigurator
                 throw new CanFilterConfigurationException(
                     "ZLG channels only support a single mask filter rule.(without software filter)");
 
-            ZlgErr.ThrowIfNotSupport(((ZlgCanProvider)Provider).ZlgFeature, ZlgFeature.MaskFilter);
+            ZlgErr.ThrowIfNotSupport(ZlgFeatures, ZlgFeature.MaskFilter);
         }
         return base.AccMask(accCode, accMask, idType);
     }
@@ -76,7 +76,7 @@ public sealed class ZlgBusInitConfigurator
             if (Filter.FilterRules.Any(i => i is FilterRule.Mask))
                 throw new CanFilterConfigurationException(
                     "ZLG channels only supports the same type of filter rule.(without software filter)");
-            ZlgErr.ThrowIfNotSupport(((ZlgCanProvider)Provider).ZlgFeature, ZlgFeature.RangeFilter);
+            ZlgErr.ThrowIfNotSupport(ZlgFeatures, ZlgFeature.RangeFilter);
         }
 
         return base.RangeFilter(min, max, idType);
@@ -96,7 +96,7 @@ public sealed class ZlgBusInitConfigurator
         return this;
     }
 
-    public ZlgFeature ZlgFeature => Options.ZlgFeature;
+    public ZlgFeature ZlgFeatures => Options.ZlgFeatures;
 }
 
 public sealed class ZlgBusRtConfigurator
@@ -117,5 +117,5 @@ public sealed class ZlgBusRtConfigurator
     /// </summary>
     public bool? MergeReceive => Options.MergeReceive;
 
-    public ZlgFeature ZlgFeature => Options.ZlgFeature;
+    public ZlgFeature ZlgFeatures => Options.ZlgFeatures;
 }

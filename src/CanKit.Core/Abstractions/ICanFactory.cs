@@ -20,8 +20,9 @@ public interface ICanFactory
     /// <param name="device">Device instance (设备实例)。</param>
     /// <param name="options">Channel initialization options (通道初始化选项)。</param>
     /// <param name="transceiver">Transceiver to use (收发器)。</param>
+    /// <param name="provider"></param>
     /// <returns>Created bus (创建的总线)。</returns>
-    ICanBus CreateBus(ICanDevice device, IBusOptions options, ITransceiver transceiver);
+    ICanBus CreateBus(ICanDevice device, IBusOptions options, ITransceiver transceiver, ICanModelProvider provider);
 
     /// <summary>
     /// Create a transceiver matching given options (根据选项创建匹配的收发器)。

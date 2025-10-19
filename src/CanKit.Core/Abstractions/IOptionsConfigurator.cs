@@ -10,12 +10,6 @@ namespace CanKit.Core.Abstractions;
 public interface ICanOptionsConfigurator
 {
     /// <summary>
-    /// Model provider for current options (当前设备/通道所属的模型提供者)。
-    /// </summary>
-    ICanModelProvider Provider { get; }
-
-
-    /// <summary>
     /// Features supported by current options (当前设备/通道选项支持的功能)。
     /// </summary>
     CanFeature Features { get; }
@@ -377,27 +371,13 @@ public abstract class CallOptionsConfigurator<TOption, TSelf>
     private CanFeature _softwareFeature;
 
     protected TOption Options => _options ?? throw new InvalidOperationException("Options have not been initialized.");
-    protected TSelf Self => (TSelf)this;
 
     public virtual TSelf Init(TOption options)
     {
         _options = options;
-        // Initialize with static features; dynamic features can be merged later.
-        _feature = options.Provider.StaticFeatures;
+        _feature = options.Features;
         return (TSelf)this;
     }
-
-
-    /// <summary>
-    /// Merge dynamic features discovered at runtime override current capability set.
-    /// ZH: 合并运行期发现的动态功能替代当前能力集合。
-    /// </summary>
-    public TSelf UpdateDynamicFeatures(CanFeature dynamic)
-    {
-        _feature = dynamic;
-        return (TSelf)this;
-    }
-
 
     /// <summary>
     /// Merge software fallback features discovered at runtime into current capability set.

@@ -55,6 +55,6 @@ public sealed class NullDeviceRTOptionsConfigurator
 public sealed class NullDeviceOptions(ICanModelProvider provider) : IDeviceOptions
 {
     public uint TxTimeOut { get; set; } = 100U;
-    public ICanModelProvider Provider { get; } = provider;
-    public DeviceType DeviceType => Provider.DeviceType;
+    public DeviceType DeviceType { get; } = provider.DeviceType;
+    public CanFeature Features { get; set; } = provider.StaticFeatures;
 }

@@ -9,8 +9,7 @@ namespace CanKit.Adapter.ZLG.Options
 
         public uint DeviceIndex { get; set; }
 
-        public ICanModelProvider Provider => provider;
-
-        public DeviceType DeviceType => provider.DeviceType;
+        public DeviceType DeviceType { get; } = provider.DeviceType;
+        public CanFeature Features { get; set; } = provider.StaticFeatures;
     }
 }

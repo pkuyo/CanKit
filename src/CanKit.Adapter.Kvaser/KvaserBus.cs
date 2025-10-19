@@ -35,7 +35,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
     private int _asyncBufferingLinger;
     private readonly Func<ICanFrame, bool> _pred;
 
-    internal KvaserBus(IBusOptions options, ITransceiver transceiver)
+    internal KvaserBus(IBusOptions options, ITransceiver transceiver, ICanModelProvider provider)
     {
         Options = new KvaserBusRtConfigurator();
         Options.Init((KvaserBusOptions)options);
@@ -44,9 +44,11 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
 
         EnsureLibInitialized();
 
+        options.Capabilities = ((KvaserProvider)provider).QueryCapabilities(options);
+        options.Features = options.Capabilities.Features;
+
         // Open channel
         _handle = OpenChannel((KvaserBusOptions)options);
-        UpdateDynamicFeatures();
         CanKitLogger.LogInformation($"Kvaser: Initializing on '{_handle}', Mode={options.ProtocolMode}, Features={Options.Features}");
         if (_handle < 0)
         {
@@ -356,30 +358,6 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
         int flags = 0;
         if (opt.AcceptVirtual) flags |= Canlib.canOPEN_ACCEPT_VIRTUAL;
         if (opt.ProtocolMode == CanProtocolMode.CanFd) flags |= Canlib.canOPEN_CAN_FD;
-        // Try name lookup if provided
-        if (!string.IsNullOrWhiteSpace(opt.ChannelName))
-        {
-            // Enumerate channels to match by name
-            int n = 0;
-            if (Canlib.canGetNumberOfChannels(out n) == Canlib.canStatus.canOK)
-            {
-                for (int i = 0; i < n; i++)
-                {
-                    try
-                    {
-                        Canlib.GetChannelName(i, out var name);
-                        if (!string.IsNullOrWhiteSpace(name) &&
-                            string.Equals(name, opt.ChannelName, StringComparison.OrdinalIgnoreCase))
-                        {
-                            return Canlib.canOpenChannel(i, flags);
-                        }
-                    }
-                    catch { }
-
-                }
-            }
-        }
-
         return Canlib.canOpenChannel(opt.ChannelIndex, flags);
     }
 
@@ -682,29 +660,4 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
         }
     }
 #endif
-
-    private void UpdateDynamicFeatures()
-    {
-        var status = Canlib.GetUInt32(_handle, Canlib.canCHANNELDATA_CHANNEL_CAP, out var caps);
-        if (status != Canlib.canStatus.canOK)
-        {
-            CanKitLogger.LogError($"Canlib.canGetChannelData failed. Status:{status}, Channel:{_handle}");
-            return;
-        }
-        var features = CanFeature.CanClassic | CanFeature.Filters | CanFeature.Echo | CanFeature.ErrorFrame;
-        if ((caps & Canlib.canCHANNEL_CAP_CAN_FD) != 0 ||
-            (caps & Canlib.canCHANNEL_CAP_CAN_FD_NONISO) != 0)
-            features |= CanFeature.CanFd;
-
-        if ((caps & Canlib.canCHANNEL_CAP_SILENT_MODE) != 0)
-            features |= CanFeature.ListenOnly;
-
-        if ((caps & Canlib.canCHANNEL_CAP_ERROR_COUNTERS) != 0)
-            features |= CanFeature.ErrorCounters;
-
-        if ((caps & Canlib.canCHANNEL_CAP_BUS_STATISTICS) != 0)
-            features |= CanFeature.BusUsage;
-
-        Options.UpdateDynamicFeatures(features);
-    }
 }

@@ -6,7 +6,9 @@ using CanKit.Core.Endpoints;
 using System;
 using System.Collections.Generic;
 using CanKit.Core.Diagnostics;
+using CanKit.Core.Registry;
 using CanKit.Adapter.Kvaser.Native;
+using CanKit.Core.Exceptions;
 
 namespace CanKit.Adapter.Kvaser;
 
@@ -20,7 +22,7 @@ namespace CanKit.Adapter.Kvaser;
 [CanEndPoint("kvaser", ["canlib"])]
 internal static class KvaserEndpoint
 {
-    public static ICanBus Open(CanEndpoint ep, Action<IBusInitOptionsConfigurator>? configure)
+    public static PreparedBusContext Prepare(CanEndpoint ep, Action<IBusInitOptionsConfigurator>? configure)
     {
         int channel = 0;
         int? rxBuf = null;
@@ -43,10 +45,6 @@ internal static class KvaserEndpoint
             {
                 rxBuf = rx;
             }
-            else
-            {
-                CanKitLogger.LogError($"SocketCAN: Invalid rxbuf value:{v1}");
-            }
         }
         if (ep.TryGet("ts", out v1))
         {
@@ -54,18 +52,28 @@ internal static class KvaserEndpoint
             {
                 ts = rx;
             }
-            else
-            {
-                CanKitLogger.LogError($"SocketCAN: Invalid time scale value:{v1}");
-            }
+        }
+
+        var provider = CanRegistry.Registry.Resolve(KvaserDeviceType.CANlib);
+        var (devOpt, devCfg) = provider.GetDeviceOptions();
+        var (chOpt, chCfg) = provider.GetChannelOptions();
+        var typed = (KvaserBusInitConfigurator)chCfg;
+        typed.UseChannelIndex(channel).TimerScaleMicroseconds(ts).ReceiveBufferCapacity(rxBuf);
+        configure?.Invoke(chCfg);
+        return new PreparedBusContext(provider, devOpt, devCfg, chOpt, chCfg);
+    }
+
+    public static ICanBus Open(CanEndpoint ep, Action<IBusInitOptionsConfigurator>? configure)
+    {
+        var (provider, devOpt, _, chOpt, chCfg) = Prepare(ep, configure);
+        var device = provider.Factory.CreateDevice(devOpt);
+
+        if (device == null)
+        {
+            throw new CanFactoryException(CanKitErrorCode.DeviceCreationFailed, $"Factory '{provider.Factory.GetType().FullName}' returned null device.");
         }
         return CanBus.Open<KvaserBus, KvaserBusOptions, KvaserBusInitConfigurator>(
-            KvaserDeviceType.CANlib,
-            cfg =>
-            {
-                cfg.UseChannelIndex(channel).TimerScaleMicroseconds(ts).ReceiveBufferCapacity(rxBuf);
-                configure?.Invoke(cfg);
-            });
+            device, (KvaserBusOptions)chOpt, (KvaserBusInitConfigurator)chCfg);
     }
 
     /// <summary>

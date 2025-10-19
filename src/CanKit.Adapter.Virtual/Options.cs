@@ -5,7 +5,6 @@ namespace CanKit.Adapter.Virtual;
 
 public sealed class VirtualBusOptions(ICanModelProvider provider) : IBusOptions
 {
-    public ICanModelProvider Provider { get; } = provider;
 
     public int ChannelIndex { get; set; }
     public string? ChannelName { get; set; }
@@ -18,12 +17,15 @@ public sealed class VirtualBusOptions(ICanModelProvider provider) : IBusOptions
     public CanProtocolMode ProtocolMode { get; set; } = CanProtocolMode.Can20;
     public CanFilter Filter { get; set; } = new();
     public CanFeature EnabledSoftwareFallback { get; set; } = CanFeature.Filters | CanFeature.CyclicTx;
+    public Capability Capabilities { get; set; } = new(provider.StaticFeatures);
     public bool AllowErrorInfo { get; set; }
     public int AsyncBufferCapacity { get; set; } = 0;
     public int ReceiveLoopStopDelayMs { get; set; } = 200;
 
     // Virtual specific: session id to join a hub
     public string SessionId { get; set; } = "default";
+    public CanFeature Features { get; set; } = provider.StaticFeatures;
+
 }
 
 public sealed class VirtualBusInitConfigurator

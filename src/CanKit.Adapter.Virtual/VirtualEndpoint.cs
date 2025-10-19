@@ -6,6 +6,8 @@ using CanKit.Core.Abstractions;
 using CanKit.Core.Attributes;
 using CanKit.Core.Definitions;
 using CanKit.Core.Endpoints;
+using CanKit.Core.Exceptions;
+using CanKit.Core.Registry;
 
 namespace CanKit.Adapter.Virtual;
 
@@ -18,7 +20,8 @@ namespace CanKit.Adapter.Virtual;
 [CanEndPoint("virtual", [])]
 internal static class VirtualEndpoint
 {
-    public static ICanBus Open(CanEndpoint ep, Action<IBusInitOptionsConfigurator>? configure)
+
+    public static PreparedBusContext Prepare(CanEndpoint ep, Action<IBusInitOptionsConfigurator>? configure)
     {
         // parse path: "sessionId/channelId"
         string session = ep.Path;
@@ -31,16 +34,29 @@ internal static class VirtualEndpoint
         }
 
         if (string.IsNullOrWhiteSpace(session)) session = "default";
+        var provider = CanRegistry.Registry.Resolve(VirtualDeviceType.Virtual);
+        var (devOpt, devCfg) = provider.GetDeviceOptions();
+        var (chOpt, chCfg) = provider.GetChannelOptions();
+        var typed = (VirtualBusInitConfigurator)chCfg;
+        typed.UseSession(session)
+            .UseChannelIndex(channel)
+            .UseChannelName($"virtual{channel}");
+        configure?.Invoke(chCfg);
+        return new PreparedBusContext(provider, devOpt, devCfg, chOpt, chCfg);
+    }
+    public static ICanBus Open(CanEndpoint ep, Action<IBusInitOptionsConfigurator>? configure)
+    {
+
+        var (provider, devOpt, _, chOpt, chCfg) = Prepare(ep, configure);
+
+        var device = provider.Factory.CreateDevice(devOpt);
+        if (device == null)
+        {
+            throw new CanFactoryException(CanKitErrorCode.DeviceCreationFailed, $"Factory '{provider.Factory.GetType().FullName}' returned null device.");
+        }
 
         return CanBus.Open<VirtualBus, VirtualBusOptions, VirtualBusInitConfigurator>(
-            VirtualDeviceType.Virtual,
-            cfg =>
-            {
-                cfg.UseSession(session)
-                   .UseChannelIndex(channel)
-                   .UseChannelName($"virtual{channel}");
-                configure?.Invoke(cfg);
-            });
+            device, (VirtualBusOptions)chOpt, (VirtualBusInitConfigurator)chCfg);
     }
 
     /// <summary>

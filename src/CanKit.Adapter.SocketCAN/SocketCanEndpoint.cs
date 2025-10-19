@@ -8,6 +8,8 @@ using CanKit.Core.Abstractions;
 using CanKit.Core.Attributes;
 using CanKit.Core.Diagnostics;
 using CanKit.Core.Endpoints;
+using CanKit.Core.Exceptions;
+using CanKit.Core.Registry;
 
 namespace CanKit.Adapter.SocketCAN;
 
@@ -18,9 +20,8 @@ namespace CanKit.Adapter.SocketCAN;
 [CanEndPoint("socketcan", ["linux", "libsocketcan"])]
 internal static class SocketCanEndpoint
 {
-    public static ICanBus Open(CanEndpoint ep, Action<IBusInitOptionsConfigurator>? configure)
+    public static PreparedBusContext Prepare(CanEndpoint ep, Action<IBusInitOptionsConfigurator>? configure)
     {
-        // Interpret path as interfaceName, or use query iface= / if=, else index as number
         string iface = ep.Path;
         int? rxBuf = null;
         int? txBuf = null;
@@ -29,28 +30,17 @@ internal static class SocketCanEndpoint
             if (ep.TryGet("if", out var v) || ep.TryGet("iface", out v))
                 iface = v!;
         }
-        // Use query rxbuf= / rxbuf= to set receive buffer cap.
         if (ep.TryGet("rxbuf", out var u))
         {
             if (int.TryParse(u, out var result))
                 rxBuf = result;
-            else
-            {
-                CanKitLogger.LogError($"SocketCAN: Invalid rxbuf value:{u}");
-            }
         }
-
         if (ep.TryGet("txbuf", out var u1))
         {
             if (int.TryParse(u1, out var result))
                 txBuf = result;
-            else
-            {
-                CanKitLogger.LogError($"SocketCAN: Invalid txbuf value:{u}");
-            }
         }
         bool enableNetLink = false;
-        // use #netlink/#nl to conifg CanBus by libsocketcan
         if (!string.IsNullOrWhiteSpace(ep.Fragment))
         {
             var frag = ep.Fragment!;
@@ -61,17 +51,28 @@ internal static class SocketCanEndpoint
             }
         }
 
+        var provider = CanRegistry.Registry.Resolve(LinuxDeviceType.SocketCAN);
+        var (devOpt, devCfg) = provider.GetDeviceOptions();
+        var (chOpt, chCfg) = provider.GetChannelOptions();
+        var typed = (SocketCanBusInitConfigurator)chCfg;
+        typed.UseChannelName(iface).NetLink(enableNetLink);
+        if (rxBuf != null) typed.ReceiveBufferCapacity(rxBuf.Value);
+        if (txBuf != null) typed.TransmitBufferCapacity(txBuf.Value);
+        configure?.Invoke(typed);
+        return new PreparedBusContext(provider, devOpt, devCfg, chOpt, chCfg);
+    }
 
-        return CanBus.Open<SocketCanBus, SocketCanBusOptions, SocketCanBusInitConfigurator>(
-            LinuxDeviceType.SocketCAN,
-            cfg =>
-            {
-                cfg.UseChannelName(iface)
-                    .NetLink(enableNetLink);
-                if (rxBuf != null) cfg.ReceiveBufferCapacity(rxBuf.Value);
-                if (txBuf != null) cfg.TransmitBufferCapacity(txBuf.Value);
-                configure?.Invoke(cfg);
-            });
+    public static ICanBus Open(CanEndpoint ep, Action<IBusInitOptionsConfigurator>? configure)
+    {
+        var (provider, devOpt, _, chOpt, chCfg) = Prepare(ep, configure);
+
+        var device = provider.Factory.CreateDevice(devOpt);
+        if (device == null)
+        {
+            throw new CanFactoryException(CanKitErrorCode.DeviceCreationFailed, $"Factory '{provider.Factory.GetType().FullName}' returned null device.");
+        }
+        return CanBus.Open<SocketCanBus, SocketCanBusOptions, SocketCanBusInitConfigurator>
+            (device, (SocketCanBusOptions)chOpt, (SocketCanBusInitConfigurator)chCfg);
     }
 
     /// <summary>

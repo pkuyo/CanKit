@@ -1,4 +1,5 @@
-﻿using CanKit.Adapter.ZLG.Definitions;
+﻿using System.Collections.Generic;
+using CanKit.Adapter.ZLG.Definitions;
 using CanKit.Core.Abstractions;
 using CanKit.Core.Attributes;
 using CanKit.Core.Definitions;
@@ -17,8 +18,6 @@ namespace CanKit.Adapter.ZLG.Options
         /// Polling interval in ms (轮询间隔，毫秒)。
         /// </summary>
         public int PollingInterval { get; set; } = 20;
-
-        public ICanModelProvider Provider => provider;
         public int ChannelIndex { get; set; }
         public string? ChannelName { get; set; }
 
@@ -30,6 +29,9 @@ namespace CanKit.Adapter.ZLG.Options
 
         public CanFilter Filter { get; set; } = new();
         public CanFeature EnabledSoftwareFallback { get; set; }
+        public CanFeature Features { get; set; } = provider.StaticFeatures;
+        public Capability Capabilities { get; set; } = new(provider.StaticFeatures,
+            new Dictionary<string, object?> { { "zlg_features", ((ZlgCanProvider)provider).ZlgFeature } });
         public bool AllowErrorInfo { get; set; }
 
         public bool InternalResistance { get; set; }
@@ -38,6 +40,6 @@ namespace CanKit.Adapter.ZLG.Options
         public bool BusUsageEnabled { get; set; }
         public uint BusUsagePeriodTime { get; set; } = 200;
         public TxRetryPolicy TxRetryPolicy { get; set; } = TxRetryPolicy.AlwaysRetry;
-        public ZlgFeature ZlgFeature { get; } = ((ZlgCanProvider)provider).ZlgFeature;
+        public ZlgFeature ZlgFeatures { get; } = ((ZlgCanProvider)provider).ZlgFeature;
     }
 }

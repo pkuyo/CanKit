@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using CanKit.Core.Abstractions;
+using CanKit.Core.Definitions;
 using CanKit.Core.Registry;
 
 namespace CanKit.Core.Endpoints;
@@ -13,6 +14,14 @@ public static class BusEndpointEntry
     /// </summary>
     public static bool TryOpen(string endpoint, Action<IBusInitOptionsConfigurator>? configure, out ICanBus? bus)
         => CanRegistry.Registry.TryOpenEndPoint(endpoint, configure, out bus);
+
+    /// <summary>
+    /// Try prepare endpoint to construct provider + device/channel config without opening.
+    /// 尝试仅构造Provider与设备/通道配置，不执行打开。
+    /// </summary>
+    public static bool TryPrepare(string endpoint, Action<IBusInitOptionsConfigurator>? configure, out PreparedBusContext? prepared)
+        => CanRegistry.Registry.TryPrepareEndPoint(endpoint, configure, out prepared);
+
 
     /// <summary>
     /// Enumerate discoverable endpoints. Optionally limit by vendor/scheme names.

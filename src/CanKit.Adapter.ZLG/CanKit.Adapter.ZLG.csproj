@@ -6,11 +6,11 @@
         <Platforms>x64;x86;AnyCPU</Platforms>
         <PackageId>CanKit.Adapter.ZLG</PackageId>
         <AssemblyName>CanKit.Adapter.ZLG</AssemblyName>
-        <Version>0.3.0</Version>
+        <Version>$(CanKitCoreVersion)</Version>
         <Description>ZLG adapter for CanKit, enabling unified access to ZLG USBCAN/PCIe CAN/CAN FD devices (zlgcan.dll).</Description>
         <PackageTags>CAN;can bus;CANFD;ZLG;zlgcan;CanKit</PackageTags>
         <AssemblyVersion>1.0.0.0</AssemblyVersion>
-        <FileVersion>0.3.0.0</FileVersion>
+        <FileVersion>$(CanKitCoreVersion).0</FileVersion>
         <Authors>Pkuyo</Authors>
         <RepositoryUrl>https://github.com/pkuyo/CanKit</RepositoryUrl>
         <Configurations>Debug;Release;Fake</Configurations>
@@ -35,6 +35,10 @@
     
     <ItemGroup>
         <None Include="README.md" Pack="true" PackagePath="" />
+    </ItemGroup>
+    
+    <ItemGroup>
+      <Compile Remove="ZlgCapabilitySniffer.cs" />
     </ItemGroup>
     
 </Project>

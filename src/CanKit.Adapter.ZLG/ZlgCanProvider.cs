@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using CanKit.Adapter.ZLG.Definitions;
 using CanKit.Adapter.ZLG.Options;
 using CanKit.Core.Abstractions;
@@ -7,7 +8,7 @@ using CanKit.Core.Registry;
 namespace CanKit.Adapter.ZLG
 {
 
-    public abstract class ZlgCanProvider : ICanModelProvider
+    public abstract class ZlgCanProvider : ICanModelProvider, ICanCapabilityProvider
     {
         public virtual ZlgFeature ZlgFeature => ZlgFeature.None;
         public abstract DeviceType DeviceType { get; }
@@ -33,6 +34,17 @@ namespace CanKit.Adapter.ZLG
             var cfg = new ZlgBusInitConfigurator();
             cfg.Init(option);
             return (option, cfg);
+        }
+
+        public Capability QueryCapabilities(IBusOptions busOptions)
+        {
+            // Default ZLG pre-open sniff: use provider static features and provider-specific ZlgFeature.
+            // Additional runtime limitations (like range/mask) are already represented by ZlgFeature.
+            var custom = new Dictionary<string, object?>
+            {
+                { "zlg_features", ZlgFeature }
+            };
+            return new Capability(StaticFeatures, custom);
         }
     }
 }

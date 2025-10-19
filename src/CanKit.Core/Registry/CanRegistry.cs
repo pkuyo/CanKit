@@ -82,6 +82,22 @@ public partial class CanRegistry
     }
 
     /// <summary>
+    /// Try prepare endpoint to construct provider + device/channel config without opening.
+    /// ZH: 尝试仅构造Provider与设备/通道配置，不执行打开。
+    /// </summary>
+    public bool TryPrepareEndPoint(string endpoint, Action<IBusInitOptionsConfigurator>? configure, out Endpoints.PreparedBusContext? prepared)
+    {
+        var ep = CanEndpoint.Parse(endpoint);
+        if (_prepareHandlers.TryGetValue(ep.Scheme, out var p))
+        {
+            prepared = p(ep, configure);
+            return prepared != null;
+        }
+        prepared = null;
+        return false;
+    }
+
+    /// <summary>
     /// Registers one or more CAN model providers.(注册设备描述)
     /// </summary>
     /// <param name="providers">The array of CAN model providers to register.(待注册的设备描述)</param>
@@ -139,6 +155,9 @@ public partial class CanRegistry
     private readonly Dictionary<string, ICanFactory> _factories = new();
 
     private readonly Dictionary<string, Func<CanEndpoint, Action<IBusInitOptionsConfigurator>?, ICanBus>> _handlers =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    private readonly Dictionary<string, Func<CanEndpoint, Action<IBusInitOptionsConfigurator>?, Endpoints.PreparedBusContext>> _prepareHandlers =
         new(StringComparer.OrdinalIgnoreCase);
 
     private readonly Dictionary<DeviceType, ICanModelProvider> _providers = new();
@@ -282,6 +301,28 @@ public partial class CanRegistry
                 catch (Exception ex)
                 {
                     CanKitLogger.LogWarning($"Endpoint enumerator registration failed. Scheme='{attr.Scheme}', Type='{type.AssemblyQualifiedName}'", ex);
+                }
+
+                // Optional: discover Prepare method: public static PreparedBusContext Prepare(CanEndpoint, Action<IBusInitOptionsConfigurator>?)
+                try
+                {
+                    var prepareMethod = type.GetMethod(
+                        "Prepare",
+                        BindingFlags.Public | BindingFlags.Static,
+                        null,
+                        new[] { typeof(CanEndpoint), typeof(Action<IBusInitOptionsConfigurator>) },
+                        null);
+                    if (prepareMethod != null && typeof(Endpoints.PreparedBusContext).IsAssignableFrom(prepareMethod.ReturnType))
+                    {
+                        var del = (Func<CanEndpoint, Action<IBusInitOptionsConfigurator>?, Endpoints.PreparedBusContext>)
+                            prepareMethod.CreateDelegate(typeof(Func<CanEndpoint, Action<IBusInitOptionsConfigurator>?, Endpoints.PreparedBusContext>));
+                        _prepareHandlers[attr.Scheme] = del;
+                        CanKitLogger.LogInformation($"Registered endpoint prepare. Scheme='{attr.Scheme}', Type='{type.AssemblyQualifiedName}'");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    CanKitLogger.LogWarning($"Endpoint prepare registration failed. Scheme='{attr.Scheme}', Type='{type.AssemblyQualifiedName}'", ex);
                 }
             }
             catch (AmbiguousMatchException ex)

@@ -42,10 +42,12 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
     private CancellationTokenSource? _stopDelayCts;
     private int _asyncBufferingLinger;
 
-    internal SocketCanBus(IBusOptions options, ITransceiver transceiver)
+    internal SocketCanBus(IBusOptions options, ITransceiver transceiver, ICanModelProvider provider)
     {
         Options = new SocketCanBusRtConfigurator();
         Options.Init((SocketCanBusOptions)options);
+        options.Capabilities = ((SocketCanProvider)provider).QueryCapabilities(options);
+        options.Features = options.Capabilities.Features;
         _options = options;
         _transceiver = transceiver;
         _ifName = string.Empty;
@@ -56,9 +58,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
         // Apply device configs
         CanKitLogger.LogInformation($"SocketCAN: Initializing interface '{Options.ChannelName?? Options.ChannelIndex.ToString()}', Mode={Options.ProtocolMode}...");
 
-
         ApplyDeviceConfig();
-
 
         // Create socket & bind
         _fd = CreateAndBind(Options.ChannelName, Options.ProtocolMode, Options.PreferKernelTimestamp);
@@ -602,8 +602,6 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
             Libc.ThrowErrno("can_get_ctrlmode", $"Failed to get ctrlmode for '{ifName}'", re);
         }
 
-        UpdateDynamicFeatures(ctrlMode.mask);
-
         if (Options.WorkMode == ChannelWorkMode.Echo)
         {
             CanKitErr.ThrowIfNotSupport(Options.Features, CanFeature.Echo);
@@ -693,24 +691,6 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
                 Libc.ThrowErrno("can_do_start", $"Failed to start interface '{ifName}'");
             }
         }
-    }
-
-    private void UpdateDynamicFeatures(uint mask)
-    {
-        var features = CanFeature.CanClassic | CanFeature.Filters | CanFeature.ErrorCounters;
-        if ((mask & LibSocketCan.CAN_CTRLMODE_LOOPBACK) != 0)
-            features |= CanFeature.Echo;
-        if ((mask & LibSocketCan.CAN_CTRLMODE_LISTENONLY) != 0)
-            features |= CanFeature.ListenOnly;
-        if ((mask & LibSocketCan.CAN_CTRLMODE_FD) != 0)
-            features |= CanFeature.CanFd;
-        if ((mask & LibSocketCan.CAN_CTRLMODE_BERR_REPORTING) != 0)
-            features |= CanFeature.ErrorFrame;
-        if (LibSocketCan.can_get_berr_counter(_ifName, out _) == Libc.OK)
-            features |= CanFeature.ErrorCounters;
-
-        Options.UpdateDynamicFeatures(features);
-
     }
 
     private void ThrowIfDisposed()

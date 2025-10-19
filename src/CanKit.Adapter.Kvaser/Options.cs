@@ -26,11 +26,14 @@ public sealed class KvaserBusOptions(ICanModelProvider provider) : IBusOptions
     public CanProtocolMode ProtocolMode { get; set; } = CanProtocolMode.Can20;
     public CanFilter Filter { get; set; } = new();
     public CanFeature EnabledSoftwareFallback { get; set; }
+    public Capability Capabilities { get; set; } = new(provider.StaticFeatures);
+    public CanFeature Features { get; set; } = provider.StaticFeatures;
     public bool AllowErrorInfo { get; set; }
     public int AsyncBufferCapacity { get; set; } = 0;
     public int ReceiveLoopStopDelayMs { get; set; } = 200;
 
     public int? ReceiveBufferCapacity { get; set; }
+
 }
 
 public sealed class KvaserBusInitConfigurator
