@@ -8,7 +8,7 @@ namespace CanKit.Adapter.Kvaser.Transceivers;
 
 public sealed class KvaserFdTransceiver : ITransceiver
 {
-    public int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, IEnumerable<ICanFrame> frames, int _ = 0)
+    public int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, IEnumerable<ICanFrame> frames)
     {
         var ch = (KvaserBus)bus;
         int sent = 0;
@@ -58,9 +58,101 @@ public sealed class KvaserFdTransceiver : ITransceiver
         }
 
         return sent;
+    }
 
+    public int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, ReadOnlySpan<ICanFrame> frames)
+    {
+        var ch = (KvaserBus)bus;
+        int sent = 0;
 
+        foreach (var item in frames)
+        {
+            var dlc = item.Data.Length;
+            var flags = 0U;
+            if (item is CanFdFrame fd)
+            {
+                flags = Canlib.canFDMSG_FDF;
+                flags |= (bus.Options.TxRetryPolicy == TxRetryPolicy.NoRetry) ? (uint)Canlib.canMSG_SINGLE_SHOT : 0;
+                if (fd.IsExtendedFrame) flags |= Canlib.canMSG_EXT;
+                if (fd.BitRateSwitch) flags |= Canlib.canFDMSG_BRS;
+                if (fd.ErrorStateIndicator) flags |= Canlib.canFDMSG_ESI;
+            }
+            else if (item is CanClassicFrame classic)
+            {
+                if (classic.IsExtendedFrame) flags |= Canlib.canMSG_EXT;
+                if (classic.IsRemoteFrame) flags |= Canlib.canMSG_RTR;
+            }
 
+            Canlib.canStatus st;
+            unsafe
+            {
+                fixed (byte* ptr = item.Data.Span)
+                {
+                    st = Canlib.canWrite(ch.Handle, item.ID, ptr, (uint)dlc, flags);
+                }
+            }
+
+            if (st == Canlib.canStatus.canOK)
+            {
+                sent++;
+            }
+            else if (st is Canlib.canStatus.canERR_TXBUFOFL or Canlib.canStatus.canERR_TIMEOUT)
+            {
+                return sent;
+            }
+            else
+            {
+                var msg = "Failed to write frame";
+                if (Canlib.canGetErrorText(st, out var str) == Canlib.canStatus.canOK)
+                    msg += $". Message:{str}";
+                KvaserUtils.ThrowIfError(st, "canWrite", msg);
+            }
+        }
+
+        return sent;
+    }
+
+    public int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, in ICanFrame frame)
+    {
+        var ch = (KvaserBus)bus;
+        var flags = 0U;
+        var dlc = frame.Data.Length;
+        if (frame is CanFdFrame fd)
+        {
+            flags = Canlib.canFDMSG_FDF;
+            flags |= (bus.Options.TxRetryPolicy == TxRetryPolicy.NoRetry) ? (uint)Canlib.canMSG_SINGLE_SHOT : 0;
+            if (fd.IsExtendedFrame) flags |= Canlib.canMSG_EXT;
+            if (fd.BitRateSwitch) flags |= Canlib.canFDMSG_BRS;
+            if (fd.ErrorStateIndicator) flags |= Canlib.canFDMSG_ESI;
+        }
+        else if (frame is CanClassicFrame classic)
+        {
+            if (classic.IsExtendedFrame) flags |= Canlib.canMSG_EXT;
+            if (classic.IsRemoteFrame) flags |= Canlib.canMSG_RTR;
+        }
+
+        Canlib.canStatus st;
+        unsafe
+        {
+            fixed (byte* ptr = frame.Data.Span)
+            {
+                st = Canlib.canWrite(ch.Handle, frame.ID, ptr, (uint)dlc, flags);
+            }
+        }
+
+        if (st == Canlib.canStatus.canOK)
+        {
+            return 1;
+        }
+        if (st is Canlib.canStatus.canERR_TXBUFOFL or Canlib.canStatus.canERR_TIMEOUT)
+        {
+            return 0;
+        }
+        var msg = "Failed to write frame";
+        if (Canlib.canGetErrorText(st, out var str) == Canlib.canStatus.canOK)
+            msg += $". Message:{str}";
+        KvaserUtils.ThrowIfError(st, "canWrite", msg);
+        return 0;
     }
 
     public IEnumerable<CanReceiveData> Receive(ICanBus<IBusRTOptionsConfigurator> bus, int count = 1, int _ = 0)

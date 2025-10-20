@@ -48,7 +48,7 @@ public sealed class ZlgPeriodicTx : IPeriodicTx
         {
             try
             {
-                _ = _bus.Transmit(new[] { frame }, 0);
+                _ = _bus.Transmit(new[] { frame }.AsSpan(), 0);
             }
             catch
             {

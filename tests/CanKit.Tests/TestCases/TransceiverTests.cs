@@ -34,9 +34,9 @@ public class ThroughputAndFeaturesTests : IClassFixture<TestCaseProvider>
             await TestHelpers.SendBurstAsync(tx, frames, gapMs: 0);
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
             var rec = await TestHelpers.ReceiveUntilAsync(rx, v, batchSize, 2000, cts.Token);
-            rec.Should().BeInRange(batchSize-1, batchSize);
-            v.Lost.Should().BeLessOrEqualTo(1);
-            v.BadData.Should().BeLessOrEqualTo(1);
+            rec.Should().Be(batchSize);
+            v.Lost.Should().Be(0);
+            v.BadData.Should().Be(0);
         }
     }
     // 64 and 128 one-shot batch (FD)
@@ -61,9 +61,9 @@ public class ThroughputAndFeaturesTests : IClassFixture<TestCaseProvider>
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
             var rec = await TestHelpers.ReceiveUntilAsync(rx, v, batchSize, 2000, cts.Token);
 
-            rec.Should().BeInRange(batchSize-1, batchSize);
-            v.Lost.Should().BeLessOrEqualTo(1);
-            v.BadData.Should().BeLessOrEqualTo(1);
+            rec.Should().Be(batchSize);
+            v.Lost.Should().Be(0);
+            v.BadData.Should().Be(0);
         }
     }
 

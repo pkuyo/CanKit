@@ -14,11 +14,16 @@ namespace CanKit.Sample.Bridge
         private static async Task<int> Main(string[] args)
         {
             // Usage: Bridge --src <ep> --dst <ep> [--bidir] [--seconds 0] [--res 1]
+
+            #region ParseArgs
+
             var src = GetArg(args, "--src") ?? "virtual://alpha/0";
             var dst = GetArg(args, "--dst") ?? "virtual://alpha/1";
             bool bidir = HasFlag(args, "--bidir");
             bool enableRes = (ParseUInt(GetArg(args, "--res"), 1) == 1U);
             int seconds = (int)ParseUInt(GetArg(args, "--seconds"), 0);
+
+            #endregion
 
             using var srcBus = CanBus.Open(src, cfg => cfg.SetProtocolMode(CanProtocolMode.CanFd).InternalRes(enableRes));
             using var dstBus = CanBus.Open(dst, cfg => cfg.SetProtocolMode(CanProtocolMode.CanFd).InternalRes(enableRes));
@@ -43,21 +48,26 @@ namespace CanKit.Sample.Bridge
 #if NET8_0_OR_GREATER
             await foreach (var e in from.GetFramesAsync(ct))
             {
-                await to.TransmitAsync(new[] { e.CanFrame }, 0, ct);
+                await to.TransmitAsync(e.CanFrame, ct);
             }
 #else
             while (!ct.IsCancellationRequested)
             {
                 var list = await from.ReceiveAsync(32, 50, ct);
                 foreach (var e in list)
-                    await to.TransmitAsync(new[] { e.CanFrame }, 0, ct);
+                    await to.TransmitAsync(e.CanFrame, ct);
             }
 #endif
         }
+
+        #region Tools
 
         private static string Now() => DateTime.Now.ToString("HH:mm:ss", CultureInfo.InvariantCulture);
         private static string? GetArg(string[] args, string name) => args.SkipWhile(a => !string.Equals(a, name, StringComparison.OrdinalIgnoreCase)).Skip(1).FirstOrDefault();
         private static bool HasFlag(string[] args, string name) => args.Any(a => string.Equals(a, name, StringComparison.OrdinalIgnoreCase));
         private static uint ParseUInt(string? s, uint def) => uint.TryParse(s, out var v) ? v : def;
+
+        #endregion
+
     }
 }

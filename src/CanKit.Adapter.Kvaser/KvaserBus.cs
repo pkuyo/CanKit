@@ -183,15 +183,23 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
     public int Transmit(IEnumerable<ICanFrame> frames, int _ = 0)
     {
         ThrowIfDisposed();
-        try
-        {
-            return _transceiver.Transmit(this, frames);
-        }
-        catch (Exception ex)
-        {
-            HandleBackgroundException(ex); throw;
-        }
+        return _transceiver.Transmit(this, frames);
     }
+
+    public int Transmit(ReadOnlySpan<ICanFrame> frames, int _ = 0)
+    {
+        ThrowIfDisposed();
+        return _transceiver.Transmit(this, frames);
+    }
+
+    public int Transmit(ICanFrame[] frames, int _ = 0)
+        => Transmit(frames.AsSpan());
+
+    public int Transmit(ArraySegment<ICanFrame> frames, int _ = 0)
+        => Transmit(frames.AsSpan());
+
+    public int Transmit(in ICanFrame frame)
+        => _transceiver.Transmit(this, frame);
 
     public IPeriodicTx TransmitPeriodic(ICanFrame frame, PeriodicTxOptions options)
     {
@@ -595,6 +603,14 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
             {
                 return Transmit(frames);
             }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+            catch (Exception ex) { HandleBackgroundException(ex); throw; }
+        }, cancellationToken);
+
+    public Task<int> TransmitAsync(ICanFrame frame, CancellationToken cancellationToken = default)
+        => Task.Run(() =>
+        {
+            try { return Transmit(frame); }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
             catch (Exception ex) { HandleBackgroundException(ex); throw; }
         }, cancellationToken);

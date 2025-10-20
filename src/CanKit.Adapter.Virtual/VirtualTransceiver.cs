@@ -6,7 +6,22 @@ namespace CanKit.Adapter.Virtual;
 
 internal sealed class VirtualTransceiver : ITransceiver
 {
-    public int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, IEnumerable<ICanFrame> frames, int timeOut = 0)
+    public int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, IEnumerable<ICanFrame> frames)
+    {
+        if (bus is not VirtualBus vBus) return 0;
+        int n = 0;
+        foreach (var f in frames)
+        {
+            // validate frame kind vs protocol mode
+            if (f is CanFdFrame && vBus.Options.ProtocolMode != CanProtocolMode.CanFd)
+                continue;
+
+            vBus.Hub.Broadcast(vBus, f);
+            n++;
+        }
+        return n;
+    }
+    public int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, ReadOnlySpan<ICanFrame> frames)
     {
         if (bus is not VirtualBus vBus) return 0;
         int n = 0;
@@ -22,6 +37,17 @@ internal sealed class VirtualTransceiver : ITransceiver
         return n;
     }
 
+    public int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, in ICanFrame frame)
+    {
+        if (bus is not VirtualBus vBus) return 0;
+        // validate frame kind vs protocol mode
+        if (frame is CanFdFrame && vBus.Options.ProtocolMode != CanProtocolMode.CanFd)
+            return 0;
+
+        vBus.Hub.Broadcast(vBus, frame);
+
+        return 1;
+    }
 
     [Obsolete("We use rxQueue in CanBus instead of VirtualTransceiver.Receive")]
     public IEnumerable<CanReceiveData> Receive(ICanBus<IBusRTOptionsConfigurator> bus, int count = 1, int timeOut = 0)

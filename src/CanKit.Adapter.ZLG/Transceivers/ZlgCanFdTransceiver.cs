@@ -13,7 +13,7 @@ namespace CanKit.Adapter.ZLG.Transceivers
     public sealed class ZlgCanFdTransceiver : ITransceiver
     {
         public int Transmit(ICanBus<IBusRTOptionsConfigurator> bus,
-            IEnumerable<ICanFrame> frames, int _ = 0)
+            IEnumerable<ICanFrame> frames)
         {
             unsafe
             {
@@ -39,6 +39,50 @@ namespace CanKit.Adapter.ZLG.Transceivers
                 return (int)(sent + ZLGCAN.ZCAN_TransmitFD(((ZlgCanBus)bus).Handle, transmitData, (uint)index));
             }
 
+        }
+        public int Transmit(ICanBus<IBusRTOptionsConfigurator> bus,
+            ReadOnlySpan<ICanFrame> frames)
+        {
+            unsafe
+            {
+                var transmitData = stackalloc ZLGCAN.ZCAN_TransmitFD_Data[ZLGCAN.BATCH_COUNT];
+                var index = 0;
+                int sent = 0;
+                var echo = bus.Options.WorkMode == ChannelWorkMode.Echo;
+                foreach (var f in frames)
+                {
+                    if (index == ZLGCAN.BATCH_COUNT)
+                    {
+                        var re = ZLGCAN.ZCAN_TransmitFD(((ZlgCanBus)bus).Handle, transmitData, ZLGCAN.BATCH_COUNT);
+                        index = 0;
+                        if (re != ZLGCAN.BATCH_COUNT)
+                            return sent;
+                        sent += ZLGCAN.BATCH_COUNT;
+                    }
+                    if (f is not CanFdFrame cf)
+                        continue;
+                    cf.ToTransmitData(echo, transmitData, index);
+                    index++;
+                }
+                return (int)(sent + ZLGCAN.ZCAN_TransmitFD(((ZlgCanBus)bus).Handle, transmitData, (uint)index));
+            }
+        }
+
+        public int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, in ICanFrame frame)
+        {
+            unsafe
+            {
+                var transmitData = stackalloc ZLGCAN.ZCAN_TransmitFD_Data[1];
+                var echo = bus.Options.WorkMode == ChannelWorkMode.Echo;
+
+                if (frame is not CanFdFrame cf)
+                {
+                    throw new InvalidOperationException("Zlg Fd transceiver requires CanFdFrame.");
+                }
+
+                cf.ToTransmitData(echo, transmitData, 0);
+                return (int)ZLGCAN.ZCAN_TransmitFD(((ZlgCanBus)bus).Handle, transmitData, 1);
+            }
         }
 
         public IEnumerable<CanReceiveData> Receive(ICanBus<IBusRTOptionsConfigurator> bus, int count = 1, int timeOut = 0)

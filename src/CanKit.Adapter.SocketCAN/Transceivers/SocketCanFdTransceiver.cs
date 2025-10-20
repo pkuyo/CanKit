@@ -14,7 +14,7 @@ namespace CanKit.Adapter.SocketCAN.Transceivers;
 
 public sealed class SocketCanFdTransceiver : ITransceiver
 {
-    public int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, IEnumerable<ICanFrame> frames, int _ = 0)
+    public int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, IEnumerable<ICanFrame> frames)
     {
         var ch = (SocketCanBus)bus;
         var totalSent = 0;
@@ -93,6 +93,140 @@ public sealed class SocketCanFdTransceiver : ITransceiver
 
             return totalSent;
         }
+    }
+
+    public int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, ReadOnlySpan<ICanFrame> frames)
+    {
+        var ch = (SocketCanBus)bus;
+        var totalSent = 0;
+        var index = 0;
+        unsafe
+        {
+            var sizeClassic = Marshal.SizeOf<Libc.can_frame>();
+            var sizeFd = Marshal.SizeOf<Libc.canfd_frame>();
+            Libc.can_frame* cfBuf = stackalloc Libc.can_frame[Libc.BATCH_COUNT];
+            Libc.canfd_frame* fdBuf = stackalloc Libc.canfd_frame[Libc.BATCH_COUNT];
+            Libc.iovec* iov = stackalloc Libc.iovec[Libc.BATCH_COUNT];
+            Libc.mmsghdr* msgs = stackalloc Libc.mmsghdr[Libc.BATCH_COUNT];
+            foreach (var f in frames)
+            {
+                if (index == Libc.BATCH_COUNT)
+                {
+                    int sent;
+                    do
+                    {
+                        sent = Libc.sendmmsg(ch.Handle, msgs, Libc.BATCH_COUNT, 0);
+                    } while (sent < 0 && Libc.Errno() == Libc.EINTR);
+                    if (sent < 0)
+                    {
+                        var errno = Libc.Errno();
+                        if (errno == Libc.EAGAIN) return totalSent;
+                        Libc.ThrowErrno("sendmmsg(FD)", "Failed to send classic CAN frames");
+                    }
+                    totalSent += sent;
+                    index = 0;
+                    if (sent != Libc.BATCH_COUNT)
+                        break;
+                }
+                if (f is CanFdFrame fdf)
+                {
+                    fdBuf[index] = fdf.ToCanFrame();
+                    iov[index].iov_base = &fdBuf[index];
+                    iov[index].iov_len = (UIntPtr)sizeFd;
+                }
+                else if (f is CanClassicFrame ccf)
+                {
+                    cfBuf[index] = ccf.ToCanFrame();
+                    iov[index].iov_base = &cfBuf[index];
+                    iov[index].iov_len = (UIntPtr)sizeClassic;
+                }
+                else
+                {
+                    throw new InvalidOperationException(
+                        "SocketCanFdTransceiver requires CanClassicFrame/CanFdFrame");
+                }
+
+                msgs[index].msg_hdr = new Libc.msghdr
+                {
+                    msg_name = null,
+                    msg_namelen = 0,
+                    msg_iov = &iov[index],
+                    msg_iovlen = (UIntPtr)1,
+                    msg_control = null,
+                    msg_controllen = UIntPtr.Zero,
+                    msg_flags = 0
+                };
+                msgs[index].msg_len = 0;
+                index++;
+            }
+            int s;
+            do
+            {
+                s = Libc.sendmmsg(ch.Handle, msgs, (uint)index, 0);
+            } while (s < 0 && Libc.Errno() == Libc.EINTR);
+            if (s < 0)
+            {
+                var errno = Libc.Errno();
+                if (errno == Libc.EAGAIN) return totalSent;
+                Libc.ThrowErrno("sendmmsg(FD)", "Failed to send classic CAN frames");
+            }
+            totalSent += s;
+
+            return totalSent;
+        }
+    }
+
+    public unsafe int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, in ICanFrame frame)
+    {
+        var ch = (SocketCanBus)bus;
+        Libc.can_frame* cfBuf = stackalloc Libc.can_frame[1];
+        Libc.canfd_frame* fdBuf = stackalloc Libc.canfd_frame[1];
+        Libc.iovec* iov = stackalloc Libc.iovec[1];
+        Libc.mmsghdr* msgs = stackalloc Libc.mmsghdr[1];
+        var sizeClassic = Marshal.SizeOf<Libc.can_frame>();
+        var sizeFd = Marshal.SizeOf<Libc.canfd_frame>();
+        if (frame is CanFdFrame fdf)
+        {
+            fdBuf[0] = fdf.ToCanFrame();
+            iov[0].iov_base = &fdBuf[0];
+            iov[0].iov_len = (UIntPtr)sizeFd;
+        }
+        else if (frame is CanClassicFrame ccf)
+        {
+            cfBuf[0] = ccf.ToCanFrame();
+            iov[0].iov_base = &cfBuf[0];
+            iov[0].iov_len = (UIntPtr)sizeClassic;
+        }
+        else
+        {
+            throw new InvalidOperationException(
+                "SocketCanFdTransceiver requires CanClassicFrame/CanFdFrame");
+        }
+
+        msgs[0].msg_hdr = new Libc.msghdr
+        {
+            msg_name = null,
+            msg_namelen = 0,
+            msg_iov = &iov[0],
+            msg_iovlen = (UIntPtr)1,
+            msg_control = null,
+            msg_controllen = UIntPtr.Zero,
+            msg_flags = 0
+        };
+        msgs[0].msg_len = 0;
+        int sent;
+        do
+        {
+            sent = Libc.sendmmsg(ch.Handle, msgs, 1, 0);
+        } while (sent < 0 && Libc.Errno() == Libc.EINTR);
+        if (sent < 0)
+        {
+            var errno = Libc.Errno();
+            if (errno == Libc.EAGAIN) return 0;
+            Libc.ThrowErrno("sendmmsg(FD)", "Failed to send classic CAN frames");
+        }
+
+        return sent;
     }
 
     public IEnumerable<CanReceiveData> Receive(ICanBus<IBusRTOptionsConfigurator> bus, int count = 1, int _ = -1)

@@ -13,7 +13,7 @@ namespace CanKit.Adapter.ZLG.Transceivers;
 public class ZlgCanMergeTransceiver : ITransceiver
 {
     public unsafe int Transmit(ICanBus<IBusRTOptionsConfigurator> bus,
-        IEnumerable<ICanFrame> frames, int _)
+        IEnumerable<ICanFrame> frames)
     {
         var canBus = (ZlgCanBus)bus;
         var buf = stackalloc ZLGCAN.ZCANDataObj[ZLGCAN.BATCH_COUNT];
@@ -32,6 +32,33 @@ public class ZlgCanMergeTransceiver : ITransceiver
         return sent + (int)ZLGCAN.ZCAN_TransmitData(canBus.Handle.DeviceHandle, buf, (uint)index);
     }
 
+    public unsafe int Transmit(ICanBus<IBusRTOptionsConfigurator> bus,
+        ReadOnlySpan<ICanFrame> frames)
+    {
+        var canBus = (ZlgCanBus)bus;
+        var buf = stackalloc ZLGCAN.ZCANDataObj[ZLGCAN.BATCH_COUNT];
+        var index = 0;
+        var sent = 0;
+        foreach (var frame in frames)
+        {
+            if (index == ZLGCAN.BATCH_COUNT)
+            {
+                sent += (int)ZLGCAN.ZCAN_TransmitData(canBus.Handle.DeviceHandle, buf, ZLGCAN.BATCH_COUNT);
+                index = 0;
+            }
+            frame.ToZCANObj(canBus, &buf[index]);
+            index++;
+        }
+        return sent + (int)ZLGCAN.ZCAN_TransmitData(canBus.Handle.DeviceHandle, buf, (uint)index);
+    }
+
+    public unsafe int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, in ICanFrame frame)
+    {
+        var canBus = (ZlgCanBus)bus;
+        var buf = stackalloc ZLGCAN.ZCANDataObj[1];
+        frame.ToZCANObj(canBus, &buf[0]);
+        return (int)ZLGCAN.ZCAN_TransmitData(canBus.Handle.DeviceHandle, buf, 1);
+    }
 
     public IEnumerable<CanReceiveData> Receive(ICanBus<IBusRTOptionsConfigurator> bus, int count = 1, int timeOut = 0)
     {

@@ -128,11 +128,26 @@ namespace CanKit.Adapter.ZLG
             ZlgErr.ThrowIfError(ZLGCAN.ZCAN_ClearBuffer(_handle), nameof(ZLGCAN.ZCAN_ClearBuffer), _handle);
         }
 
-        public int Transmit(IEnumerable<ICanFrame> frames, int timeOut = 0)
+        public int Transmit(IEnumerable<ICanFrame> frames, int _ = 0)
         {
             ThrowIfDisposed();
             return _transceiver.Transmit(this, frames);
         }
+
+        public int Transmit(ReadOnlySpan<ICanFrame> frames, int _ = 0)
+        {
+            ThrowIfDisposed();
+            return _transceiver.Transmit(this, frames);
+        }
+
+        public int Transmit(ICanFrame[] frames, int _ = 0)
+            => Transmit(frames.AsSpan());
+
+        public int Transmit(ArraySegment<ICanFrame> frames, int _ = 0)
+            => Transmit(frames.AsSpan());
+
+        public int Transmit(in ICanFrame frame)
+            => _transceiver.Transmit(this, frame);
 
         public IPeriodicTx TransmitPeriodic(ICanFrame frame, PeriodicTxOptions options)
         {
@@ -656,6 +671,15 @@ namespace CanKit.Adapter.ZLG
             => Task.Run(() =>
             {
                 try { return Transmit(frames, timeOut); }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+                catch (Exception ex) { HandleBackgroundException(ex); throw; }
+            }, cancellationToken);
+
+        public Task<int> TransmitAsync(ICanFrame frame, CancellationToken cancellationToken = default)
+            => Task.Run(() =>
+            {
+                try { return Transmit(frame); }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
                 catch (Exception ex) { HandleBackgroundException(ex); throw; }
             }, cancellationToken);
 

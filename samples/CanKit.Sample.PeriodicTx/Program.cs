@@ -14,6 +14,9 @@ namespace CanKit.Sample.PeriodicTx
         private static int Main(string[] args)
         {
             // Usage: PeriodicTx --endpoint <ep> [--id 0x123] [--ext] [--fd] [--brs] [--data 11223344] [--period 100] [--count -1] [--res 1]
+
+            #region ParseArgs
+
             var endpoint = GetArg(args, "--endpoint") ?? "virtual://alpha/1";
             int id = ParseHex(GetArg(args, "--id"), 0x123);
             bool ext = HasFlag(args, "--ext");
@@ -26,17 +29,14 @@ namespace CanKit.Sample.PeriodicTx
             bool enableRes = (ParseInt(GetArg(args, "--res"), 1) == 1);
             var payload = ParseHexBytes(dataHex);
 
+            #endregion
+
             using var bus = CanBus.Open(endpoint, cfg =>
             {
-                if (fd)
-                    cfg.SetProtocolMode(CanProtocolMode.CanFd);
-                else
-                    cfg.SetProtocolMode(CanProtocolMode.Can20);
-
-                cfg.InternalRes(enableRes)
-                    .SoftwareFeaturesFallBack(CanFeature.CyclicTx);
-                if (echo)
-                    cfg.SetWorkMode(ChannelWorkMode.Echo);
+                cfg.SetProtocolMode(fd ? CanProtocolMode.CanFd : CanProtocolMode.Can20)
+                    .InternalRes(enableRes)
+                    .SoftwareFeaturesFallBack(CanFeature.CyclicTx)
+                    .SetWorkMode(echo ? ChannelWorkMode.Echo : ChannelWorkMode.Normal);
             });
 
             ICanFrame frame = fd
@@ -68,6 +68,8 @@ namespace CanKit.Sample.PeriodicTx
             return sb.ToString();
         }
 
+        #region Tools
+
         private static string? GetArg(string[] args, string name) => args.SkipWhile(a => !string.Equals(a, name, StringComparison.OrdinalIgnoreCase)).Skip(1).FirstOrDefault();
         private static bool HasFlag(string[] args, string name) => args.Any(a => string.Equals(a, name, StringComparison.OrdinalIgnoreCase));
         private static int ParseInt(string? s, int def) => int.TryParse(s, out var v) ? v : def;
@@ -89,5 +91,8 @@ namespace CanKit.Sample.PeriodicTx
                 bytes[i] = byte.Parse(hex.Substring(2 * i, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture);
             return bytes;
         }
+
+        #endregion
+
     }
 }

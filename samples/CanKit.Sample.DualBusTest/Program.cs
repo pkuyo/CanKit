@@ -29,6 +29,8 @@ internal static class Program
         //  DualBusTest --a virtual://alpha/0 --b virtual://alpha/1 --count 1000 --fd --brs --ext --len 64 --mask 0x100 0x7FF
         //  DualBusTest --a kvaser://0 --b kvaser://1 --count 5000 --classic --bitrate 1000000
 
+        #region ParseArgs
+
         var epA = GetArg(args, "--a") ?? "virtual://alpha/0"; // tester
         var epB = GetArg(args, "--b") ?? "virtual://alpha/1"; // DUT
 
@@ -62,9 +64,10 @@ internal static class Program
         var baseId = (uint)ParseInt(GetArg(args, "--baseid"), extended ? defaultBaseIdExt : defaultBaseIdStd);
         baseId &= extended ? 0x1FFFFF00u : 0x00000700u; // clear low 8 bits according to frame type
 
-
         // Which tests to run
         var mode = (GetArg(args, "--mode") ?? "all").ToLowerInvariant();
+
+        #endregion
 
         if (_verbose)
         {

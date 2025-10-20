@@ -204,7 +204,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
         var startTime = Environment.TickCount;
         var pollFd = new Libc.pollfd { fd = _fd.DangerousGetHandle().ToInt32(), events = Libc.POLLOUT };
         var needSend = frames.ToArray();
-        var wrote = _transceiver.Transmit(this, needSend);
+        var wrote = _transceiver.Transmit(this, needSend.AsSpan());
         sendCount = wrote;
         var remainingTime = timeOut;
         while ((timeOut < 0 || remainingTime > 0) && sendCount < needSend.Length)
@@ -232,7 +232,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
             }
 
             wrote = _transceiver.Transmit(this,
-                new ArraySegment<ICanFrame>(needSend, sendCount, needSend.Length - sendCount));
+                new ArraySegment<ICanFrame>(needSend, sendCount, needSend.Length - sendCount).AsSpan());
             sendCount += wrote;
 
         }
@@ -240,6 +240,59 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
         return sendCount;
 
     }
+
+    public int Transmit(ReadOnlySpan<ICanFrame> frames, int timeOut = 0)
+    {
+        ThrowIfDisposed();
+        int sendCount = 0;
+        var startTime = Environment.TickCount;
+        var pollFd = new Libc.pollfd { fd = _fd.DangerousGetHandle().ToInt32(), events = Libc.POLLOUT };
+        var needSend = frames.ToArray();
+        var wrote = _transceiver.Transmit(this, needSend.AsSpan());
+        sendCount = wrote;
+        var remainingTime = timeOut;
+        while ((timeOut < 0 || remainingTime > 0) && sendCount < needSend.Length)
+        {
+            remainingTime = timeOut > 0
+                ? Math.Max(0, timeOut - (Environment.TickCount - startTime))
+                : timeOut;
+
+
+            var pr = Libc.poll(ref pollFd, 1, remainingTime);
+            if (pr < 0)
+            {
+                var errno = Libc.Errno();
+                if (errno == Libc.EINTR) continue;
+                Libc.ThrowErrno("poll(POLLOUT)", "Polling for writable socket failed");
+            }
+            if (pr == 0)
+            {
+                break;
+            }
+
+            if ((pollFd.revents & (Libc.POLLERR | Libc.POLLHUP | Libc.POLLNVAL)) != 0)
+            {
+                Libc.ThrowErrno("poll(POLLOUT)", "socket error");
+            }
+
+            wrote = _transceiver.Transmit(this,
+                new ArraySegment<ICanFrame>(needSend, sendCount, needSend.Length - sendCount).AsSpan());
+            sendCount += wrote;
+
+        }
+
+        return sendCount;
+
+    }
+
+    public int Transmit(ICanFrame[] frames, int timeOut = 0)
+        => Transmit(frames.AsSpan(), timeOut);
+
+    public int Transmit(ArraySegment<ICanFrame> frames, int timeOut = 0)
+        => Transmit(frames.AsSpan(), timeOut);
+
+    public int Transmit(in ICanFrame frame)
+        => _transceiver.Transmit(this, frame);
 
     public IEnumerable<CanReceiveData> Receive(int count = 1, int timeOut = 0)
     {
@@ -254,6 +307,14 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
         => Task.Run(() =>
         {
             try { return Transmit(frames, timeOut); }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+            catch (Exception ex) { HandleBackgroundException(ex); throw; }
+        }, cancellationToken);
+
+    public Task<int> TransmitAsync(ICanFrame frame, CancellationToken cancellationToken = default)
+        => Task.Run(() =>
+        {
+            try { return Transmit(frame); }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
             catch (Exception ex) { HandleBackgroundException(ex); throw; }
         }, cancellationToken);

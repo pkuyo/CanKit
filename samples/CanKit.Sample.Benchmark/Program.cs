@@ -15,6 +15,9 @@ namespace CanKit.Sample.Benchmark
         private static async Task<int> Main(string[] args)
         {
             // Usage: Benchmark [--src <ep>] [--dst <ep>] [--frames 10000] [--len 8] [--fd] [--brs]  [--bitrate 500000] [--dbitrate 2000000] [--res 1]
+
+            #region ParseArgs
+
             var src = GetArg(args, "--src") ?? "virtual://alpha/0";
             var dst = GetArg(args, "--dst") ?? "virtual://alpha/1";
             int frames = ParseInt(GetArg(args, "--frames"), 50_000);
@@ -25,6 +28,8 @@ namespace CanKit.Sample.Benchmark
             bool brs = HasFlag(args, "--brs");
             bool enableRes = (ParseInt(GetArg(args, "--res"), 1) == 1);
             int gapMs = int.TryParse(GetArg(args, "--gapms"), out var s) ? s : -1;
+
+            #endregion
 
             using var rx = CanBus.Open(dst, cfg =>
             {
@@ -57,8 +62,8 @@ namespace CanKit.Sample.Benchmark
             int received = 0;
             long lastReceived = sw.ElapsedTicks;
             var cts = new CancellationTokenSource();
-#if NET8_0_OR_GREATER
 
+#if NET8_0_OR_GREATER
             var rxTask = Task.Run(async () =>
             {
                 await foreach (var e in rx.GetFramesAsync(cts.Token))
@@ -122,26 +127,13 @@ namespace CanKit.Sample.Benchmark
             return 0;
         }
 
+        #region Tools
 
-        private static double FrameTimeUsEstimate(bool isFd, bool brsOn, int bytes, int arbBitrate, int dataBitrate, double stuffFactor)
-        {
-            bytes = Math.Max(0, Math.Min(bytes, isFd ? 64 : 8));
-            if (!isFd)
-            {
-                double bits = (47.0 + 8.0 * bytes) * stuffFactor;
-                return bits / arbBitrate * 1e6;
-            }
-            else
-            {
-                double arbBitsNoStuff = 36.0 + (bytes <= 16 ? 17.0 : 21.0);
-                double dataBits = 8.0 * bytes;
-                double tArbUs = (arbBitsNoStuff * stuffFactor) / arbBitrate * 1e6;
-                double tDataUs = (dataBits        * stuffFactor) / (brsOn ? dataBitrate : arbBitrate) * 1e6;
-                return tArbUs + tDataUs;
-            }
-        }
         private static string? GetArg(string[] args, string name) => args.SkipWhile(a => !string.Equals(a, name, StringComparison.OrdinalIgnoreCase)).Skip(1).FirstOrDefault();
         private static bool HasFlag(string[] args, string name) => args.Any(a => string.Equals(a, name, StringComparison.OrdinalIgnoreCase));
         private static int ParseInt(string? s, int def) => int.TryParse(s, out var v) ? v : def;
+
+        #endregion
+
     }
 }

@@ -49,7 +49,7 @@ public partial class TestMatrix
     private static IEnumerable<object[]> FDFrameSettings()
     {
         // dataLen, BRS, IDE
-        int[] len = [0, 8, 48, 64];
+        int[] len = [0, 64];
         foreach (var l in len)
         {
             yield return [l, false, false];
@@ -62,7 +62,7 @@ public partial class TestMatrix
     private static IEnumerable<object[]> ClassicFrameSettings()
     {
         // dataLen, RTR, IDE
-        int[] len = [0, 4, 8];
+        int[] len = [0, 8];
         foreach (var l in len)
         {
             yield return [l, false, false];

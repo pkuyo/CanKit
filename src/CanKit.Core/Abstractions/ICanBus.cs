@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using CanKit.Core.Definitions;
 
@@ -57,6 +58,49 @@ namespace CanKit.Core.Abstractions
         int Transmit(IEnumerable<ICanFrame> frames, int timeOut = 0);
 
         /// <summary>
+        /// Transmit one or more CAN frames (发送一个或多个 CAN 帧)。
+        /// </summary>
+        /// <param name="frames">Frames to transmit (待发送帧集合)。</param>
+        /// <param name="timeOut">
+        /// Timeout in milliseconds; use -1 for an infinite wait, and 0 to return immediately without waiting.
+        /// Actual behavior is adapter/driver dependent and may not be honored by all hardware.
+        /// （超时时间，单位毫秒；-1 表示无限等待，0 表示不等待立即返回。实际行为取决于适配器/驱动，并非所有硬件都会遵循。）
+        /// </param>
+        /// <returns>Number of frames accepted by driver (被底层接受的帧数)。</returns>
+        public int Transmit(ReadOnlySpan<ICanFrame> frames, int timeOut = 0);
+
+        /// <summary>
+        /// Transmit one or more CAN frames (发送一个或多个 CAN 帧)。
+        /// </summary>
+        /// <param name="frames">Frames to transmit (待发送帧集合)。</param>
+        /// <param name="timeOut">
+        /// Timeout in milliseconds; use -1 for an infinite wait, and 0 to return immediately without waiting.
+        /// Actual behavior is adapter/driver dependent and may not be honored by all hardware.
+        /// （超时时间，单位毫秒；-1 表示无限等待，0 表示不等待立即返回。实际行为取决于适配器/驱动，并非所有硬件都会遵循。）
+        /// </param>
+        /// <returns>Number of frames accepted by driver (被底层接受的帧数)。</returns>
+        public int Transmit(ICanFrame[] frames, int timeOut = 0);
+
+        /// <summary>
+        /// Transmit one or more CAN frames (发送一个或多个 CAN 帧)。
+        /// </summary>
+        /// <param name="frames">Frames to transmit (待发送帧集合)。</param>
+        /// <param name="timeOut">
+        /// Timeout in milliseconds; use -1 for an infinite wait, and 0 to return immediately without waiting.
+        /// Actual behavior is adapter/driver dependent and may not be honored by all hardware.
+        /// （超时时间，单位毫秒；-1 表示无限等待，0 表示不等待立即返回。实际行为取决于适配器/驱动，并非所有硬件都会遵循。）
+        /// </param>
+        /// <returns>Number of frames accepted by driver (被底层接受的帧数)。</returns>
+        public int Transmit(ArraySegment<ICanFrame> frames, int timeOut = 0);
+
+        /// <summary>
+        /// Transmit one CAN frame (发送一个 CAN 帧)。
+        /// </summary>
+        /// <param name="frame">Frames to transmit (待发送帧集合)。</param>
+        /// <returns>Number of frames accepted by driver (被底层接受的帧数)。</returns>
+        public int Transmit(in ICanFrame frame);
+
+        /// <summary>
         /// Asynchronously transmit one or more CAN frames (异步发送一个或多个 CAN 帧)
         /// </summary>
         /// <param name="frames">Frames to transmit (待发送帧集合)</param>
@@ -67,7 +111,15 @@ namespace CanKit.Core.Abstractions
         /// </param>
         /// <param name="cancellationToken">Cancellation (取消令牌)</param>
         /// <returns>Number of frames accepted by driver (被底层接受的帧数)</returns>
-        Task<int> TransmitAsync(IEnumerable<ICanFrame> frames, int timeOut = 0, System.Threading.CancellationToken cancellationToken = default);
+        Task<int> TransmitAsync(IEnumerable<ICanFrame> frames, int timeOut = 0, CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Asynchronously transmit one or more CAN frames (异步发送一个或多个 CAN 帧)
+        /// </summary>
+        /// <param name="frame">Frames to transmit (待发送帧集合)</param>
+        /// <param name="cancellationToken">Cancellation (取消令牌)</param>
+        /// <returns>Number of frames accepted by driver (被底层接受的帧数)</returns>
+        Task<int> TransmitAsync(ICanFrame frame, CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Schedule a periodic transmit of a single CAN frame.
@@ -113,7 +165,7 @@ namespace CanKit.Core.Abstractions
         /// </param>
         /// <param name="cancellationToken">Cancellation (取消令牌)</param>
         /// <returns>Received frames (收到的帧集合)。当达到期望数量或超时/取消时返回。</returns>
-        Task<IReadOnlyList<CanReceiveData>> ReceiveAsync(int count = 1, int timeOut = 0, System.Threading.CancellationToken cancellationToken = default);
+        Task<IReadOnlyList<CanReceiveData>> ReceiveAsync(int count = 1, int timeOut = 0, CancellationToken cancellationToken = default);
 
 
 #if NET8_0_OR_GREATER
@@ -122,7 +174,7 @@ namespace CanKit.Core.Abstractions
         /// </summary>
         /// <param name="cancellationToken">Cancellation (取消令牌)</param>
         /// <returns>IAsyncEnumerable of frames</returns>
-        IAsyncEnumerable<CanReceiveData> GetFramesAsync(System.Threading.CancellationToken cancellationToken = default);
+        IAsyncEnumerable<CanReceiveData> GetFramesAsync(CancellationToken cancellationToken = default);
 #endif
 
         /// <summary>

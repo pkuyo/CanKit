@@ -1,5 +1,7 @@
 using System;
 using System.Linq;
+using CanKit.Core;
+using CanKit.Core.Definitions;
 using CanKit.Core.Endpoints;
 
 namespace CanKit.Sample.ListEndpoints
@@ -35,6 +37,16 @@ namespace CanKit.Sample.ListEndpoints
                     Console.Write(string.Join(", ", ep.Meta.Select(kv => kv.Key + "=" + kv.Value)));
                     Console.Write("]");
                 }
+
+                var caps = CanBus.QueryCapabilities(ep.Endpoint);
+                if (caps.Features != 0)
+                {
+                    Console.Write(" features:[");
+                    Console.Write(string.Join(", ", ((CanFeature[])Enum.GetValues(typeof(CanFeature)))
+                        .Where(flag => flag == 0 ? caps.Features == 0 : caps.Features.HasFlag(flag))));
+                    Console.Write("]");
+                }
+
                 Console.WriteLine();
             }
 

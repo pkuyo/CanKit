@@ -10,7 +10,7 @@ namespace CanKit.Adapter.PCAN.Transceivers;
 
 public sealed class PcanClassicTransceiver : ITransceiver
 {
-    public unsafe int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, IEnumerable<ICanFrame> frames, int _ = 0)
+    public unsafe int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, IEnumerable<ICanFrame> frames)
     {
         var ch = (PcanBus)bus;
         int sent = 0;
@@ -58,6 +58,99 @@ public sealed class PcanClassicTransceiver : ITransceiver
             }
         }
         return sent;
+    }
+
+    public unsafe int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, ReadOnlySpan<ICanFrame> frames)
+    {
+        var ch = (PcanBus)bus;
+        int sent = 0;
+        var pMsg = stackalloc PcanBasicNative.TpcanMsg[1];
+        foreach (var item in frames)
+        {
+            if (item is not CanClassicFrame cf)
+            {
+                throw new InvalidOperationException("PCAN classic transceiver requires CanClassicFrame.");
+            }
+
+            var type = TPCANMessageType.PCAN_MESSAGE_STANDARD;
+            if (cf.IsExtendedFrame)
+            {
+                type |= TPCANMessageType.PCAN_MESSAGE_EXTENDED;
+            }
+            if (cf.IsRemoteFrame)
+            {
+                type |= TPCANMessageType.PCAN_MESSAGE_RTR;
+            }
+
+            var dlc = (byte)Math.Min(8, (int)cf.Dlc);
+
+            PcanStatus st;
+            fixed (byte* ptr = item.Data.Span)
+            {
+                Unsafe.CopyBlock(pMsg->DATA, ptr, dlc);
+                pMsg->ID = (uint)item.ID;
+                pMsg->MSGTYPE = type;
+                pMsg->LEN = dlc;
+                st = (PcanStatus)PcanBasicNative.CAN_Write((UInt16)ch.Handle, pMsg);
+            }
+
+            if (st == PcanStatus.OK)
+            {
+                sent++;
+            }
+            else if (st is PcanStatus.TransmitBufferFull or PcanStatus.TransmitQueueFull)
+            {
+                break;
+            }
+            else
+            {
+                PcanUtils.ThrowIfError(st, "Write(Classic)", $"PCAN: transmit frame failed. Channel:{((PcanBus)bus).Handle}");
+            }
+        }
+        return sent;
+    }
+
+    public unsafe int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, in ICanFrame frame)
+    {
+        var ch = (PcanBus)bus;
+        var pMsg = stackalloc PcanBasicNative.TpcanMsg[1];
+        if (frame is not CanClassicFrame cf)
+        {
+            throw new InvalidOperationException("PCAN classic transceiver requires CanClassicFrame.");
+        }
+
+        var type = TPCANMessageType.PCAN_MESSAGE_STANDARD;
+        if (cf.IsExtendedFrame)
+        {
+            type |= TPCANMessageType.PCAN_MESSAGE_EXTENDED;
+        }
+        if (cf.IsRemoteFrame)
+        {
+            type |= TPCANMessageType.PCAN_MESSAGE_RTR;
+        }
+
+        var dlc = (byte)Math.Min(8, (int)cf.Dlc);
+
+        PcanStatus st;
+        fixed (byte* ptr = frame.Data.Span)
+        {
+            Unsafe.CopyBlock(pMsg->DATA, ptr, dlc);
+            pMsg->ID = (uint)frame.ID;
+            pMsg->MSGTYPE = type;
+            pMsg->LEN = dlc;
+            st = (PcanStatus)PcanBasicNative.CAN_Write((UInt16)ch.Handle, pMsg);
+        }
+
+        if (st == PcanStatus.OK)
+        {
+            return 1;
+        }
+        if (st is PcanStatus.TransmitBufferFull or PcanStatus.TransmitQueueFull)
+        {
+            return 0;
+        }
+        PcanUtils.ThrowIfError(st, "Write(Classic)", $"PCAN: transmit frame failed. Channel:{((PcanBus)bus).Handle}");
+        return 0;
     }
 
     public IEnumerable<CanReceiveData> Receive(ICanBus<IBusRTOptionsConfigurator> bus, int count = 1, int _ = 0)

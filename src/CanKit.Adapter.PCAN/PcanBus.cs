@@ -206,6 +206,21 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
         return _transceiver.Transmit(this, frames);
     }
 
+    public int Transmit(ReadOnlySpan<ICanFrame> frames, int _ = 0)
+    {
+        ThrowIfDisposed();
+        return _transceiver.Transmit(this, frames);
+    }
+
+    public int Transmit(ICanFrame[] frames, int _ = 0)
+        => Transmit(frames.AsSpan());
+
+    public int Transmit(ArraySegment<ICanFrame> frames, int _ = 0)
+        => Transmit(frames.AsSpan());
+
+    public int Transmit(in ICanFrame frame)
+        => _transceiver.Transmit(this, frame);
+
     //non-support time out
     public Task<int> TransmitAsync(IEnumerable<ICanFrame> frames, int _ = 0, CancellationToken cancellationToken = default)
         => Task.Run(() =>
@@ -218,6 +233,13 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
             catch (Exception ex) { HandleBackgroundException(ex); throw; }
         }, cancellationToken);
 
+    public Task<int> TransmitAsync(ICanFrame frame, CancellationToken cancellationToken = default)
+        => Task.Run(() =>
+        {
+            try { return Transmit(frame); }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+            catch (Exception ex) { HandleBackgroundException(ex); throw; }
+        }, cancellationToken);
 
     public IEnumerable<CanReceiveData> Receive(int count = 1, int timeOut = 0)
     {
