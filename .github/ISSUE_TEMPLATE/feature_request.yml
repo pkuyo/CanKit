@@ -1,0 +1,34 @@
+name: "Feature request"
+description: "Propose an improvement to API, docs, or tooling"
+title: "[feat] <what and why>"
+labels: ["type: feature", "needs triage"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+      description: "What pain does this feature remove?"
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: "API sketch,sample code, ..."
+    validations:
+      required: true
+  - type: textarea
+    id: alt
+    attributes:
+      label: Alternatives considered
+  - type: checkboxes
+    id: areas
+    attributes:
+      label: Areas
+      options:
+        - label: Core
+        - label: PCAN
+        - label: Kvaser
+        - label: SocketCAN
+        - label: ZLG
+        - label: Docs

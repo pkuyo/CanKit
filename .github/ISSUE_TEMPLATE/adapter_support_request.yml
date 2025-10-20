@@ -1,0 +1,34 @@
+name: "Adapter support request"
+description: "Request support or validation for a specific vendor/device"
+title: "[adapter] <vendor & model>"
+labels: ["type: adapter", "help wanted", "needs triage"]
+body:
+  - type: input
+    id: vendor
+    attributes:
+      label: Vendor & model
+      placeholder: "XYZ CAN USB Pro"
+    validations:
+      required: true
+  - type: textarea
+    id: links
+    attributes:
+      label: SDK / manuals / links
+      placeholder: "Driver download, SDK docs, example commands..."
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Target OS
+      multiple: true
+      options: [Windows, Linux, macOS]
+  - type: textarea
+    id: endpoints
+    attributes:
+      label: Endpoint(s)
+      description: "Paste endpoint(s) discovered via ListEndpoints."
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes

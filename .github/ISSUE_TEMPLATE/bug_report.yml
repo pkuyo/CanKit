@@ -1,0 +1,76 @@
+name: "Bug report"
+description: "Report a reproducible problem with CanKit"
+title: "[bug] <short summary>"
+labels: ["type: bug", "needs triage"]
+body:
+  - type: markdown
+    attributes:
+      value: "Thanks for reporting! Please fill out as much as possible."
+  - type: input
+    id: version
+    attributes:
+      label: CanKit version / commit
+      description: e.g., 0.3.0 or commit SHA
+      placeholder: 0.3.0
+    validations:
+      required: true
+  - type: dropdown
+    id: adapter
+    attributes:
+      label: Adapter vendor
+      options: [PCAN, Kvaser, SocketCAN, ZLG, Virtual, Other]
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Device model / endpoint(s)
+      description: "Paste endpoint(s) from ListEndpoints sample, e.g. pcan://PCAN_USBBUS1"
+  - type: input
+    id: os
+    attributes:
+      label: OS & version
+      placeholder: "Windows 11 24H2 / Ubuntu 22.04 / macOS 14.x"
+    validations:
+      required: true
+  - type: input
+    id: dotnet
+    attributes:
+      label: .NET SDK/runtime
+      placeholder: "SDK 8.0.x"
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproduction steps
+      description: "Exact commands or code. Prefer running a sample (ListEndpoints / Sniffer / QuickStartTxRx)."
+      placeholder: |
+        1) dotnet run --project samples/CanKit.Sample.ListEndpoints -- --scheme pcan
+        2) dotnet run --project samples/CanKit.Sample.Sniffer -- --endpoint pcan://PCAN_USBBUS1 --bitrate 500000
+        3) Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior & logs
+      description: "Paste console output; attach screenshots if helpful."
+    validations:
+      required: true
+  - type: checkboxes
+    id: samples
+    attributes:
+      label: Which sample(s) affected?
+      options:
+        - label: ListEndpoints
+        - label: Sniffer
+        - label: QuickStartTxRx
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes / additional context
