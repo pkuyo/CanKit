@@ -63,43 +63,73 @@ dotnet add package CanKit.Adapter.Virtual
 
 ## 快速开始
 
-通过 Endpoint 打开，然后发送/接收：
+通过 Endpoint 打开，然后发送/接收（示例Endpoint）：
 
+- PCAN: `pcan://PCAN_USBBUS1`
+- Kvaser: `kvaser://0` or `kvaser://?ch=0`
+- SocketCAN (Linux): `socketcan://can0#netlink`
+- ZLG: `zlg://USBCANFD-200U?index=0#ch1`
+- Virtual: `virtual://alpha/0`
+
+### 发送 & 接收
 ```csharp
+// 快速上手：打开总线，发送一帧，带超时接收
+using CanKit.Core;
+using CanKit.Core.Definitions;
+
+// 通过端点打开；在配置器中设置比特率等参数
+using var bus = CanBus.Open(
+    "socketcan://can0#netlink",
+    cfg => cfg.TimingClassic(500_000)); // 经典 CAN 500 kbps
+
+// 同步发送一帧经典 CAN
+var frame = new CanClassicFrame(0x123, new byte[] { 0x11, 0x22, 0x33 });
+var sentCount = bus.Transmit(frame);
+
+// 异步发送同一帧
+sentCount = await bus.TransmitAsync(frame);
+
+// 同步接收（最多 1 帧），单位为毫秒
+var items = bus.Receive(1, timeOut: 100);
+
+// 异步批量接收（最多 10 帧），带超时
+var list = await bus.ReceiveAsync(10, timeOut: 500);
+```
+### 事件驱动接收 + 批量发送
+```csharp
+// 事件驱动接收、友好打印，及批量发送
 using CanKit.Core;
 using CanKit.Core.Abstractions;
 using CanKit.Core.Definitions;
+using System;
 
-// 以 SocketCAN 为例，片段 #netlink 表示启用 netlink 进行设备层配置
-using var bus = CanBus.Open("socketcan://can0#netlink", cfg =>
-{
-    cfg.TimingClassic(500_000)
-       .EnableErrorInfo()  // 如需订阅错误帧
-       .SetAsyncBufferCapacity(1024);
-});
+// 打开总线；在配置器中按需设置比特率/模式
+using var bus = CanBus.Open(
+    "socketcan://can0#netlink",
+    cfg => cfg.TimingClassic(500_000));
 
-bus.FrameReceived += (s, rec) =>
+// 订阅接收事件（如需错误/状态帧，请在配置中开启）
+bus.FrameReceived += (_, rec) =>
 {
-    Console.WriteLine($"RX {rec.CanFrame.FrameKind} ID={rec.CanFrame.ID:X} DLC={rec.CanFrame.Dlc}");
+    var f = rec.CanFrame;
+    Console.WriteLine($"RX {f.FrameKind} ID=0x{f.ID:X} DLC={f.Dlc}");
 };
 
-// 发送一帧经典 CAN
-bus.Transmit(new[] { new CanClassicFrame(0x123, new byte[]{ 0x01, 0x02 }) });
+// 单帧发送（同步 + 异步）
+var frame = new CanClassicFrame(0x123, new byte[] { 0x11, 0x22, 0x33 });
+var sentCount = bus.Transmit(frame);
+sentCount = await bus.TransmitAsync(frame);
 
-// 同步接收（超时 100ms）
-var items = bus.Receive(1, timeOut: 100);
+// 批量发送（同步 + 异步）
+var frames = new[] { frame, frame, frame, frame };
+sentCount = bus.Transmit(frames);
+sentCount = await bus.TransmitAsync(frames);
 
-// 异步批量接收（10 帧，超时 500ms）
-var list = await bus.ReceiveAsync(10, timeOut: 500);
+// 可选：按需拉取（同步/异步）并设置超时
+var one = bus.Receive(1, timeOut: 100);
+var many = await bus.ReceiveAsync(10, timeOut: 500);
+
 ```
-
-常见 Endpoint：
-- PCAN：`pcan://PCAN_USBBUS1` 或 `pcan://?ch=PCAN_PCIBUS1`
-- Kvaser：`kvaser://0` 或 `kvaser://?ch=0`
-- SocketCAN：`socketcan://can0` 或 `socketcan://can0#netlink`；可选 `?rcvbuf=<字节数>`
-- ZLG：`zlg://USBCANFD-200U?index=0#ch1`（设备索引 + 通道）
-- Virtual：`virtual://sessionId/channelId`（如 `virtual://alpha/0`）
-
 若更偏好强类型入口：
 
 ```csharp

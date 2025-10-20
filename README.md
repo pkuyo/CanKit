@@ -15,7 +15,7 @@
 
 It supports opening buses via endpoint strings or strongly-typed helpers, and exposes common operations (send/receive, filters, periodic TX, error monitoring) across adapters.
 
-- Adapters: PCAN-Basic (Peak CAN), CANlib(Kvaser), SocketCAN (Linux), ZLG(周立功)
+- Adapters: PCAN-Basic (Peak CAN), CANlib(Kvaser), SocketCAN (Linux), ZLG(周立�?)
 
 For Chinese readers, see: [README_CN.md](README_CN.md)
 
@@ -67,31 +67,63 @@ Open a bus using an endpoint string, then send/receive frames. Examples:
 - ZLG: `zlg://USBCANFD-200U?index=0#ch1`
 - Virtual: `virtual://alpha/0`
 
+### Send & Receive
 ```csharp
+using CanKit.Core;
+using CanKit.Core.Definitions;
+
+// Open via endpoint; tune bitrate and other options in the configurator
+using var bus = CanBus.Open(
+    "socketcan://can0#netlink",
+    cfg => cfg.TimingClassic(500_000)); // 500 kbit/s for classic CAN
+
+// Transmit a classic CAN frame (sync)
+var frame = new CanClassicFrame(0x123, new byte[] { 0x11, 0x22, 0x33 });
+var sentCount = bus.Transmit(frame);
+
+// Transmit the same frame (async)
+sentCount = await bus.TransmitAsync(frame);
+
+// Receive up to 1 frame (blocking), timeout in milliseconds
+var items = bus.Receive(1, timeOut: 100);
+
+// Receive up to 10 frames (async batch) with timeout
+var list = await bus.ReceiveAsync(10, timeOut: 500);
+```
+
+### Event-driven RX + Batch TX
+```csharp
+// Event-driven receive, pretty-print frames, and batch transmit
 using CanKit.Core;
 using CanKit.Core.Abstractions;
 using CanKit.Core.Definitions;
+using System;
 
-// Open via endpoint; configure timing/work mode/etc. via the configurator
-using var bus = CanKit.Core.CanBus.Open(
+// Open the bus; adjust timing/mode in the configurator as needed
+using var bus = CanBus.Open(
     "socketcan://can0#netlink",
     cfg => cfg.TimingClassic(500_000));
 
-// Subscribe for frames (enable error info at open if you need error frames)
-bus.FrameReceived += (s, rec) =>
+// Subscribe to frames (enable error/state frames in the configurator if you need them)
+bus.FrameReceived += (_, rec) =>
 {
-    Console.WriteLine($"RX {rec.CanFrame.FrameKind} ID={rec.CanFrame.ID:X} DLC={rec.CanFrame.Dlc}");
+    var f = rec.CanFrame;
+    Console.WriteLine($"RX {f.FrameKind} ID=0x{f.ID:X} DLC={f.Dlc}");
 };
 
-// Transmit a classic CAN frame
+// Single frame TX (sync + async)
 var frame = new CanClassicFrame(0x123, new byte[] { 0x11, 0x22, 0x33 });
-bus.Transmit(new[] { frame });
+var sentCount = bus.Transmit(frame);
+sentCount = await bus.TransmitAsync(frame);
 
-// Receive (sync)
-var items = bus.Receive(1, timeOut: 100);
+// Batch TX (sync + async)
+var frames = new[] { frame, frame, frame, frame };
+sentCount = bus.Transmit(frames);
+sentCount = await bus.TransmitAsync(frames);
 
-// Receive (async batch)
-var list = await bus.ReceiveAsync(10, timeOut: 500);
+// Optional: also pull frames on demand (sync/async) with timeouts
+var one = bus.Receive(1, timeOut: 100);
+var many = await bus.ReceiveAsync(10, timeOut: 500);
 ```
 
 Prefer a strongly-typed helper? Available for some adapters:

@@ -263,7 +263,6 @@ public static class ZLGCAN
                 else
                     EnqueueClassic(rxCh, can_id, lenOrDlc, data);
                 EnqueueMerge(dev, (byte)rxCh.Index, isFd, can_id, lenOrDlc, fdFlags, data);
-                Console.WriteLine($"a:{rxCh.RxFd.Count}");
             }
         }
     }
@@ -426,7 +425,6 @@ public static class ZLGCAN
             RouteTx(dev, ch, true, can_id, (byte)l, td->frame.flags, buf);
             sent++;
         }
-        Console.WriteLine($"tx:{sent}");
         return sent;
     }
 
@@ -499,9 +497,7 @@ public static class ZLGCAN
             //if (remaining <= 0 && wait_time != -1) break;
             ch.RxEvtFd.WaitOne(TimeSpan.FromMilliseconds(Math.Min(remaining, 10)));
             DequeueQueue();
-            Console.WriteLine($"r:{count}");
         }
-        Console.WriteLine($"re:{count}");
         return count;
 
         void DequeueQueue()

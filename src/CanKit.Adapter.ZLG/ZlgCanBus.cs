@@ -564,7 +564,6 @@ namespace CanKit.Adapter.ZLG
         {
             try
             {
-                Console.WriteLine("Stopping receive loop");
                 _asyncRx.Clear();
                 _pollCts?.Cancel();
                 _pollTask?.Wait(500);
