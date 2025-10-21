@@ -8,17 +8,18 @@
     <UseWPF>true</UseWPF>
     <TargetFrameworks>net8.0-windows</TargetFrameworks>
     <RootNamespace>EndpointListenerWpf</RootNamespace>
+    <ApplicationIcon>Resources\icon.ico</ApplicationIcon>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="Resources\icon.ico" />
+  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\CanKit.Adapter.Kvaser\CanKit.Adapter.Kvaser.csproj" />
     <ProjectReference Include="..\..\src\CanKit.Adapter.PCAN\CanKit.Adapter.PCAN.csproj" />
     <ProjectReference Include="..\..\src\CanKit.Adapter.ZLG\CanKit.Adapter.ZLG.csproj" />
     <ProjectReference Include="..\..\src\CanKit.Core\CanKit.Core.csproj" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Folder Include="Resources\" />
   </ItemGroup>
 
   <ItemGroup>

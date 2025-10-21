@@ -11,6 +11,9 @@ namespace EndpointListenerWpf.Services
 {
     public class CanKitListenerService : IListenerService
     {
+        private ICanBus? _bus;
+        private readonly object _txLock = new();
+
         public async Task StartAsync(string endpoint,
             bool can20,
             int bitRate,
@@ -23,7 +26,7 @@ namespace EndpointListenerWpf.Services
                 throw new ArgumentException("Endpoint is empty", nameof(endpoint));
 
             // Open the bus with requested mode and bit timing
-            using var bus = CanBus.Open(endpoint, cfg =>
+            var bus = CanBus.Open(endpoint, cfg =>
             {
                 if (!can20)
                 {
@@ -56,7 +59,7 @@ namespace EndpointListenerWpf.Services
                 // Optional: enable error info if supported
                 // cfg.EnableErrorInfo();
             });
-
+            _bus = bus;
             void LogFrame(ICanFrame f)
             {
                 var kind = f.FrameKind == CanFrameType.CanFd ? "FD" : "2.0";
@@ -94,21 +97,46 @@ namespace EndpointListenerWpf.Services
                 onMessage($"[info] Listening on '{endpoint}' @ {bitRate} bps:{dataBitRate} bps, mode=CAN FD...");
             }
 
+            try
+            {
 #if NET8_0_OR_GREATER
-            await foreach (var rec in bus.GetFramesAsync(cancellationToken))
-            {
-                LogFrame(rec.CanFrame);
-            }
-#else
-            while (!cancellationToken.IsCancellationRequested)
-            {
-                var list = await bus.ReceiveAsync(64, timeOut: 100, cancellationToken);
-                foreach (var rec in list)
+                await foreach (var rec in bus.GetFramesAsync(cancellationToken))
+                {
                     LogFrame(rec.CanFrame);
-            }
+                }
+#else
+                while (!cancellationToken.IsCancellationRequested)
+                {
+                    var list = await bus.ReceiveAsync(64, timeOut: 100, cancellationToken);
+                    foreach (var rec in list)
+                        LogFrame(rec.CanFrame);
+                }
 #endif
+            }
+            finally
+            {
+                onMessage("[info] Listener stopped.");
+                _bus = null;
+                bus.Dispose();
+            }
+        }
 
-            onMessage("[info] Listener stopped.");
+        public int Transmit(ICanFrame frame, int timeOut = 0)
+        {
+            var bus = _bus;
+            if (bus == null)
+                return 0;
+            try
+            {
+                lock (_txLock)
+                {
+                    return bus.Transmit(new[] { frame }, timeOut);
+                }
+            }
+            catch
+            {
+                return 0;
+            }
         }
     }
 }

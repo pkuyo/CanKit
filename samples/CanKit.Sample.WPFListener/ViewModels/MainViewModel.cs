@@ -157,6 +157,7 @@ namespace EndpointListenerWpf.ViewModels
         public RelayCommand StartListeningCommand { get; }
         public RelayCommand StopListeningCommand { get; }
         public RelayCommand OpenFilterEditorCommand { get; }
+        public RelayCommand OpenSendDialogCommand { get; }
 
         public MainViewModel()
             : this(new CanKitEndpointDiscoveryService(), new CanKitDeviceService(), new CanKitListenerService())
@@ -174,6 +175,7 @@ namespace EndpointListenerWpf.ViewModels
             StartListeningCommand = new RelayCommand(_ => _ = StartListeningAsync(), _ => !IsListening);
             StopListeningCommand = new RelayCommand(_ => StopListening(), _ => IsListening);
             OpenFilterEditorCommand = new RelayCommand(_ => OpenFilterEditor());
+            OpenSendDialogCommand = new RelayCommand(_ => OpenSendDialog(), _ => IsListening);
 
             _ = RefreshEndpointsAsync();
         }
@@ -185,6 +187,7 @@ namespace EndpointListenerWpf.ViewModels
             StartListeningCommand.RaiseCanExecuteChanged();
             StopListeningCommand.RaiseCanExecuteChanged();
             OpenFilterEditorCommand.RaiseCanExecuteChanged();
+            OpenSendDialogCommand.RaiseCanExecuteChanged();
         }
 
         private async Task RefreshEndpointsAsync()
@@ -295,6 +298,18 @@ namespace EndpointListenerWpf.ViewModels
             };
             win.DataContext = new FilterEditorViewModel(Filters);
             win.ShowDialog();
+        }
+
+        private void OpenSendDialog()
+        {
+            var win = new Views.SendFrameDialog
+            {
+                Owner = Application.Current?.MainWindow,
+                AllowFd = UseCanFd,
+                Transmit = frame => _listenerService.Transmit(frame)
+            };
+            // Modeless so user can continue sending
+            win.Show();
         }
     }
 }
