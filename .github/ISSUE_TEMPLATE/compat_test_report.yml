@@ -1,0 +1,94 @@
+name: "Compatibility test report"
+description: "Share a quick test run on your machine to grow the compatibility matrix"
+title: "[compat] <OS / adapter / model>"
+labels: ["type: compat", "needs triage"]
+body:
+  - type: input
+    id: cankit
+    attributes:
+      label: CanKit version / commit
+      placeholder: "0.3.0 / abcdef1"
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: OS & version
+      placeholder: "Windows 11 24H2 / Ubuntu 22.04 / ..."
+    validations:
+      required: true
+
+  - type: input
+    id: dotnet
+    attributes:
+      label: .NET SDK/runtime
+      placeholder: "SDK 8.0.x"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: vendor
+    attributes:
+      label: Adapter vendor
+      options: [PCAN, Kvaser, SocketCAN, ZLG, Virtual]
+      multiple: false
+    validations:
+      required: true
+
+
+  - type: input
+    id: device
+    attributes:
+      label: Device model
+      placeholder: "e.g., PCAN-USB FD"
+
+  - type: textarea
+    id: endpoints
+    attributes:
+      label: Endpoints discovered (paste from ListEndpoints)
+      placeholder: "- pcan://PCAN_USBBUS1 features:[...]\n- ..."
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: scenarios
+    attributes:
+      label: Scenarios tested
+      options:
+        - label: ListEndpoints
+        - label: Sniffer (receive only)
+        - label: QuickStartTxRx (loopback/two-node)
+        - label: Other (custom; describe below)
+
+  - type: textarea
+    id: scenarios_custom
+    attributes:
+      label: Other scenarios (if any)
+      description: If you checked "Other" above, please add the custom test scene name and brief description here
+      placeholder: "e.g., StressTx, ErrorFrame, ..."
+
+  - type: textarea
+    id: params
+    attributes:
+      label: Parameters
+      description: "Bitrate/dbitrate, classic/FD/BRS, filters in Sniffer, etc."
+
+  - type: dropdown
+    id: result
+    attributes:
+      label: Overall result
+      options: ["Pass", "Partial", "Fail"]
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / console output
+      description: "Paste key output or attach files."
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes (driver/SDK version, special steps)

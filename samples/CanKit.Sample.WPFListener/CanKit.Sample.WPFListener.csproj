@@ -21,4 +21,9 @@
     <Folder Include="Resources\" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="MaterialDesignInXamlToolkitAddOns" Version="0.0.63" />
+  </ItemGroup>
+
+
 </Project>

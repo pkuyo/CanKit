@@ -30,8 +30,8 @@ namespace EndpointListenerWpf.ViewModels
         public ObservableCollection<FilterRuleModel> Filters { get; } = new();
 
         public ObservableCollection<EndpointInfo> Endpoints { get; } = new();
-        public ObservableCollection<int> BitRates { get; } = new();
-        public ObservableCollection<int> DataBitRates { get; } = new();
+        public ObservableCollection<int> BitRates { get; set; } = new();
+        public ObservableCollection<int> DataBitRates { get; set; } = new();
         public ObservableCollection<string> Logs { get; } = new();
 
         public EndpointInfo? SelectedEndpoint
@@ -65,14 +65,18 @@ namespace EndpointListenerWpf.ViewModels
             {
                 if (SetProperty(ref _capabilities, value))
                 {
-                    BitRates.Clear();
-                    DataBitRates.Clear();
                     if (value != null)
                     {
+                        SelectedBitRate = value.SupportedBitRates.FirstOrDefault();
+                        SelectedDataBitRate = value.SupportedDataBitRates.FirstOrDefault();
+                        var tempBitRate = new ObservableCollection<int>();
+                        var tempDataBitRate = new ObservableCollection<int>();
                         foreach (var b in value.SupportedBitRates)
-                            BitRates.Add(b);
+                            tempBitRate.Add(b);
                         foreach (var b in value.SupportedDataBitRates)
-                            DataBitRates.Add(b);
+                            tempDataBitRate.Add(b);
+                        BitRates = tempBitRate;
+                        DataBitRates = tempDataBitRate;
                         SelectedBitRate = BitRates.FirstOrDefault();
                         SelectedDataBitRate = DataBitRates.FirstOrDefault();
                         UseCan20 = value.SupportsCan20;

@@ -6,9 +6,9 @@ namespace EndpointListenerWpf.Models
     {
         public bool SupportsCan20 { get; set; }
         public bool SupportsCanFd { get; set; }
-        public IReadOnlyList<int> SupportedBitRates { get; set; } = new List<int>();
+        public List<int> SupportedBitRates { get; set; } = new List<int>();
 
-        public IReadOnlyList<int> SupportedDataBitRates { get; set; } = new List<int>();
+        public List<int> SupportedDataBitRates { get; set; } = new List<int>();
     }
 }
 

@@ -83,7 +83,11 @@ internal static class KvaserEndpoint
     public static IEnumerable<BusEndpointInfo> Enumerate()
     {
         var list = new List<BusEndpointInfo>();
-        try { Canlib.canInitializeLibrary(); } catch { }
+        try { Canlib.canInitializeLibrary(); }
+        catch
+        {
+            return list;
+        }
         try
         {
             if (Canlib.canGetNumberOfChannels(out var n) == Canlib.canStatus.canOK)

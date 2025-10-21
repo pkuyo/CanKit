@@ -57,9 +57,17 @@ internal static class PcanEndpoint
     /// </summary>
     public static IEnumerable<BusEndpointInfo> Enumerate()
     {
-        var sts = Api.GetAttachedChannels(out PcanChannelInformation[] chans);
-        if (sts != PcanStatus.OK)
+        PcanChannelInformation[] chans;
+        try
+        {
+            var sts = Api.GetAttachedChannels(out chans);
+            if (sts != PcanStatus.OK)
+                yield break;
+        }
+        catch
+        {
             yield break;
+        }
         foreach (var chan in chans)
         {
             yield return new BusEndpointInfo

@@ -32,7 +32,7 @@
             <TextBlock Text="Custom:" VerticalAlignment="Center" Margin="0,0,8,0" Width="55"
                        Visibility="{Binding IsCustomSelected, Converter={StaticResource BoolToVis}}"/>
             <TextBox Width="380" Text="{Binding CustomEndpoint, UpdateSourceTrigger=PropertyChanged}"
-                     Visibility="{Binding IsCustomSelected, Converter={StaticResource BoolToVis}}"/>
+                     Visibility="{Binding IsCustomSelected, Converter={StaticResource BoolToVis}}"  Padding="0,3,0,2"/>
             <Button Content="Open" Margin="8,0,0,0" Padding="16,4" Command="{Binding OpenCustomEndpointCommand}" 
                     Visibility="{Binding IsCustomSelected, Converter={StaticResource BoolToVis}}"/>
             <TextBlock Margin="8,0,0,0" VerticalAlignment="Center" Foreground="Gray" Text="Select an endpoint or choose Custom to input manually."
@@ -43,27 +43,7 @@
         <GroupBox Header="Settings" Grid.Row="2" Padding="12" Margin="0,0,0,12"
                   SnapsToDevicePixels="True" UseLayoutRounding="True">
             <Grid>
-                <Grid.Resources>
-                    <Style TargetType="CheckBox">
-                        <Setter Property="VerticalAlignment" Value="Center"/>
-                        <Setter Property="VerticalContentAlignment" Value="Center"/>
-                        <Setter Property="MinHeight" Value="28"/>
-                        <Setter Property="Margin" Value="0,0,16,0"/>
-                    </Style>
-                    <Style TargetType="ComboBox">
-                        <Setter Property="VerticalAlignment" Value="Center"/>
-                        <Setter Property="VerticalContentAlignment" Value="Center"/>
-                        <Setter Property="MinHeight" Value="28"/>
-                    </Style>
-                    <Style TargetType="Button">
-                        <Setter Property="VerticalAlignment" Value="Center"/>
-                        <Setter Property="VerticalContentAlignment" Value="Center"/>
-                        <Setter Property="MinHeight" Value="28"/>
-                    </Style>
-                    <Style TargetType="TextBlock">
-                        <Setter Property="VerticalAlignment" Value="Center"/>
-                    </Style>
-                </Grid.Resources>
+
 
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>   <!-- CAN 2.0 -->
@@ -86,7 +66,7 @@
                           IsEnabled="{Binding Capabilities.SupportsCanFd}"
                           Margin="16,0,16,0"/>
 
-                <TextBlock Grid.Column="2" Text="Bit Rate:" Margin="0,0,8,0"/>
+                <TextBlock Grid.Column="2" Text="Bit Rate:" Margin="0,0,8,0" VerticalAlignment="Center"/>
                 <ComboBox Grid.Column="3" Width="160"
                           ItemsSource="{Binding BitRates}"
                           SelectedItem="{Binding SelectedBitRate}">
@@ -99,7 +79,7 @@
                 </ComboBox>
 
                 <TextBlock Grid.Column="4" Text="Data Bit Rate:" Margin="16,0,8,0"
-                           Visibility="{Binding UseCanFd, Converter={StaticResource BoolToVis}}"/>
+                           Visibility="{Binding UseCanFd, Converter={StaticResource BoolToVis}}" VerticalAlignment="Center"/>
                 <ComboBox Grid.Column="5" Width="160"
                           ItemsSource="{Binding DataBitRates}"
                           SelectedItem="{Binding SelectedDataBitRate}"
