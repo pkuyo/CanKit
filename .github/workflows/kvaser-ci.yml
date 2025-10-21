@@ -37,10 +37,10 @@ jobs:
           "CANKIT_TEST_ADAPTERS=CanKit.Adapter.Kvaser" | Out-File -FilePath $Env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Restore
-        run: dotnet restore CanKit.sln
+        run: dotnet restore CanKit.slnf
 
       - name: Test (${{ matrix.tfm }})
-        run: dotnet test CanKit.sln -c Fake -f ${{ matrix.tfm }} --logger "trx;LogFileName=TestResults-${{ matrix.tfm }}.trx"
+        run: dotnet test CanKit.slnf -c Fake -f ${{ matrix.tfm }} --logger "trx;LogFileName=TestResults-${{ matrix.tfm }}.trx"
 
       - name: Upload Test Results (${{ matrix.tfm }})
         if: always()
@@ -70,10 +70,10 @@ jobs:
           echo "CANKIT_TEST_ADAPTERS=CanKit.Adapter.Kvaser" >> "$GITHUB_ENV"
 
       - name: Restore
-        run: dotnet restore CanKit.sln
+        run: dotnet restore CanKit.slnf
 
       - name: Test (net8.0)
-        run: dotnet test CanKit.sln -c Fake -f net8.0 --logger "trx;LogFileName=TestResults.trx"
+        run: dotnet test CanKit.slnf -c Fake -f net8.0 --logger "trx;LogFileName=TestResults.trx"
 
       - name: Upload Test Results
         if: always()

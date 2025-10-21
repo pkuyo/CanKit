@@ -15,7 +15,7 @@ public class TestCaseProvider : IDisposable
         var env = Environment.GetEnvironmentVariable("CANKIT_TEST_ADAPTERS");
         if (env is null)
         {
-            Console.WriteLine($"No environment variable found. Skipping test.");
+            Console.WriteLine($"No environment variable found. Skipping all tests.");
             return;
         }
 

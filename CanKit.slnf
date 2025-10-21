@@ -1,0 +1,16 @@
+{
+    "solution": 
+    {
+        "path": "CanKit.sln",
+        "projects":
+        [
+            "src\\CanKit.Core\\CanKit.Core.csproj",
+            "src\\CanKit.Adapter.Kvaser\\CanKit.Adapter.Kvaser.csproj",
+            "src\\CanKit.Adapter.PCAN\\CanKit.Adapter.PCAN.csproj",
+            "src\\CanKit.Adapter.Virtual\\CanKit.Adapter.Virtual.csproj",
+            "src\\CanKit.Adapter.SocketCAN\\CanKit.Adapter.SocketCAN.csproj",
+            "src\\CanKit.Adapter.ZLG\\CanKit.Adapter.ZLG.csproj",
+            "tests\\CanKit.Tests\\CanKit.Tests.csproj"
+        ] 
+    }
+}
