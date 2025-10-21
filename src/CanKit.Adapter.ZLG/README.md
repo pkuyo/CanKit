@@ -53,26 +53,13 @@ using var bus = CanBus.Open(
 
 // Transmit a classic CAN frame (ID 0x123)
 var tx = new CanClassicFrame(0x123, new byte[] { 1, 2, 3 });
-bus.Transmit(new[] { tx });
+bus.Transmit(tx);
 
 // Receive with timeout (ms)
 foreach (var rx in bus.Receive(1, 100))
 {
     var f = rx.CanFrame;
     Console.WriteLine($"RX id=0x{f.ID:X}, dlc={f.Dlc}");
-}
-```
-
-## Discover Endpoints
-
-You can enumerate discoverable endpoints when drivers are present:
-
-```csharp
-using CanKit.Core.Endpoints;
-
-foreach (var ep in BusEndpointEntry.Enumerate("zlg"))
-{
-    Console.WriteLine($"{ep.Title}: {ep.Endpoint}");
 }
 ```
 

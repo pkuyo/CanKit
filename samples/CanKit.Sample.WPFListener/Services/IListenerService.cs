@@ -21,6 +21,6 @@ namespace EndpointListenerWpf.Services
         /// Transmit a single CAN frame on the currently opened bus.
         /// Returns number of frames accepted by the driver (0 if not sent).
         /// </summary>
-        int Transmit(ICanFrame frame, int timeOut = 0);
+        int Transmit(ICanFrame frame);
     }
 }

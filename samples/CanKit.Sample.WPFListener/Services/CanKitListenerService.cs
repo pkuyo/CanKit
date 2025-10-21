@@ -13,7 +13,7 @@ namespace EndpointListenerWpf.Services
     {
         private ICanBus? _bus;
         private readonly object _txLock = new();
-
+        private Action<string>? _onMessage;
         public async Task StartAsync(string endpoint,
             bool can20,
             int bitRate,
@@ -60,23 +60,7 @@ namespace EndpointListenerWpf.Services
                 // cfg.EnableErrorInfo();
             });
             _bus = bus;
-            void LogFrame(ICanFrame f)
-            {
-                var kind = f.FrameKind == CanFrameType.CanFd ? "FD" : "2.0";
-                var data = f.Data.Span;
-                var hex = data.Length == 0 ? string.Empty : Convert.ToHexString(data).ToLowerInvariant();
-                if (hex.Length > 0)
-                {
-                    // insert spaces between bytes for readability
-                    var spaced = string.Join(" ", System.Linq.Enumerable.Range(0, hex.Length / 2)
-                        .Select(i => hex.Substring(i * 2, 2)));
-                    onMessage($"{DateTime.Now:HH:mm:ss.fff}  {kind} ID=0x{f.ID:X3} DLC={f.Dlc} DATA={spaced}");
-                }
-                else
-                {
-                    onMessage($"{DateTime.Now:HH:mm:ss.fff}  {kind} ID=0x{f.ID:X3} DLC={f.Dlc}");
-                }
-            }
+            _onMessage = onMessage;
             /*
             bus.ErrorFrameReceived += (_, err) =>
             {
@@ -102,14 +86,14 @@ namespace EndpointListenerWpf.Services
 #if NET8_0_OR_GREATER
                 await foreach (var rec in bus.GetFramesAsync(cancellationToken))
                 {
-                    LogFrame(rec.CanFrame);
+                    LogFrame(rec.CanFrame, FrameDirection.Rx);
                 }
 #else
                 while (!cancellationToken.IsCancellationRequested)
                 {
                     var list = await bus.ReceiveAsync(64, timeOut: 100, cancellationToken);
                     foreach (var rec in list)
-                        LogFrame(rec.CanFrame);
+                        LogFrame(rec.CanFrame, FrameDirection.Rx);
                 }
 #endif
             }
@@ -121,7 +105,7 @@ namespace EndpointListenerWpf.Services
             }
         }
 
-        public int Transmit(ICanFrame frame, int timeOut = 0)
+        public int Transmit(ICanFrame frame)
         {
             var bus = _bus;
             if (bus == null)
@@ -130,12 +114,31 @@ namespace EndpointListenerWpf.Services
             {
                 lock (_txLock)
                 {
-                    return bus.Transmit(new[] { frame }, timeOut);
+                    LogFrame(frame, FrameDirection.Tx);
+                    return bus.Transmit(frame);
                 }
             }
             catch
             {
                 return 0;
+            }
+        }
+
+        private void LogFrame(ICanFrame f, FrameDirection dir)
+        {
+            var kind = f.FrameKind == CanFrameType.CanFd ? "FD" : "2.0";
+            var data = f.Data.Span;
+            var hex = data.Length == 0 ? string.Empty : Convert.ToHexString(data).ToLowerInvariant();
+            if (hex.Length > 0)
+            {
+                // insert spaces between bytes for readability
+                var spaced = string.Join(" ", Enumerable.Range(0, hex.Length / 2)
+                    .Select(i => hex.Substring(i * 2, 2)));
+                _onMessage?.Invoke($"[{dir}] {DateTime.Now:HH:mm:ss.fff}  {kind} ID=0x{f.ID:X3} DLC={f.Dlc} DATA={spaced}");
+            }
+            else
+            {
+                _onMessage?.Invoke($"[{dir}] {DateTime.Now:HH:mm:ss.fff}  {kind} ID=0x{f.ID:X3} DLC={f.Dlc}");
             }
         }
     }

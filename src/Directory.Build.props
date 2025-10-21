@@ -14,13 +14,13 @@
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
 
     <UseLocalProjectReferences Condition="'$(UseLocalProjectReferences)'==''">true</UseLocalProjectReferences>
-    <CanKitCoreVersion>0.3.1</CanKitCoreVersion>
+    <CanKitCoreVersion>0.3.2</CanKitCoreVersion>
     <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
 
-    <ReleaseNotesFile>$(MSBuildThisFileDirectory)notes/0.3.0.md</ReleaseNotesFile>
+    <ReleaseNotesFile>$(MSBuildThisFileDirectory)notes/0.3.2.md</ReleaseNotesFile>
     <PackageReleaseNotes>$([System.IO.File]::ReadAllText('$(ReleaseNotesFile)'))</PackageReleaseNotes>
 
     <PackageOutputPath>$(MSBuildThisFileDirectory).artifacts\nuget</PackageOutputPath>

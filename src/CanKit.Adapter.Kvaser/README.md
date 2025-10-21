@@ -37,7 +37,7 @@ using var bus = CanBus.Open("kvaser://0", cfg => cfg.Baud(500_000));
 
 // Send a frame
 var tx = new CanClassicFrame(0x321, new byte[] { 0xAA, 0xBB });
-bus.Transmit(new[] { tx });
+bus.Transmit(tx);
 
 // Receive
 foreach (var rx in bus.Receive(1, 100))

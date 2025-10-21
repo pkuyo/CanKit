@@ -39,7 +39,7 @@ using CanKit.Core.Definitions;
 using var bus = CanBus.Open("pcan://PCAN_USBBUS1", cfg => cfg.Baud(500_000));
 
 var tx = new CanClassicFrame(0x700, new byte[] { 0x01 });
-bus.Transmit(new[] { tx });
+bus.Transmit(tx);
 
 foreach (var rx in bus.Receive(1, 100))
 {

@@ -31,7 +31,7 @@ using var a = CanBus.Open("virtual://alpha/0", cfg => cfg.Baud(500_000));
 using var b = CanBus.Open("virtual://alpha/1", cfg => cfg.Baud(500_000));
 
 var tx = new CanClassicFrame(0x111, new byte[] { 0x01, 0x02 });
-a.Transmit(new[] { tx });
+a.Transmit(tx);
 
 foreach (var rx in b.Receive(1, 100))
 {
