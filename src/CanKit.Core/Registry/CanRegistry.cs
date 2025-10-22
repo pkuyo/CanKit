@@ -157,7 +157,7 @@ public partial class CanRegistry
     private readonly Dictionary<string, Func<CanEndpoint, Action<IBusInitOptionsConfigurator>?, ICanBus>> _handlers =
         new(StringComparer.OrdinalIgnoreCase);
 
-    private readonly Dictionary<string, Func<CanEndpoint, Action<IBusInitOptionsConfigurator>?, Endpoints.PreparedBusContext>> _prepareHandlers =
+    private readonly Dictionary<string, Func<CanEndpoint, Action<IBusInitOptionsConfigurator>?, PreparedBusContext>> _prepareHandlers =
         new(StringComparer.OrdinalIgnoreCase);
 
     private readonly Dictionary<DeviceType, ICanModelProvider> _providers = new();
@@ -312,10 +312,10 @@ public partial class CanRegistry
                         null,
                         new[] { typeof(CanEndpoint), typeof(Action<IBusInitOptionsConfigurator>) },
                         null);
-                    if (prepareMethod != null && typeof(Endpoints.PreparedBusContext).IsAssignableFrom(prepareMethod.ReturnType))
+                    if (prepareMethod != null && typeof(PreparedBusContext).IsAssignableFrom(prepareMethod.ReturnType))
                     {
-                        var del = (Func<CanEndpoint, Action<IBusInitOptionsConfigurator>?, Endpoints.PreparedBusContext>)
-                            prepareMethod.CreateDelegate(typeof(Func<CanEndpoint, Action<IBusInitOptionsConfigurator>?, Endpoints.PreparedBusContext>));
+                        var del = (Func<CanEndpoint, Action<IBusInitOptionsConfigurator>?, PreparedBusContext>)
+                            prepareMethod.CreateDelegate(typeof(Func<CanEndpoint, Action<IBusInitOptionsConfigurator>?, PreparedBusContext>));
                         _prepareHandlers[attr.Scheme] = del;
                         CanKitLogger.LogInformation($"Registered endpoint prepare. Scheme='{attr.Scheme}', Type='{type.AssemblyQualifiedName}'");
                     }

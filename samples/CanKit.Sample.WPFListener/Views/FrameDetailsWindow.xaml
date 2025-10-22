@@ -1,0 +1,32 @@
+<Window x:Class="EndpointListenerWpf.Views.FrameDetailsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="{DynamicResource WindowTitle_Detail}" Height="400" Width="800">
+    <Grid Margin="8">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+        <TextBlock Text="{Binding Title}" FontWeight="Bold" Margin="0,0,0,8"/>
+        <DataGrid Grid.Row="1" ItemsSource="{Binding Items}"
+                  AutoGenerateColumns="False" IsReadOnly="True"
+                  EnableRowVirtualization="True"
+                  EnableColumnVirtualization="True"
+                  VirtualizingPanel.IsVirtualizing="True"
+                  VirtualizingPanel.VirtualizationMode="Recycling"
+                  VirtualizingPanel.CacheLength="2"
+                  VirtualizingPanel.CacheLengthUnit="Page"
+                  ScrollViewer.CanContentScroll="True"
+                  ScrollViewer.IsDeferredScrollingEnabled="True">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="{DynamicResource Header_Time}" Binding="{Binding Time}" Width="120"/>
+                <DataGridTextColumn Header="{DynamicResource Header_Dir}" Binding="{Binding Dir}" Width="60"/>
+                <DataGridTextColumn Header="{DynamicResource Header_Proto}" Binding="{Binding Kind}" Width="80"/>
+                <DataGridTextColumn Header="{DynamicResource Header_ID}" Binding="{Binding Id}" Width="120"/>
+                <DataGridTextColumn Header="{DynamicResource Header_DLC}" Binding="{Binding Dlc}" Width="60"/>
+                <DataGridTextColumn Header="{DynamicResource Header_Data}" Binding="{Binding Data}" Width="*"/>
+            </DataGrid.Columns>
+        </DataGrid>
+    </Grid>
+</Window>
+

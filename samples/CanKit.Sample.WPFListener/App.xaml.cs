@@ -12,14 +12,13 @@ public partial class App : Application
     protected override void OnStartup(System.Windows.StartupEventArgs e)
     {
         base.OnStartup(e);
-
         try
         {
             var culture = System.Globalization.CultureInfo.CurrentUICulture;
-            if (System.String.Equals(culture.TwoLetterISOLanguageName, "zh", System.StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(culture.TwoLetterISOLanguageName, "zh", StringComparison.OrdinalIgnoreCase))
             {
                 // Load Chinese resources to override defaults
-                var zhDict = new ResourceDictionary { Source = new System.Uri("Resources/Strings.zh-CN.xaml", System.UriKind.Relative) };
+                var zhDict = new ResourceDictionary { Source = new Uri("Resources/Strings.zh-CN.xaml", System.UriKind.Relative) };
                 Resources.MergedDictionaries.Add(zhDict);
             }
         }

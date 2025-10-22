@@ -1,9 +1,12 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Threading.Channels;
 using System.Windows;
+using System.Windows.Threading;
 using EndpointListenerWpf.Models;
 using EndpointListenerWpf.Services;
 using CanKit.Core.Definitions;
@@ -31,21 +34,35 @@ namespace EndpointListenerWpf.ViewModels
         private int _tec;
         private int _rec;
         private float _busUsage;
-        private int _errorCountersPeriodMs = 5000; // default 5s
+        private int _errorCountersPeriodMs = 5000;
         private CancellationTokenSource? _listenerCts;
         private PeriodicTxWindow? _periodicWindow;
         private readonly AppBusState _busState = new();
         private readonly IPeriodicTxService _periodicService;
         private readonly PeriodicViewModel _periodicVm;
+        private readonly Dictionary<string, FrameRow> _frameIndex = new();
+        private int _framesCapacity = 1000;
+        private int _detailBufferCapacity = 200;
+        public event Action<CanReceiveData, FrameDirection>? FrameReceived;
 
-        // Filters
         public ObservableCollection<FilterRuleModel> Filters { get; } = new();
 
         public ObservableCollection<EndpointInfo> Endpoints { get; } = new();
         public ObservableCollection<int> BitRates { get; set; } = new();
         public ObservableCollection<int> DataBitRates { get; set; } = new();
         public ObservableCollection<string> Logs { get; } = new();
-        public FixedSizeObservableCollection<FrameRow> Frames { get; } = new(10000);
+        public RangeObservableCollection<FrameRow> Frames { get; } = new();
+        // Sequential (by time) frames, no upper limit (int.MaxValue)
+        public RangeObservableCollection<FrameRow> AllFrames { get; } = new();
+
+        // Lazy loading buffer for AllFrames (sequential)
+        private Channel<FrameRow> _allFramesChannel = Channel.CreateBounded<FrameRow>(new BoundedChannelOptions(20000)
+        {
+            SingleReader = false,
+            SingleWriter = false,
+            FullMode = BoundedChannelFullMode.DropOldest
+        });
+        private readonly DispatcherTimer _allFramesFlushTimer = new();
 
         public EndpointInfo? SelectedEndpoint
         {
@@ -98,6 +115,7 @@ namespace EndpointListenerWpf.ViewModels
 
                     OnPropertyChanged(nameof(SupportsListenOnly));
                     OnPropertyChanged(nameof(SupportsErrorCounters));
+                    OnPropertyChanged(nameof(SupportsBusUsage));
                     UpdateCommandStates();
                 }
             }
@@ -215,6 +233,9 @@ namespace EndpointListenerWpf.ViewModels
         public RelayCommand CopyFrameToClipboardCommand { get; }
         public RelayCommand OpenAboutDialogCommand { get; }
         public RelayCommand OpenZlgEndpointBuilderCommand { get; }
+        public RelayCommand OpenSettingsDialogCommand { get; }
+        public RelayCommand OpenFrameDetailsCommand { get; }
+        public RelayCommand SaveDataCommand { get; }
 
         public MainViewModel()
             : this(new CanKitEndpointDiscoveryService(), new CanKitDeviceService(), new CanKitListenerService())
@@ -245,8 +266,40 @@ namespace EndpointListenerWpf.ViewModels
             }, p => p is FrameRow);
             OpenAboutDialogCommand = new RelayCommand(_ => OpenAboutDialog());
             OpenZlgEndpointBuilderCommand = new RelayCommand(_ => OpenZlgEndpointBuilder());
+            OpenSettingsDialogCommand = new RelayCommand(_ => OpenSettingsDialog());
+            OpenFrameDetailsCommand = new RelayCommand(p =>
+            {
+                if (p is FrameRow row)
+                {
+                    OpenFrameDetails(row);
+                }
+            }, p => p is FrameRow);
+            SaveDataCommand = new RelayCommand(_ => SaveData());
 
             _ = RefreshEndpointsAsync();
+
+            // Setup lazy batching for sequential frames
+            _allFramesFlushTimer.Interval = TimeSpan.FromSeconds(0.25);
+            _allFramesFlushTimer.Tick += (_, __) =>
+            {
+                try
+                {
+                    AllFrames.Suppress = true;
+                    var insertCount = _allFramesChannel.Reader.Count;
+                    for (var i = 0; i < insertCount; i++)
+                    {
+                        if (_allFramesChannel.Reader.TryRead(out var fr))
+                            AllFrames.Add(fr);
+                    }
+                    AllFrames.Suppress = false;
+                    AllFrames.NotifyReset();
+                }
+                finally
+                {
+                    AllFrames.Suppress = false;
+                }
+            };
+            _allFramesFlushTimer.Start();
         }
 
         private void UpdateCommandStates()
@@ -319,6 +372,15 @@ namespace EndpointListenerWpf.ViewModels
             StopListening();
             _listenerCts = new CancellationTokenSource();
             IsListening = true;
+            // clear index for new session
+            _frameIndex.Clear();
+            // reset sequential list and drain any pending buffered items
+            Application.Current.Dispatcher.Invoke(() =>
+            {
+                if (AllFrames.Count > 0)
+                    AllFrames.RemoveRange(AllFrames.Count);
+            });
+            while (_allFramesChannel.Reader.TryRead(out _)) { }
 
             try
             {
@@ -331,11 +393,28 @@ namespace EndpointListenerWpf.ViewModels
                                 Capabilities!.Features,
                                 (ListenOnly && Capabilities!.SupportsListenOnly),
                                 ErrorCountersPeriodMs,
-                                (f, d) =>
+                                (rec, d) =>
                                 {
                                     Application.Current.Dispatcher.Invoke(() =>
                                     {
-                                        Frames.Add(FrameRow.From(f, d));
+                                        var f = rec.CanFrame;
+                                        var idKey = f.IsExtendedFrame ? $"0x{f.ID:X8}" : $"0x{f.ID:X3}";
+                                        if (_frameIndex.TryGetValue(idKey, out var row))
+                                        {
+                                            row.UpdateFrom(rec, d);
+                                        }
+                                        else
+                                        {
+                                            var newRow = FrameRow.From(rec, d);
+                                            _frameIndex[idKey] = newRow;
+                                            Frames.Add(newRow);
+                                        }
+
+                                        // Broadcast to any open detail windows (UI thread)
+                                        FrameReceived?.Invoke(rec, d);
+
+                                        // Enqueue to sequential list with lazy batching
+                                        _allFramesChannel.Writer.TryWrite(FrameRow.From(rec, d));
                                     });
                                 },
                                 msg => { Application.Current.Dispatcher.Invoke(() => Logs.Add(msg)); },
@@ -370,9 +449,31 @@ namespace EndpointListenerWpf.ViewModels
             finally
             {
                 IsListening = false;
-                // Ensure periodic state is reset when device disconnects
                 _periodicVm.IsRunning = false;
             }
+        }
+
+        private void OpenSettingsDialog()
+        {
+            var win = new SettingsWindow
+            {
+                Owner = Application.Current?.MainWindow,
+            };
+            if (win.ShowDialog() == true)
+            {
+            }
+        }
+
+        private void OpenFrameDetails(FrameRow row)
+        {
+            var win = new FrameDetailsWindow
+            {
+                Owner = Application.Current?.MainWindow,
+            };
+            var vm = new FrameDetailsViewModel(this, row.Id);
+            win.DataContext = vm;
+            win.Closed += (_, __) => vm.Dispose();
+            win.Show();
         }
 
         private void OpenConnectionOptions()
@@ -435,6 +536,13 @@ namespace EndpointListenerWpf.ViewModels
             };
             win.DataContext = new FilterEditorViewModel(Filters);
             win.ShowDialog();
+        }
+
+        private void SaveData()
+        {
+            // Placeholder for future save implementation
+            // Currently no-op; add a log message for feedback
+            Logs.Add("[info] Save requested (not implemented yet).");
         }
 
         private void OpenAboutDialog()

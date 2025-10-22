@@ -162,7 +162,7 @@ namespace CanKit.Adapter.ZLG
             if (ret != IntPtr.Zero)
             {
                 var busUsage = Marshal.PtrToStructure<ZLGCAN.BusUsage>(ret);
-                return busUsage.nBusUsage / 100f;
+                return busUsage.nBusUsage/ 100f;
             }
             else
             {
@@ -437,29 +437,7 @@ namespace CanKit.Adapter.ZLG
                     "ZCAN_SetValue(tx_retry_policy)");
             }
 
-            if ((Options.Features & CanFeature.BusUsage) != 0)
-            {
-                ZlgErr.ThrowIfError(
-                    ZLGCAN.ZCAN_SetValue(_devicePtr,
-                        Options.ChannelIndex + "/set_bus_usage_period",
-                        Options.BusUsagePeriodTime.ToString()),
-                    "ZCAN_SetValue(bus_usage_period)");
-                ZlgErr.ThrowIfError(
-                    ZLGCAN.ZCAN_SetValue(_devicePtr,
-                        Options.ChannelIndex + "/set_bus_usage_enable",
-                        Options.BusUsageEnabled ? "1" : "0"),
-                    "ZCAN_SetValue(bus_usage_enable)");
-            }
-
-            // Cache software filter predicate for polling loop
-            _useSoftwareFilter = (Options.EnabledSoftwareFallback & CanFeature.Filters) != 0
-                                  && Options.Filter.SoftwareFilterRules.Count > 0;
-            _softwareFilterPredicate = _useSoftwareFilter
-                ? FilterRule.Build(Options.Filter.SoftwareFilterRules)
-                : null;
-
         }
-
         public void ApplyConfigAfterInit(ICanOptions options)
         {
             var zlgOption = (ZlgBusOptions)options;
@@ -527,8 +505,27 @@ namespace CanKit.Adapter.ZLG
                             "ZCAN_SetValue(filter_ack)");
                     }
                 }
-                _softwareFilterPredicate = FilterRule.Build(Options.Filter.SoftwareFilterRules);
+                // Cache software filter predicate for polling loop
+                _useSoftwareFilter = (Options.EnabledSoftwareFallback & CanFeature.Filters) != 0
+                                     && Options.Filter.SoftwareFilterRules.Count > 0;
+                _softwareFilterPredicate = _useSoftwareFilter
+                    ? FilterRule.Build(Options.Filter.SoftwareFilterRules)
+                    : null;
             }
+            if ((Options.Features & CanFeature.BusUsage) != 0)
+            {
+                ZlgErr.ThrowIfError(
+                    ZLGCAN.ZCAN_SetValue(_devicePtr,
+                        Options.ChannelIndex + "/set_bus_usage_period",
+                        Options.BusUsagePeriodTime.ToString()),
+                    "ZCAN_SetValue(bus_usage_period)");
+                ZlgErr.ThrowIfError(
+                    ZLGCAN.ZCAN_SetValue(_devicePtr,
+                        Options.ChannelIndex + "/set_bus_usage_enable",
+                        Options.BusUsageEnabled ? "1" : "0"),
+                    "ZCAN_SetValue(bus_usage_enable)");
+            }
+
         }
 
 
@@ -711,6 +708,7 @@ namespace CanKit.Adapter.ZLG
             Interlocked.Increment(ref _subscriberCount);
             Interlocked.Increment(ref _asyncConsumerCount);
             Volatile.Write(ref _asyncBufferingLinger, 0);
+            StartReceiveLoopIfNeeded();
             try
             {
                 await foreach (var item in _asyncRx.ReadAllAsync(cancellationToken))

@@ -18,11 +18,12 @@ namespace EndpointListenerWpf.Services
             CanFeature features,
             bool listenOnly,
             int countersPollMs,
-            Action<ICanFrame, FrameDirection> onFrame,
+            Action<CanReceiveData, FrameDirection> onFrame,
             Action<string> onMessage,
             Action<CanErrorCounters>? onCountersUpdated,
             Action<float>? onBusUsageUpdated,
-            CancellationToken cancellationToken);
+            CancellationToken cancellationToken
+        );
 
         /// <summary>
         /// Transmit a single CAN frame on the currently opened bus.

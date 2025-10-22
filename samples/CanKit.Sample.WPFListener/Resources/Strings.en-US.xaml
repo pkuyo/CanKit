@@ -10,19 +10,27 @@
   <sys:String x:Key="Hint_SelectCustom">Select an endpoint or choose Custom to input manually.</sys:String>
   <sys:String x:Key="Label_Logs">Logs</sys:String>
   <sys:String x:Key="Menu_CopyToClipboard">Copy to Clipboard</sys:String>
+  <sys:String x:Key="Menu_OpenDetail">Open Details Window</sys:String>
   <sys:String x:Key="Header_Time">Time</sys:String>
   <sys:String x:Key="Header_Dir">Dir</sys:String>
   <sys:String x:Key="Header_Proto">Proto</sys:String>
   <sys:String x:Key="Header_ID">ID</sys:String>
   <sys:String x:Key="Header_DLC">DLC</sys:String>
   <sys:String x:Key="Header_Data">Data</sys:String>
+  <sys:String x:Key="Header_Count">Count</sys:String>
+  <sys:String x:Key="Header_Cycle">Cycle Time</sys:String>
   <sys:String x:Key="Button_SendDialog">Send...</sys:String>
   <sys:String x:Key="Button_PeriodicDialog">Periodic...</sys:String>
   <sys:String x:Key="Button_Start">Start</sys:String>
   <sys:String x:Key="Button_Stop">Stop</sys:String>
   <sys:String x:Key="Button_Run">Run</sys:String>
+  <!-- Frames Tabs -->
+  <sys:String x:Key="Tab_Categorized">Categorized</sys:String>
+  <sys:String x:Key="Tab_Sequential">Sequential</sys:String>
+  <sys:String x:Key="Button_Save">Save</sys:String>
   
   <!-- Menu / About / Tools -->
+  <sys:String x:Key="Menu_File">File</sys:String>
   <sys:String x:Key="Menu_Tools">Tools</sys:String>
   <sys:String x:Key="Menu_Help">Help</sys:String>
   <sys:String x:Key="Menu_About">About</sys:String>
@@ -104,5 +112,13 @@
   <sys:String x:Key="Label_ChannelIndex">Channel:</sys:String>
   <sys:String x:Key="Button_GenerateCopy">Generate &amp; Copy</sys:String>
   <sys:String x:Key="Toast_Copied">Copied to clipboard</sys:String>
+  
+  <!-- Detail Frame Window -->
+  <sys:String x:Key="Title_Detail">Details</sys:String>
+  <sys:String x:Key="WindowTitle_Detail">Frame Details</sys:String>
 
+  <!-- setting window -->
+  <sys:String x:Key="Title_Setting">Settings</sys:String>
+  <sys:String x:Key="Settings_MainCap">Main frames capacity</sys:String>
+  <sys:String x:Key="Settings_DetailCap">Detail frames capacity</sys:String>
 </ResourceDictionary>

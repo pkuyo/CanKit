@@ -6,9 +6,11 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWPF>true</UseWPF>
-    <TargetFrameworks>net8.0-windows</TargetFrameworks>
+    <TargetFramework>net8.0-windows</TargetFramework>
     <RootNamespace>EndpointListenerWpf</RootNamespace>
     <ApplicationIcon>Resources\icon.ico</ApplicationIcon>
+    <Configurations>Debug;Release</Configurations>
+    <Platforms>AnyCPU;X86;X64</Platforms>
   </PropertyGroup>
 
   <ItemGroup>

@@ -14,7 +14,7 @@ namespace EndpointListenerWpf.Services
         private ICanBus? _bus;
         private readonly object _txLock = new();
         private Action<string>? _onMessage;
-        private Action<ICanFrame, FrameDirection>? _onFrame;
+        private Action<CanReceiveData, FrameDirection>? _onFrame;
         private readonly List<IPeriodicTx> _periodics = new();
         public async Task StartAsync(string endpoint,
             bool can20,
@@ -24,10 +24,10 @@ namespace EndpointListenerWpf.Services
             CanFeature features,
             bool listenOnly,
             int countersPollMs,
-            Action<ICanFrame, FrameDirection> onFrame,
+            Action<CanReceiveData, FrameDirection> onFrame,
             Action<string> onMessage,
             Action<CanErrorCounters>? onCountersUpdated,
-             Action<float>? onBusUsageUpdated,
+            Action<float>? onBusUsageUpdated,
             CancellationToken cancellationToken)
         {
             if (string.IsNullOrWhiteSpace(endpoint))
@@ -59,10 +59,10 @@ namespace EndpointListenerWpf.Services
                     {
                         switch (f.Kind)
                         {
-                            case EndpointListenerWpf.Models.FilterKind.Mask:
+                            case FilterKind.Mask:
                                 cfg.AccMask(f.AccCode, f.AccMask, f.IdType);
                                 break;
-                            case EndpointListenerWpf.Models.FilterKind.Range:
+                            case FilterKind.Range:
                                 cfg.RangeFilter(f.From, f.To, f.IdType);
                                 break;
                         }
@@ -73,11 +73,15 @@ namespace EndpointListenerWpf.Services
                 {
                     cfg.EnableErrorInfo();
                 }
+
+                if ((features & CanFeature.BusUsage) != 0)
+                {
+                    cfg.BusUsage(countersPollMs);
+                }
             });
             _bus = bus;
             _onMessage = onMessage;
             _onFrame = onFrame;
-            // If error frames are supported, surface them and refresh counters immediately
             if ((features & CanFeature.ErrorFrame) != 0)
             {
                 bus.ErrorFrameReceived += (_, err) =>
@@ -98,8 +102,6 @@ namespace EndpointListenerWpf.Services
                     catch { /* ignore */ }
                 };
             }
-
-            // Periodically poll error counters if supported
             Task? countersPoller = null;
             if (((features & CanFeature.ErrorCounters) != 0 ||(features & CanFeature.BusUsage) != 0)
                 && countersPollMs > 0)
@@ -151,19 +153,10 @@ namespace EndpointListenerWpf.Services
 
             try
             {
-#if NET8_0_OR_GREATER
                 await foreach (var rec in bus.GetFramesAsync(cancellationToken))
                 {
-                    LogFrame(rec.CanFrame, FrameDirection.Rx, onFrame);
+                    LogFrame(rec, FrameDirection.Rx, onFrame);
                 }
-#else
-                while (!cancellationToken.IsCancellationRequested)
-                {
-                    var list = await bus.ReceiveAsync(64, timeOut: 100, cancellationToken);
-                    foreach (var rec in list)
-                        LogFrame(rec.CanFrame, FrameDirection.Rx, onFrame);
-                }
-#endif
             }
             finally
             {
@@ -186,7 +179,7 @@ namespace EndpointListenerWpf.Services
                     // For TX, also surface the frame to UI if callback exists.
                     var onFrame = _onFrame;
                     if (onFrame != null)
-                        LogFrame(frame, FrameDirection.Tx, onFrame);
+                        LogFrame(new CanReceiveData(frame), FrameDirection.Tx, onFrame);
                     return bus.Transmit(frame);
                 }
             }
@@ -196,17 +189,13 @@ namespace EndpointListenerWpf.Services
             }
         }
 
-        private void LogFrame(ICanFrame f, FrameDirection dir, Action<ICanFrame, FrameDirection> onFrame)
+        private void LogFrame(CanReceiveData f, FrameDirection dir, Action<CanReceiveData, FrameDirection> onFrame)
         {
-            // Do NOT log frames to text logs; forward to UI via onFrame instead.
             try
             {
                 onFrame?.Invoke(f, dir);
             }
-            catch
-            {
-                // ignore UI callback errors
-            }
+            catch { }
         }
 
         public void StartPeriodic(IEnumerable<(ICanFrame frame, TimeSpan period)> items)
@@ -215,7 +204,7 @@ namespace EndpointListenerWpf.Services
             StopPeriodic();
             foreach (var (frame, period) in items)
             {
-                var opt = new CanKit.Core.Definitions.PeriodicTxOptions(period, repeat: -1, fireImmediately: true);
+                var opt = new PeriodicTxOptions(period, repeat: -1, fireImmediately: true);
                 var tx = bus.TransmitPeriodic(frame, opt);
                 _periodics.Add(tx);
             }
@@ -229,7 +218,7 @@ namespace EndpointListenerWpf.Services
             foreach (var p in _periodics)
             {
                 try { p.Stop(); } catch { /* ignore */ }
-                (p as IDisposable)?.Dispose();
+               p.Dispose();
             }
             _periodics.Clear();
             _onMessage?.Invoke("[info] Periodic stopped.");

@@ -16,7 +16,7 @@ namespace CanKit.Adapter.ZLG;
 /// Endpoint handler for scheme "zlg" (ZLG Endpoint 处理器，支持同设备多通道)。
 /// </summary>
 [CanEndPoint("zlg", [])]
-internal static class ZlgEndpoint
+public static class ZlgEndpoint
 {
     public static PreparedBusContext Prepare(CanEndpoint ep, Action<IBusInitOptionsConfigurator>? configure)
     {

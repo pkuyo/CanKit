@@ -11,17 +11,24 @@
   <sys:String x:Key="Hint_SelectCustom">请选择一个端点， 或输入自定义端点。</sys:String>
   <sys:String x:Key="Label_Logs">日志</sys:String>
   <sys:String x:Key="Menu_CopyToClipboard">复制到剪贴板</sys:String>
+  <sys:String x:Key="Menu_OpenDetail">打开详细窗口</sys:String>
   <sys:String x:Key="Header_Time">时间</sys:String>
   <sys:String x:Key="Header_Dir">方向</sys:String>
   <sys:String x:Key="Header_Proto">协议</sys:String>
   <sys:String x:Key="Header_ID">ID</sys:String>
   <sys:String x:Key="Header_DLC">DLC</sys:String>
   <sys:String x:Key="Header_Data">数据</sys:String>
+  <sys:String x:Key="Header_Count">数量</sys:String>
+  <sys:String x:Key="Header_Cycle">周期时间</sys:String>
   <sys:String x:Key="Button_SendDialog">发送...</sys:String>
   <sys:String x:Key="Button_PeriodicDialog">周期发送...</sys:String>
   <sys:String x:Key="Button_Start">开始</sys:String>
   <sys:String x:Key="Button_Stop">停止</sys:String>
   <sys:String x:Key="Button_Run">运行</sys:String>
+  <!-- 右侧帧记录标签 -->
+  <sys:String x:Key="Tab_Categorized">分类</sys:String>
+  <sys:String x:Key="Tab_Sequential">顺序</sys:String>
+  <sys:String x:Key="Button_Save">保存</sys:String>
 
   <!-- 通用 -->
   <sys:String x:Key="Common_OK">确定</sys:String>
@@ -86,6 +93,7 @@
   <sys:String x:Key="Label_BusUsage">总线占用率：</sys:String>
 
   <!-- 菜单 / 关于 / 工具 -->
+  <sys:String x:Key="Menu_File">文件</sys:String>
   <sys:String x:Key="Menu_Tools">工具</sys:String>
   <sys:String x:Key="Menu_Help">帮助</sys:String>
   <sys:String x:Key="Menu_About">关于</sys:String>
@@ -107,4 +115,12 @@
   <sys:String x:Key="Button_GenerateCopy">生成并复制</sys:String>
   <sys:String x:Key="Toast_Copied">已复制到剪贴板</sys:String>
 
+  <!-- 帧详情记录窗口 -->
+  <sys:String x:Key="Title_Detail">详细记录</sys:String>
+  <sys:String x:Key="WindowTitle_Detail">帧详细记录</sys:String>
+  
+  <!-- 设置窗口 -->
+  <sys:String x:Key="Title_Setting">设置</sys:String>
+  <sys:String x:Key="Settings_MainCap">主列表上限</sys:String>
+  <sys:String x:Key="Settings_DetailCap">详情列表上限</sys:String>
 </ResourceDictionary>
