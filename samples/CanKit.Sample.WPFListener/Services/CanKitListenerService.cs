@@ -14,12 +14,15 @@ namespace EndpointListenerWpf.Services
         private ICanBus? _bus;
         private readonly object _txLock = new();
         private Action<string>? _onMessage;
+        private Action<ICanFrame, FrameDirection>? _onFrame;
+        private readonly List<CanKit.Core.Abstractions.IPeriodicTx> _periodics = new();
         public async Task StartAsync(string endpoint,
             bool can20,
             int bitRate,
             int dataBitRate,
             IReadOnlyList<FilterRuleModel> filters,
             Action<string> onMessage,
+            Action<ICanFrame, FrameDirection> onFrame,
             CancellationToken cancellationToken)
         {
             if (string.IsNullOrWhiteSpace(endpoint))
@@ -32,13 +35,13 @@ namespace EndpointListenerWpf.Services
                 {
                     cfg.SetProtocolMode(CanProtocolMode.CanFd)
                        .Fd(bitRate, dataBitRate)
-                       .SoftwareFeaturesFallBack(CanFeature.Filters);
+                       .SoftwareFeaturesFallBack(CanFeature.Filters | CanFeature.CyclicTx);
                 }
                 else
                 {
                     cfg.SetProtocolMode(CanProtocolMode.Can20)
                        .Baud(bitRate)
-                       .SoftwareFeaturesFallBack(CanFeature.Filters);
+                       .SoftwareFeaturesFallBack(CanFeature.Filters | CanFeature.CyclicTx);
                 }
                 // Apply filters if any
                 if (filters is { Count: > 0 })
@@ -61,6 +64,7 @@ namespace EndpointListenerWpf.Services
             });
             _bus = bus;
             _onMessage = onMessage;
+            _onFrame = onFrame;
             /*
             bus.ErrorFrameReceived += (_, err) =>
             {
@@ -86,19 +90,20 @@ namespace EndpointListenerWpf.Services
 #if NET8_0_OR_GREATER
                 await foreach (var rec in bus.GetFramesAsync(cancellationToken))
                 {
-                    LogFrame(rec.CanFrame, FrameDirection.Rx);
+                    LogFrame(rec.CanFrame, FrameDirection.Rx, onFrame);
                 }
 #else
                 while (!cancellationToken.IsCancellationRequested)
                 {
                     var list = await bus.ReceiveAsync(64, timeOut: 100, cancellationToken);
                     foreach (var rec in list)
-                        LogFrame(rec.CanFrame, FrameDirection.Rx);
+                        LogFrame(rec.CanFrame, FrameDirection.Rx, onFrame);
                 }
 #endif
             }
             finally
             {
+                StopPeriodic();
                 onMessage("[info] Listener stopped.");
                 _bus = null;
                 bus.Dispose();
@@ -114,7 +119,10 @@ namespace EndpointListenerWpf.Services
             {
                 lock (_txLock)
                 {
-                    LogFrame(frame, FrameDirection.Tx);
+                    // For TX, also surface the frame to UI if callback exists.
+                    var onFrame = _onFrame;
+                    if (onFrame != null)
+                        LogFrame(frame, FrameDirection.Tx, onFrame);
                     return bus.Transmit(frame);
                 }
             }
@@ -124,22 +132,43 @@ namespace EndpointListenerWpf.Services
             }
         }
 
-        private void LogFrame(ICanFrame f, FrameDirection dir)
+        private void LogFrame(ICanFrame f, FrameDirection dir, Action<ICanFrame, FrameDirection> onFrame)
         {
-            var kind = f.FrameKind == CanFrameType.CanFd ? "FD" : "2.0";
-            var data = f.Data.Span;
-            var hex = data.Length == 0 ? string.Empty : Convert.ToHexString(data).ToLowerInvariant();
-            if (hex.Length > 0)
+            // Do NOT log frames to text logs; forward to UI via onFrame instead.
+            try
             {
-                // insert spaces between bytes for readability
-                var spaced = string.Join(" ", Enumerable.Range(0, hex.Length / 2)
-                    .Select(i => hex.Substring(i * 2, 2)));
-                _onMessage?.Invoke($"[{dir}] {DateTime.Now:HH:mm:ss.fff}  {kind} ID=0x{f.ID:X3} DLC={f.Dlc} DATA={spaced}");
+                onFrame?.Invoke(f, dir);
             }
-            else
+            catch
             {
-                _onMessage?.Invoke($"[{dir}] {DateTime.Now:HH:mm:ss.fff}  {kind} ID=0x{f.ID:X3} DLC={f.Dlc}");
+                // ignore UI callback errors
             }
+        }
+
+        public void StartPeriodic(IEnumerable<(ICanFrame frame, TimeSpan period)> items)
+        {
+            var bus = _bus ?? throw new InvalidOperationException("Bus not opened.");
+            StopPeriodic();
+            foreach (var (frame, period) in items)
+            {
+                var opt = new CanKit.Core.Definitions.PeriodicTxOptions(period, repeat: -1, fireImmediately: true);
+                var tx = bus.TransmitPeriodic(frame, opt);
+                _periodics.Add(tx);
+            }
+            _onMessage?.Invoke($"[info] Periodic started: {_periodics.Count} item(s).");
+        }
+
+        public void StopPeriodic()
+        {
+            if (_periodics.Count == 0)
+                return;
+            foreach (var p in _periodics)
+            {
+                try { p.Stop(); } catch { /* ignore */ }
+                (p as IDisposable)?.Dispose();
+            }
+            _periodics.Clear();
+            _onMessage?.Invoke("[info] Periodic stopped.");
         }
     }
 }

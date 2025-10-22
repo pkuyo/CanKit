@@ -3,49 +3,45 @@ using System.Globalization;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Windows;
-using System.Windows.Controls;
+using EndpointListenerWpf.Models;
 using CanKit.Core.Definitions;
 
 namespace EndpointListenerWpf.Views
 {
-    public partial class SendFrameDialog : Window
+    public partial class AddPeriodicItemDialog : Window
     {
+        public PeriodicItemModel? Result { get; private set; }
         public bool AllowFd { get; set; }
 
-        public Func<ICanFrame, int>? Transmit { get; set; }
-
-        public SendFrameDialog()
+        public AddPeriodicItemDialog()
         {
             InitializeComponent();
             Loaded += OnLoaded;
         }
 
-        private void OnLoaded(object sender, RoutedEventArgs e)
+        private void OnLoaded(object? sender, RoutedEventArgs e)
         {
-            // Defaults
             IdTypeCombo.SelectedIndex = 0; // Standard
-            FrameTypeCombo.SelectedIndex = AllowFd ? 1 : 0; // Default to FD if allowed
-
-            // Disable FD option if not allowed
+            FrameTypeCombo.SelectedIndex = AllowFd ? 1 : 0; // prefer FD if allowed
             if (!AllowFd)
             {
-                ((ComboBoxItem)FrameTypeCombo.Items[1]).IsEnabled = false;
+                ((System.Windows.Controls.ComboBoxItem)FrameTypeCombo.Items[1]).IsEnabled = false;
             }
-
-            DlcBox.Text = AllowFd ? "8" : "8"; // default
+            DlcBox.Text = "8";
+            PeriodBox.Text = "1000";
             UpdateFlagVisibility();
         }
 
-        private void OnFrameTypeChanged(object sender, SelectionChangedEventArgs e)
+        private void OnFrameTypeChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
         {
             UpdateFlagVisibility();
         }
 
         private void UpdateFlagVisibility()
         {
-            var isFd = string.Equals(((ComboBoxItem)FrameTypeCombo.SelectedItem).Content?.ToString(), "CAN FD", StringComparison.OrdinalIgnoreCase);
-            if (RtrCheck != null) RtrCheck.Visibility = isFd ? Visibility.Collapsed : Visibility.Visible;
-            if (BrsCheck != null) BrsCheck.Visibility = isFd ? Visibility.Visible : Visibility.Collapsed;
+            var isFd = string.Equals(((System.Windows.Controls.ComboBoxItem)FrameTypeCombo.SelectedItem).Content?.ToString(), "CAN FD", StringComparison.OrdinalIgnoreCase);
+            RtrCheck.Visibility = isFd ? Visibility.Collapsed : Visibility.Visible;
+            BrsCheck.Visibility = isFd ? Visibility.Visible : Visibility.Collapsed;
         }
 
         private static bool TryParseInt(string text, out int value)
@@ -61,19 +57,22 @@ namespace EndpointListenerWpf.Views
         private static byte[] ParseHexBytes(string text)
         {
             text = text ?? string.Empty;
-            // Replace commas/newlines with spaces, trim, then split by whitespace
             text = text.Replace(',', ' ');
             text = Regex.Replace(text, "\r?\n", " ");
-            var parts = text.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+            var parts = text.Split(new[] { ' ' }, System.StringSplitOptions.RemoveEmptyEntries);
             return parts.Select(p => Convert.ToByte(p, 16)).ToArray();
         }
 
-        private void OnSend(object sender, RoutedEventArgs e)
+        private void OnOk(object sender, RoutedEventArgs e)
         {
-
             if (!TryParseInt(IdBox.Text, out var id) || id < 0)
             {
                 MessageBox.Show(this, "Invalid ID.", "Validation", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+            if (!TryParseInt(PeriodBox.Text, out var ms) || ms <= 0)
+            {
+                MessageBox.Show(this, "Invalid period (ms).", "Validation", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
 
@@ -83,8 +82,8 @@ namespace EndpointListenerWpf.Views
                 return;
             }
 
-            var isExtended = string.Equals(((ComboBoxItem)IdTypeCombo.SelectedItem).Content?.ToString(), "Extend", StringComparison.OrdinalIgnoreCase);
-            var isFd = string.Equals(((ComboBoxItem)FrameTypeCombo.SelectedItem).Content?.ToString(), "CAN FD", StringComparison.OrdinalIgnoreCase);
+            var isExtended = string.Equals(((System.Windows.Controls.ComboBoxItem)IdTypeCombo.SelectedItem).Content?.ToString(), "Extend", StringComparison.OrdinalIgnoreCase);
+            var isFd = string.Equals(((System.Windows.Controls.ComboBoxItem)FrameTypeCombo.SelectedItem).Content?.ToString(), "CAN FD", StringComparison.OrdinalIgnoreCase);
 
             if (isFd && !AllowFd)
             {
@@ -103,11 +102,13 @@ namespace EndpointListenerWpf.Views
                 return;
             }
 
+            var rtr = RtrCheck.IsChecked == true;
+            var brs = BrsCheck.IsChecked == true;
+
             try
             {
                 if (isFd)
                 {
-                    // Map DLC to length for FD
                     if (dlc > 15) { MessageBox.Show(this, "FD DLC must be 0..15.", "Validation", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
                     var targetLen = CanFdFrame.DlcToLen((byte)dlc);
                     if (bytes.Length > targetLen)
@@ -119,16 +120,22 @@ namespace EndpointListenerWpf.Views
                     {
                         Array.Resize(ref bytes, targetLen); // pad zeros
                     }
-                    var brs = BrsCheck?.IsChecked == true;
-                    var frame = new CanFdFrame(id, bytes, isExtendedFrame: isExtended, BRS: brs, ESI: false);
-                    var n = Transmit(frame);
-                    if (n <= 0)
-                        MessageBox.Show(this, "Frame not sent (driver rejected or not ready).", "Send", MessageBoxButton.OK, MessageBoxImage.Information);
+                    Result = new PeriodicItemModel
+                    {
+                        Enabled = true,
+                        Id = id,
+                        PeriodMs = ms,
+                        IsFd = true,
+                        IsExtended = isExtended,
+                        Brs = brs,
+                        IsRemote = false,
+                        DataBytes = bytes,
+                        Dlc = (byte)dlc,
+                    };
                 }
                 else
                 {
                     if (dlc > 8) { MessageBox.Show(this, "CAN 2.0 DLC must be 0..8.", "Validation", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
-                    var rtr = RtrCheck?.IsChecked == true;
                     if (rtr)
                     {
                         // For RTR, ignore provided data and use DLC only
@@ -146,21 +153,26 @@ namespace EndpointListenerWpf.Views
                             Array.Resize(ref bytes, dlc); // pad zeros
                         }
                     }
-                    var frame = new CanClassicFrame(id, bytes, isExtendedFrame: isExtended, isRemoteFrame: rtr);
-                    var n = Transmit(frame);
-                    if (n <= 0)
-                        MessageBox.Show(this, "Frame not sent (driver rejected or not ready).", "Send", MessageBoxButton.OK, MessageBoxImage.Information);
+                    Result = new PeriodicItemModel
+                    {
+                        Enabled = true,
+                        Id = id,
+                        PeriodMs = ms,
+                        IsFd = false,
+                        IsExtended = isExtended,
+                        IsRemote = rtr,
+                        Brs = false,
+                        DataBytes = bytes,
+                        Dlc = (byte)dlc,
+                    };
                 }
             }
             catch (Exception ex)
             {
-                MessageBox.Show(this, $"Failed to send: {ex.Message}", "Send", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show(this, $"Failed to build frame: {ex.Message}", "Validation", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
             }
-        }
-
-        private void OnCancel(object sender, RoutedEventArgs e)
-        {
-            Close();
+            DialogResult = true;
         }
     }
 }

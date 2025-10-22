@@ -1,7 +1,7 @@
 <Window x:Class="EndpointListenerWpf.Views.FilterEditorWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Filters" Height="360" Width="688">
+        Title="Filters" Height="360" Width="888">
     <DockPanel Margin="12">
         <StackPanel Orientation="Horizontal" DockPanel.Dock="Bottom" HorizontalAlignment="Right" Margin="0,8,0,0">
             <Button Content="Add" Width="80" Margin="0,0,8,0" Command="{Binding AddCommand}"/>
@@ -12,11 +12,11 @@
         <ListView ItemsSource="{Binding Filters}" SelectedItem="{Binding Selected}" BorderThickness="1" BorderBrush="#DDD">
             <ListView.View>
                 <GridView>
-                    <GridViewColumn Header="Type" Width="80" DisplayMemberBinding="{Binding Kind}"/>
-                    <GridViewColumn Header="ID Type" Width="100" DisplayMemberBinding="{Binding IdType}"/>
+                    <GridViewColumn Header="Type" Width="100" DisplayMemberBinding="{Binding Kind}"/>
+                    <GridViewColumn Header="ID Type" Width="120" DisplayMemberBinding="{Binding IdType}"/>
                     <GridViewColumn Header="Acc/From" Width="140" DisplayMemberBinding="{Binding AccCode}"/>
                     <GridViewColumn Header="Mask/To" Width="140" DisplayMemberBinding="{Binding AccMask}"/>
-                    <GridViewColumn Header="Summary" Width="200" DisplayMemberBinding="{Binding}"/>
+                    <GridViewColumn Header="Summary" Width="280" DisplayMemberBinding="{Binding}"/>
                 </GridView>
             </ListView.View>
         </ListView>

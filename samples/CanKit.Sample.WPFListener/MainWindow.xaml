@@ -5,125 +5,114 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:EndpointListenerWpf"
         mc:Ignorable="d"
-        Title="CAN Listener Sample" Height="560" Width="860">
+        Title="CanKit Listener Sample" Height="560" Width="1100">
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVis" />
     </Window.Resources>
+
     <Grid Margin="16">
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
-        <!-- Endpoint selection row -->
-        <StackPanel Orientation="Horizontal" Grid.Row="0" Margin="0,0,0,8">
-            <TextBlock Text="Endpoint:" VerticalAlignment="Center" Margin="0,0,8,0" Width="55"/>
-            <ComboBox Width="380"
-                      ItemsSource="{Binding Endpoints}"
-                      SelectedItem="{Binding SelectedEndpoint}"
-                      DisplayMemberPath="DisplayName"/>
-            <Button Content="Refresh" Margin="8,0,0,0" Padding="16,4" Command="{Binding RefreshEndpointsCommand}"/>
-        </StackPanel>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="360"/>  <!-- Left: endpoint + logs -->
+            <ColumnDefinition Width="12"/>   <!-- gutter -->
+            <ColumnDefinition Width="*"/>    <!-- Right: frames -->
+        </Grid.ColumnDefinitions>
 
-        <!-- Custom endpoint input -->
-        <StackPanel Orientation="Horizontal" Grid.Row="1" Margin="0,0,0,12">
-            <TextBlock Text="Custom:" VerticalAlignment="Center" Margin="0,0,8,0" Width="55"
-                       Visibility="{Binding IsCustomSelected, Converter={StaticResource BoolToVis}}"/>
-            <TextBox Width="380" Text="{Binding CustomEndpoint, UpdateSourceTrigger=PropertyChanged}"
-                     Visibility="{Binding IsCustomSelected, Converter={StaticResource BoolToVis}}"  Padding="0,3,0,2"/>
-            <Button Content="Open" Margin="8,0,0,0" Padding="16,4" Command="{Binding OpenCustomEndpointCommand}" 
-                    Visibility="{Binding IsCustomSelected, Converter={StaticResource BoolToVis}}"/>
-            <TextBlock Margin="8,0,0,0" VerticalAlignment="Center" Foreground="Gray" Text="Select an endpoint or choose Custom to input manually."
-                       Visibility="{Binding IsCustomSelected, Converter={StaticResource InverseBoolToVis}}"/>
-        </StackPanel>
+        <!-- Left panel: endpoints + logs -->
+        <Grid Grid.Row="0" Grid.Column="0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
 
-        <!-- Settings based on capabilities -->
-        <GroupBox Header="Settings" Grid.Row="2" Padding="12" Margin="0,0,0,12"
-                  SnapsToDevicePixels="True" UseLayoutRounding="True">
-            <Grid>
+            <!-- Endpoint selection row -->
+            <StackPanel Orientation="Horizontal" Grid.Row="0" Margin="0,0,0,8">
+                <TextBlock Text="Endpoint:" VerticalAlignment="Center" Margin="0,0,8,0" Width="60"/>
+                <ComboBox Width="320"
+                          ItemsSource="{Binding Endpoints}"
+                          SelectedItem="{Binding SelectedEndpoint}"
+                          DisplayMemberPath="DisplayName"/>
+                <Button Content="Refresh" Margin="8,0,0,0" Padding="12,4" Command="{Binding RefreshEndpointsCommand}"/>
+            </StackPanel>
 
+            <!-- Custom endpoint input -->
+            <StackPanel Orientation="Horizontal" Grid.Row="1" Margin="0,0,0,12">
+                <TextBlock Text="Custom:" VerticalAlignment="Center" Margin="0,0,8,0" Width="60"
+                           Visibility="{Binding IsCustomSelected, Converter={StaticResource BoolToVis}}"/>
+                <TextBox Width="320" Text="{Binding CustomEndpoint, UpdateSourceTrigger=PropertyChanged}"
+                         Visibility="{Binding IsCustomSelected, Converter={StaticResource BoolToVis}}"  Padding="0,3,0,2"/>
+                <Button Content="Open" Margin="8,0,0,0" Padding="12,4" Command="{Binding OpenCustomEndpointCommand}" 
+                        Visibility="{Binding IsCustomSelected, Converter={StaticResource BoolToVis}}"/>
+                <TextBlock Margin="8,0,0,0" VerticalAlignment="Center" Foreground="Gray" Text="Select an endpoint or choose Custom to input manually."
+                           Visibility="{Binding IsCustomSelected, Converter={StaticResource InverseBoolToVis}}"/>
+            </StackPanel>
 
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>   <!-- CAN 2.0 -->
-                    <ColumnDefinition Width="Auto"/>   <!-- CAN FD -->
-                    <ColumnDefinition Width="Auto"/>   <!-- “Bit Rate:” -->
-                    <ColumnDefinition Width="160"/>    <!-- BitRate Combo -->
-                    <ColumnDefinition Width="Auto"/>   <!-- “Data Bit Rate:” -->
-                    <ColumnDefinition Width="160"/>    <!-- DataBitRate Combo -->
-                    <ColumnDefinition Width="Auto"/>   <!-- Filters -->
-                    <ColumnDefinition Width="120"/>    <!-- ProgressBar -->
-                    <ColumnDefinition Width="Auto"/>   <!-- Fetching... -->
-                </Grid.ColumnDefinitions>
-
-                <CheckBox Grid.Column="0" Content="CAN 2.0"
-                          IsChecked="{Binding UseCan20}"
-                          IsEnabled="{Binding Capabilities.SupportsCan20}"/>
-
-                <CheckBox Grid.Column="1" Content="CAN FD"
-                          IsChecked="{Binding UseCanFd}"
-                          IsEnabled="{Binding Capabilities.SupportsCanFd}"
-                          Margin="16,0,16,0"/>
-
-                <TextBlock Grid.Column="2" Text="Bit Rate:" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                <ComboBox Grid.Column="3" Width="160"
-                          ItemsSource="{Binding BitRates}"
-                          SelectedItem="{Binding SelectedBitRate}">
-                    <ComboBox.ItemTemplate>
-                        <DataTemplate>
-                            <TextBlock Text="{Binding Converter={StaticResource BitrateConverter},
-                                              ConverterParameter=0.##}"/>
-                        </DataTemplate>
-                    </ComboBox.ItemTemplate>
-                </ComboBox>
-
-                <TextBlock Grid.Column="4" Text="Data Bit Rate:" Margin="16,0,8,0"
-                           Visibility="{Binding UseCanFd, Converter={StaticResource BoolToVis}}" VerticalAlignment="Center"/>
-                <ComboBox Grid.Column="5" Width="160"
-                          ItemsSource="{Binding DataBitRates}"
-                          SelectedItem="{Binding SelectedDataBitRate}"
-                          Visibility="{Binding UseCanFd, Converter={StaticResource BoolToVis}}">
-                    <ComboBox.ItemTemplate>
-                        <DataTemplate>
-                            <TextBlock Text="{Binding Converter={StaticResource BitrateConverter},
-                                              ConverterParameter=0.##}"/>
-                        </DataTemplate>
-                    </ComboBox.ItemTemplate>
-                </ComboBox>
-
-                <Button Grid.Column="6" Content="Filters..." Margin="16,0,0,0"
-                        Padding="12,4" Command="{Binding OpenFilterEditorCommand}"/>
-
-                <ProgressBar Grid.Column="7" Height="16" Margin="16,0,0,0"
-                             IsIndeterminate="True"
-                             Visibility="{Binding IsFetching, Converter={StaticResource BoolToVis}}"/>
-                <TextBlock Grid.Column="8" Margin="8,0,0,0" Text="Fetching..."
-                           Visibility="{Binding IsFetching, Converter={StaticResource BoolToVis}}"/>
-            </Grid>
-        </GroupBox>
-
-        <!-- Log area -->
-        <Border Grid.Row="3" BorderThickness="1" BorderBrush="#DDD">
-            <Grid>
+            <!-- Logs -->
+            <Grid Grid.Row="2">
                 <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
-                <ScrollViewer VerticalScrollBarVisibility="Auto">
-                    <ItemsControl ItemsSource="{Binding Logs}">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate>
-                                <TextBlock FontFamily="Consolas" Text="{Binding}"/>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                </ScrollViewer>
+                <TextBlock Text="Logs" FontWeight="Bold" Margin="0,0,0,4" Grid.Row="0"/>
+                <Border Grid.Row="1" BorderThickness="1" BorderBrush="#DDD">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <ItemsControl ItemsSource="{Binding Logs}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock FontFamily="Consolas" Text="{Binding}"/>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </Border>
             </Grid>
+        </Grid>
+
+        <!-- Right panel: Frames list -->
+        <Border Grid.Row="0" Grid.Column="2" BorderThickness="1" BorderBrush="#DDD" SnapsToDevicePixels="True" UseLayoutRounding="True">
+            <DataGrid  x:Name="FramesGrid" ItemsSource="{Binding Frames}"
+                      AutoGenerateColumns="False"
+                      HeadersVisibility="Column"
+                      IsReadOnly="True"
+                      CanUserAddRows="False"
+                      CanUserDeleteRows="False"
+                      EnableRowVirtualization="True"
+                      ScrollViewer.CanContentScroll="True"
+                      VirtualizingPanel.IsVirtualizing="True"
+                      VirtualizingPanel.VirtualizationMode="Recycling">
+                <DataGrid.Resources>
+                    <Style TargetType="DataGridRow">
+                        <Setter Property="ContextMenu">
+                            <Setter.Value>
+                                <ContextMenu DataContext="{Binding DataContext, Source={x:Reference FramesGrid}}">
+                                    <MenuItem Header="Copy to Clipboard"
+                                        Command="{Binding CopyFrameToClipboardCommand}"
+                                        CommandParameter="{Binding PlacementTarget.DataContext,
+                                        RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
+                                </ContextMenu>
+                            </Setter.Value>
+                        </Setter>
+                    </Style>
+                </DataGrid.Resources>
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="Time" Binding="{Binding Time}" Width="110"/>
+                    <DataGridTextColumn Header="Dir" Binding="{Binding Dir}" Width="60"/>
+                    <DataGridTextColumn Header="Proto" Binding="{Binding Kind}" Width="80"/>
+                    <DataGridTextColumn Header="ID" Binding="{Binding Id}" Width="120"/>
+                    <DataGridTextColumn Header="DLC" Binding="{Binding Dlc}" Width="60"/>
+                    <DataGridTextColumn Header="Data" Binding="{Binding Data}" Width="*"/>
+                </DataGrid.Columns>
+            </DataGrid>
         </Border>
 
-        <!-- Controls -->
-        <Grid Grid.Row="4" Margin="0,12,0,0">
+        <!-- Bottom Controls spanning both sides -->
+        <Grid Grid.Row="1" Grid.ColumnSpan="3" Margin="0,12,0,0">
             <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
@@ -131,12 +120,14 @@
             </Grid.ColumnDefinitions>
 
             <Button Grid.Column="0" Content="Send..." Width="100" Margin="10,0,8,0"
-                Command="{Binding OpenSendDialogCommand}"/>
+                    Command="{Binding OpenSendDialogCommand}"/>
+            <Button Grid.Column="1" Content="Periodic..." Width="110" Margin="0,0,8,0"
+                    Command="{Binding OpenPeriodicDialogCommand}"/>
             
-            <Button Grid.Column="2" Content="Start" Width="100" Margin="0,0,8,0"
-                Command="{Binding StartListeningCommand}"/>
-            <Button Grid.Column="3" Content="Stop" Width="100"
-                Command="{Binding StopListeningCommand}"/>
+            <Button Grid.Column="3" Content="Start" Width="100" Margin="0,0,8,0"
+                    Command="{Binding StartListeningCommand}"/>
+            <Button Grid.Column="4" Content="Stop" Width="100"
+                    Command="{Binding StopListeningCommand}"/>
         </Grid>
     </Grid>
 </Window>
