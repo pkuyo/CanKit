@@ -67,7 +67,7 @@ public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, IBusOwnershi
         }
 
         // software filter only
-        _useSoftwareFilter = (Options.EnabledSoftwareFallback & CanFeature.Filters) != 0;
+        _useSoftwareFilter = true;
         _softwareFilterPredicate = Options.Filter.FilterRules.Count > 0
             ? FilterRule.Build(Options.Filter.FilterRules)
             : null;

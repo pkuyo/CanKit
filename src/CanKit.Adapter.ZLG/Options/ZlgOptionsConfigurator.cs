@@ -54,32 +54,13 @@ public sealed class ZlgBusInitConfigurator
 
     public override ZlgBusInitConfigurator AccMask(int accCode, int accMask, CanFilterIDType idType = CanFilterIDType.Standard)
     {
-        if ((EnabledSoftwareFallback & CanFeature.Filters) == 0)
+        if ((EnabledSoftwareFallback & CanFeature.MaskFilter) == 0)
         {
             if (Filter.FilterRules.Any(i => i is FilterRule.Range))
                 throw new CanFilterConfigurationException(
-                    "ZLG channels only supports the same type of filter rule.(without software filter)");
-
-            if (Filter.FilterRules.Count > 1)
-                throw new CanFilterConfigurationException(
-                    "ZLG channels only support a single mask filter rule.(without software filter)");
-
-            ZlgErr.ThrowIfNotSupport(ZlgFeatures, ZlgFeature.MaskFilter);
+                    "ZLG channels only supports one mask filter on hardware");
         }
         return base.AccMask(accCode, accMask, idType);
-    }
-
-    public override ZlgBusInitConfigurator RangeFilter(int min, int max, CanFilterIDType idType = CanFilterIDType.Standard)
-    {
-        if ((EnabledSoftwareFallback & CanFeature.Filters) == 0)
-        {
-            if (Filter.FilterRules.Any(i => i is FilterRule.Mask))
-                throw new CanFilterConfigurationException(
-                    "ZLG channels only supports the same type of filter rule.(without software filter)");
-            ZlgErr.ThrowIfNotSupport(ZlgFeatures, ZlgFeature.RangeFilter);
-        }
-
-        return base.RangeFilter(min, max, idType);
     }
 
     public override IBusInitOptionsConfigurator Custom(string key, object value)
@@ -94,6 +75,17 @@ public sealed class ZlgBusInitConfigurator
                 break;
         }
         return this;
+    }
+
+    public override ZlgBusInitConfigurator SetFilter(CanFilter filter)
+    {
+        if ((Features & CanFeature.MaskFilter) != 0 && filter.FilterRules.Count(i => i is FilterRule.Mask) > 1)
+        {
+            throw new CanFilterConfigurationException(
+                "ZLG channels only supports one mask filter on hardware");
+        }
+
+        return base.SetFilter(filter);
     }
 
     public ZlgFeature ZlgFeatures => Options.ZlgFeatures;

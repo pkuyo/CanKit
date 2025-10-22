@@ -159,7 +159,7 @@ namespace CanKit.Core.Definitions
     {
         CanClassic    = 1 << 0,
         CanFd         = 1 << 1,
-        Filters       = 1 << 2,
+        MaskFilter    = 1 << 2,
         CyclicTx      = 1 << 3,
         BusUsage      = 1 << 4,
         ListenOnly    = 1 << 5,
@@ -167,6 +167,9 @@ namespace CanKit.Core.Definitions
         ErrorCounters = 1 << 7,
         ErrorFrame    = 1 << 8,
         TxRetryPolicy = 1 << 9,
+        RangeFilter   = 1 << 10,
+
+        Filters       = MaskFilter | RangeFilter,
         All           = int.MaxValue,
     }
 

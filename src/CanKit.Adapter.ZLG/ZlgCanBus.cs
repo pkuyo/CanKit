@@ -467,7 +467,7 @@ namespace CanKit.Adapter.ZLG
             {
                 if (zlgOption.Filter.filterRules[0] is FilterRule.Mask mask
 #if !FAKE
-                    && zlgOption.ZlgFeatures.HasFlag(ZlgFeature.MaskFilter)
+                    && (options.Features & CanFeature.MaskFilter) != 0
 #endif
                     )
                 {
@@ -484,7 +484,7 @@ namespace CanKit.Adapter.ZLG
 
                     foreach (var rule in zlgOption.Filter.filterRules.Skip(1))
                     {
-                        if (zlgOption.EnabledSoftwareFallback.HasFlag(CanFeature.Filters))
+                        if (zlgOption.EnabledSoftwareFallback.HasFlag(CanFeature.RangeFilter))
                         {
                             zlgOption.Filter.softwareFilter.Add(rule);
                         }
@@ -494,7 +494,7 @@ namespace CanKit.Adapter.ZLG
                 {
                     foreach (var rule in zlgOption.Filter.filterRules)
                     {
-                        if (rule is not FilterRule.Range range || !zlgOption.ZlgFeatures.HasFlag(ZlgFeature.RangeFilter))
+                        if (rule is not FilterRule.Range range || !zlgOption.Features.HasFlag(CanFeature.RangeFilter))
                         {
                             zlgOption.Filter.softwareFilter.Add(rule);
                             continue;
@@ -517,7 +517,7 @@ namespace CanKit.Adapter.ZLG
                             "ZCAN_SetValue(filter_end)");
                     }
 
-                    if (zlgOption.ZlgFeatures.HasFlag(ZlgFeature.RangeFilter))
+                    if (zlgOption.Features.HasFlag(CanFeature.RangeFilter))
                     {
                         ZlgErr.ThrowIfError(
                             ZLGCAN.ZCAN_SetValue(
@@ -619,14 +619,12 @@ namespace CanKit.Adapter.ZLG
                     if (count > 0)
                     {
                         var frames = _transceiver.Receive(this, Math.Min(count, batch));
-                        var useSw = (Options.EnabledSoftwareFallback & CanFeature.Filters) != 0
-                                    && Options.Filter.SoftwareFilterRules.Count > 0;
-                        var pred = useSw ? _softwareFilterPredicate : null;
+                        var pred = _useSoftwareFilter ? _softwareFilterPredicate : null;
                         foreach (var frame in frames)
                         {
                             try
                             {
-                                if (useSw && pred is not null && !pred(frame.CanFrame))
+                                if (_useSoftwareFilter && pred is not null && !pred(frame.CanFrame))
                                 {
                                     continue;
                                 }

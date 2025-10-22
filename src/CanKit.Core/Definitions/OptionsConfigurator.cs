@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using CanKit.Core.Abstractions;
 using CanKit.Core.Utils;
 
@@ -246,10 +247,12 @@ namespace CanKit.Core.Definitions
             switch (mode)
             {
                 case CanProtocolMode.Can20:
+                    CanKitErr.ThrowIfNotSupport(_feature, CanFeature.CanClassic);
                     if (Options.BitTiming.Classic is null)
                         Options.BitTiming = CanBusTiming.ClassicDefault();
                     break;
                 case CanProtocolMode.CanFd:
+                    CanKitErr.ThrowIfNotSupport(_feature, CanFeature.CanFd);
                     if (Options.BitTiming.Fd is null)
                         Options.BitTiming = CanBusTiming.FdDefault();
                     break;
@@ -259,7 +262,16 @@ namespace CanKit.Core.Definitions
 
         public virtual TSelf SetFilter(CanFilter filter)
         {
-            CanKitErr.ThrowIfNotSupport(_feature, CanFeature.Filters);
+            var enableMask = ((_feature & CanFeature.MaskFilter) != 0) |
+                             ((EnabledSoftwareFallback & CanFeature.MaskFilter) != 0);
+            var enableRange = ((_feature & CanFeature.MaskFilter) != 0) |
+                             ((EnabledSoftwareFallback & CanFeature.MaskFilter) != 0);
+            if (enableRange && enableMask)
+            { }
+            else if(!enableMask && filter.FilterRules.Any(i => i is FilterRule.Mask))
+                CanKitErr.ThrowIfNotSupport(_feature, CanFeature.MaskFilter);
+            else if(!enableRange && filter.FilterRules.Any(i => i is FilterRule.Range))
+                CanKitErr.ThrowIfNotSupport(_feature, CanFeature.RangeFilter);
 
             Options.Filter = filter;
             return (TSelf)this;
@@ -274,7 +286,7 @@ namespace CanKit.Core.Definitions
 
         public virtual TSelf RangeFilter(int min, int max, CanFilterIDType idType = CanFilterIDType.Standard)
         {
-            CanKitErr.ThrowIfNotSupport(_feature, CanFeature.Filters);
+            CanKitErr.ThrowIfNotSupport(_feature, CanFeature.RangeFilter);
             if (min < 0) throw new ArgumentOutOfRangeException(nameof(min));
             if (max < 0) throw new ArgumentOutOfRangeException(nameof(max));
             if (min > max)
@@ -289,14 +301,14 @@ namespace CanKit.Core.Definitions
 
         public virtual TSelf AccMask(int accCode, int accMask, CanFilterIDType idType = CanFilterIDType.Standard)
         {
-            CanKitErr.ThrowIfNotSupport(_feature, CanFeature.Filters);
+            CanKitErr.ThrowIfNotSupport(_feature, CanFeature.MaskFilter);
             // For AccMask, do not throw on negative; allow patterns like -1 (0xFFFFFFFF)
             Options.Filter.filterRules.Add(new FilterRule.Mask((uint)accCode, (uint)accMask, idType));
             return (TSelf)this;
         }
         public virtual TSelf AccMask(uint accCode, uint accMask, CanFilterIDType idType = CanFilterIDType.Standard)
         {
-            CanKitErr.ThrowIfNotSupport(_feature, CanFeature.Filters);
+            CanKitErr.ThrowIfNotSupport(_feature, CanFeature.MaskFilter);
             Options.Filter.filterRules.Add(new FilterRule.Mask(accCode, accMask, idType));
             return (TSelf)this;
         }

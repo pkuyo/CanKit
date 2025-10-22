@@ -115,7 +115,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
 
                     filters.Add(new Libc.can_filter { can_id = canId, can_mask = canMask });
                 }
-                else if ((Options.EnabledSoftwareFallback & CanFeature.Filters) != Libc.OK)
+                else if ((Options.EnabledSoftwareFallback & CanFeature.RangeFilter) != 0)
                 {
                     sc.Filter.softwareFilter.Add(r);
                 }
@@ -179,7 +179,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
         }
 
         // Cache software filter predicate for event loop
-        _useSoftwareFilter = (Options.EnabledSoftwareFallback & CanFeature.Filters) != 0
+        _useSoftwareFilter = (Options.EnabledSoftwareFallback & CanFeature.RangeFilter) != 0
                               && Options.Filter.SoftwareFilterRules.Count > 0;
         _softwareFilterPredicate = _useSoftwareFilter
             ? FilterRule.Build(Options.Filter.SoftwareFilterRules)

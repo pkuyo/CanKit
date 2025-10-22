@@ -99,14 +99,14 @@ public sealed class ZlgPeriodicTx : IPeriodicTx
     {
         add
         {
-            throw new CanKit.Core.Exceptions.CanKitException(
-                CanKit.Core.Exceptions.CanKitErrorCode.FeatureNotSupported,
+            throw new CanKitException(
+                CanKitErrorCode.FeatureNotSupported,
                 "ZLG periodic transmit does not support Completed event notifications.");
         }
         remove
         {
-            throw new CanKit.Core.Exceptions.CanKitException(
-                CanKit.Core.Exceptions.CanKitErrorCode.FeatureNotSupported,
+            throw new CanKitException(
+                CanKitErrorCode.FeatureNotSupported,
                 "ZLG periodic transmit does not support Completed event notifications.");
         }
     }

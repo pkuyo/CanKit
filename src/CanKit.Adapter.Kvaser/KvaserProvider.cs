@@ -68,7 +68,7 @@ public sealed class KvaserProvider : ICanModelProvider, ICanCapabilityProvider
         // Pre-open capability probe via CANlib channel data
         int ch = GetChannelIndex(busOptions);
         try { Canlib.canInitializeLibrary(); } catch { }
-        CanFeature features = CanFeature.CanClassic | CanFeature.Filters | CanFeature.Echo | CanFeature.ErrorFrame;
+        CanFeature features = CanFeature.CanClassic | CanFeature.MaskFilter | CanFeature.Echo | CanFeature.ErrorFrame;
         var st = Canlib.GetUInt32(ch, Canlib.canCHANNELDATA_CHANNEL_CAP, out var caps);
         if (st == Canlib.canStatus.canOK)
         {

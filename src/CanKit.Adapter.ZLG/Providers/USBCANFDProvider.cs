@@ -17,9 +17,10 @@ public sealed class USBCANFDProvider(DeviceType deviceType) : ZlgCanProvider
                                                  CanFeature.CyclicTx |
                                                  CanFeature.TxRetryPolicy |
                                                  CanFeature.ListenOnly |
-                                                 CanFeature.CanFd;
+                                                 CanFeature.CanFd |
+                                                 CanFeature.RangeFilter;
 
-    public override ZlgFeature ZlgFeature => ZlgFeature.RangeFilter | ZlgFeature.MergeReceive;
+    public override ZlgFeature ZlgFeature => ZlgFeature.MergeReceive;
 }
 
 public sealed class USBCANFDProviderGroup : ICanModelProviderGroup

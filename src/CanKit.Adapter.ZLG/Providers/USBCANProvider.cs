@@ -9,7 +9,7 @@ public sealed class USBCANProvider(DeviceType deviceType) : ZlgCanProvider
 {
     public override DeviceType DeviceType => deviceType;
 
-    public override ZlgFeature ZlgFeature => ZlgFeature.MaskFilter;
+    public override CanFeature StaticFeatures => base.StaticFeatures | CanFeature.MaskFilter;
 }
 
 public sealed class USBCANProviderGroup : ICanModelProviderGroup

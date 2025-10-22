@@ -15,7 +15,7 @@ public sealed class PcanProvider : ICanModelProvider, ICanCapabilityProvider
     // FD depends on hardware (sniffed at runtime).
     public CanFeature StaticFeatures => CanFeature.CanClassic |
                                         CanFeature.CanFd |
-                                        CanFeature.Filters |
+                                        CanFeature.RangeFilter |
                                         CanFeature.ErrorFrame |
                                         CanFeature.ListenOnly;
 

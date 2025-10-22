@@ -78,8 +78,6 @@ public enum ZlgErrorFlag
 public enum ZlgFeature
 {
     None = 0x0,
-    RangeFilter = 0x1,
-    MaskFilter = 0x2,
     MergeReceive = 0x4,
 }
 

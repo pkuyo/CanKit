@@ -156,7 +156,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
                 }
             }
             // Cache software filter predicate for polling loop
-            _useSoftwareFilter = (Options.EnabledSoftwareFallback & CanFeature.Filters) != 0
+            _useSoftwareFilter = (Options.EnabledSoftwareFallback & CanFeature.MaskFilter) != 0
                                  && Options.Filter.SoftwareFilterRules.Count > 0;
             _softwareFilterPredicate = _useSoftwareFilter
                 ? FilterRule.Build(Options.Filter.SoftwareFilterRules)

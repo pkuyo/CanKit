@@ -113,7 +113,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
                 else
                 {
                     // If software filter fallback enabled, push to software list; otherwise throw
-                    if ((kc.EnabledSoftwareFallback & CanFeature.Filters) != 0)
+                    if ((kc.EnabledSoftwareFallback & CanFeature.RangeFilter) != 0)
                     {
                         kc.Filter.softwareFilter.Add(r);
                     }
@@ -580,7 +580,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
                     continue;
                 }
 
-                var useSw = (Options.EnabledSoftwareFallback & CanFeature.Filters) != 0 && _pred is not null;
+                var useSw = (Options.EnabledSoftwareFallback & CanFeature.RangeFilter) != 0 && _pred is not null;
                 if (useSw)
                 {
                     if (!_pred!(rec.CanFrame))

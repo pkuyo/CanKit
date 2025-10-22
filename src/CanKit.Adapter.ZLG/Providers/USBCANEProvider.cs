@@ -10,9 +10,9 @@ public class USBCANEProvider(DeviceType deviceType) : ZlgCanProvider
     public override DeviceType DeviceType => deviceType;
 
     public override CanFeature StaticFeatures => base.StaticFeatures |
-                                                 CanFeature.CyclicTx;
+                                                 CanFeature.CyclicTx |
+                                                 CanFeature.RangeFilter;
 
-    public override ZlgFeature ZlgFeature => ZlgFeature.RangeFilter;
 }
 
 public sealed class USBCANEProviderGroup : ICanModelProviderGroup

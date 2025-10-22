@@ -12,9 +12,8 @@ public class PCIECANFD200UProvider : ZlgCanProvider
     public override CanFeature StaticFeatures => base.StaticFeatures |
                                                  CanFeature.CyclicTx |
                                                  CanFeature.Echo |
-                                                 CanFeature.CanFd;
-
-    public override ZlgFeature ZlgFeature => ZlgFeature.RangeFilter;
+                                                 CanFeature.CanFd |
+                                                 CanFeature.RangeFilter;
 }
 
 public class PCIECANFDProvider(DeviceType deviceType) : ZlgCanProvider
@@ -25,9 +24,10 @@ public class PCIECANFDProvider(DeviceType deviceType) : ZlgCanProvider
                                                  CanFeature.ListenOnly |
                                                  CanFeature.Echo |
                                                  CanFeature.CyclicTx |
-                                                 CanFeature.CanFd;
+                                                 CanFeature.CanFd |
+                                                 CanFeature.RangeFilter;
 
-    public override ZlgFeature ZlgFeature => ZlgFeature.RangeFilter | ZlgFeature.MergeReceive;
+    public override ZlgFeature ZlgFeature => ZlgFeature.MergeReceive;
 }
 
 

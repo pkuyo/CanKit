@@ -10,9 +10,9 @@ public class CANDTUProvider(DeviceType deviceType) : ZlgCanProvider
     public override DeviceType DeviceType => deviceType;
 
     public override CanFeature StaticFeatures => base.StaticFeatures |
-                                                 CanFeature.ListenOnly;
+                                                 CanFeature.ListenOnly |
+                                                 CanFeature.MaskFilter;
 
-    public override ZlgFeature ZlgFeature => ZlgFeature.MaskFilter;
 }
 
 public sealed class CANDTUProviderGroup : ICanModelProviderGroup

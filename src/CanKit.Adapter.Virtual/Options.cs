@@ -16,7 +16,7 @@ public sealed class VirtualBusOptions(ICanModelProvider provider) : IBusOptions
     public TxRetryPolicy TxRetryPolicy { get; set; } = TxRetryPolicy.AlwaysRetry;
     public CanProtocolMode ProtocolMode { get; set; } = CanProtocolMode.Can20;
     public CanFilter Filter { get; set; } = new();
-    public CanFeature EnabledSoftwareFallback { get; set; } = CanFeature.Filters | CanFeature.CyclicTx;
+    public CanFeature EnabledSoftwareFallback { get; set; } = CanFeature.RangeFilter | CanFeature.MaskFilter | CanFeature.CyclicTx;
     public Capability Capabilities { get; set; } = new(provider.StaticFeatures);
     public bool AllowErrorInfo { get; set; }
     public int AsyncBufferCapacity { get; set; } = 0;

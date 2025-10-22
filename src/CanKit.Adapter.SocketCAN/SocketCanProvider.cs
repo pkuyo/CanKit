@@ -11,7 +11,7 @@ public sealed class SocketCanProvider : ICanModelProvider, ICanCapabilityProvide
 {
     public DeviceType DeviceType => LinuxDeviceType.SocketCAN;
 
-    public CanFeature StaticFeatures => CanFeature.CanClassic | CanFeature.CanFd | CanFeature.Filters |
+    public CanFeature StaticFeatures => CanFeature.CanClassic | CanFeature.CanFd | CanFeature.MaskFilter |
                                         CanFeature.ErrorFrame | CanFeature.ErrorCounters | CanFeature.CyclicTx;
 
     public ICanFactory Factory => CanRegistry.Registry.Factory("SocketCAN");
@@ -52,7 +52,7 @@ public sealed class SocketCanProvider : ICanModelProvider, ICanCapabilityProvide
         }
 
         var mask = ctrlMode.mask;
-        var features = CanFeature.CanClassic | CanFeature.Filters | CanFeature.ErrorCounters;
+        var features = CanFeature.CanClassic | CanFeature.RangeFilter | CanFeature.ErrorCounters;
         if ((mask & LibSocketCan.CAN_CTRLMODE_LOOPBACK) != 0)
             features |= CanFeature.Echo;
         if ((mask & LibSocketCan.CAN_CTRLMODE_LISTENONLY) != 0)

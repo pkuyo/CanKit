@@ -63,7 +63,7 @@ public sealed class SocketCanBusInitConfigurator
 
     public override SocketCanBusInitConfigurator RangeFilter(int min, int max, CanFilterIDType idType = CanFilterIDType.Standard)
     {
-        if ((Options.EnabledSoftwareFallback & CanFeature.Filters) == 0)
+        if ((Options.EnabledSoftwareFallback & CanFeature.RangeFilter) == 0)
         {
             throw new CanFilterConfigurationException("SocketCAN only supports mask filters.");
         }

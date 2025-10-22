@@ -14,7 +14,6 @@ namespace CanKit.Adapter.ZLG
         public abstract DeviceType DeviceType { get; }
 
         public virtual CanFeature StaticFeatures => CanFeature.CanClassic |
-                                                    CanFeature.Filters |
                                                     CanFeature.ErrorCounters |
                                                     CanFeature.Echo;
 
