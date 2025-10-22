@@ -14,8 +14,8 @@
                 <GridView>
                     <GridViewColumn Header="{DynamicResource Label_Type}" Width="100" DisplayMemberBinding="{Binding Kind}"/>
                     <GridViewColumn Header="{DynamicResource Label_IdType}" Width="120" DisplayMemberBinding="{Binding IdType}"/>
-                    <GridViewColumn Header="{DynamicResource Label_AccCodeFrom}" Width="140" DisplayMemberBinding="{Binding AccCode}"/>
-                    <GridViewColumn Header="{DynamicResource Label_AccMaskTo}" Width="140" DisplayMemberBinding="{Binding AccMask}"/>
+                    <GridViewColumn Header="{DynamicResource Label_AccCodeFrom}" Width="160" DisplayMemberBinding="{Binding AccCode}"/>
+                    <GridViewColumn Header="{DynamicResource Label_AccMaskTo}" Width="160" DisplayMemberBinding="{Binding AccMask}"/>
                     <GridViewColumn Header="{DynamicResource Label_Summary}" Width="280" DisplayMemberBinding="{Binding}"/>
                 </GridView>
             </ListView.View>

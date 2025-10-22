@@ -13,7 +13,7 @@
 - 发送对话框：构造经典或 FD 帧、标准/扩展 ID、DLC 校验、RTR/BRS 标志。
 - 周期发送窗口：构建周期任务列表（按项启用/禁用），一键运行/停止。
 - 当硬件不支持过滤/周期发送时，自动启用软件回退。
-
+- 如果硬件支持，显示错误计数统计和总线占用率
 ## 环境要求
 
 - 操作系统：Windows 10/11。
@@ -46,6 +46,7 @@
 2）加载能力
 - 选中端点即触发能力查询（支持的协议与速率）。
 
+
 3）开始监听
 - 点击 Start 弹出连接选项：
   - 协议：CAN 2.0 或 CAN FD
@@ -54,6 +55,7 @@
 - 确认后打开总线；日志区域显示状态，右侧帧表开始更新。
 - 点击 Stop 停止监听并关闭连接。
 
+!![开始监听](https://gitee.com/pkuyora/CanKit/raw/master/docs/pics/cankitdemo_preview4.png)
 ![设置过滤](https://gitee.com/pkuyora/CanKit/raw/master/docs/pics/cankitdemo_preview2.png)
 
 4）发送帧

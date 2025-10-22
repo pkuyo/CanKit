@@ -16,6 +16,7 @@ Target framework is `net8.0-windows`.
 - Send dialog: craft Classic or FD frames, Std/Ext IDs, DLC validation, RTR/BRS flags.
 - Periodic transmit window: build a list of frames with periods, enable/disable items, run/stop as a group.
 - Software fallbacks for Filters and Periodic TX when hardware lacks those capabilities.
+- Error counters and bug usage (if device supports)
 
 ## Requirements
 
@@ -58,6 +59,8 @@ Notes
   - Optional Filters (mask or range; standard or extended IDs)
 - Press OK to open the bus; logs show status and the frame grid starts updating.
 - Click Stop to close the connection.
+
+![Connection Options](https://github.com/pkuyo/CanKit/blob/master/docs/pics/cankitdemo_preview4.png)
 
 ![SetFilter](https://github.com/pkuyo/CanKit/blob/master/docs/pics/cankitdemo_preview2.png)
 

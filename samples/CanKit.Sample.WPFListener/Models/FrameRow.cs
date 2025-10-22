@@ -56,7 +56,7 @@ namespace EndpointListenerWpf.Models
             }
             else
             {
-                Time = rec.ReceiveTimestamp.TotalMilliseconds.ToString($"G4",CultureInfo.InvariantCulture);
+                Time = rec.ReceiveTimestamp.TotalMilliseconds.ToString("0.####",CultureInfo.InvariantCulture);
             }
 
             Dir = dir == FrameDirection.Tx ? "Tx" : "Rx";

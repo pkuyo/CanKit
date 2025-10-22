@@ -75,6 +75,7 @@
   <sys:String x:Key="Option_Range">范围</sys:String>
   <sys:String x:Key="Label_AccCodeFrom">AccCode / 起始</sys:String>
   <sys:String x:Key="Label_AccMaskTo">AccMask / 结束</sys:String>
+  <sys:String x:Key="Label_Summary">预览</sys:String>
   <sys:String x:Key="Text_NumberHint">支持十进制或十六进制，例如：0x1FFFFFFF。</sys:String>
 
   <!-- 连接选项 -->

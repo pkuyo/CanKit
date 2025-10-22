@@ -9,7 +9,7 @@ namespace EndpointListenerWpf;
 /// </summary>
 public partial class App : Application
 {
-    protected override void OnStartup(System.Windows.StartupEventArgs e)
+    protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
         try
@@ -17,7 +17,6 @@ public partial class App : Application
             var culture = System.Globalization.CultureInfo.CurrentUICulture;
             if (string.Equals(culture.TwoLetterISOLanguageName, "zh", StringComparison.OrdinalIgnoreCase))
             {
-                // Load Chinese resources to override defaults
                 var zhDict = new ResourceDictionary { Source = new Uri("Resources/Strings.zh-CN.xaml", System.UriKind.Relative) };
                 Resources.MergedDictionaries.Add(zhDict);
             }

@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Controls;
 using CanKit.Core.Definitions;
 using EndpointListenerWpf.Models;
+using EndpointListenerWpf.Resources;
 
 namespace EndpointListenerWpf.Views
 {
@@ -32,7 +33,7 @@ namespace EndpointListenerWpf.Views
         {
             var kind = ((ComboBoxItem)TypeCombo.SelectedItem).Content?.ToString();
             var idTypeStr = ((ComboBoxItem)IdTypeCombo.SelectedItem).Content?.ToString();
-            var idType = idTypeStr?.Equals("Extend", StringComparison.OrdinalIgnoreCase) == true
+            var idType = idTypeStr?.Equals(I18n.T("Option_Extend"), StringComparison.OrdinalIgnoreCase) == true
                 ? CanFilterIDType.Extend
                 : CanFilterIDType.Standard;
 
