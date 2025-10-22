@@ -19,6 +19,11 @@ It supports opening buses via endpoint strings or strongly-typed helpers, and ex
 
 For Chinese readers, see: [README_CN.md](README_CN.md)
 
+----
+
+Below is a quick CAN listener/sender demo using CanKit. With multi-vendor support, you can get hands-on with CanKit¡¯s features in minutes. [Listener Demo](https://github.com/pkuyo/CanKit/tree/master/samples/CanKit.Sample.WPFListener) 
+
+![Preview](https://github.com/pkuyo/CanKit/blob/master/docs/pics/cankitdemo_preview1.png)
 
 ## Features
 

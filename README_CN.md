@@ -18,6 +18,12 @@
 
  - 适配厂商：PCAN-Basic (Peak CAN), CANlib(Kvaser), SocketCAN (Linux), ZLG(周立功)
 
+ ----
+
+ 下面是一个使用CanKit开发的CAN通信Demo，支持多厂商发送接收，查询连接设备，设置滤波等功能。[CAN通信Demo](https://github.com/pkuyo/CanKit/tree/master/samples/CanKit.Sample.WPFListener) 
+
+![预览](https://gitee.com/pkuyora/CanKit/raw/master/docs/pics/cankitdemo_preview1.png)
+
 ## 安装
 
 先添加核心包，再按需选择适配器包：
