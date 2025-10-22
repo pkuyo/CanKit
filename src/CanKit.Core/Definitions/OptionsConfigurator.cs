@@ -268,9 +268,9 @@ namespace CanKit.Core.Definitions
                              ((EnabledSoftwareFallback & CanFeature.MaskFilter) != 0);
             if (enableRange && enableMask)
             { }
-            else if(!enableMask && filter.FilterRules.Any(i => i is FilterRule.Mask))
+            else if (!enableMask && filter.FilterRules.Any(i => i is FilterRule.Mask))
                 CanKitErr.ThrowIfNotSupport(_feature, CanFeature.MaskFilter);
-            else if(!enableRange && filter.FilterRules.Any(i => i is FilterRule.Range))
+            else if (!enableRange && filter.FilterRules.Any(i => i is FilterRule.Range))
                 CanKitErr.ThrowIfNotSupport(_feature, CanFeature.RangeFilter);
 
             Options.Filter = filter;

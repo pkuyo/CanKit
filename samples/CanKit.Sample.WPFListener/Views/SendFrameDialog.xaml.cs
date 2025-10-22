@@ -43,7 +43,7 @@ namespace EndpointListenerWpf.Views
 
         private void UpdateFlagVisibility()
         {
-            var isFd = string.Equals(((ComboBoxItem)FrameTypeCombo.SelectedItem).Content?.ToString(), "CAN FD", StringComparison.OrdinalIgnoreCase);
+            var isFd = string.Equals(((ComboBoxItem)FrameTypeCombo.SelectedItem).Tag?.ToString(), "CANFD", StringComparison.OrdinalIgnoreCase);
             if (RtrCheck != null) RtrCheck.Visibility = isFd ? Visibility.Collapsed : Visibility.Visible;
             if (BrsCheck != null) BrsCheck.Visibility = isFd ? Visibility.Visible : Visibility.Collapsed;
         }
@@ -83,8 +83,8 @@ namespace EndpointListenerWpf.Views
                 return;
             }
 
-            var isExtended = string.Equals(((ComboBoxItem)IdTypeCombo.SelectedItem).Content?.ToString(), "Extend", StringComparison.OrdinalIgnoreCase);
-            var isFd = string.Equals(((ComboBoxItem)FrameTypeCombo.SelectedItem).Content?.ToString(), "CAN FD", StringComparison.OrdinalIgnoreCase);
+            var isExtended = string.Equals(((ComboBoxItem)IdTypeCombo.SelectedItem).Tag?.ToString(), "Extend", StringComparison.OrdinalIgnoreCase);
+            var isFd = string.Equals(((ComboBoxItem)FrameTypeCombo.SelectedItem).Tag?.ToString(), "CANFD", StringComparison.OrdinalIgnoreCase);
 
             if (isFd && !AllowFd)
             {
@@ -121,7 +121,7 @@ namespace EndpointListenerWpf.Views
                     }
                     var brs = BrsCheck?.IsChecked == true;
                     var frame = new CanFdFrame(id, bytes, isExtendedFrame: isExtended, BRS: brs, ESI: false);
-                    var n = Transmit(frame);
+                    var n = Transmit?.Invoke(frame);
                     if (n <= 0)
                         MessageBox.Show(this, "Frame not sent (driver rejected or not ready).", "Send", MessageBoxButton.OK, MessageBoxImage.Information);
                 }
@@ -147,7 +147,7 @@ namespace EndpointListenerWpf.Views
                         }
                     }
                     var frame = new CanClassicFrame(id, bytes, isExtendedFrame: isExtended, isRemoteFrame: rtr);
-                    var n = Transmit(frame);
+                    var n = Transmit?.Invoke(frame);
                     if (n <= 0)
                         MessageBox.Show(this, "Frame not sent (driver rejected or not ready).", "Send", MessageBoxButton.OK, MessageBoxImage.Information);
                 }

@@ -178,7 +178,11 @@ namespace CanKit.Core.Definitions
         public bool IsRemoteFrame
         {
             get => CanIdBits.IsRemote(RawID);
-            init => RawID = CanIdBits.WithRemote(RawID, value);
+            init
+            {
+                RawID = CanIdBits.WithRemote(RawID, value);
+                _data = ReadOnlyMemory<byte>.Empty;
+            }
         }
 
         /// <summary>

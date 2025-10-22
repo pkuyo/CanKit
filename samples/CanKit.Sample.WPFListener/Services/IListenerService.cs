@@ -14,8 +14,14 @@ namespace EndpointListenerWpf.Services
             int bitRate,
             int dataBitRate,
             IReadOnlyList<FilterRuleModel> filters,
-            Action<string> onMessage,
+            // New options and hooks
+            CanFeature features,
+            bool listenOnly,
+            int countersPollMs,
             Action<ICanFrame, FrameDirection> onFrame,
+            Action<string> onMessage,
+            Action<CanErrorCounters>? onCountersUpdated,
+            Action<float>? onBusUsageUpdated,
             CancellationToken cancellationToken);
 
         /// <summary>

@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using CanKit.Adapter.ZLG.Definitions;
 using CanKit.Core.Abstractions;
 using CanKit.Core.Definitions;
@@ -39,7 +39,7 @@ public sealed class PCIECANFDProviderGroup : ICanModelProviderGroup
         ZlgDeviceType.ZCAN_PCIE_CANFD_400U,
         ZlgDeviceType.ZCAN_PCIE_CANFD_100U_EX,
         ZlgDeviceType.ZCAN_PCIE_CANFD_200U_EX,
-        ZlgDeviceType.ZCAN_PCIE_CANFD_200U_M2,
+        ZlgDeviceType.ZCAN_PCIE_CANFD_200U,
         ZlgDeviceType.ZCAN_MINI_PCIE_CANFD,
     ];
 

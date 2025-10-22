@@ -1,7 +1,7 @@
 <Window x:Class="EndpointListenerWpf.Views.PeriodicTxWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Periodic Transmit" Height="420" Width="760" WindowStartupLocation="CenterOwner">
+        Title="{DynamicResource Title_PeriodicTx}" Height="420" Width="760" WindowStartupLocation="CenterOwner">
     <Grid Margin="12">
         <Grid.RowDefinitions>
             <RowDefinition Height="*"/>
@@ -18,7 +18,7 @@
                         <Setter.Value>
 
                             <ContextMenu DataContext="{Binding DataContext, Source={x:Reference Grid}}">
-                                <MenuItem Header="Delete"  Command="{Binding DeleteCommand}"   CommandParameter="{Binding PlacementTarget.DataContext,
+                                <MenuItem Header="{DynamicResource Common_Delete}"  Command="{Binding DeleteCommand}"   CommandParameter="{Binding PlacementTarget.DataContext,
                                                 RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
                             </ContextMenu>
                         </Setter.Value>
@@ -26,12 +26,12 @@
                 </Style>
             </DataGrid.Resources>
             <DataGrid.Columns>
-                <DataGridCheckBoxColumn Header="On" Binding="{Binding Enabled}" Width="50"/>
-                <DataGridTextColumn Header="Frame" Binding="{Binding Display}" Width="160" IsReadOnly="True"/>
-                <DataGridTextColumn Header="DLC" Binding="{Binding Dlc}" Width="60" IsReadOnly="True"/>
-                <DataGridTextColumn Header="Flags" Binding="{Binding FlagsDisplay}" Width="80" IsReadOnly="True"/>
-                <DataGridTextColumn Header="Data" Binding="{Binding DataDisplay}" Width="*" IsReadOnly="True"/>
-                <DataGridTextColumn Header="Period" Binding="{Binding PeriodDisplay}" Width="80" IsReadOnly="True"/>
+                <DataGridCheckBoxColumn Header="{DynamicResource Header_On}" Binding="{Binding Enabled}" Width="50"/>
+                <DataGridTextColumn Header="{DynamicResource Header_Frame}" Binding="{Binding Display}" Width="160" IsReadOnly="True"/>
+                <DataGridTextColumn Header="{DynamicResource Header_DLC}" Binding="{Binding Dlc}" Width="60" IsReadOnly="True"/>
+                <DataGridTextColumn Header="{DynamicResource Header_Flags}" Binding="{Binding FlagsDisplay}" Width="80" IsReadOnly="True"/>
+                <DataGridTextColumn Header="{DynamicResource Header_Data}" Binding="{Binding DataDisplay}" Width="*" IsReadOnly="True"/>
+                <DataGridTextColumn Header="{DynamicResource Header_Period}" Binding="{Binding PeriodDisplay}" Width="80" IsReadOnly="True"/>
             </DataGrid.Columns>
         </DataGrid>
 
@@ -43,8 +43,8 @@
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
 
-            <Button Grid.Column="0" Content="Add..." Width="100" Margin="0,0,8,0" Command="{Binding AddCommand}"/>
-            <TextBlock Grid.Column="1" VerticalAlignment="Center" Foreground="Gray" Text="Right-click a row to delete."/>
+            <Button Grid.Column="0" Content="{DynamicResource Common_AddEllipsis}" Width="100" Margin="0,0,8,0" Command="{Binding AddCommand}"/>
+            <TextBlock Grid.Column="1" VerticalAlignment="Center" Foreground="Gray" Text="{DynamicResource Text_RightClickDelete}"/>
             <Button Grid.Column="2" x:Name="RunBtn" Content="{Binding RunText}" Width="100" Margin="0,0,8,0" Command="{Binding RunCommand}"/>
         </Grid>
     </Grid>

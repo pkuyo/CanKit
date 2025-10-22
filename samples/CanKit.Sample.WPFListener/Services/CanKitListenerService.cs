@@ -15,14 +15,19 @@ namespace EndpointListenerWpf.Services
         private readonly object _txLock = new();
         private Action<string>? _onMessage;
         private Action<ICanFrame, FrameDirection>? _onFrame;
-        private readonly List<CanKit.Core.Abstractions.IPeriodicTx> _periodics = new();
+        private readonly List<IPeriodicTx> _periodics = new();
         public async Task StartAsync(string endpoint,
             bool can20,
             int bitRate,
             int dataBitRate,
             IReadOnlyList<FilterRuleModel> filters,
-            Action<string> onMessage,
+            CanFeature features,
+            bool listenOnly,
+            int countersPollMs,
             Action<ICanFrame, FrameDirection> onFrame,
+            Action<string> onMessage,
+            Action<CanErrorCounters>? onCountersUpdated,
+             Action<float>? onBusUsageUpdated,
             CancellationToken cancellationToken)
         {
             if (string.IsNullOrWhiteSpace(endpoint))
@@ -43,6 +48,10 @@ namespace EndpointListenerWpf.Services
                        .Baud(bitRate)
                        .SoftwareFeaturesFallBack(CanFeature.Filters | CanFeature.CyclicTx);
                 }
+                if (listenOnly)
+                {
+                    cfg.SetWorkMode(ChannelWorkMode.ListenOnly);
+                }
                 // Apply filters if any
                 if (filters is { Count: > 0 })
                 {
@@ -59,18 +68,73 @@ namespace EndpointListenerWpf.Services
                         }
                     }
                 }
-                // Optional: enable error info if supported
-                // cfg.EnableErrorInfo();
+                // Enable error info if device supports error frames
+                if ((features & CanFeature.ErrorFrame) != 0)
+                {
+                    cfg.EnableErrorInfo();
+                }
             });
             _bus = bus;
             _onMessage = onMessage;
             _onFrame = onFrame;
-            /*
-            bus.ErrorFrameReceived += (_, err) =>
+            // If error frames are supported, surface them and refresh counters immediately
+            if ((features & CanFeature.ErrorFrame) != 0)
             {
-                onMessage($"[error] {err.Type} @{err.SystemTimestamp:HH:mm:ss.fff} {err.ErrorCounters}");
-            };
-            */
+                bus.ErrorFrameReceived += (_, err) =>
+                {
+                    try
+                    {
+                        if (err.ErrorCounters is { } c1)
+                        {
+                            onCountersUpdated?.Invoke(c1);
+                        }
+                        else if ((features & CanFeature.ErrorCounters) != 0)
+                        {
+                            var c2 = bus.ErrorCounters();
+                            onCountersUpdated?.Invoke(c2);
+                        }
+                        onMessage($"[error] {err.Type} @{err.SystemTimestamp:HH:mm:ss.fff}");
+                    }
+                    catch { /* ignore */ }
+                };
+            }
+
+            // Periodically poll error counters if supported
+            Task? countersPoller = null;
+            if (((features & CanFeature.ErrorCounters) != 0 ||(features & CanFeature.BusUsage) != 0)
+                && countersPollMs > 0)
+            {
+                var token = cancellationToken;
+                countersPoller = Task.Run(async () =>
+                {
+                    try
+                    {
+                        while (!token.IsCancellationRequested)
+                        {
+                            if ((features & CanFeature.ErrorCounters) != 0)
+                            {
+                                try
+                                {
+                                    var c = bus.ErrorCounters();
+                                    onCountersUpdated?.Invoke(c);
+                                }
+                                catch { /* ignore polling errors */ }
+                            }
+                            if ((features & CanFeature.BusUsage) != 0)
+                            {
+                                try
+                                {
+                                    var c = bus.BusUsage();
+                                    onBusUsageUpdated?.Invoke(c);
+                                }
+                                catch { /* ignore polling errors */ }
+                            }
+                            await Task.Delay(countersPollMs, token).ConfigureAwait(false);
+                        }
+                    }
+                    catch (OperationCanceledException) { /* normal */ }
+                }, cancellationToken);
+            }
             bus.BackgroundExceptionOccurred += (_, ex) =>
             {
                 onMessage($"[exception] {ex.Message}");

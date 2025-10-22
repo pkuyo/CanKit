@@ -39,7 +39,7 @@ namespace EndpointListenerWpf.Views
 
         private void UpdateFlagVisibility()
         {
-            var isFd = string.Equals(((System.Windows.Controls.ComboBoxItem)FrameTypeCombo.SelectedItem).Content?.ToString(), "CAN FD", StringComparison.OrdinalIgnoreCase);
+            var isFd = string.Equals(((System.Windows.Controls.ComboBoxItem)FrameTypeCombo.SelectedItem).Tag?.ToString(), "CANFD", StringComparison.OrdinalIgnoreCase);
             RtrCheck.Visibility = isFd ? Visibility.Collapsed : Visibility.Visible;
             BrsCheck.Visibility = isFd ? Visibility.Visible : Visibility.Collapsed;
         }
@@ -82,8 +82,8 @@ namespace EndpointListenerWpf.Views
                 return;
             }
 
-            var isExtended = string.Equals(((System.Windows.Controls.ComboBoxItem)IdTypeCombo.SelectedItem).Content?.ToString(), "Extend", StringComparison.OrdinalIgnoreCase);
-            var isFd = string.Equals(((System.Windows.Controls.ComboBoxItem)FrameTypeCombo.SelectedItem).Content?.ToString(), "CAN FD", StringComparison.OrdinalIgnoreCase);
+            var isExtended = string.Equals(((System.Windows.Controls.ComboBoxItem)IdTypeCombo.SelectedItem).Tag?.ToString(), "Extend", StringComparison.OrdinalIgnoreCase);
+            var isFd = string.Equals(((System.Windows.Controls.ComboBoxItem)FrameTypeCombo.SelectedItem).Tag?.ToString(), "CANFD", StringComparison.OrdinalIgnoreCase);
 
             if (isFd && !AllowFd)
             {

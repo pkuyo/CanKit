@@ -10,15 +10,20 @@ namespace EndpointListenerWpf.Views
     {
         public bool SupportsCan20 { get; set; } = true;
         public bool SupportsCanFd { get; set; } = false;
+        public bool SupportsListenOnly { get; set; } = false;
+        public bool SupportsErrorCounters { get; set; } = false;
 
         public bool UseCan20 { get; set; } = true;
         public bool UseCanFd { get; set; } = false;
+        public bool ListenOnly { get; set; } = false;
 
         public ObservableCollection<int> BitRates { get; set; } = new();
         public ObservableCollection<int> DataBitRates { get; set; } = new();
 
         public int SelectedBitRate { get; set; }
         public int SelectedDataBitRate { get; set; }
+
+        public int ErrorCountersPeriodMs { get; set; } = 5000;
 
         public ObservableCollection<FilterRuleModel> Filters { get; set; } = new();
 
@@ -55,6 +60,17 @@ namespace EndpointListenerWpf.Views
 
             Can20Radio.Checked += (_, _) => { UseCan20 = true; UseCanFd = false; UpdateFdVisibility(); };
             CanFdRadio.Checked += (_, _) => { UseCan20 = false; UseCanFd = true; UpdateFdVisibility(); };
+
+            // Listen-only support
+            ListenOnlyCheck.Visibility = SupportsListenOnly ? Visibility.Visible : Visibility.Collapsed;
+            ListenOnlyCheck.IsChecked = ListenOnly;
+
+            // Error counters poll config
+            var showCounters = SupportsErrorCounters;
+            ErrorCounterLabel.Visibility = showCounters ? Visibility.Visible : Visibility.Collapsed;
+            ErrorCounterPeriodBox.Visibility = showCounters ? Visibility.Visible : Visibility.Collapsed;
+            ErrorCounterUnit.Visibility = showCounters ? Visibility.Visible : Visibility.Collapsed;
+            ErrorCounterPeriodBox.Text = ErrorCountersPeriodMs.ToString();
         }
 
         private void UpdateFdVisibility()
@@ -81,6 +97,15 @@ namespace EndpointListenerWpf.Views
                 SelectedBitRate = br;
             if (DataBitrateCombo.SelectedItem is int dbr)
                 SelectedDataBitRate = dbr;
+            if (ListenOnlyCheck.Visibility == Visibility.Visible)
+                ListenOnly = ListenOnlyCheck.IsChecked == true;
+            if (ErrorCounterPeriodBox.Visibility == Visibility.Visible)
+            {
+                if (int.TryParse(ErrorCounterPeriodBox.Text.Trim(), out var v))
+                {
+                    ErrorCountersPeriodMs = Math.Max(100, v);
+                }
+            }
             DialogResult = true;
         }
     }

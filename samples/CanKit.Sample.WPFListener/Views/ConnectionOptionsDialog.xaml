@@ -5,7 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:EndpointListenerWpf.Views"
         mc:Ignorable="d"
-        Title="Connection Options" Height="260" Width="520"
+        Title="{DynamicResource Title_ConnOptions}" Height="260" Width="520"
         WindowStartupLocation="CenterOwner">
     <Window.Resources>
         <ResourceDictionary>
@@ -25,9 +25,9 @@
 
         <!-- Mode selection -->
         <StackPanel Orientation="Horizontal" Grid.Row="0" Margin="0,0,0,8">
-            <TextBlock Text="Protocol:" VerticalAlignment="Center" Margin="0,0,12,0"/>
-            <RadioButton x:Name="Can20Radio" Content="CAN 2.0" Margin="0,0,12,0"/>
-            <RadioButton x:Name="CanFdRadio" Content="CAN FD"/>
+            <TextBlock Text="{DynamicResource Label_Protocol}" VerticalAlignment="Center" Margin="0,0,12,0"/>
+            <RadioButton x:Name="Can20Radio" Content="{DynamicResource Option_Can20}" Margin="0,0,12,0"/>
+            <RadioButton x:Name="CanFdRadio" Content="{DynamicResource Option_CanFd}"/>
         </StackPanel>
 
         <!-- Bitrates -->
@@ -41,7 +41,7 @@
                 <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
 
-            <TextBlock Grid.Column="0" Text="Bit Rate:" Margin="0,0,8,0" VerticalAlignment="Center"/>
+            <TextBlock Grid.Column="0" Text="{DynamicResource Label_BitRate}" Margin="0,0,8,0" VerticalAlignment="Center"/>
             <ComboBox x:Name="BitrateCombo" Grid.Column="1">
                 <ComboBox.ItemTemplate>
                     <DataTemplate>
@@ -50,7 +50,7 @@
                 </ComboBox.ItemTemplate>
             </ComboBox>
 
-            <TextBlock x:Name="DataBitrateLabel" Grid.Column="3" Text="Data Bit Rate:" Margin="0,0,8,0" VerticalAlignment="Center"/>
+            <TextBlock x:Name="DataBitrateLabel" Grid.Column="3" Text="{DynamicResource Label_DataBitRate}" Margin="0,0,8,0" VerticalAlignment="Center"/>
             <ComboBox x:Name="DataBitrateCombo" Grid.Column="4">
                 <ComboBox.ItemTemplate>
                     <DataTemplate>
@@ -60,16 +60,27 @@
             </ComboBox>
         </Grid>
 
-        <!-- Filters -->
-        <StackPanel Orientation="Horizontal" Grid.Row="2">
-            <Button x:Name="EditFiltersBtn" Content="Edit Filters..." Width="120" Click="OnEditFilters"/>
-            <TextBlock Text="  (Applies when connection starts)" VerticalAlignment="Center" Foreground="Gray"/>
+        <!-- Advanced options + Filters -->
+        <StackPanel Grid.Row="2">
+            <!-- Advanced options row -->
+            <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                <CheckBox x:Name="ListenOnlyCheck" Content="{DynamicResource Option_ListenOnly}" Margin="0,0,16,0" Visibility="Collapsed"/>
+                <TextBlock x:Name="ErrorCounterLabel" Text="{DynamicResource Label_ErrorCounterPeriod}" Margin="0,0,8,0" VerticalAlignment="Center" Visibility="Collapsed"/>
+                <TextBox x:Name="ErrorCounterPeriodBox" Width="80" HorizontalAlignment="Left" TextAlignment="Right" Padding="4,2" Visibility="Collapsed"/>
+                <TextBlock Text="ms" VerticalAlignment="Center" Margin="4,0,0,0" Visibility="Collapsed" x:Name="ErrorCounterUnit"/>
+            </StackPanel>
+
+            <!-- Filters row -->
+            <StackPanel Orientation="Horizontal">
+                <Button x:Name="EditFiltersBtn" Content="{DynamicResource Button_EditFilters}" Width="120" Click="OnEditFilters"/>
+                <TextBlock Text="{DynamicResource Text_FilterApplyHint}" VerticalAlignment="Center" Foreground="Gray" Margin="15,0,0,0"/>
+            </StackPanel>
         </StackPanel>
 
         <!-- Buttons -->
         <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right">
-            <Button Content="OK" Width="80" Margin="0,0,8,0" IsDefault="True" Click="OnOk"/>
-            <Button Content="Cancel" Width="80" IsCancel="True"/>
+            <Button Content="{DynamicResource Common_OK}" Width="80" Margin="0,0,8,0" IsDefault="True" Click="OnOk"/>
+            <Button Content="{DynamicResource Common_Cancel}" Width="80" IsCancel="True"/>
         </StackPanel>
     </Grid>
 </Window>

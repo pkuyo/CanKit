@@ -25,8 +25,13 @@ namespace EndpointListenerWpf.ViewModels
         private bool _isListening;
         private bool _useCan20 = true;
         private bool _useCanFd = false;
+        private bool _listenOnly = false;
         private int _selectedBitRate;
         private int _selectedDataBitRate;
+        private int _tec;
+        private int _rec;
+        private float _busUsage;
+        private int _errorCountersPeriodMs = 5000; // default 5s
         private CancellationTokenSource? _listenerCts;
         private PeriodicTxWindow? _periodicWindow;
         private readonly AppBusState _busState = new();
@@ -91,10 +96,17 @@ namespace EndpointListenerWpf.ViewModels
                         UseCanFd = value.SupportsCanFd && !UseCan20 ? true : false;
                     }
 
+                    OnPropertyChanged(nameof(SupportsListenOnly));
+                    OnPropertyChanged(nameof(SupportsErrorCounters));
                     UpdateCommandStates();
                 }
             }
         }
+
+        public bool SupportsListenOnly => Capabilities?.SupportsListenOnly == true;
+        public bool SupportsErrorCounters => Capabilities?.SupportsErrorCounters == true;
+
+        public bool SupportsBusUsage => Capabilities?.SupportsBusUsage == true;
 
         public bool IsFetching
         {
@@ -149,6 +161,12 @@ namespace EndpointListenerWpf.ViewModels
             }
         }
 
+        public bool ListenOnly
+        {
+            get => _listenOnly;
+            set => SetProperty(ref _listenOnly, value);
+        }
+
         public int SelectedBitRate
         {
             get => _selectedBitRate;
@@ -161,6 +179,30 @@ namespace EndpointListenerWpf.ViewModels
             set => SetProperty(ref _selectedDataBitRate, value);
         }
 
+        public int Tec
+        {
+            get => _tec;
+            private set => SetProperty(ref _tec, value);
+        }
+
+        public int Rec
+        {
+            get => _rec;
+            private set => SetProperty(ref _rec, value);
+        }
+
+        public float BusUsage
+        {
+            get => _busUsage;
+            set => SetProperty(ref _busUsage, value);
+        }
+
+        public int ErrorCountersPeriodMs
+        {
+            get => _errorCountersPeriodMs;
+            set => SetProperty(ref _errorCountersPeriodMs, Math.Max(100, value));
+        }
+
         public string CurrentEndpoint => IsCustomSelected ? CustomEndpoint.Trim() : SelectedEndpoint?.Id ?? string.Empty;
 
         public RelayCommand RefreshEndpointsCommand { get; }
@@ -171,6 +213,8 @@ namespace EndpointListenerWpf.ViewModels
         public RelayCommand OpenSendDialogCommand { get; }
         public RelayCommand OpenPeriodicDialogCommand { get; }
         public RelayCommand CopyFrameToClipboardCommand { get; }
+        public RelayCommand OpenAboutDialogCommand { get; }
+        public RelayCommand OpenZlgEndpointBuilderCommand { get; }
 
         public MainViewModel()
             : this(new CanKitEndpointDiscoveryService(), new CanKitDeviceService(), new CanKitListenerService())
@@ -199,6 +243,8 @@ namespace EndpointListenerWpf.ViewModels
                     CopyFrameToClipboard(row);
                 }
             }, p => p is FrameRow);
+            OpenAboutDialogCommand = new RelayCommand(_ => OpenAboutDialog());
+            OpenZlgEndpointBuilderCommand = new RelayCommand(_ => OpenZlgEndpointBuilder());
 
             _ = RefreshEndpointsAsync();
         }
@@ -282,12 +328,30 @@ namespace EndpointListenerWpf.ViewModels
                     {
                         await _listenerService.StartAsync(CurrentEndpoint, UseCan20, SelectedBitRate,
                                 SelectedDataBitRate, Filters,
-                                msg => { Application.Current.Dispatcher.Invoke(() => Logs.Add(msg)); },
+                                Capabilities!.Features,
+                                (ListenOnly && Capabilities!.SupportsListenOnly),
+                                ErrorCountersPeriodMs,
                                 (f, d) =>
                                 {
                                     Application.Current.Dispatcher.Invoke(() =>
                                     {
                                         Frames.Add(FrameRow.From(f, d));
+                                    });
+                                },
+                                msg => { Application.Current.Dispatcher.Invoke(() => Logs.Add(msg)); },
+                                counters =>
+                                {
+                                    Application.Current.Dispatcher.Invoke(() =>
+                                    {
+                                        Tec = counters.TransmitErrorCounter;
+                                        Rec = counters.ReceiveErrorCounter;
+                                    });
+                                },
+                                busUsage =>
+                                {
+                                    Application.Current.Dispatcher.Invoke(() =>
+                                    {
+                                        BusUsage = busUsage;
                                     });
                                 },
                                 _listenerCts!.Token)
@@ -324,13 +388,17 @@ namespace EndpointListenerWpf.ViewModels
                 Owner = Application.Current?.MainWindow,
                 SupportsCan20 = Capabilities.SupportsCan20,
                 SupportsCanFd = Capabilities.SupportsCanFd,
+                SupportsListenOnly = Capabilities.SupportsListenOnly,
+                SupportsErrorCounters = Capabilities.SupportsErrorCounters,
                 UseCan20 = UseCan20,
                 UseCanFd = UseCanFd,
+                ListenOnly = ListenOnly,
                 BitRates = BitRates,
                 DataBitRates = DataBitRates,
                 SelectedBitRate = SelectedBitRate,
                 SelectedDataBitRate = SelectedDataBitRate,
-                Filters = Filters
+                Filters = Filters,
+                ErrorCountersPeriodMs = ErrorCountersPeriodMs
             };
 
             var ok = win.ShowDialog();
@@ -341,6 +409,8 @@ namespace EndpointListenerWpf.ViewModels
                 UseCanFd = win.UseCanFd;
                 SelectedBitRate = win.SelectedBitRate;
                 SelectedDataBitRate = win.SelectedDataBitRate;
+                ListenOnly = win.ListenOnly;
+                ErrorCountersPeriodMs = win.ErrorCountersPeriodMs;
 
                 _ = StartListeningAsync();
             }
@@ -365,6 +435,24 @@ namespace EndpointListenerWpf.ViewModels
             };
             win.DataContext = new FilterEditorViewModel(Filters);
             win.ShowDialog();
+        }
+
+        private void OpenAboutDialog()
+        {
+            var win = new Views.AboutWindow
+            {
+                Owner = Application.Current?.MainWindow
+            };
+            win.ShowDialog();
+        }
+
+        private void OpenZlgEndpointBuilder()
+        {
+            var win = new Views.ZlgEndpointBuilderWindow
+            {
+                Owner = Application.Current?.MainWindow
+            };
+            win.Show();
         }
 
         private void OpenSendDialog()

@@ -5,6 +5,7 @@ using System.ComponentModel;
 using System.Linq;
 using EndpointListenerWpf.Models;
 using EndpointListenerWpf.Services;
+using EndpointListenerWpf.Resources;
 
 namespace EndpointListenerWpf.ViewModels
 {
@@ -32,7 +33,7 @@ namespace EndpointListenerWpf.ViewModels
             }
         }
 
-        public string RunText => IsRunning ? "Stop" : "Run";
+        public string RunText => IsRunning ? I18n.T("Button_Stop") : I18n.T("Button_Run");
 
         public bool AllowFd
         {
@@ -129,4 +130,3 @@ namespace EndpointListenerWpf.ViewModels
         }
     }
 }
-

@@ -5,13 +5,14 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:EndpointListenerWpf"
         mc:Ignorable="d"
-        Title="CanKit Listener Sample" Height="560" Width="1100">
+        Title="{DynamicResource Title_MainWindow}" Height="560" Width="1100">
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVis" />
     </Window.Resources>
 
     <Grid Margin="16">
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>   <!-- Menu -->
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
@@ -21,8 +22,18 @@
             <ColumnDefinition Width="*"/>    <!-- Right: frames -->
         </Grid.ColumnDefinitions>
 
+        <!-- Top Menu -->
+        <Menu Grid.Row="0" Grid.ColumnSpan="3"  Height="20">
+            <MenuItem Header="{DynamicResource Menu_Tools}" Height="20">
+                <MenuItem Header="{DynamicResource Menu_ZlgBuilder}" Command="{Binding OpenZlgEndpointBuilderCommand}"/>
+            </MenuItem>
+            <MenuItem Header="{DynamicResource Menu_Help}" HorizontalAlignment="Right" Height="20">
+                <MenuItem Header="{DynamicResource Menu_About}" Command="{Binding OpenAboutDialogCommand}"/>
+            </MenuItem>
+        </Menu>
+
         <!-- Left panel: endpoints + logs -->
-        <Grid Grid.Row="0" Grid.Column="0">
+        <Grid Grid.Row="1" Grid.Column="0">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
@@ -31,23 +42,23 @@
 
             <!-- Endpoint selection row -->
             <StackPanel Orientation="Horizontal" Grid.Row="0" Margin="0,0,0,8">
-                <TextBlock Text="Endpoint:" VerticalAlignment="Center" Margin="0,0,8,0" Width="60"/>
+                <TextBlock Text="{DynamicResource Label_Endpoint}" VerticalAlignment="Center" Margin="0,0,8,0" Width="60"/>
                 <ComboBox Width="320"
                           ItemsSource="{Binding Endpoints}"
                           SelectedItem="{Binding SelectedEndpoint}"
                           DisplayMemberPath="DisplayName"/>
-                <Button Content="Refresh" Margin="8,0,0,0" Padding="12,4" Command="{Binding RefreshEndpointsCommand}"/>
+                <Button Content="{DynamicResource Button_Refresh}" Margin="8,0,0,0" Padding="12,4" Command="{Binding RefreshEndpointsCommand}"/>
             </StackPanel>
 
             <!-- Custom endpoint input -->
             <StackPanel Orientation="Horizontal" Grid.Row="1" Margin="0,0,0,12">
-                <TextBlock Text="Custom:" VerticalAlignment="Center" Margin="0,0,8,0" Width="60"
+                <TextBlock Text="{DynamicResource Label_Custom}" VerticalAlignment="Center" Margin="0,0,8,0" Width="60"
                            Visibility="{Binding IsCustomSelected, Converter={StaticResource BoolToVis}}"/>
                 <TextBox Width="320" Text="{Binding CustomEndpoint, UpdateSourceTrigger=PropertyChanged}"
                          Visibility="{Binding IsCustomSelected, Converter={StaticResource BoolToVis}}"  Padding="0,3,0,2"/>
-                <Button Content="Open" Margin="8,0,0,0" Padding="12,4" Command="{Binding OpenCustomEndpointCommand}" 
+                <Button Content="{DynamicResource Button_Open}" Margin="8,0,0,0" Padding="12,4" Command="{Binding OpenCustomEndpointCommand}" 
                         Visibility="{Binding IsCustomSelected, Converter={StaticResource BoolToVis}}"/>
-                <TextBlock Margin="8,0,0,0" VerticalAlignment="Center" Foreground="Gray" Text="Select an endpoint or choose Custom to input manually."
+                <TextBlock Margin="8,0,0,0" VerticalAlignment="Center" Foreground="Gray" Text="{DynamicResource Hint_SelectCustom}"
                            Visibility="{Binding IsCustomSelected, Converter={StaticResource InverseBoolToVis}}"/>
             </StackPanel>
 
@@ -57,13 +68,14 @@
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
-                <TextBlock Text="Logs" FontWeight="Bold" Margin="0,0,0,4" Grid.Row="0"/>
+                <TextBlock Text="{DynamicResource Label_Logs}" FontWeight="Bold" Margin="0,0,0,4" Grid.Row="0"/>
                 <Border Grid.Row="1" BorderThickness="1" BorderBrush="#DDD">
-                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Auto">
                         <ItemsControl ItemsSource="{Binding Logs}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
-                                    <TextBlock FontFamily="Consolas" Text="{Binding}"/>
+                                    <TextBlock FontFamily="Consolas" Text="{Binding}" TextWrapping="NoWrap" TextTrimming="None"/>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
@@ -73,7 +85,7 @@
         </Grid>
 
         <!-- Right panel: Frames list -->
-        <Border Grid.Row="0" Grid.Column="2" BorderThickness="1" BorderBrush="#DDD" SnapsToDevicePixels="True" UseLayoutRounding="True">
+        <Border Grid.Row="1" Grid.Column="2" BorderThickness="1" BorderBrush="#DDD" SnapsToDevicePixels="True" UseLayoutRounding="True">
             <DataGrid  x:Name="FramesGrid" ItemsSource="{Binding Frames}"
                       AutoGenerateColumns="False"
                       HeadersVisibility="Column"
@@ -89,7 +101,7 @@
                         <Setter Property="ContextMenu">
                             <Setter.Value>
                                 <ContextMenu DataContext="{Binding DataContext, Source={x:Reference FramesGrid}}">
-                                    <MenuItem Header="Copy to Clipboard"
+                                    <MenuItem Header="{DynamicResource Menu_CopyToClipboard}"
                                         Command="{Binding CopyFrameToClipboardCommand}"
                                         CommandParameter="{Binding PlacementTarget.DataContext,
                                         RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
@@ -99,34 +111,53 @@
                     </Style>
                 </DataGrid.Resources>
                 <DataGrid.Columns>
-                    <DataGridTextColumn Header="Time" Binding="{Binding Time}" Width="110"/>
-                    <DataGridTextColumn Header="Dir" Binding="{Binding Dir}" Width="60"/>
-                    <DataGridTextColumn Header="Proto" Binding="{Binding Kind}" Width="80"/>
-                    <DataGridTextColumn Header="ID" Binding="{Binding Id}" Width="120"/>
-                    <DataGridTextColumn Header="DLC" Binding="{Binding Dlc}" Width="60"/>
-                    <DataGridTextColumn Header="Data" Binding="{Binding Data}" Width="*"/>
+                    <DataGridTextColumn Header="{DynamicResource Header_Time}" Binding="{Binding Time}" Width="120"/>
+                    <DataGridTextColumn Header="{DynamicResource Header_Dir}" Binding="{Binding Dir}" Width="60"/>
+                    <DataGridTextColumn Header="{DynamicResource Header_Proto}" Binding="{Binding Kind}" Width="80"/>
+                    <DataGridTextColumn Header="{DynamicResource Header_ID}" Binding="{Binding Id}" Width="120"/>
+                    <DataGridTextColumn Header="{DynamicResource Header_DLC}" Binding="{Binding Dlc}" Width="60"/>
+                    <DataGridTextColumn Header="{DynamicResource Header_Data}" Binding="{Binding Data}" Width="*"/>
                 </DataGrid.Columns>
             </DataGrid>
         </Border>
 
         <!-- Bottom Controls spanning both sides -->
-        <Grid Grid.Row="1" Grid.ColumnSpan="3" Margin="0,12,0,0">
+        <Grid Grid.Row="2" Grid.ColumnSpan="3" Margin="0,12,0,0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
 
-            <Button Grid.Column="0" Content="Send..." Width="100" Margin="10,0,8,0"
+            <Button Grid.Column="0" Content="{DynamicResource Button_SendDialog}" Width="100" Margin="10,0,8,0"
                     Command="{Binding OpenSendDialogCommand}"/>
-            <Button Grid.Column="1" Content="Periodic..." Width="110" Margin="0,0,8,0"
+            <Button Grid.Column="1" Content="{DynamicResource Button_PeriodicDialog}" Width="110" Margin="0,0,8,0"
                     Command="{Binding OpenPeriodicDialogCommand}"/>
-            
-            <Button Grid.Column="3" Content="Start" Width="100" Margin="0,0,8,0"
+            <!-- Error counters (visible when supported) -->
+            <DockPanel Grid.Column="2" LastChildFill="True" VerticalAlignment="Center">
+  
+                <StackPanel DockPanel.Dock="Left" Orientation="Horizontal"
+                    Visibility="{Binding SupportsErrorCounters, Converter={StaticResource BoolToVis}}">
+                    <TextBlock Text="{DynamicResource Label_TEC}" Margin="0,0,6,0"/>
+                    <TextBlock Text="{Binding Tec}" Width="40"/>
+                    <TextBlock Text="{DynamicResource Label_REC}" Margin="12,0,6,0"/>
+                    <TextBlock Text="{Binding Rec}" Width="40"/>
+                </StackPanel>
+
+                <Grid>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center"
+                        Visibility="{Binding SupportsBusUsage, Converter={StaticResource BoolToVis}}">
+                        <TextBlock Text="{DynamicResource Label_BusUsage}" Margin="12,0,0,0"/>
+                        <ProgressBar Value="{Binding BusUsage}" Width="300" Height="18" Margin="15,0,15,0"/>
+                    </StackPanel>
+                </Grid>
+            </DockPanel>
+            <Button Grid.Column="4" Content="{DynamicResource Button_Start}" Width="100" Margin="0,0,8,0"
                     Command="{Binding StartListeningCommand}"/>
-            <Button Grid.Column="4" Content="Stop" Width="100"
+            <Button Grid.Column="5" Content="{DynamicResource Button_Stop}" Width="100"
                     Command="{Binding StopListeningCommand}"/>
         </Grid>
     </Grid>

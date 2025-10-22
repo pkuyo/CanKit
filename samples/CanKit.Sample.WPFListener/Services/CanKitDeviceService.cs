@@ -22,9 +22,9 @@ namespace EndpointListenerWpf.Services
                 SupportsCan20 = can20,
                 SupportsCanFd = canFd,
                 SupportedBitRates = bitRates,
-                SupportedDataBitRates = dataBitRates
+                SupportedDataBitRates = dataBitRates,
+                Features = caps.Features,
             });
         }
     }
 }
-
