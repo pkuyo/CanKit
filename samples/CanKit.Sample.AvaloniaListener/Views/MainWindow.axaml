@@ -66,20 +66,35 @@
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
                 <TextBlock Classes="header" Text="Frames"/>
-                <ListBox Grid.Row="1" ItemsSource="{Binding Frames}">
-                    <ListBox.ItemTemplate>
-                        <DataTemplate x:DataType="m:FrameRow">
-                            <Grid ColumnDefinitions="120,40,40,120,40,*" Margin="0,2">
-                                <TextBlock Grid.Column="0" Text="{Binding Time}"/>
-                                <TextBlock Grid.Column="1" Text="{Binding Dir}"/>
-                                <TextBlock Grid.Column="2" Text="{Binding Kind}"/>
-                                <TextBlock Grid.Column="3" Text="{Binding Id}"/>
-                                <TextBlock Grid.Column="4" Text="{Binding Dlc}"/>
-                                <TextBlock Grid.Column="5" Text="{Binding Data}"/>
-                            </Grid>
-                        </DataTemplate>
-                    </ListBox.ItemTemplate>
-                </ListBox>
+                <DataGrid Grid.Row="1"
+                          ItemsSource="{Binding Frames}"
+                          AutoGenerateColumns="False"
+                          IsReadOnly="True"
+                          FontSize="14"
+                          RowHeight="28"
+                          ColumnHeaderHeight="32"
+                          Margin="0,2,0,0">
+                    <DataGrid.Styles>
+                        <Style Selector="DataGridColumnHeader">
+                            <Setter Property="FontSize" Value="14"/>
+                        </Style>
+                        <Style Selector="DataGridCell TextBlock">
+                            <Setter Property="FontSize" Value="14"/>
+                            <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+                            <Setter Property="FontFamily" Value="Consolas"/>
+                        </Style>
+                    </DataGrid.Styles>
+
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Time" Binding="{Binding Time}" Width="120"/>
+                        <DataGridTextColumn Header="Dir"  Binding="{Binding Dir}"  Width="40"/>
+                        <DataGridTextColumn Header="Kind" Binding="{Binding Kind}" Width="40"/>
+                        <DataGridTextColumn Header="Id"   Binding="{Binding Id}"   Width="120"/>
+                        <DataGridTextColumn Header="Dlc"  Binding="{Binding Dlc}"  Width="40"/>
+                        <DataGridTextColumn Header="Data" Binding="{Binding Data}" Width="*">
+                        </DataGridTextColumn>
+                    </DataGrid.Columns>
+                </DataGrid>
             </Grid>
             <Grid Grid.Column="1">
                 <Grid.RowDefinitions>

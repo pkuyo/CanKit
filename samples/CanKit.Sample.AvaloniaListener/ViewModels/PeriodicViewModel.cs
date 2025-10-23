@@ -41,11 +41,11 @@ namespace CanKit.Sample.AvaloniaListener.ViewModels
         }
 
         public RelayCommand RunCommand { get; }
-        public RelayCommand AddCommand { get; }
+        public AsyncRelayCommand AddCommand { get; }
 
         public RelayCommand DeleteCommand { get; }
 
-        public Func<PeriodicItemModel?>? ShowAddItemDialog { get; set; }
+        public Func<Task<PeriodicItemModel?>>? ShowAddItemDialog { get; set; }
 
         public PeriodicViewModel(IBusState bus, IPeriodicTxService svc)
         {
@@ -53,7 +53,7 @@ namespace CanKit.Sample.AvaloniaListener.ViewModels
             _svc = svc;
 
             RunCommand = new RelayCommand(_ => OnRunStop(), _ => CanRun());
-            AddCommand = new RelayCommand(_ => OnAdd(), _ => !IsRunning);
+            AddCommand = new AsyncRelayCommand(async _ => await OnAdd(), _ => !IsRunning);
             DeleteCommand = new RelayCommand(obj => OnDelete(obj), _ => !IsRunning);
             Items.CollectionChanged += OnItemsChanged;
             _bus.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(IBusState.IsListening)) RefreshCanRun(); };
@@ -70,12 +70,15 @@ namespace CanKit.Sample.AvaloniaListener.ViewModels
             }
         }
 
-        private void OnAdd()
+        private async Task OnAdd()
         {
             if (IsRunning) return;
-            var item = ShowAddItemDialog?.Invoke();
-            if (item != null)
-                Items.Add(item);
+            if (ShowAddItemDialog != null)
+            {
+                var item = await ShowAddItemDialog.Invoke();
+                if (item != null)
+                    Items.Add(item);
+            }
         }
 
         private void OnRunStop()

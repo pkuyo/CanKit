@@ -8,8 +8,13 @@
   <Grid Margin="12" RowDefinitions="*,Auto">
     <DataGrid x:Name="Grid" Grid.Row="0" ItemsSource="{Binding Items}"
               AutoGenerateColumns="False"
-              CanUserAddRows="False" CanUserDeleteRows="False"
               IsReadOnly="{Binding IsRunning}">
+      <DataGrid.Styles>
+        <Style Selector="DataGridCell TextBlock">
+          <Setter Property="FontSize" Value="14"/>
+          <Setter Property="FontFamily" Value="Consolas"/>
+        </Style>
+      </DataGrid.Styles>
       <DataGrid.Columns>
         <DataGridCheckBoxColumn Header="On" Binding="{Binding Enabled}" Width="50"/>
         <DataGridTextColumn Header="Frame" Binding="{Binding Display, Mode=OneWay}" Width="160" IsReadOnly="True"/>

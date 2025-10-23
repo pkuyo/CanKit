@@ -54,12 +54,12 @@ public partial class MainWindow : Window
             _periodicWindow.Closed += (_, __) => _periodicWindow = null;
 
             vm.Periodic.AllowFd = vm.UseCanFd;
-            vm.Periodic.ShowAddItemDialog = () =>
+            vm.Periodic.ShowAddItemDialog = async () =>
             {
                 var dlg = new AddPeriodicItemDialog { AllowFd = vm.Periodic.AllowFd };
-                var t = dlg.ShowDialog<bool?>(_periodicWindow);
-                t.Wait();
-                return t.Result == true ? dlg.Result : null;
+                var t = await dlg.ShowDialog<bool?>(_periodicWindow);
+
+                return t == true ? dlg.Result : null;
             };
 
             _periodicWindow.Show(this);
