@@ -1,0 +1,95 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:CanKit.Sample.AvaloniaListener.ViewModels"
+        xmlns:m="using:CanKit.Sample.AvaloniaListener.Models"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="1100" d:DesignHeight="700"
+        x:Class="CanKit.Sample.AvaloniaListener.Views.MainWindow"
+        x:DataType="vm:MainViewModel"
+		xmlns:conv="using:CanKit.Sample.AvaloniaListener.Converters"
+        Title="CanKit CAN Listener (Avalonia)">
+
+    <Design.DataContext>
+        <vm:MainViewModel/>
+    </Design.DataContext>
+
+    <Window.Styles>
+        <Style Selector="TextBlock.header">
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Margin" Value="0,8,0,4"/>
+        </Style>
+    </Window.Styles>
+	<Window.Resources>
+		<conv:BitrateConverter x:Key="BitrateConv"/>
+	</Window.Resources>
+    <Grid RowDefinitions="Auto,Auto,Auto,*" ColumnDefinitions="*">
+        <!-- Endpoint Selection -->
+        <StackPanel Margin="8" Orientation="Horizontal" Spacing="8">
+            <TextBlock Text="Endpoint" VerticalAlignment="Center"/>
+            <ComboBox Width="360" ItemsSource="{Binding Endpoints}" SelectedItem="{Binding SelectedEndpoint}">
+                <ComboBox.ItemTemplate>
+                    <DataTemplate x:DataType="m:EndpointInfo">
+                        <TextBlock Text="{Binding DisplayName}"/>
+                    </DataTemplate>
+                </ComboBox.ItemTemplate>
+            </ComboBox>
+            <TextBox Width="360" Watermark="custom endpoint..." Text="{Binding CustomEndpoint}" IsVisible="{Binding IsCustomSelected}"/>
+            <Button Content="Refresh" Command="{Binding RefreshEndpointsCommand}"/>
+            <Button Content="Query Caps" Command="{Binding OpenCustomEndpointCommand}"/>
+        </StackPanel>
+
+        <!-- Options (moved to dialog) -->
+        <StackPanel Grid.Row="1" Margin="8" Orientation="Horizontal" Spacing="12">
+            <Button Content="Options..." Click="OnOpenOptions"/>
+        </StackPanel>
+
+        <!-- Actions / Status -->
+        <StackPanel Grid.Row="2" Margin="8" Orientation="Horizontal" Spacing="12">
+            <Button Content="Start" Command="{Binding StartListeningCommand}"/>
+            <Button Content="Stop" Command="{Binding StopListeningCommand}"/>
+            <Button Content="Send..." Click="OnOpenSend"/>
+            <Button Content="Periodic..." Click="OnOpenPeriodic"/>
+            <TextBlock Text="TEC:" VerticalAlignment="Center" IsVisible="{Binding SupportsErrorCounters}"/>
+            <TextBlock Text="{Binding Tec}" VerticalAlignment="Center" IsVisible="{Binding SupportsErrorCounters}"/>
+            <TextBlock Text="REC:" Margin="16,0,0,0" VerticalAlignment="Center" IsVisible="{Binding SupportsErrorCounters}"/>
+            <TextBlock Text="{Binding Rec}" VerticalAlignment="Center" IsVisible="{Binding SupportsErrorCounters}"/>
+            <TextBlock Text="Bus Usage:" Margin="16,0,0,0" VerticalAlignment="Center" IsVisible="{Binding BusUsage}"/>
+            <TextBlock Text="{Binding BusUsage}" VerticalAlignment="Center" IsVisible="{Binding BusUsage}"/>
+        </StackPanel>
+
+        <!-- Main Content: Frames and Logs -->
+        <Grid Grid.Row="3" Margin="8" ColumnDefinitions="3*,2*" RowDefinitions="*">
+            <Grid Grid.Column="0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                <TextBlock Classes="header" Text="Frames"/>
+                <ListBox Grid.Row="1" ItemsSource="{Binding Frames}">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate x:DataType="m:FrameRow">
+                            <Grid ColumnDefinitions="120,40,40,120,40,*" Margin="0,2">
+                                <TextBlock Grid.Column="0" Text="{Binding Time}"/>
+                                <TextBlock Grid.Column="1" Text="{Binding Dir}"/>
+                                <TextBlock Grid.Column="2" Text="{Binding Kind}"/>
+                                <TextBlock Grid.Column="3" Text="{Binding Id}"/>
+                                <TextBlock Grid.Column="4" Text="{Binding Dlc}"/>
+                                <TextBlock Grid.Column="5" Text="{Binding Data}"/>
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </Grid>
+            <Grid Grid.Column="1">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                <TextBlock Classes="header" Text="Logs"/>
+                <ListBox Grid.Row="1" ItemsSource="{Binding Logs}"/>
+            </Grid>
+        </Grid>
+    </Grid>
+
+</Window>

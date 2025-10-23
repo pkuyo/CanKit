@@ -1,0 +1,31 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:CanKit.Sample.AvaloniaListener.ViewModels"
+        xmlns:m="using:CanKit.Sample.AvaloniaListener.Models"
+        x:Class="CanKit.Sample.AvaloniaListener.Views.PeriodicTxWindow"
+        x:DataType="vm:PeriodicViewModel"
+        Title="Periodic TX" Height="420" Width="760" WindowStartupLocation="CenterOwner">
+  <Grid Margin="12" RowDefinitions="*,Auto">
+    <DataGrid x:Name="Grid" Grid.Row="0" ItemsSource="{Binding Items}"
+              AutoGenerateColumns="False"
+              CanUserAddRows="False" CanUserDeleteRows="False"
+              IsReadOnly="{Binding IsRunning}">
+      <DataGrid.Columns>
+        <DataGridCheckBoxColumn Header="On" Binding="{Binding Enabled}" Width="50"/>
+        <DataGridTextColumn Header="Frame" Binding="{Binding Display, Mode=OneWay}" Width="160" IsReadOnly="True"/>
+        <DataGridTextColumn Header="DLC" Binding="{Binding Dlc, Mode=OneWay}" Width="60" IsReadOnly="True"/>
+        <DataGridTextColumn Header="Flags" Binding="{Binding FlagsDisplay, Mode=OneWay}" Width="80" IsReadOnly="True"/>
+        <DataGridTextColumn Header="Data" Binding="{Binding DataDisplay, Mode=OneWay}" Width="*" IsReadOnly="True"/>
+        <DataGridTextColumn Header="Period" Binding="{Binding PeriodDisplay, Mode=OneWay}" Width="80" IsReadOnly="True"/>
+      </DataGrid.Columns>
+    </DataGrid>
+
+    <Grid Grid.Row="1" Margin="0,12,0,0" ColumnDefinitions="Auto,Auto,*,Auto">
+      <Button Grid.Column="0" Content="Add..." Width="100" Margin="0,0,8,0" Command="{Binding AddCommand}"/>
+      <Button Grid.Column="1" Content="Delete" Width="100" Margin="0,0,8,0"
+              Command="{Binding DeleteCommand}" CommandParameter="{Binding #Grid.SelectedItem}"/>
+      <TextBlock Grid.Column="2" VerticalAlignment="Center" Foreground="Gray" Text="Select row and Delete."/>
+      <Button Grid.Column="3" x:Name="RunBtn" Content="{Binding RunText}" Width="100" Margin="0,0,8,0" Command="{Binding RunCommand}"/>
+    </Grid>
+  </Grid>
+</Window>

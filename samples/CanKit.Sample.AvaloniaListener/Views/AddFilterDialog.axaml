@@ -1,0 +1,36 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="CanKit.Sample.AvaloniaListener.Views.AddFilterDialog"
+        Title="Add Filter" Height="240" Width="420" WindowStartupLocation="CenterOwner">
+  <Grid Margin="12" RowDefinitions="Auto,Auto,Auto,*,Auto">
+    <StackPanel Orientation="Horizontal" Margin="0,0,0,8" Spacing="12">
+      <TextBlock Text="Type" VerticalAlignment="Center"/>
+      <ComboBox x:Name="TypeCombo" Width="140">
+        <ComboBoxItem Tag="Mask" Content="Mask"/>
+        <ComboBoxItem Tag="Range" Content="Range"/>
+      </ComboBox>
+
+      <TextBlock Text="IdType" VerticalAlignment="Center"/>
+      <ComboBox x:Name="IdTypeCombo" Width="140">
+        <ComboBoxItem Tag="Standard" Content="Standard"/>
+        <ComboBoxItem Tag="Extend" Content="Extend"/>
+      </ComboBox>
+    </StackPanel>
+
+    <Grid Grid.Row="1" Margin="0,0,0,8" ColumnDefinitions="Auto,*,Auto,*">
+      <TextBlock Text="From/AccCode" VerticalAlignment="Center"/>
+      <TextBox x:Name="FirstBox" Grid.Column="1" Margin="8,0,0,0"/>
+      <TextBlock Text="To/AccMask" VerticalAlignment="Center" Grid.Column="2" Margin="16,0,0,0"/>
+      <TextBox x:Name="SecondBox" Grid.Column="3" Margin="8,0,0,0"/>
+    </Grid>
+
+    <TextBlock Grid.Row="2" Foreground="Gray" Text="You can enter decimal or 0x-prefixed hex."/>
+    <TextBlock Grid.Row="3" x:Name="ErrorText" Foreground="IndianRed"/>
+
+    <StackPanel Orientation="Horizontal" Grid.Row="4" HorizontalAlignment="Right" Spacing="8" Margin="0,8,0,0">
+      <Button Width="90" Content="OK" IsDefault="True" Click="OnOk"/>
+      <Button Width="90" Content="Cancel" IsCancel="True"/>
+    </StackPanel>
+  </Grid>
+</Window>
+

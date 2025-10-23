@@ -1,0 +1,51 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="CanKit.Sample.AvaloniaListener.Views.AddPeriodicItemDialog"
+        Title="Add Periodic Item" Height="380" Width="560"
+        WindowStartupLocation="CenterOwner">
+  <Grid Margin="12" RowDefinitions="Auto,Auto,Auto,Auto,*,Auto" ColumnDefinitions="*">
+    <!-- Frame type and ID type -->
+    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+      <TextBlock Text="Frame" VerticalAlignment="Center" Margin="0,0,8,0"/>
+      <ComboBox x:Name="FrameTypeCombo" Width="140" SelectionChanged="OnFrameTypeChanged">
+        <ComboBoxItem Content="CAN20"/>
+        <ComboBoxItem Content="CANFD"/>
+      </ComboBox>
+
+      <TextBlock Text="ID Type" VerticalAlignment="Center" Margin="16,0,8,0"/>
+      <ComboBox x:Name="IdTypeCombo" Width="140">
+        <ComboBoxItem Content="Standard"/>
+        <ComboBoxItem Content="Extend"/>
+      </ComboBox>
+    </StackPanel>
+
+    <!-- ID / DLC / Period -->
+    <Grid Grid.Row="1" Margin="0,0,0,8" ColumnDefinitions="Auto,120,Auto,80,Auto,120">
+      <TextBlock Text="ID" VerticalAlignment="Center"/>
+      <TextBox x:Name="IdBox" Grid.Column="1" Margin="8,0,0,0"/>
+      <TextBlock Text="DLC" Grid.Column="2" VerticalAlignment="Center" Margin="16,0,0,0"/>
+      <TextBox x:Name="DlcBox" Grid.Column="3" Margin="8,0,0,0"/>
+      <TextBlock Text="Period (ms)" Grid.Column="4" VerticalAlignment="Center" Margin="16,0,0,0"/>
+      <TextBox x:Name="PeriodBox" Grid.Column="5" Margin="8,0,0,0"/>
+    </Grid>
+
+    <!-- Data -->
+    <StackPanel Grid.Row="2" Orientation="Vertical">
+      <TextBlock Text="Data (hex, space/comma separated)"/>
+      <TextBox x:Name="DataBox" Margin="0,4,0,0" Height="80" AcceptsReturn="True" TextWrapping="Wrap"/>
+    </StackPanel>
+
+    <!-- Flags -->
+    <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,8,0,0" Spacing="16">
+      <CheckBox x:Name="RtrCheck" Content="RTR"/>
+      <CheckBox x:Name="BrsCheck" Content="BRS"/>
+    </StackPanel>
+
+    <TextBlock x:Name="ErrorText" Grid.Row="4" Foreground="Red" TextWrapping="Wrap"/>
+
+    <StackPanel Grid.Row="5" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,0" Spacing="8">
+      <Button Content="OK" Width="90" IsDefault="True" Command="{Binding OkCommand}"/>
+      <Button Content="Cancel" Width="90" IsCancel="True" Command="{Binding CancelCommand}"/>
+    </StackPanel>
+  </Grid>
+</Window>
