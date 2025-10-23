@@ -73,24 +73,28 @@
                           FontSize="14"
                           RowHeight="28"
                           ColumnHeaderHeight="32"
+                          CanUserSortColumns="False"
                           Margin="0,2,0,0">
+
                     <DataGrid.Styles>
                         <Style Selector="DataGridColumnHeader">
                             <Setter Property="FontSize" Value="14"/>
+
                         </Style>
                         <Style Selector="DataGridCell TextBlock">
                             <Setter Property="FontSize" Value="14"/>
                             <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
                             <Setter Property="FontFamily" Value="Consolas"/>
                         </Style>
+
                     </DataGrid.Styles>
 
                     <DataGrid.Columns>
                         <DataGridTextColumn Header="Time" Binding="{Binding Time}" Width="120"/>
-                        <DataGridTextColumn Header="Dir"  Binding="{Binding Dir}"  Width="40"/>
-                        <DataGridTextColumn Header="Kind" Binding="{Binding Kind}" Width="40"/>
+                        <DataGridTextColumn Header="Dir"  Binding="{Binding Dir}"  MinWidth="40" Width="SizeToHeader"/>
+                        <DataGridTextColumn Header="Kind" Binding="{Binding Kind}" MinWidth="40" Width="SizeToHeader"/>
                         <DataGridTextColumn Header="Id"   Binding="{Binding Id}"   Width="120"/>
-                        <DataGridTextColumn Header="Dlc"  Binding="{Binding Dlc}"  Width="40"/>
+                        <DataGridTextColumn Header="Dlc"  Binding="{Binding Dlc}"  MinWidth="40" Width="SizeToHeader"/>
                         <DataGridTextColumn Header="Data" Binding="{Binding Data}" Width="*">
                         </DataGridTextColumn>
                     </DataGrid.Columns>

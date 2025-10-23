@@ -89,7 +89,7 @@ namespace CanKit.Sample.AvaloniaListener.Services
                             var c2 = bus.ErrorCounters();
                             onCountersUpdated?.Invoke(c2);
                         }
-                        onMessage($"[error] {err.Type} @{err.SystemTimestamp:HH:mm:ss.fff}");
+                        //onMessage($"[error] {err.Type} @{err.SystemTimestamp:HH:mm:ss.fff}");
                     }
                     catch { /* ignore */ }
                 };

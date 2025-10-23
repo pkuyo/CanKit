@@ -8,7 +8,7 @@
         <Description>Virtual in-process CAN adapter for CanKit for development, testing, and simulation.</Description>
         <PackageTags>CAN;can bus;CANFD;;Adapter;CanKit</PackageTags>
         <AssemblyVersion>1.0.0.0</AssemblyVersion>
-        <FileVersion>$(CanKitCoreVersion).0</FileVersion>
+        <FileVersion>$(CanKitCoreFileVersion)</FileVersion>
         <Authors>Pkuyo</Authors>
         <RepositoryUrl>https://github.com/pkuyo/CanKit</RepositoryUrl>
         <PackageReadmeFile>README.md</PackageReadmeFile>

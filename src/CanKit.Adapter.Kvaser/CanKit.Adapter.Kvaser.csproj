@@ -6,7 +6,7 @@
         <Description>Kvaser CANlib adapter for CanKit, enabling unified CAN/CAN FD access to Kvaser devices.</Description>
         <PackageTags>CAN;can bus;CANFD;Kvaser;CANlib;CanKit</PackageTags>
         <AssemblyVersion>1.0.0.0</AssemblyVersion>
-        <FileVersion>$(CanKitCoreVersion).0</FileVersion>
+        <FileVersion>$(CanKitCoreFileVersion)</FileVersion>
         <Authors>Pkuyo</Authors>
         <RepositoryUrl>https://github.com/pkuyo/CanKit</RepositoryUrl>
         <PackageReadmeFile>README.md</PackageReadmeFile>

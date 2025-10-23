@@ -44,7 +44,7 @@ namespace CanKit.Sample.AvaloniaListener.ViewModels
             {
                 await _execute(parameter);
             }
-            catch (Exception e)
+            catch (Exception)
             {
             }
         }

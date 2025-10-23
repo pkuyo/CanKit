@@ -8,6 +8,7 @@
     <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+    <Platforms>AnyCPU;x86;x64</Platforms>
   </PropertyGroup>
   <PropertyGroup>
     <AvaloniaBuildTasksLocation Condition="'$(AvaloniaBuildTasksLocation)'=='' and '$(NuGetPackageRoot)'!=''">$(NuGetPackageRoot)avalonia\11.3.6\tools\netstandard2.0\Avalonia.Build.Tasks.dll</AvaloniaBuildTasksLocation>
@@ -17,7 +18,6 @@
   <ItemGroup>
     <Folder Include="Models\" />
     <AvaloniaResource Include="Assets\**" />
-    <AvaloniaXaml Include="**\*.axaml" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Avalonia" Version="11.3.7" />
@@ -30,13 +30,14 @@
       <IncludeAssets Condition="'$(Configuration)' != 'Debug'">None</IncludeAssets>
       <PrivateAssets Condition="'$(Configuration)' != 'Debug'">All</PrivateAssets>
     </PackageReference>
+	  
+    <PackageReference Include="CanKit.Adapter.Kvaser" Version="0.3.3" />
+    <PackageReference Include="CanKit.Adapter.PCAN" Version="0.3.3" />
+    <PackageReference Include="CanKit.Adapter.SocketCAN" Version="0.3.3" />
+    <PackageReference Include="CanKit.Adapter.ZLG" Version="0.3.3" />
+    <PackageReference Include="CanKit.Core" Version="0.3.3.1" />
+	  
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.2.1" />
   </ItemGroup>
 
-  <ItemGroup>
-    <ProjectReference Include="..\..\src\CanKit.Core\CanKit.Core.csproj" />
-    <ProjectReference Include="..\..\src\CanKit.Adapter.Kvaser\CanKit.Adapter.Kvaser.csproj" />
-    <ProjectReference Include="..\..\src\CanKit.Adapter.PCAN\CanKit.Adapter.PCAN.csproj" />
-    <ProjectReference Include="..\..\src\CanKit.Adapter.ZLG\CanKit.Adapter.ZLG.csproj" />
-  </ItemGroup>
 </Project>

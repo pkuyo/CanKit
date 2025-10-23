@@ -20,9 +20,9 @@
 
  ----
 
- 下面是一个使用CanKit开发的CAN通信Demo，支持多厂商发送接收，查询连接设备，设置滤波等功能。[CAN通信Demo](https://gitee.com/pkuyora/CanKit/tree/master/samples/CanKit.Sample.WPFListener) 
+ 下面是一个使用CanKit开发的CAN通信Demo，支持多厂商发送接收，查询连接设备，设置滤波等功能。[CAN通信Demo](https://gitee.com/pkuyora/CanKit-Toolkit) 
 
-![预览](https://gitee.com/pkuyora/CanKit/raw/master/docs/pics/zh/cankitdemo_preview1.png)
+![预览](https://gitee.com/pkuyora/CanKit-Toolkit/raw/master/docs/pics/zh/cankitdemo_preview1.png)
 
 ## 安装
 

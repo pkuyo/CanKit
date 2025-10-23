@@ -21,9 +21,9 @@ For Chinese readers, see: [README_CN.md](README_CN.md)
 
 ----
 
-Below is a quick CAN listener/sender demo using CanKit. With multi-vendor support, you can get hands-on with CanKit¡¯s features in minutes. [Listener Demo](https://github.com/pkuyo/CanKit/tree/master/samples/CanKit.Sample.WPFListener) 
+Below is a quick CAN listener/sender demo using CanKit. With multi-vendor support, you can get hands-on with CanKit¡¯s features in minutes. [CanKit ToolKit](https://github.com/pkuyo/CanKit-Toolkit) 
 
-![Preview](https://github.com/pkuyo/CanKit/blob/master/docs/pics/cankitdemo_preview1.png)
+![Preview](https://github.com/pkuyo/CanKit-Toolkit/blob/master/docs/pics/cankitdemo_preview1.png)
 
 ## Features
 

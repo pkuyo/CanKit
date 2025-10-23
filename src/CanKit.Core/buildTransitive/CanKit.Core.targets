@@ -7,7 +7,13 @@
         <ItemGroup>
             <_CanKitAdapterNames Include="@(CanKitAdapterAssemblyName)" />
         </ItemGroup>
-        
+		
+		<ItemGroup>
+			<_AdapterHintLines Remove="@(_AdapterHintLines)" />
+			<_QuotedAdapters    Remove="@(_QuotedAdapters)" />
+			<_CanKitAdapterNames Remove="@(_CanKitAdapterNames)" />
+		</ItemGroup>
+		
         <ItemGroup Condition=" '@(_CanKitAdapterNames)' != '' ">
             <_QuotedAdapters Include="@(_CanKitAdapterNames)">
                 <Q>&quot;%(Identity)&quot;</Q>

@@ -10,7 +10,7 @@
         <Description>ZLG adapter for CanKit, enabling unified access to ZLG USBCAN/PCIe CAN/CAN FD devices (zlgcan.dll).</Description>
         <PackageTags>CAN;can bus;CANFD;ZLG;zlgcan;CanKit</PackageTags>
         <AssemblyVersion>1.0.0.0</AssemblyVersion>
-        <FileVersion>$(CanKitCoreVersion).0</FileVersion>
+        <FileVersion>$(CanKitCoreFileVersion)</FileVersion>
         <Authors>Pkuyo</Authors>
         <RepositoryUrl>https://github.com/pkuyo/CanKit</RepositoryUrl>
         <Configurations>Debug;Release;Fake</Configurations>

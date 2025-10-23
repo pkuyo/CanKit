@@ -8,6 +8,11 @@ namespace CanKit.Sample.AvaloniaListener.Views;
 
 public partial class FilterEditorWindow : Window
 {
+    public FilterEditorWindow()
+    {
+        AvaloniaXamlLoader.Load(this);
+        DataContext = new FilterEditorViewModel(new ObservableCollection<FilterRuleModel>());
+    }
     public FilterEditorWindow(ObservableCollection<FilterRuleModel> filters)
     {
         AvaloniaXamlLoader.Load(this);

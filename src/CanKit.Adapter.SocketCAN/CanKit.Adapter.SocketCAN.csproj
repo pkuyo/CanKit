@@ -6,7 +6,7 @@
         <Description>SocketCAN adapter for CanKit, offering unified CAN/CAN FD access on Linux via kernel CAN.</Description>
         <PackageTags>CAN;can bus;CANFD;SocketCAN;Linux;CanKit</PackageTags>
         <AssemblyVersion>1.0.0.0</AssemblyVersion>
-        <FileVersion>$(CanKitCoreVersion).0</FileVersion>
+        <FileVersion>$(CanKitCoreFileVersion)</FileVersion>
         <Authors>Pkuyo</Authors>
         <RepositoryUrl>https://github.com/pkuyo/CanKit</RepositoryUrl>
         <PackageReadmeFile>README.md</PackageReadmeFile>

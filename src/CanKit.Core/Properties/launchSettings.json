@@ -1,8 +1,0 @@
-{
-  "profiles": {
-    "CanKit.Core": {
-      "commandName": "Project",
-      "nativeDebugging": true
-    }
-  }
-}
