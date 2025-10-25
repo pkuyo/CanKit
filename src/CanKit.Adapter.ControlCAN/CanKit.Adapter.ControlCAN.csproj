@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RootNamespace>CanKit.Adapter.ControlCAN</RootNamespace>
+    <Platforms>x64;x86;AnyCPU</Platforms>
+    <AssemblyName>CanKit.Adapter.ControlCAN</AssemblyName>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CanKit.Core\CanKit.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="buildTransitive\**\*.*" Pack="true" PackagePath="buildTransitive\" />
+  </ItemGroup>
+
+</Project>
+

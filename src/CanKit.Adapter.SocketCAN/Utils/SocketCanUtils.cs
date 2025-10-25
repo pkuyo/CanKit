@@ -6,7 +6,7 @@ namespace CanKit.Adapter.SocketCAN.Utils;
 
 internal static class SocketCanUtils
 {
-    public static LibSocketCan.can_bittiming ToCanBitTiming(this CanPhaseTiming timing, uint clock)
+    public static LibSocketCan.can_bittiming ToCanBitTiming(this in CanPhaseTiming timing, uint clock)
     {
         if (timing.IsTarget)
         {
@@ -30,7 +30,7 @@ internal static class SocketCanUtils
         }
     }
 
-    public static Libc.can_frame ToCanFrame(this CanClassicFrame cf)
+    public static Libc.can_frame ToCanFrame(this in CanClassicFrame cf)
     {
         var frame = new Libc.can_frame
         {
@@ -53,7 +53,7 @@ internal static class SocketCanUtils
         return frame;
     }
 
-    public static Libc.canfd_frame ToCanFrame(this CanFdFrame ff)
+    public static Libc.canfd_frame ToCanFrame(this in CanFdFrame ff)
     {
         var frame = new Libc.canfd_frame
         {
@@ -76,7 +76,7 @@ internal static class SocketCanUtils
         return frame;
     }
 
-    public static uint ToCanID(this CanClassicFrame frame)
+    public static uint ToCanID(this in CanClassicFrame frame)
     {
         var id = (uint)frame.ID;
         var cid = frame.IsExtendedFrame ? ((id & Libc.CAN_EFF_MASK) | Libc.CAN_EFF_FLAG)
@@ -95,7 +95,7 @@ internal static class SocketCanUtils
         return cid;
     }
 
-    public static Libc.timeval ToTimeval(TimeSpan t)
+    public static Libc.timeval ToTimeval(in TimeSpan t)
     {
         return new Libc.timeval
         {
@@ -104,5 +104,5 @@ internal static class SocketCanUtils
         };
     }
 
-    public static int SocketCANHandle(this BusNativeHandle handle) => (int)handle.HandleValue;
+    public static int SocketCANHandle(this in BusNativeHandle handle) => (int)handle.HandleValue;
 }

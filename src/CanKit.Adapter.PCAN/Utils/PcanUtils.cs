@@ -111,5 +111,5 @@ public static class PcanUtils
             throw new PcanCanException(operation, message, status);
     }
 
-    public static PcanChannel PcanHandle(this BusNativeHandle handle) => (PcanChannel)handle.HandleValue;
+    public static PcanChannel PcanHandle(this in BusNativeHandle handle) => (PcanChannel)handle.HandleValue;
 }

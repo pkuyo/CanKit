@@ -37,6 +37,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CanKit.Tests", "tests\CanKi
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CanKit.Sample.AvaloniaListener", "samples\CanKit.Sample.AvaloniaListener\CanKit.Sample.AvaloniaListener.csproj", "{C8C4C59F-3C63-4E5C-8E44-666AE1F86F60}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CanKit.Adapter.ControlCAN", "src\CanKit.Adapter.ControlCAN\CanKit.Adapter.ControlCAN.csproj", "{8AA53612-783C-4068-B200-C80C8E8C9B45}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -320,6 +322,24 @@ Global
 		{C8C4C59F-3C63-4E5C-8E44-666AE1F86F60}.Release|x64.Build.0 = Release|x64
 		{C8C4C59F-3C63-4E5C-8E44-666AE1F86F60}.Release|x86.ActiveCfg = Release|x86
 		{C8C4C59F-3C63-4E5C-8E44-666AE1F86F60}.Release|x86.Build.0 = Release|x86
+		{8AA53612-783C-4068-B200-C80C8E8C9B45}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8AA53612-783C-4068-B200-C80C8E8C9B45}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8AA53612-783C-4068-B200-C80C8E8C9B45}.Debug|x64.ActiveCfg = Debug|x64
+		{8AA53612-783C-4068-B200-C80C8E8C9B45}.Debug|x64.Build.0 = Debug|x64
+		{8AA53612-783C-4068-B200-C80C8E8C9B45}.Debug|x86.ActiveCfg = Debug|x86
+		{8AA53612-783C-4068-B200-C80C8E8C9B45}.Debug|x86.Build.0 = Debug|x86
+		{8AA53612-783C-4068-B200-C80C8E8C9B45}.Fake|Any CPU.ActiveCfg = Debug|x64
+		{8AA53612-783C-4068-B200-C80C8E8C9B45}.Fake|Any CPU.Build.0 = Debug|x64
+		{8AA53612-783C-4068-B200-C80C8E8C9B45}.Fake|x64.ActiveCfg = Debug|x64
+		{8AA53612-783C-4068-B200-C80C8E8C9B45}.Fake|x64.Build.0 = Debug|x64
+		{8AA53612-783C-4068-B200-C80C8E8C9B45}.Fake|x86.ActiveCfg = Debug|x64
+		{8AA53612-783C-4068-B200-C80C8E8C9B45}.Fake|x86.Build.0 = Debug|x64
+		{8AA53612-783C-4068-B200-C80C8E8C9B45}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8AA53612-783C-4068-B200-C80C8E8C9B45}.Release|Any CPU.Build.0 = Release|Any CPU
+		{8AA53612-783C-4068-B200-C80C8E8C9B45}.Release|x64.ActiveCfg = Release|x64
+		{8AA53612-783C-4068-B200-C80C8E8C9B45}.Release|x64.Build.0 = Release|x64
+		{8AA53612-783C-4068-B200-C80C8E8C9B45}.Release|x86.ActiveCfg = Release|x86
+		{8AA53612-783C-4068-B200-C80C8E8C9B45}.Release|x86.Build.0 = Release|x86
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

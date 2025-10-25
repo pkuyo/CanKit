@@ -107,5 +107,5 @@ public static class KvaserUtils
         }
     }
 
-    public static int KvaserHandle(this BusNativeHandle handle) => (int)handle.HandleValue;
+    public static int KvaserHandle(this in BusNativeHandle handle) => (int)handle.HandleValue;
 }
