@@ -41,7 +41,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
     private int _asyncConsumerCount;
     private CancellationTokenSource? _stopDelayCts;
     private int _asyncBufferingLinger;
-
+    private int _rxLoopRunning;
     internal SocketCanBus(IBusOptions options, ITransceiver transceiver, ICanModelProvider provider)
     {
         Options = new SocketCanBusRtConfigurator();
@@ -312,12 +312,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
         }, cancellationToken);
 
     public Task<int> TransmitAsync(ICanFrame frame, CancellationToken cancellationToken = default)
-        => Task.Run(() =>
-        {
-            try { return Transmit(frame); }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
-            catch (Exception ex) { HandleBackgroundException(ex); throw; }
-        }, cancellationToken);
+        => Task.FromResult(Transmit(frame));
 
     public async Task<IReadOnlyList<CanReceiveData>> ReceiveAsync(int count = 1, int timeOut = 0, CancellationToken cancellationToken = default)
     {
@@ -424,7 +419,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
     {
         add
         {
-            bool needStart = false;
+
             lock (_evtGate)
             {
                 var before = _frameReceived;
@@ -432,10 +427,9 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
                 if (!ReferenceEquals(before, _frameReceived))
                 {
                     Interlocked.Increment(ref _subscriberCount);
-                    needStart = (before == null) && Volatile.Read(ref _asyncConsumerCount) == 0;
+                    StartReceiveLoopIfNeeded();
                 }
             }
-            if (needStart) StartReceiveLoopIfNeeded();
         }
         remove
         {
@@ -463,7 +457,6 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
             {
                 throw new CanBusConfigurationException("ErrorOccurred subscription requires AllowErrorInfo=true in options.");
             }
-            bool needStart = false;
             lock (_evtGate)
             {
                 var before = _errorOccurred;
@@ -471,11 +464,9 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
                 if (!ReferenceEquals(before, _errorOccurred))
                 {
                     Interlocked.Increment(ref _subscriberCount);
-                    if ((before == null) && Volatile.Read(ref _asyncConsumerCount) == 0)
-                        needStart = true;
+                    StartReceiveLoopIfNeeded();
                 }
             }
-            if (needStart) StartReceiveLoopIfNeeded();
         }
         remove
         {
@@ -762,7 +753,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
 
     private void StartReceiveLoopIfNeeded()
     {
-        if (_epollTask is { IsCompleted: false } || _fd.IsInvalid)
+        if (Interlocked.Exchange(ref _rxLoopRunning, 1) == 1)
             return;
         DrainReceive();
         _epfd = Libc.epoll_create1(Libc.EPOLL_CLOEXEC);
@@ -805,14 +796,20 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
 
     private void StopReceiveLoop()
     {
+        var cts = Volatile.Read(ref _epollCts);
+        var cancelFd = Volatile.Read(ref _cancelFd);
+        var task = Volatile.Read(ref _epollTask);
+        var epFd = Volatile.Read(ref _epfd);
+        if (Interlocked.Exchange(ref _rxLoopRunning, 0) == 0)
+            return;
         try
         {
             _asyncRx.Clear();
-            _epollCts?.Cancel();
+            cts?.Cancel();
             // wake epoll_wait immediately via eventfd
             try
             {
-                if (!_cancelFd.IsInvalid)
+                if (!cancelFd.IsInvalid)
                 {
                     unsafe
                     {
@@ -822,17 +819,16 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
                 }
             }
             catch { /* ignore wake errors */ }
-            _epollTask?.Wait(200);
+            task?.Wait(200);
         }
         catch { /*ignored*/ }
         finally
         {
-            _epfd.Dispose();
-            _cancelFd.Dispose();
-
-            _epollTask = null;
-            _epollCts?.Dispose();
-            _epollCts = null;
+            epFd.Dispose();
+            cancelFd.Dispose();
+            Interlocked.CompareExchange(ref _epollTask, task, null);
+            Interlocked.CompareExchange(ref _epollCts, cts, null);
+            cts?.Dispose();
             Volatile.Write(ref _asyncBufferingLinger, 0);
             CanKitLogger.LogDebug("SocketCAN: epoll loop stopped.");
         }
@@ -869,7 +865,8 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
         {
             while (!token.IsCancellationRequested)
             {
-                if (Volatile.Read(ref _subscriberCount) <= 0 && Volatile.Read(ref _asyncBufferingLinger) == 0) break;
+                if (Volatile.Read(ref _rxLoopRunning) == 0)
+                    break;
 
                 int n = Libc.epoll_wait(_epfd, _events, _events.Length, -1);
                 if (n < 0)

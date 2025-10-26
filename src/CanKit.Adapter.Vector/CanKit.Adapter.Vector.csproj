@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Version>$(CanKitCoreVersion)</Version>
+    <Description>Vector XL Driver adapter for CanKit, enabling unified CAN/CAN FD access to Vector devices.</Description>
+    <PackageTags>CAN;CANFD;Vector;XL;vxlapi;CanKit</PackageTags>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <FileVersion>$(CanKitCoreFileVersion)</FileVersion>
+    <Authors>Pkuyo</Authors>
+    <RepositoryUrl>https://github.com/pkuyo/CanKit</RepositoryUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <Configurations>Debug;Release;Fake</Configurations>
+    <Platforms>AnyCPU</Platforms>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(UseLocalProjectReferences)'=='true'">
+    <ProjectReference Include="..\CanKit.Core\CanKit.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(UseLocalProjectReferences)'!='true'">
+    <PackageReference Include="CanKit.Core" Version="$(CanKitCoreVersion)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="buildTransitive\**\*.*" Pack="true" PackagePath="buildTransitive\" />
+    <None Include="README.md" Pack="true" PackagePath="" />
+  </ItemGroup>
+</Project>
+

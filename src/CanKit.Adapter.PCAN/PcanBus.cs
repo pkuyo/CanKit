@@ -35,7 +35,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
     private int _asyncConsumerCount;
     private CancellationTokenSource? _stopDelayCts;
     private int _asyncBufferingLinger;
-
+    private int _rxLoopRunning;
 
     internal PcanBus(IBusOptions options, ITransceiver transceiver)
     {
@@ -223,23 +223,10 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
 
     //non-support time out
     public Task<int> TransmitAsync(IEnumerable<ICanFrame> frames, int _ = 0, CancellationToken cancellationToken = default)
-        => Task.Run(() =>
-        {
-            try
-            {
-                return Transmit(frames, _);
-            }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
-            catch (Exception ex) { HandleBackgroundException(ex); throw; }
-        }, cancellationToken);
+        => Task.FromResult(Transmit(frames));
 
     public Task<int> TransmitAsync(ICanFrame frame, CancellationToken cancellationToken = default)
-        => Task.Run(() =>
-        {
-            try { return Transmit(frame); }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
-            catch (Exception ex) { HandleBackgroundException(ex); throw; }
-        }, cancellationToken);
+        => Task.FromResult(Transmit(frame));
 
     public IEnumerable<CanReceiveData> Receive(int count = 1, int timeOut = 0)
     {
@@ -328,7 +315,6 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
     {
         add
         {
-            bool needStart = false;
             lock (_evtGate)
             {
                 var before = _frameReceived;
@@ -336,10 +322,9 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
                 if (!ReferenceEquals(before, _frameReceived))
                 {
                     Interlocked.Increment(ref _subscriberCount);
-                    needStart = (before == null) && Volatile.Read(ref _asyncConsumerCount) == 0;
+                    StartReceiveLoopIfNeeded();
                 }
             }
-            if (needStart) StartReceiveLoopIfNeeded();
         }
         remove
         {
@@ -367,7 +352,6 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
             {
                 throw new CanBusConfigurationException("ErrorOccurred subscription requires AllowErrorInfo=true in options.");
             }
-            bool needStart = false;
             lock (_evtGate)
             {
                 var before = _errorOccured;
@@ -375,10 +359,9 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
                 if (!ReferenceEquals(before, _errorOccured))
                 {
                     Interlocked.Increment(ref _subscriberCount);
-                    needStart = (before == null) && Volatile.Read(ref _asyncConsumerCount) == 0;
+                    StartReceiveLoopIfNeeded();
                 }
             }
-            if (needStart) StartReceiveLoopIfNeeded();
         }
         remove
         {
@@ -427,7 +410,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
 
     private void StartReceiveLoopIfNeeded()
     {
-        if (_pollTask != null) return;
+        if (Interlocked.Exchange(ref _rxLoopRunning, 1) == 1) return;
         _pollCts = new CancellationTokenSource();
         DrainReceive();
         var token = _pollCts.Token;
@@ -440,25 +423,25 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
         _pollTask = Task.Run(() => PollLoop(token), token);
         CanKitLogger.LogDebug("PCAN: Poll loop started.");
     }
-
     private void StopReceiveLoop()
     {
+        var task = Volatile.Read(ref _pollTask);
+        var cts = Volatile.Read(ref _pollCts);
+
+        if (Interlocked.Exchange(ref _rxLoopRunning, 0) == 0)
+            return;
         try
         {
             _asyncRx.Clear();
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-            {
-                Api.SetValue(_handle, PcanParameter.ReceiveEvent, 0);
-            }
-            _pollCts?.Cancel();
-            _pollTask?.Wait(200);
+            cts?.Cancel();
+            _pollTask?.Wait(500);
         }
-        catch { /*ignore*/ }
+        catch { /* ignore on shutdown */ }
         finally
         {
-            _pollTask = null;
-            _pollCts?.Dispose();
-            _pollCts = null;
+            Interlocked.CompareExchange(ref _pollTask, task, null);
+            Interlocked.CompareExchange(ref _pollCts, cts, null);
+            cts?.Dispose();
             Volatile.Write(ref _asyncBufferingLinger, 0);
             CanKitLogger.LogDebug("PCAN: Poll loop stopped.");
         }
@@ -496,10 +479,11 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
         {
             while (!token.IsCancellationRequested)
             {
-                if (Volatile.Read(ref _subscriberCount) == 0 && Volatile.Read(ref _asyncBufferingLinger) == 0)
+                if (Volatile.Read(ref _rxLoopRunning) == 0)
                 {
                     break;
                 }
+
                 var signaled = WaitHandle.WaitAny(handles);
                 if (signaled == 1)
                 {

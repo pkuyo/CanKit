@@ -27,7 +27,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
     private bool _isDisposed;
 
     private Canlib.kvCallbackDelegate? _kvCallback;
-    private bool _notifyActive;
+    private int _notifyActive;
     private int _subscriberCount;
     private readonly AsyncFramePipe _asyncRx;
     private int _asyncConsumerCount;
@@ -261,10 +261,9 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
                 if (!ReferenceEquals(before, _frameReceived))
                 {
                     Interlocked.Increment(ref _subscriberCount);
-                    needStart = (before == null) && Volatile.Read(ref _asyncConsumerCount) == 0;
+                    StartReceiveLoopIfNeeded();
                 }
             }
-            if (needStart) StartReceiveLoopIfNeeded();
         }
         remove
         {
@@ -288,7 +287,6 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
     {
         add
         {
-            bool needStart = false;
             lock (_evtGate)
             {
                 if (!Options.AllowErrorInfo)
@@ -300,10 +298,9 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
                 if (!ReferenceEquals(before, _errorOccured))
                 {
                     Interlocked.Increment(ref _subscriberCount);
-                    needStart = (before == null) && Volatile.Read(ref _asyncConsumerCount) == 0;
+                    StartReceiveLoopIfNeeded();
                 }
             }
-            if (needStart) StartReceiveLoopIfNeeded();
         }
         remove
         {
@@ -458,18 +455,17 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
 
     private void StartReceiveLoopIfNeeded()
     {
-        if (_notifyActive) return;
+        if (Interlocked.Exchange(ref _notifyActive, 1) == 1) return;
         DrainReceive();
         _kvCallback ??= KvNotifyCallback;
         var mask = (Canlib.canNOTIFY_RX | (Options.AllowErrorInfo ? Canlib.canNOTIFY_ERROR : 0));
         KvaserUtils.ThrowIfError(Canlib.kvSetNotifyCallback(_handle, _kvCallback, IntPtr.Zero, (uint)mask),
             "kvSetNotifyCallback", "Failed to register notify callback");
-        _notifyActive = true;
     }
 
     private void StopReceiveLoop()
     {
-        if (!_notifyActive) return;
+        if (Interlocked.Exchange(ref _notifyActive, 0) == 0) return;
         try
         {
             _asyncRx.Clear();
@@ -478,7 +474,6 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
         catch { /* ignore */ }
         finally
         {
-            _notifyActive = false;
             Volatile.Write(ref _asyncBufferingLinger, 0);
             CanKitLogger.LogDebug("Kvaser: Notify callback unregistered.");
         }
@@ -597,24 +592,10 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
     }
 
     public Task<int> TransmitAsync(IEnumerable<ICanFrame> frames, int _ = 0, CancellationToken cancellationToken = default)
-        => Task.Run(() =>
-        {
-            try
-            {
-                return Transmit(frames);
-            }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
-            catch (Exception ex) { HandleBackgroundException(ex); throw; }
-        }, cancellationToken);
+        => Task.FromResult(Transmit(frames));
 
     public Task<int> TransmitAsync(ICanFrame frame, CancellationToken cancellationToken = default)
-        => Task.Run(() =>
-        {
-            try { return Transmit(frame); }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
-            catch (Exception ex) { HandleBackgroundException(ex); throw; }
-        }, cancellationToken);
-
+        => Task.FromResult(Transmit(frame));
     public async Task<IReadOnlyList<CanReceiveData>> ReceiveAsync(int count = 1, int timeOut = 0, CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();

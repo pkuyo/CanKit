@@ -46,12 +46,12 @@ public sealed class SocketCanBusOptions(ICanModelProvider provider) : IBusOption
 
 
     /// <summary>
-    /// esired per-socket receive buffer capacity (in bytes) for the  CAN socket.
+    /// per-socket receive buffer capacity (in bytes) for the CAN socket.
     /// </summary>
     public uint? ReceiveBufferCapacity { get; set; }
 
     /// <summary>
-    /// esired per-socket transmit buffer capacity (in bytes) for the  CAN socket.
+    /// per-socket transmit buffer capacity (in bytes) for the CAN socket.
     /// </summary>
     public uint? TransmitBufferCapacity { get; set; }
 }

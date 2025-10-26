@@ -50,7 +50,8 @@ namespace CanKit.Adapter.ZLG
         private int _asyncConsumerCount;
         private CancellationTokenSource? _stopDelayCts;
         private int _asyncBufferingLinger;
-        private ZlgDeviceKind _deviceType;
+        private readonly ZlgDeviceKind _deviceType;
+        private int _rxLoopRunning;
         internal ZlgCanBus(ZlgCanDevice device, IBusOptions options, ITransceiver transceiver, ICanModelProvider provider)
         {
             _devicePtr = device.NativeHandler.DangerousGetHandle();
@@ -559,7 +560,8 @@ namespace CanKit.Adapter.ZLG
 
         private void StartReceiveLoopIfNeeded()
         {
-            if (_pollTask is { IsCompleted: false }) return;
+            if (Interlocked.Exchange(ref _rxLoopRunning, 1) == 1)
+                return;
 
             _pollCts = new CancellationTokenSource();
             var token = _pollCts.Token;
@@ -574,19 +576,25 @@ namespace CanKit.Adapter.ZLG
 
         private void StopReceiveLoop()
         {
+            var task = Volatile.Read(ref _pollTask);
+            var cts = Volatile.Read(ref _pollCts);
+
+            if (Interlocked.Exchange(ref _rxLoopRunning, 0) == 0)
+                return;
             try
             {
                 _asyncRx.Clear();
-                _pollCts?.Cancel();
+                cts?.Cancel();
                 _pollTask?.Wait(500);
             }
             catch { /* ignore on shutdown */ }
             finally
             {
-                _pollTask = null;
-                _pollCts?.Dispose();
-                _pollCts = null;
+                Interlocked.CompareExchange(ref _pollTask, task, null);
+                Interlocked.CompareExchange(ref _pollCts, cts, null);
+                cts?.Dispose();
                 Volatile.Write(ref _asyncBufferingLinger, 0);
+                CanKitLogger.LogDebug("ZLG: Poll loop stopped.");
             }
         }
 
@@ -619,7 +627,7 @@ namespace CanKit.Adapter.ZLG
         {
             while (!token.IsCancellationRequested)
             {
-                if (Volatile.Read(ref _subscriberCount) <= 0 && Volatile.Read(ref _asyncBufferingLinger) == 0)
+                if (Volatile.Read(ref _rxLoopRunning) == 0)
                 {
                     break;
                 }

@@ -38,6 +38,8 @@ public sealed class ZlgBusInitConfigurator
     /// <param name="newPollingInterval">Interval in ms (间隔毫秒)。</param>
     public ZlgBusInitConfigurator PollingInterval(int newPollingInterval)
     {
+        if(newPollingInterval < 0)
+            throw new ArgumentOutOfRangeException(nameof(newPollingInterval));
         Options.PollingInterval = newPollingInterval;
         return this;
     }
@@ -69,6 +71,9 @@ public sealed class ZlgBusInitConfigurator
         {
             case nameof(PollingInterval):
                 Options.PollingInterval = Convert.ToInt32(value);
+                break;
+            case nameof(MergeReceive):
+                Options.MergeReceive = Convert.ToBoolean(value);
                 break;
             default:
                 CanKitLogger.LogWarning($"ZLG: invalid key: {key}");

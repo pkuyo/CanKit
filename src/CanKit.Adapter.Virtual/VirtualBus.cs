@@ -127,23 +127,10 @@ public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, IBusOwnershi
     }
 
     public Task<int> TransmitAsync(IEnumerable<ICanFrame> frames, int timeOut = 0, CancellationToken cancellationToken = default)
-        => Task.Run(() =>
-        {
-            try
-            {
-                return Transmit(frames, timeOut);
-            }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
-            catch (Exception ex) { HandleBackgroundException(ex); throw; }
-        }, cancellationToken);
+        => Task.FromResult(Transmit(frames, timeOut));
 
     public Task<int> TransmitAsync(ICanFrame frame, CancellationToken cancellationToken = default)
-        => Task.Run(() =>
-        {
-            try { return Transmit(frame); }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
-            catch (Exception ex) { HandleBackgroundException(ex); throw; }
-        }, cancellationToken);
+        => Task.FromResult(Transmit(frame));
 
     public async Task<IReadOnlyList<CanReceiveData>> ReceiveAsync(int count = 1, int timeOut = 0, CancellationToken cancellationToken = default)
     {

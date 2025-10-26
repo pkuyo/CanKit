@@ -85,13 +85,13 @@ public partial class CanRegistry
     /// Try prepare endpoint to construct provider + device/channel config without opening.
     /// ZH: 尝试仅构造Provider与设备/通道配置，不执行打开。
     /// </summary>
-    public bool TryPrepareEndPoint(string endpoint, Action<IBusInitOptionsConfigurator>? configure, out Endpoints.PreparedBusContext? prepared)
+    public bool TryPrepareEndPoint(string endpoint, Action<IBusInitOptionsConfigurator>? configure, out PreparedBusContext? prepared)
     {
         var ep = CanEndpoint.Parse(endpoint);
         if (_prepareHandlers.TryGetValue(ep.Scheme, out var p))
         {
             prepared = p(ep, configure);
-            return prepared != null;
+            return true;
         }
         prepared = null;
         return false;

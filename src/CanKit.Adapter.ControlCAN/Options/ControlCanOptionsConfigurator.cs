@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using CanKit.Core.Abstractions;
 using CanKit.Core.Definitions;
+using CanKit.Core.Diagnostics;
 using CanKit.Core.Exceptions;
 
 namespace CanKit.Adapter.ControlCAN.Options;
@@ -25,7 +26,17 @@ public sealed class ControlCanDeviceRTOptionsConfigurator
 public sealed class ControlCanBusInitConfigurator
     : BusInitOptionsConfigurator<ControlCanBusOptions, ControlCanBusInitConfigurator>
 {
-    public int PollingInterval => Options.PollingInterval;
+    /// <summary>
+    /// Set polling interval (设置轮询间隔)。
+    /// </summary>
+    /// <param name="newPollingInterval">Interval in ms (间隔毫秒)。</param>
+    public ControlCanBusInitConfigurator PollingInterval(int newPollingInterval)
+    {
+        if(newPollingInterval < 0)
+            throw new ArgumentOutOfRangeException(nameof(newPollingInterval));
+        Options.PollingInterval = newPollingInterval;
+        return this;
+    }
 
     public override ControlCanBusInitConfigurator AccMask(int accCode, int accMask, CanFilterIDType idType = CanFilterIDType.Standard)
     {
@@ -36,6 +47,20 @@ public sealed class ControlCanBusInitConfigurator
                     "ControlCAN only supports mask filter on hardware");
         }
         return base.AccMask(accCode, accMask, idType);
+    }
+
+    public override IBusInitOptionsConfigurator Custom(string key, object value)
+    {
+        switch (key)
+        {
+            case nameof(PollingInterval):
+                Options.PollingInterval = Convert.ToInt32(value);
+                break;
+            default:
+                CanKitLogger.LogWarning($"ControlCAN: invalid key: {key}");
+                break;
+        }
+        return this;
     }
 }
 
