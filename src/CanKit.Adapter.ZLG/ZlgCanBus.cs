@@ -50,10 +50,11 @@ namespace CanKit.Adapter.ZLG
         private int _asyncConsumerCount;
         private CancellationTokenSource? _stopDelayCts;
         private int _asyncBufferingLinger;
-
+        private ZlgDeviceKind _deviceType;
         internal ZlgCanBus(ZlgCanDevice device, IBusOptions options, ITransceiver transceiver, ICanModelProvider provider)
         {
             _devicePtr = device.NativeHandler.DangerousGetHandle();
+            _deviceType = (ZlgDeviceKind)((ZlgDeviceType)device.Options.DeviceType).Code;
 
             Options = new ZlgBusRtConfigurator();
             Options.Init((ZlgBusOptions)options);
@@ -152,7 +153,21 @@ namespace CanKit.Adapter.ZLG
         public IPeriodicTx TransmitPeriodic(ICanFrame frame, PeriodicTxOptions options)
         {
             ThrowIfDisposed();
-            return new ZlgPeriodicTx(this, frame, options);
+            if ((Options.Features & CanFeature.CyclicTx) != 0)
+            {
+                if (GetAutoSendIndex(false) < MaxFilterCount)
+                {
+                    return new ZlgPeriodicTx(this, frame, options);
+                }
+                if ((Options.EnabledSoftwareFallback & CanFeature.CyclicTx) == 0)
+                {
+                    throw new CanBusException(CanKitErrorCode.FeatureNotSupported,
+                        $"ZlgCan Bus only supported {MaxFilterCount} set of filters.");
+                }
+            }
+            if ((Options.EnabledSoftwareFallback & CanFeature.CyclicTx) != 0)
+                return SoftwarePeriodicTx.Start(this, frame, options);
+            throw new CanFeatureNotSupportedException(CanFeature.CyclicTx, Options.Features);
         }
 
         public float BusUsage()
@@ -729,7 +744,7 @@ namespace CanKit.Adapter.ZLG
         }
 #endif
 
-        internal int GetAutoSendIndex()
+        internal int GetAutoSendIndex(bool add = true)
         {
             ThrowIfDisposed();
             int x = 0;
@@ -739,8 +754,8 @@ namespace CanKit.Adapter.ZLG
                     break;
                 x++;
             }
-
-            _autoSendIndexes.Add(x);
+            if (add)
+                _autoSendIndexes.Add(x);
             return x;
         }
 
@@ -755,6 +770,19 @@ namespace CanKit.Adapter.ZLG
             try { CanKitLogger.LogError("ZLG bus occured background exception.", ex); } catch { }
             try { _asyncRx.ExceptionOccured(ex); } catch { }
             try { var snap = Volatile.Read(ref BackgroundExceptionOccurred); snap?.Invoke(this, ex); } catch { }
+        }
+
+        private int MaxFilterCount
+        {
+            get => _deviceType switch
+            {
+                ZlgDeviceKind.ZCAN_USBCANFD_100U or ZlgDeviceKind.ZCAN_USBCANFD_200U
+                    or ZlgDeviceKind.ZCAN_USBCANFD_400U => 100,
+                ZlgDeviceKind.ZCAN_USBCANFD_800U => 32,
+                ZlgDeviceKind.ZCAN_USBCAN_2E_U or ZlgDeviceKind.ZCAN_USBCAN_4E_U
+                    or ZlgDeviceKind.ZCAN_USBCAN_8E_U => 32,
+                _ => int.MaxValue, //Unknown
+            };
         }
     }
 }

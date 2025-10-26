@@ -197,8 +197,12 @@ namespace CanKit.Core.Definitions
     /// </summary>
     public enum CanFilterIDType
     {
-        Standard,
-        Extend,
+        Standard = 0,
+        Extend = 1,
+
+        //Only use in some SJA1000 device
+        Double = 0,
+        Single = 1,
     }
 
     /// <summary>

@@ -6,15 +6,5 @@
     <Platforms>AnyCPU;x64;x86</Platforms>
     <Configurations>Debug;Release;Fake</Configurations>
   </PropertyGroup>
-
-  <ItemGroup>
-    <ProjectReference Include="..\..\src\CanKit.Core\CanKit.Core.csproj" />
-    <ProjectReference Include="..\..\src\CanKit.Adapter.Virtual\CanKit.Adapter.Virtual.csproj" />
-    <ProjectReference Include="..\..\src\CanKit.Adapter.SocketCAN\CanKit.Adapter.SocketCAN.csproj" />
-    <ProjectReference Include="..\..\src\CanKit.Adapter.PCAN\CanKit.Adapter.PCAN.csproj" />
-    <ProjectReference Include="..\..\src\CanKit.Adapter.Kvaser\CanKit.Adapter.Kvaser.csproj" />
-    <ProjectReference Include="..\..\src\CanKit.Adapter.ZLG\CanKit.Adapter.ZLG.csproj" />
-  </ItemGroup>
-
 </Project>
 

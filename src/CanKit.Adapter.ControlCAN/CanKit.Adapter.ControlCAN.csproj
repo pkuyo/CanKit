@@ -1,12 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <RootNamespace>CanKit.Adapter.ControlCAN</RootNamespace>
     <Platforms>x64;x86;AnyCPU</Platforms>
     <AssemblyName>CanKit.Adapter.ControlCAN</AssemblyName>
     <Nullable>enable</Nullable>
+    <Configurations>Debug;Release;Fake</Configurations>
   </PropertyGroup>
 
   <ItemGroup>

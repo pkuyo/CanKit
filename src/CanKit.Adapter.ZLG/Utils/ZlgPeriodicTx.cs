@@ -50,11 +50,7 @@ public sealed class ZlgPeriodicTx : IPeriodicTx
             {
                 _ = _bus.Transmit(new[] { frame }.AsSpan(), 0);
             }
-            catch
-            {
-            }
-
-            if (_remaining >= 0) _remaining = Math.Max(0, _remaining - 1);
+            catch { }
         }
 
         // Program device auto transmit; repeat is managed by software monitor if finite
@@ -63,7 +59,7 @@ public sealed class ZlgPeriodicTx : IPeriodicTx
 
     public TimeSpan Period { get; private set; }
     public int RepeatCount { get; private set; }
-    public int RemainingCount => _remaining;
+    public int RemainingCount { get; } = -1;
 
     public void Stop()
     {
@@ -72,7 +68,6 @@ public sealed class ZlgPeriodicTx : IPeriodicTx
         try
         {
             StopHardware();
-            _bus.FreeAutoSendIndex(_index);
         }
         catch
         {
@@ -82,7 +77,15 @@ public sealed class ZlgPeriodicTx : IPeriodicTx
     public void Update(ICanFrame? frame = null, TimeSpan? period = null, int? repeatCount = null)
     {
         if (_stopped) throw new CanBusDisposedException();
+
+        // Validate frame type vs channel
+        if (frame is CanClassicFrame && _bus.Options.ProtocolMode != CanProtocolMode.Can20)
+            throw new CanFeatureNotSupportedException(CanFeature.CanClassic, _bus.Options.Features);
+        if (frame is CanFdFrame && _bus.Options.ProtocolMode != CanProtocolMode.CanFd)
+            throw new CanFeatureNotSupportedException(CanFeature.CanFd, _bus.Options.Features);
+
         if (frame is not null) _frame = frame;
+
         if (period is not null) Period = period.Value <= TimeSpan.Zero ? TimeSpan.FromMilliseconds(1) : period.Value;
         if (repeatCount is not null)
         {
@@ -93,7 +96,11 @@ public sealed class ZlgPeriodicTx : IPeriodicTx
         ApplyHardware(true, _frame, Period);
     }
 
-    public void Dispose() => Stop();
+    public void Dispose()
+    {
+        Stop();
+        _bus.FreeAutoSendIndex(_index);
+    }
 
     public event EventHandler? Completed
     {

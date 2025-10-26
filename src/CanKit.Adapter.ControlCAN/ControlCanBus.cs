@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using CanKit.Adapter.ControlCAN.Definitions;
-using CanKit.Adapter.ControlCAN.Native;
 using CanKit.Adapter.ControlCAN.Options;
 using CcApi = CanKit.Adapter.ControlCAN.Native.ControlCAN;
 using CanKit.Core.Abstractions;
@@ -12,6 +11,7 @@ using CanKit.Core.Diagnostics;
 using CanKit.Core.Exceptions;
 using CanKit.Core.Utils;
 using CanKit.Adapter.ControlCAN.Diagnostics;
+using CanKit.Adapter.ControlCAN.Utils;
 
 namespace CanKit.Adapter.ControlCAN;
 
@@ -32,9 +32,10 @@ public sealed class ControlCanBus : ICanBus<ControlCanBusRtConfigurator>, IBusOw
     private int _asyncBufferingLinger;
     private Func<ICanFrame, bool>? _softwareFilterPredicate;
 
-    private readonly uint _devType;
+    private readonly HashSet<int> _autoSendIndexes = new();
+    private readonly ControlCanDeviceKind _devType;
+    private readonly uint _rawDevType;
     private readonly uint _devIndex;
-    private readonly bool _isUsbcane;
 
     internal ControlCanBus(ControlCanDevice device, IBusOptions options, ITransceiver transceiver, ICanModelProvider provider)
     {
@@ -44,9 +45,9 @@ public sealed class ControlCanBus : ICanBus<ControlCanBusRtConfigurator>, IBusOw
         _asyncRx = new AsyncFramePipe(Options.AsyncBufferCapacity > 0 ? Options.AsyncBufferCapacity : null);
 
         var dt = (ControlCanDeviceType)device.Options.DeviceType;
-        _devType = (uint)dt.Code;
+        _rawDevType = (uint)dt.Code;
+        _devType = (ControlCanDeviceKind)dt.Code;
         _devIndex = device.Options.DeviceIndex;
-        _isUsbcane = IsUsbcaneSeries(dt);
 
         // Reflect capabilities from provider
         if (provider is ICanCapabilityProvider sniffer)
@@ -64,7 +65,7 @@ public sealed class ControlCanBus : ICanBus<ControlCanBusRtConfigurator>, IBusOw
         {
             AccCode = 0,
             AccMask = 0xFFFFFFFF,
-            Filter = 1,
+            Filter = 0,
             Timing0 = t0,
             Timing1 = t1,
             Mode = options.WorkMode == ChannelWorkMode.ListenOnly ? (byte)1 : (byte)0,
@@ -78,23 +79,17 @@ public sealed class ControlCanBus : ICanBus<ControlCanBusRtConfigurator>, IBusOw
             cfg.Filter = (byte)(mask.FilterIdType == CanFilterIDType.Extend ? 2 : 1);
         }
 
-        // Prepare software filter fallbacks per device capability
-        var isUsbcane = IsUsbcaneSeries((ControlCanDeviceType)device.Options.DeviceType);
-        if (rules.Count > 0)
-        {
-        }
-
         CanKitLogger.LogInformation($"ControlCAN: Initializing dev={_devType}, idx={((ControlCanBusOptions)options).ChannelIndex} ch={options.ChannelIndex}, baud={options.BitTiming.Classic?.Nominal.Bitrate}");
-
+        ApplyConfig(options);
         // Device already opened by ControlCanDevice; just init channel
-        if (CcApi.VCI_InitCAN(_devType, _devIndex, (uint)Options.ChannelIndex, ref cfg) == 0)
+        if (CcApi.VCI_InitCAN(_rawDevType, _devIndex, (uint)Options.ChannelIndex, ref cfg) == 0)
             throw new CanBusCreationException("VCI_InitCAN failed.");
-
+        ApplyConfigAfterInit(options);
         Reset();
-        if (CcApi.VCI_StartCAN(_devType, _devIndex, (uint)Options.ChannelIndex) == 0)
+        if (CcApi.VCI_StartCAN(_rawDevType, _devIndex, (uint)Options.ChannelIndex) == 0)
             throw new CanBusCreationException("VCI_StartCAN failed.");
 
-        NativeHandle = new BusNativeHandle((nint)((_devType << 24) | (_devIndex << 16) | (uint)Options.ChannelIndex));
+        NativeHandle = new BusNativeHandle((nint)((_rawDevType << 24) | (_devIndex << 16) | (uint)Options.ChannelIndex));
     }
 
     public BusNativeHandle NativeHandle { get; }
@@ -104,21 +99,109 @@ public sealed class ControlCanBus : ICanBus<ControlCanBusRtConfigurator>, IBusOw
 
     public void AttachOwner(IDisposable owner) => _owner = owner;
 
-    public void ApplyConfig(ICanOptions options)
+    public void ApplyConfig(IBusOptions options)
     {
-        //TODO:
+        var bitRate = options.BitTiming.Classic?.Nominal.Bitrate ??
+                      throw new CanBusConfigurationException("Classic timing must specify a target nominal bitrate.");
+        unsafe
+        {
+            if (_devType is ControlCanDeviceKind.VCI_USBCAN_E_U or ControlCanDeviceKind.VCI_USBCAN_2E_U)
+            {
+                var value = bitRate switch
+                {
+                    1_000_000 => 0x060003U,
+                    800_000 => 0x060004U,
+                    500_000 => 0x060007U,
+                    250_000 => 0x1C0008U,
+                    125_000 => 0x1C0011U,
+                    100_000 => 0x160023U,
+                    50_000 => 0x1C002CU,
+                    20_000 => 0x1600B3U,
+                    10_000 => 0x1C00E0U,
+                    5_000 => 0x1C01C1U,
+                    _ => throw new CanBusConfigurationException($"Unsupported ControlCAN classic bitrate: {bitRate}")
+                };
+                CcApi.VCI_SetReference(_rawDevType, _devIndex, CanIndex, 0, &value);
+            }
+            else if (_devType is ControlCanDeviceKind.VCI_USBCAN_4E_U)
+            {
+                //Only for valid
+                _ = bitRate switch
+                {
+                    1_000_000 => 0x060003U,
+                    800_000 => 0x060004U,
+                    500_000 => 0x060007U,
+                    250_000 => 0x1C0008U,
+                    125_000 => 0x1C0011U,
+                    100_000 => 0x160023U,
+                    50_000 => 0x1C002CU,
+                    20_000 => 0x1600B3U,
+                    10_000 => 0x1C00E0U,
+                    5_000 => 0x1C01C1U,
+                    _ => throw new CanBusConfigurationException($"Unsupported ControlCAN classic bitrate: {bitRate}")
+                };
+                CcApi.VCI_SetReference(_rawDevType, _devIndex, CanIndex, 0, &bitRate);
+            }
+        }
+
+    }
+    public void ApplyConfigAfterInit(IBusOptions options)
+    {
+        if ((options.Features & CanFeature.RangeFilter) != 0)
+        {
+            unsafe
+            {
+                var pRecord = stackalloc CcApi.VCI_FILTER_RECORD[1];
+                var any = false;
+                foreach (var filter in Options.Filter.FilterRules)
+                {
+                    if (filter is not FilterRule.Range range)
+                    {
+                        options.Filter.softwareFilter.Add(filter);
+                    }
+                    else
+                    {
+                        pRecord->Start = range.From;
+                        pRecord->End = range.To;
+                        pRecord->ExtFrame = (range.FilterIdType == CanFilterIDType.Extend ? 1U : 0U);
+                        ControlCanErr.ThrowIfErr(CcApi.VCI_SetReference(_rawDevType, _devIndex, CanIndex, 1, &pRecord), "VCI_SetReference(Filter)", this);
+                        any = true;
+                    }
+                }
+
+                if (any)
+                {
+                    ControlCanErr.ThrowIfErr(CcApi.VCI_SetReference(_rawDevType, _devIndex, CanIndex, 2, null), "VCI_SetReference(StartFilter)", this);
+                }
+            }
+        }
+        else
+        {
+            foreach (var filter in Options.Filter.FilterRules)
+            {
+                if (filter is not FilterRule.Mask)
+                {
+                    options.Filter.softwareFilter.Add(filter);
+                }
+            }
+        }
+
+        if (options.Filter.softwareFilter.Count != 0)
+        {
+            _softwareFilterPredicate = FilterRule.Build(Options.Filter.SoftwareFilterRules);
+        }
     }
 
     public void Reset()
     {
         ThrowIfDisposed();
-        _ = CcApi.VCI_ResetCAN(_devType, _devIndex, (uint)Options.ChannelIndex);
+        ControlCanErr.ThrowIfErr(CcApi.VCI_ResetCAN(_rawDevType, _devIndex, CanIndex), "VCI_ResetCAN()", this);
     }
 
     public void ClearBuffer()
     {
         ThrowIfDisposed();
-        _ = CcApi.VCI_ClearBuffer(_devType, _devIndex, (uint)Options.ChannelIndex);
+        ControlCanErr.ThrowIfErr(CcApi.VCI_ResetCAN(_rawDevType, _devIndex, CanIndex), "VCI_ResetCAN()", this);
         _asyncRx.Clear();
     }
 
@@ -140,11 +223,18 @@ public sealed class ControlCanBus : ICanBus<ControlCanBusRtConfigurator>, IBusOw
 
     public IPeriodicTx TransmitPeriodic(ICanFrame frame, PeriodicTxOptions options)
     {
-        // Prefer hardware periodic on USBCAN-E series; fallback to software if requested.
-        if (_isUsbcane)
+        ThrowIfDisposed();
+        if ((Options.Features & CanFeature.CyclicTx) != 0)
         {
-            //return ControlCanPeriodicTx.Start(this, frame, options);
-            //TODO
+            if (GetAutoSendIndex(false) < 32)
+            {
+                return new ControlCanPeriodicTx(this, frame, options);
+            }
+            if ((Options.EnabledSoftwareFallback & CanFeature.CyclicTx) == 0)
+            {
+                throw new CanBusException(CanKitErrorCode.FeatureNotSupported,
+                    "Control Can Bus only supported 32 set of filters.");
+            }
         }
         if ((Options.EnabledSoftwareFallback & CanFeature.CyclicTx) != 0)
             return SoftwarePeriodicTx.Start(this, frame, options);
@@ -171,11 +261,11 @@ public sealed class ControlCanBus : ICanBus<ControlCanBusRtConfigurator>, IBusOw
     public CanErrorCounters ErrorCounters()
     {
         ThrowIfDisposed();
-        if (CcApi.VCI_ReadErrInfo(_devType, _devIndex, (uint)Options.ChannelIndex, out var err) == 0)
+        if (CcApi.VCI_ReadErrInfo(_rawDevType, _devIndex, (uint)Options.ChannelIndex, out var err) == 0)
             return default;
 
-        var rec = err.Passive_ErrData != null && err.Passive_ErrData.Length >= 2 ? err.Passive_ErrData[1] : (byte)0;
-        var tec = err.Passive_ErrData != null && err.Passive_ErrData.Length >= 3 ? err.Passive_ErrData[2] : (byte)0;
+        var rec = err.Passive_ErrData.Length >= 2 ? err.Passive_ErrData[1] : (byte)0;
+        var tec = err.Passive_ErrData.Length >= 3 ? err.Passive_ErrData[2] : (byte)0;
         return new CanErrorCounters
         {
             TransmitErrorCounter = tec,
@@ -352,7 +442,7 @@ public sealed class ControlCanBus : ICanBus<ControlCanBusRtConfigurator>, IBusOw
             _pollCts?.Cancel();
             _pollTask?.Wait(200);
         }
-        catch { }
+        catch { /*Ignored*/ }
         finally
         {
             _pollTask = null;
@@ -441,29 +531,65 @@ public sealed class ControlCanBus : ICanBus<ControlCanBusRtConfigurator>, IBusOw
             throw new CanBusConfigurationException("Classic timing must specify a target nominal bitrate.");
         var bps = timing.Classic.Value.Nominal.Bitrate!.Value;
         // Typical SJA1000 @ 8MHz timing table
-
-        //TODO:
         return bps switch
         {
+            1_000_000 => (0x00, 0x14),
+            800_000 => (0x00, 0x16),
+            666_000 => (0x80, 0xB6),
+            500_000 => (0x00, 0x1c),
+            400_000 => (0x80, 0xFA),
+            250_000 => (0x01, 0x1c),
+            200_000 => (0x81, 0xFA),
+            125_000 => (0x03, 0x1c),
+            100_000 => (0x04, 0x1c),
+            80_000 => (0x83, 0Xff),
+            50_000 => (0x09, 0x1c),
+            40_000 => (0x87, 0xFF),
+            20_000 => (0x18, 0x1C),
+            10_000 => (0x31, 0x1C),
+            5_000 => (0xBF, 0xFF),
             _ => throw new CanBusConfigurationException($"Unsupported ControlCAN classic bitrate: {bps}")
         };
     }
 
-    internal uint DevType => _devType;
-    internal uint DevIndex => _devIndex;
-    internal uint CanIndex => (uint)Options.ChannelIndex;
+    internal int GetAutoSendIndex(bool add = true)
+    {
+        ThrowIfDisposed();
+        int x = 0;
+        while (true)
+        {
+            if (!_autoSendIndexes.Contains(x))
+                break;
+            x++;
+        }
+        if (add)
+            _autoSendIndexes.Add(x);
+        return x;
+    }
 
-    private static bool IsUsbcaneSeries(ControlCanDeviceType t)
-        => t.Code is 20 or 21 or 31 or 34;
+    internal bool FreeAutoSendIndex(int index)
+    {
+        ThrowIfDisposed();
+        return _autoSendIndexes.Remove(index);
+    }
 
     private bool ReadErrorInfo(out ICanErrorInfo? info)
     {
         info = null;
-        if (CcApi.VCI_ReadErrInfo(_devType, _devIndex, (uint)Options.ChannelIndex, out var err) == 0)
+        if (CcApi.VCI_ReadErrInfo(_rawDevType, _devIndex, (uint)Options.ChannelIndex, out var err) == 0)
             return false;
         if (err.ErrCode == 0)
             return false;
         info = ControlCanErr.ToErrorInfo(err);
         return true;
     }
+
+    internal ControlCanDeviceKind DevType => _devType;
+
+    internal uint RawDevType => _rawDevType;
+
+    internal uint DevIndex => _devIndex;
+    internal uint CanIndex => (uint)Options.ChannelIndex;
+
+
 }

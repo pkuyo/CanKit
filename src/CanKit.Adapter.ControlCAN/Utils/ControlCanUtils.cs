@@ -3,7 +3,7 @@ using System.Runtime.CompilerServices;
 using CanKit.Core.Definitions;
 using CcApi = CanKit.Adapter.ControlCAN.Native.ControlCAN;
 
-namespace CanKit.Adapter.ControlCAN;
+namespace CanKit.Adapter.ControlCAN.Utils;
 
 internal static class ControlCanUtils
 {

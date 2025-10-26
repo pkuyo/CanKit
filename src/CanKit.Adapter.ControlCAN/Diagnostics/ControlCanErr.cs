@@ -1,11 +1,13 @@
 using System;
 using CanKit.Core.Definitions;
+using CanKit.Core.Diagnostics;
 using CcApi = CanKit.Adapter.ControlCAN.Native.ControlCAN;
 
 namespace CanKit.Adapter.ControlCAN.Diagnostics;
 
 internal static class ControlCanErr
 {
+    public const uint StatusOk = 1;
     public static ICanErrorInfo ToErrorInfo(in CcApi.VCI_ERR_INFO err)
     {
         // ECC fields (same layout as ZLG):
@@ -126,6 +128,30 @@ internal static class ControlCanErr
         2 => CanProtocolViolationType.Stuff,
         _ => CanProtocolViolationType.None,
     };
+
+    public static void ThrowIfErr(uint status, string operation, ControlCanBus? bus = null, string? message = null)
+    {
+        if (status == StatusOk)
+        {
+            return;
+        }
+        CcApi.VCI_ERR_INFO? errorInfo = null;
+
+        if (bus is not null)
+        {
+            try
+            {
+                CcApi.VCI_ReadErrInfo(bus.RawDevType, bus.DevIndex, bus.CanIndex, out var nativeInfo);
+                errorInfo = nativeInfo;
+            }
+            catch (Exception ex)
+            {
+                CanKitLogger.LogWarning($"Failed to query channel error information for operation '{operation}'.", ex);
+            }
+        }
+        message ??= $"ZLG native call '{operation}' failed with status {status}.";
+        throw new ControlCanException(operation, message, status, errorInfo.HasValue ? ToErrorInfo(errorInfo.Value) : null);
+    }
 }
 
 // Minimal copy of vendor error flags to avoid cross-adapter dependency

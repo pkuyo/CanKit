@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using CanKit.Adapter.ControlCAN.Utils;
 using CcApi = CanKit.Adapter.ControlCAN.Native.ControlCAN;
 using CanKit.Core.Abstractions;
 using CanKit.Core.Definitions;
@@ -24,7 +25,7 @@ internal sealed class ControlCanTransceiver : ITransceiver
             classic.ToNative(&pObj[index++], retry);
             if (index == CcApi.BATCH_COUNT)
             {
-                written += CcApi.VCI_Transmit(ctl.DevType, ctl.DevIndex, ctl.CanIndex, pObj, CcApi.BATCH_COUNT);
+                written += CcApi.VCI_Transmit(ctl.RawDevType, ctl.DevIndex, ctl.CanIndex, pObj, CcApi.BATCH_COUNT);
                 if (written != CcApi.BATCH_COUNT)
                     return (int)written;
                 index = 0;
@@ -33,7 +34,7 @@ internal sealed class ControlCanTransceiver : ITransceiver
 
         if (index != 0)
         {
-            written += CcApi.VCI_Transmit(ctl.DevType, ctl.DevIndex, ctl.CanIndex, pObj, (uint)index);
+            written += CcApi.VCI_Transmit(ctl.RawDevType, ctl.DevIndex, ctl.CanIndex, pObj, (uint)index);
         }
         return (int)written;
     }
@@ -53,7 +54,7 @@ internal sealed class ControlCanTransceiver : ITransceiver
             classic.ToNative(&pObj[index++], retry);
             if (index == CcApi.BATCH_COUNT)
             {
-                written += CcApi.VCI_Transmit(ctl.DevType, ctl.DevIndex, ctl.CanIndex, pObj, CcApi.BATCH_COUNT);
+                written += CcApi.VCI_Transmit(ctl.RawDevType, ctl.DevIndex, ctl.CanIndex, pObj, CcApi.BATCH_COUNT);
                 if (written != CcApi.BATCH_COUNT)
                     return (int)written;
                 index = 0;
@@ -62,7 +63,7 @@ internal sealed class ControlCanTransceiver : ITransceiver
 
         if (index != 0)
         {
-            written += CcApi.VCI_Transmit(ctl.DevType, ctl.DevIndex, ctl.CanIndex, pObj, (uint)index);
+            written += CcApi.VCI_Transmit(ctl.RawDevType, ctl.DevIndex, ctl.CanIndex, pObj, (uint)index);
         }
         return (int)written;
     }
@@ -76,7 +77,7 @@ internal sealed class ControlCanTransceiver : ITransceiver
         var pObj = stackalloc CcApi.VCI_CAN_OBJ[1];
         var retry = bus.Options.TxRetryPolicy == TxRetryPolicy.AlwaysRetry;
         classic.ToNative(&pObj[0], retry);
-        return (int)CcApi.VCI_Transmit(ctl.DevType, ctl.DevIndex, ctl.CanIndex, pObj, 1);
+        return (int)CcApi.VCI_Transmit(ctl.RawDevType, ctl.DevIndex, ctl.CanIndex, pObj, 1);
     }
 
     public IEnumerable<CanReceiveData> Receive(ICanBus<IBusRTOptionsConfigurator> bus, int count = 1, int timeOut = 0)
@@ -90,7 +91,7 @@ internal sealed class ControlCanTransceiver : ITransceiver
         while (count > 0)
         {
             var recCount = Math.Min(cap, count);
-            var got = CcApi.VCI_Receive(ctl.DevType, ctl.DevIndex, ctl.CanIndex, arr, (uint)recCount, timeOut);
+            var got = CcApi.VCI_Receive(ctl.RawDevType, ctl.DevIndex, ctl.CanIndex, arr, (uint)recCount, timeOut);
             for (int i = 0; i < got; i++)
             {
                 var obj = arr[i];
