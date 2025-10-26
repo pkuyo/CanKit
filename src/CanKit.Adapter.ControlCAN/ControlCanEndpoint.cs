@@ -18,7 +18,6 @@ namespace CanKit.Adapter.ControlCAN;
 /// Examples:
 ///  - controlcan://VCI_USBCAN2?index=0#ch1
 ///  - controlcan://USBCAN2?index=0#ch1
-///  - controlcan://?type=USBCAN2&index=0#ch0
 /// </summary>
 [CanEndPoint("controlcan", [])]
 public static class ControlCanEndpoint
@@ -41,7 +40,7 @@ public static class ControlCanEndpoint
         {
             var frag = ep.Fragment!;
             if (frag.StartsWith("ch", StringComparison.OrdinalIgnoreCase))
-                frag = frag[2..];
+                frag = frag.Remove(0, 2);
             _ = int.TryParse(frag, NumberStyles.Integer, CultureInfo.InvariantCulture, out chIndex);
         }
 

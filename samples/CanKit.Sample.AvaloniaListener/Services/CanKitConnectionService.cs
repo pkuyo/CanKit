@@ -5,11 +5,12 @@ using System.Threading.Tasks;
 using CanKit.Core;
 using CanKit.Core.Abstractions;
 using CanKit.Core.Definitions;
+using CanKit.Sample.AvaloniaListener.Abstractions;
 using CanKit.Sample.AvaloniaListener.Models;
 
 namespace CanKit.Sample.AvaloniaListener.Services
 {
-    public class CanKitListenerService : IListenerService
+    public class CanKitConnectionService : IConnectionService
     {
         private ICanBus? _bus;
         private readonly object _txLock = new();
@@ -208,7 +209,7 @@ namespace CanKit.Sample.AvaloniaListener.Services
             StopPeriodic();
             foreach (var (frame, period) in items)
             {
-                var opt = new CanKit.Core.Definitions.PeriodicTxOptions(period, repeat: -1, fireImmediately: true);
+                var opt = new PeriodicTxOptions(period, repeat: -1, fireImmediately: true);
                 var tx = bus.TransmitPeriodic(frame, opt);
                 _periodics.Add(tx);
             }

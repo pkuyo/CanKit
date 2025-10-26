@@ -2,11 +2,12 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using CanKit.Core;
 using CanKit.Core.Definitions;
+using CanKit.Sample.AvaloniaListener.Abstractions;
 using CanKit.Sample.AvaloniaListener.Models;
 
 namespace CanKit.Sample.AvaloniaListener.Services
 {
-    public class CanKitDeviceService : IDeviceService
+    public class CanKitCapabilityService : IDeviceService
     {
         public Task<DeviceCapabilities> GetCapabilitiesAsync(string endpoint)
         {

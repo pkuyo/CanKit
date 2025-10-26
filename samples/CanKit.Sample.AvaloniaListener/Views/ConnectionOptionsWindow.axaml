@@ -7,7 +7,7 @@
         mc:Ignorable="d"
         x:Class="CanKit.Sample.AvaloniaListener.Views.ConnectionOptionsWindow"
         x:DataType="vm:ConnectionOptionsViewModel"
-        Title="Connection Options" Height="260" Width="520"
+        Title="{DynamicResource ConnOpts.Title}" Height="260" Width="520"
         WindowStartupLocation="CenterOwner">
   <Window.Resources>
     <conv:BitrateConverter x:Key="BitrateConv"/>
@@ -16,14 +16,14 @@
   <Grid Margin="12" RowDefinitions="Auto,Auto,*,Auto">
     <!-- Mode selection -->
     <StackPanel Orientation="Horizontal" Grid.Row="0" Margin="0,0,0,8" Spacing="12">
-      <TextBlock Text="Protocol" VerticalAlignment="Center"/>
+      <TextBlock Text="{DynamicResource ConnOpts.Protocol}" VerticalAlignment="Center"/>
       <RadioButton x:Name="Can20Radio" Content="CAN 2.0" IsEnabled="{Binding SupportsCan20}" IsChecked="{Binding UseCan20, Mode=TwoWay}"/>
       <RadioButton x:Name="CanFdRadio" Content="CAN FD" IsEnabled="{Binding SupportsCanFd}" IsChecked="{Binding UseCanFd, Mode=TwoWay}"/>
     </StackPanel>
 
     <!-- Bitrates -->
     <Grid Grid.Row="1" Margin="0,0,0,8" ColumnDefinitions="Auto,160,16,Auto,160,*">
-      <TextBlock Grid.Column="0" Text="BitRate" Margin="0,0,8,0" VerticalAlignment="Center"/>
+      <TextBlock Grid.Column="0" Text="{DynamicResource ConnOpts.BitRate}" Margin="0,0,8,0" VerticalAlignment="Center"/>
       <ComboBox x:Name="BitrateCombo" Grid.Column="1" ItemsSource="{Binding BitRates}" SelectedItem="{Binding SelectedBitRate, Mode=TwoWay}">
         <ComboBox.ItemTemplate>
           <DataTemplate>
@@ -32,7 +32,7 @@
         </ComboBox.ItemTemplate>
       </ComboBox>
 
-      <TextBlock x:Name="DataBitrateLabel" Grid.Column="3" Text="DataBitRate" Margin="0,0,8,0" VerticalAlignment="Center" IsVisible="{Binding UseCanFd}"/>
+      <TextBlock x:Name="DataBitrateLabel" Grid.Column="3" Text="{DynamicResource ConnOpts.DataBitRate}" Margin="0,0,8,0" VerticalAlignment="Center" IsVisible="{Binding UseCanFd}"/>
       <ComboBox x:Name="DataBitrateCombo" Grid.Column="4" ItemsSource="{Binding DataBitRates}" SelectedItem="{Binding SelectedDataBitRate, Mode=TwoWay}" IsVisible="{Binding UseCanFd}">
         <ComboBox.ItemTemplate>
           <DataTemplate>
@@ -46,30 +46,30 @@
     <StackPanel Grid.Row="2">
       <!-- Advanced options row -->
       <StackPanel Orientation="Horizontal" Margin="0,0,0,8" Spacing="12">
-        <CheckBox x:Name="ListenOnlyCheck" Content="Listen Only" IsVisible="{Binding SupportsListenOnly}" IsChecked="{Binding ListenOnly, Mode=TwoWay}"/>
-        <TextBlock x:Name="ErrorCounterLabel" Text="Error Counter Period" VerticalAlignment="Center" IsVisible="{Binding SupportsErrorCounters}"/>
+        <CheckBox x:Name="ListenOnlyCheck" Content="{DynamicResource ConnOpts.ListenOnly}" IsVisible="{Binding SupportsListenOnly}" IsChecked="{Binding ListenOnly, Mode=TwoWay}"/>
+        <TextBlock x:Name="ErrorCounterLabel" Text="{DynamicResource ConnOpts.ErrorCounterPeriod}" VerticalAlignment="Center" IsVisible="{Binding SupportsErrorCounters}"/>
         <TextBox x:Name="ErrorCounterPeriodBox" Width="80" HorizontalAlignment="Left" Text="{Binding ErrorCountersPeriodMs, Mode=TwoWay}" IsVisible="{Binding SupportsErrorCounters}"/>
-        <TextBlock Text="ms" VerticalAlignment="Center" x:Name="ErrorCounterUnit" IsVisible="{Binding SupportsErrorCounters}"/>
+        <TextBlock Text="{DynamicResource ConnOpts.Unit.ms}" VerticalAlignment="Center" x:Name="ErrorCounterUnit" IsVisible="{Binding SupportsErrorCounters}"/>
       </StackPanel>
 
       <!-- Filters row -->
       <StackPanel Orientation="Horizontal" Spacing="12">
         <Button x:Name="EditFiltersBtn" Width="120" Command="{Binding OpenFiltersCommand}">
-            <TextBlock Text="Edit Filters..." TextAlignment="Center"
+            <TextBlock Text="{DynamicResource ConnOpts.EditFilters}" TextAlignment="Center"
             HorizontalAlignment="Center" VerticalAlignment="Center"/>
         </Button>
-        <TextBlock Text="Changes apply after OK" VerticalAlignment="Center" Foreground="Gray"/>
+        <TextBlock Text="{DynamicResource ConnOpts.ApplyHint}" VerticalAlignment="Center" Foreground="Gray"/>
       </StackPanel>
     </StackPanel>
 
     <!-- Buttons -->
     <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
       <Button Width="80" IsDefault="True" Click="OnOk" VerticalAlignment="Center">
-        <TextBlock Text="OK" TextAlignment="Center"
+        <TextBlock Text="{DynamicResource Common.OK}" TextAlignment="Center"
             HorizontalAlignment="Center" VerticalAlignment="Center"/>
         </Button>
       <Button Width="80" IsCancel="True" >
-           <TextBlock Text="Cancel" TextAlignment="Center"
+           <TextBlock Text="{DynamicResource Common.Cancel}" TextAlignment="Center"
             HorizontalAlignment="Center" VerticalAlignment="Center"/>
       </Button>
     </StackPanel>

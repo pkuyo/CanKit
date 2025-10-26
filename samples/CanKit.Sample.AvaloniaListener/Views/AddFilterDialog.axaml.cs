@@ -39,21 +39,21 @@ public partial class AddFilterDialog : Window
         if (errorText != null) errorText.Text = string.Empty;
         var kindItem = typeCombo?.SelectedItem as ComboBoxItem;
         var idTypeItem = idTypeCombo?.SelectedItem as ComboBoxItem;
-        var kind = kindItem?.Content?.ToString() ?? "Mask";
-        var idTypeStr = idTypeItem?.Content?.ToString();
+        var kind = kindItem?.Tag?.ToString() ?? "Mask";
+        var idTypeStr = idTypeItem?.Tag?.ToString();
         var idType = string.Equals(idTypeStr, "Extend", StringComparison.OrdinalIgnoreCase)
             ? CanFilterIDType.Extend
             : CanFilterIDType.Standard;
 
         if (!TryParseInt(firstBox?.Text, out var first))
         {
-            if (errorText != null) errorText.Text = "Invalid first value.";
+            if (errorText != null) errorText.Text = Services.LocalizationService.GetString("Filter.Add.Error.InvalidFirst", "Invalid first value.");
             return;
         }
 
         if (!TryParseInt(secondBox?.Text, out var second))
         {
-            if (errorText != null) errorText.Text = "Invalid second value.";
+            if (errorText != null) errorText.Text = Services.LocalizationService.GetString("Filter.Add.Error.InvalidSecond", "Invalid second value.");
             return;
         }
 
@@ -71,7 +71,7 @@ public partial class AddFilterDialog : Window
         {
             if (first > second)
             {
-                if (errorText != null) errorText.Text = "Range: From must be <= To.";
+                if (errorText != null) errorText.Text = Services.LocalizationService.GetString("Filter.Add.Error.RangeInvalid", "Range: From must be <= To.");
                 return;
             }
             Result = new FilterRuleModel

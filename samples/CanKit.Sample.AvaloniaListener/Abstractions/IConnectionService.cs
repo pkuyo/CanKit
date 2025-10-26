@@ -5,9 +5,9 @@ using System.Threading.Tasks;
 using CanKit.Sample.AvaloniaListener.Models;
 using CanKit.Core.Definitions;
 
-namespace CanKit.Sample.AvaloniaListener.Services
+namespace CanKit.Sample.AvaloniaListener.Abstractions
 {
-    public interface IListenerService
+    public interface IConnectionService
     {
         Task StartAsync(string endpoint,
             bool can20,

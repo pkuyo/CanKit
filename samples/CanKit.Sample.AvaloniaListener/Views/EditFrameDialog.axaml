@@ -1,20 +1,20 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:CanKit.Sample.AvaloniaListener.ViewModels"
-        x:Class="CanKit.Sample.AvaloniaListener.Views.SendFrameDialog"
-        x:DataType="vm:SendFrameDialogViewModel"
-        Title="Send Frame" Height="320" Width="560"
+        x:Class="CanKit.Sample.AvaloniaListener.Views.EditFrameDialog"
+        x:DataType="vm:EditFrameDialogViewModel"
+        Title="{Binding Title}" Height="320" Width="560"
         WindowStartupLocation="CenterOwner">
   <Grid Margin="12" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto" ColumnDefinitions="*">
     <!-- Frame type and ID type -->
     <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
-      <TextBlock Text="Frame" VerticalAlignment="Center" Margin="0,0,8,0"/>
+      <TextBlock Text="{DynamicResource EditFrame.FrameLabel}" VerticalAlignment="Center" Margin="0,0,8,0"/>
       <ComboBox Width="140" SelectedIndex="{Binding FrameTypeIndex}">
         <ComboBoxItem Content="CAN20"/>
         <ComboBoxItem Content="CANFD"/>
       </ComboBox>
 
-      <TextBlock Text="ID Type" VerticalAlignment="Center" Margin="16,0,8,0"/>
+      <TextBlock Text="{DynamicResource EditFrame.IdTypeLabel}" VerticalAlignment="Center" Margin="16,0,8,0"/>
       <ComboBox Width="140" SelectedIndex="{Binding IdTypeIndex}">
         <ComboBoxItem Content="Standard"/>
         <ComboBoxItem Content="Extend"/>
@@ -23,29 +23,29 @@
 
     <!-- ID and DLC -->
     <Grid Grid.Row="1" Margin="0,0,0,8" ColumnDefinitions="Auto,120,Auto,100">
-      <TextBlock Text="ID" VerticalAlignment="Center"/>
+      <TextBlock Text="{DynamicResource EditFrame.IdLabel}" VerticalAlignment="Center"/>
       <TextBox Grid.Column="1" Margin="8,0,0,0" Text="{Binding IdText}"/>
-      <TextBlock Text="DLC" Grid.Column="2" VerticalAlignment="Center" Margin="16,0,0,0"/>
+      <TextBlock Text="{DynamicResource EditFrame.DlcLabel}" Grid.Column="2" VerticalAlignment="Center" Margin="16,0,0,0"/>
       <TextBox Grid.Column="3" Margin="8,0,0,0" Text="{Binding DlcText}"/>
     </Grid>
 
     <!-- Data -->
     <StackPanel Grid.Row="2" Orientation="Vertical">
-      <TextBlock Text="Data (hex, space/comma separated)"/>
+      <TextBlock Text="{DynamicResource EditFrame.DataHint}"/>
       <TextBox Margin="0,4,0,0" Height="80" AcceptsReturn="True" TextWrapping="Wrap" Text="{Binding DataText}"/>
     </StackPanel>
 
     <!-- Flags: RTR/BRS -->
     <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,8,0,0" Spacing="16">
-      <CheckBox Content="RTR" IsVisible="{Binding IsClassic}" IsChecked="{Binding Rtr}"/>
-      <CheckBox Content="BRS" IsVisible="{Binding IsFd}" IsChecked="{Binding Brs}"/>
+      <CheckBox Content="{DynamicResource EditFrame.RTR}" IsVisible="{Binding IsClassic}" IsChecked="{Binding Rtr}"/>
+      <CheckBox Content="{DynamicResource EditFrame.BRS}" IsVisible="{Binding IsFd}" IsChecked="{Binding Brs}"/>
     </StackPanel>
 
     <TextBlock Grid.Row="4" Foreground="Red" TextWrapping="Wrap" Text="{Binding ErrorText}"/>
 
     <StackPanel Orientation="Horizontal" Grid.Row="5" HorizontalAlignment="Right" Margin="0,8,0,0" Spacing="8">
-      <Button Width="100" Content="Send" IsDefault="True" Command="{Binding SendCommand}"/>
-      <Button Width="100" Content="Close" IsCancel="True" Command="{Binding CloseCommand}"/>
+      <Button Width="100" Content="{Binding SubmitText}" IsDefault="True" Command="{Binding SubmitCommand}"/>
+      <Button Width="100" Content="{DynamicResource EditFrame.Close}" IsCancel="True" Command="{Binding CloseCommand}"/>
     </StackPanel>
   </Grid>
 </Window>

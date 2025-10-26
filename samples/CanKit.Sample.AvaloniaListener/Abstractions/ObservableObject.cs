@@ -1,7 +1,7 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 
-namespace CanKit.Sample.AvaloniaListener.ViewModels
+namespace CanKit.Sample.AvaloniaListener.Abstractions
 {
     public abstract class ObservableObject : INotifyPropertyChanged
     {

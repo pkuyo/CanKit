@@ -3,17 +3,17 @@ using System.Globalization;
 using System.Linq;
 using System.Text.RegularExpressions;
 using CanKit.Core.Definitions;
-using CanKit.Sample.AvaloniaListener.Models;
+using CanKit.Sample.AvaloniaListener.Abstractions;
+using CanKit.Sample.AvaloniaListener.Services;
 
 namespace CanKit.Sample.AvaloniaListener.ViewModels;
 
-public class AddPeriodicItemDialogViewModel : ObservableObject
+public class EditFrameDialogViewModel : ObservableObject
 {
     private int _frameTypeIndex; // 0=CAN20, 1=CANFD
     private int _idTypeIndex;    // 0=Standard, 1=Extend
     private string _idText = string.Empty;
     private string _dlcText = string.Empty;
-    private string _periodText = string.Empty;
     private string _dataText = string.Empty;
     private bool _rtr;
     private bool _brs;
@@ -57,12 +57,6 @@ public class AddPeriodicItemDialogViewModel : ObservableObject
         set => SetProperty(ref _dlcText, value);
     }
 
-    public string PeriodText
-    {
-        get => _periodText;
-        set => SetProperty(ref _periodText, value);
-    }
-
     public string DataText
     {
         get => _dataText;
@@ -90,24 +84,31 @@ public class AddPeriodicItemDialogViewModel : ObservableObject
     public bool IsFd => FrameTypeIndex == 1;
     public bool IsClassic => !IsFd;
     public bool IsExtended => IdTypeIndex == 1;
+    public string SubmitText => IsEdit 
+        ? LocalizationService.GetString("EditFrame.Submit.Edit", "Edit") 
+        : LocalizationService.GetString("EditFrame.Submit.Add", "Add");
+    public string Title => IsEdit 
+        ? LocalizationService.GetString("EditFrame.Title.Edit", "Edit Frame") 
+        : LocalizationService.GetString("EditFrame.Title.Add", "Add Frame");
+    public Func<ICanFrame, int>? Transmit { get; set; }
+    public Action<ICanFrame>? OnConfirm { get; set; }
 
-    public PeriodicItemModel? Result { get; private set; }
+    public RelayCommand SubmitCommand { get; }
+    public RelayCommand CloseCommand { get; }
 
-    public RelayCommand OkCommand { get; }
-    public RelayCommand CancelCommand { get; }
+    public bool IsEdit { get; set; }
 
     public event EventHandler<bool?>? CloseRequested;
 
-    public AddPeriodicItemDialogViewModel()
+    public EditFrameDialogViewModel()
     {
-        // Defaults. Caller should set AllowFd first, then set FrameTypeIndex accordingly if needed.
-        IdTypeIndex = 0; // Standard
-        FrameTypeIndex = 0; // default to CAN20
+        // Defaults
+        IdTypeIndex = 0;
+        FrameTypeIndex = 0;
         DlcText = "8";
-        PeriodText = "1000";
 
-        OkCommand = new RelayCommand(_ => OnOk());
-        CancelCommand = new RelayCommand(_ => CloseRequested?.Invoke(this, false));
+        SubmitCommand = new RelayCommand(_ => OnSubmit());
+        CloseCommand = new RelayCommand(_ => CloseRequested?.Invoke(this, null));
     }
 
     private static bool TryParseInt(string? text, out int value)
@@ -130,31 +131,26 @@ public class AddPeriodicItemDialogViewModel : ObservableObject
         return parts.Select(p => Convert.ToByte(p, 16)).ToArray();
     }
 
-    private void OnOk()
+    private void OnSubmit()
     {
         ErrorText = string.Empty;
 
         if (!TryParseInt(IdText, out var id) || id < 0)
         {
-            ErrorText = "Invalid ID.";
-            return;
-        }
-        if (!TryParseInt(PeriodText, out var ms) || ms <= 0)
-        {
-            ErrorText = "Invalid period (ms).";
+            ErrorText = LocalizationService.GetString("EditFrame.Error.InvalidID", "Invalid ID.");
             return;
         }
         if (!TryParseInt(DlcText, out var dlc) || dlc < 0)
         {
-            ErrorText = "Invalid DLC.";
+            ErrorText = LocalizationService.GetString("EditFrame.Error.InvalidDLC", "Invalid DLC.");
             return;
         }
 
-        var isFd = IsFd;
         var isExtended = IsExtended;
+        var isFd = IsFd;
         if (isFd && !AllowFd)
         {
-            ErrorText = "FD mode is not enabled.";
+            ErrorText = LocalizationService.GetString("EditFrame.Error.FDNotEnabled", "FD mode is not enabled.");
             return;
         }
 
@@ -165,44 +161,43 @@ public class AddPeriodicItemDialogViewModel : ObservableObject
         }
         catch
         {
-            ErrorText = "Invalid DATA. Use hex bytes like: 01 02 0A FF";
+            ErrorText = LocalizationService.GetString("EditFrame.Error.InvalidDATA", "Invalid DATA. Use hex bytes like: 01 02 0A FF");
             return;
         }
-
-        var rtr = Rtr;
-        var brs = Brs;
 
         try
         {
             if (isFd)
             {
-                if (dlc > 15) { ErrorText = "FD DLC must be 0..15."; return; }
+                if (dlc > 15) { ErrorText = LocalizationService.GetString("EditFrame.Error.FDDlcRange", "FD DLC must be 0..15."); return; }
                 var targetLen = CanFdFrame.DlcToLen((byte)dlc);
                 if (bytes.Length > targetLen)
                 {
-                    ErrorText = $"DATA length ({bytes.Length}) exceeds FD DLC length ({targetLen}).";
+                    ErrorText = string.Format(LocalizationService.GetString("EditFrame.Error.ExceedsFDDlc", "DATA length ({0}) exceeds FD DLC length ({1})."), bytes.Length, targetLen);
                     return;
                 }
                 if (bytes.Length < targetLen)
                 {
                     Array.Resize(ref bytes, targetLen);
                 }
-                Result = new PeriodicItemModel
+                var brs = Brs;
+                var frame = new CanFdFrame(id, bytes, isExtendedFrame: isExtended, BRS: brs, ESI: false);
+                if (Transmit != null)
                 {
-                    Enabled = true,
-                    Id = id,
-                    PeriodMs = ms,
-                    IsFd = true,
-                    IsExtended = isExtended,
-                    Brs = brs,
-                    IsRemote = false,
-                    DataBytes = bytes,
-                    Dlc = (byte)dlc,
-                };
+                    var n = Transmit.Invoke(frame);
+                    if (n <= 0)
+                        ErrorText = LocalizationService.GetString("EditFrame.Error.NotSent", "Frame not sent (driver rejected or not ready).");
+                }
+                else
+                {
+                    OnConfirm?.Invoke(frame);
+                    CloseRequested?.Invoke(this, true);
+                }
             }
             else
             {
-                if (dlc > 8) { ErrorText = "CAN 2.0 DLC must be 0..8."; return; }
+                if (dlc > 8) { ErrorText = LocalizationService.GetString("EditFrame.Error.CAN20DlcRange", "CAN 2.0 DLC must be 0..8."); return; }
+                var rtr = Rtr;
                 if (rtr)
                 {
                     bytes = new byte[dlc];
@@ -211,7 +206,7 @@ public class AddPeriodicItemDialogViewModel : ObservableObject
                 {
                     if (bytes.Length > dlc)
                     {
-                        ErrorText = $"DATA length ({bytes.Length}) exceeds DLC ({dlc}).";
+                        ErrorText = string.Format(LocalizationService.GetString("EditFrame.Error.ExceedsDlc", "DATA length ({0}) exceeds DLC ({1})."), bytes.Length, dlc);
                         return;
                     }
                     if (bytes.Length < dlc)
@@ -219,27 +214,23 @@ public class AddPeriodicItemDialogViewModel : ObservableObject
                         Array.Resize(ref bytes, dlc);
                     }
                 }
-                Result = new PeriodicItemModel
+                var frame = new CanClassicFrame(id, bytes, isExtendedFrame: isExtended, isRemoteFrame: rtr);
+                if (Transmit != null)
                 {
-                    Enabled = true,
-                    Id = id,
-                    PeriodMs = ms,
-                    IsFd = false,
-                    IsExtended = isExtended,
-                    IsRemote = rtr,
-                    Brs = false,
-                    DataBytes = bytes,
-                    Dlc = (byte)dlc,
-                };
+                    var n = Transmit.Invoke(frame);
+                    if (n <= 0)
+                        ErrorText = LocalizationService.GetString("EditFrame.Error.NotSent", "Frame not sent (driver rejected or not ready).");
+                }
+                else
+                {
+                    OnConfirm?.Invoke(frame);
+                    CloseRequested?.Invoke(this, true);
+                }
             }
         }
         catch (Exception ex)
         {
-            ErrorText = $"Failed to build frame: {ex.Message}";
-            return;
+            ErrorText = string.Format(LocalizationService.GetString("EditFrame.Error.FailedToSend", "Failed to send: {0}"), ex.Message);
         }
-
-        CloseRequested?.Invoke(this, true);
     }
 }
-

@@ -1,10 +1,11 @@
 using System;
 using CanKit.Core.Definitions;
 using System.Linq;
+using CanKit.Sample.AvaloniaListener.Abstractions;
 
 namespace CanKit.Sample.AvaloniaListener.Models
 {
-    public class PeriodicItemModel : ViewModels.ObservableObject
+    public class PeriodicItemModel : ObservableObject
     {
         private bool _enabled = true;
         private int _id;
@@ -13,7 +14,7 @@ namespace CanKit.Sample.AvaloniaListener.Models
         private bool _isExtended;
         private bool _isRemote;
         private bool _brs;
-        private byte[] _dataBytes = Array.Empty<byte>();
+        private byte[] _dataBytes = [];
         private byte _dlc;
 
         public bool Enabled

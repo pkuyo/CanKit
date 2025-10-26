@@ -4,12 +4,17 @@ using CanKit.Sample.AvaloniaListener.ViewModels;
 
 namespace CanKit.Sample.AvaloniaListener.Views;
 
-public partial class PeriodicTxWindow : Window
+public partial class SettingsWindow : Window
 {
-    public PeriodicTxWindow(PeriodicViewModel vm)
+    public SettingsWindow()
+    {
+        InitializeComponent();
+        DataContext = new SettingsViewModel(this);
+    }
+
+    private void InitializeComponent()
     {
         AvaloniaXamlLoader.Load(this);
-        DataContext = vm;
     }
 }
 

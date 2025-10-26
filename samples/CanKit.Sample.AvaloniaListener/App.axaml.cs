@@ -6,6 +6,7 @@ using System.Linq;
 using Avalonia.Markup.Xaml;
 using CanKit.Sample.AvaloniaListener.ViewModels;
 using CanKit.Sample.AvaloniaListener.Views;
+using CanKit.Sample.AvaloniaListener.Services;
 
 namespace CanKit.Sample.AvaloniaListener;
 
@@ -20,6 +21,9 @@ public partial class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
+            // Load persisted settings and initialize localization
+            SettingsService.Load();
+            LocalizationService.Initialize();
             DisableAvaloniaDataAnnotationValidation();
             desktop.MainWindow = new MainWindow
             {

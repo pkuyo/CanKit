@@ -12,12 +12,12 @@ public partial class ConnectionOptionsWindow : Window
     public ConnectionOptionsWindow()
     {
         AvaloniaXamlLoader.Load(this);
-        DataContext = new ConnectionOptionsViewModel(null);
+        DataContext = new ConnectionOptionsViewModel(new ConnectionOptionsContext(new MainViewModel()));
     }
-    public ConnectionOptionsWindow(MainViewModel vm)
+    public ConnectionOptionsWindow(ConnectionOptionsViewModel vm)
     {
         AvaloniaXamlLoader.Load(this);
-        DataContext = new ConnectionOptionsViewModel(vm);
+        DataContext = vm;
     }
 
     private void OnOk(object? sender, RoutedEventArgs e)

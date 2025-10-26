@@ -424,7 +424,7 @@ public sealed class ControlCanBus : ICanBus<ControlCanBusRtConfigurator>, IBusOw
                     _asyncRx.Publish(frame);
                 any = true;
             }
-            if(!any) break;
+            if (!any) break;
         }
     }
 

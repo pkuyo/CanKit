@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using CanKit.Sample.AvaloniaListener.Abstractions;
 
 namespace CanKit.Sample.AvaloniaListener.Services
 {

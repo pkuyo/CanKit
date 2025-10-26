@@ -1,0 +1,75 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="using:CanKit.Sample.AvaloniaListener.ViewModels"
+        xmlns:m="using:CanKit.Sample.AvaloniaListener.Models"
+        mc:Ignorable="d"
+        x:Class="CanKit.Sample.AvaloniaListener.Views.DeviceManagerWindow"
+        x:DataType="vm:DeviceManagerViewModel"
+        Title="{DynamicResource DeviceMgr.Title}" Width="720" Height="420"
+        WindowStartupLocation="CenterOwner">
+  <Design.DataContext>
+    <vm:DeviceManagerViewModel>
+      <x:Arguments>
+        <vm:MainViewModel/>
+      </x:Arguments>
+    </vm:DeviceManagerViewModel>
+  </Design.DataContext>
+
+  <Grid Margin="12" RowDefinitions="Auto,Auto,*,Auto" ColumnDefinitions="*">
+    <Grid.Styles>
+      <Style Selector="Grid">
+        <Setter Property="Margin" Value="0,0,0,10"/>
+      </Style>
+    </Grid.Styles>
+    <!-- Endpoint selection and connect -->
+    <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="8">
+      <TextBlock Text="{DynamicResource DeviceMgr.Endpoint}" VerticalAlignment="Center" Width="60"/>
+      <ComboBox Width="360" ItemsSource="{Binding Endpoints}" SelectedItem="{Binding SelectedEndpoint}">
+        <ComboBox.ItemTemplate>
+          <DataTemplate x:DataType="m:EndpointInfo">
+            <TextBlock Text="{Binding DisplayName}"/>
+          </DataTemplate>
+        </ComboBox.ItemTemplate>
+      </ComboBox>
+      <Button Content="{DynamicResource DeviceMgr.Refresh}" Command="{Binding RefreshEndpointsCommand}"/>
+      <Button Content="{DynamicResource DeviceMgr.Connect}" Command="{Binding ConnectDeviceCommand}"/>
+    </StackPanel>
+
+    <!-- Custom endpoint input and actions -->
+    <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8" IsVisible="{Binding IsCustomSelected}">
+      <TextBlock Text="{DynamicResource DeviceMgr.Custom}" VerticalAlignment="Center" Width="60"/>
+      <TextBox Width="360" Text="{Binding CustomEndpoint, Mode=TwoWay}" Watermark="{DynamicResource DeviceMgr.Custom.Watermark}"/>
+      <Button Content="{DynamicResource DeviceMgr.Probe}" Command="{Binding ProbeCapabilitiesCommand}"/>
+      <Button Content="{DynamicResource DeviceMgr.Generate}" Command="{Binding GenerateEndpointCommand}"/>
+    </StackPanel>
+
+    <!-- Connected devices list -->
+    <Grid Grid.Row="2">
+      <Grid.RowDefinitions>
+        <RowDefinition Height="Auto"/>
+        <RowDefinition Height="*"/>
+      </Grid.RowDefinitions>
+      <TextBlock Text="{DynamicResource DeviceMgr.Connected}" FontWeight="Bold" Margin="0,8,0,4"/>
+      <ListBox Grid.Row="1" ItemsSource="{Binding ConnectedDevices}" SelectedItem="{Binding SelectedDevice}">
+        <ListBox.ItemTemplate>
+          <DataTemplate x:DataType="vm:DeviceSessionViewModel">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <TextBlock Text="{Binding DisplayName}"/>
+              <TextBlock Text="-"/>
+              <TextBlock Text="{Binding EndpointId}"/>
+              <TextBlock Text="{DynamicResource DeviceMgr.Listening}" Foreground="Green" IsVisible="{Binding IsListening}"/>
+            </StackPanel>
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+      </ListBox>
+    </Grid>
+
+    <!-- Actions -->
+    <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+      <Button Content="{DynamicResource DeviceMgr.Disconnect}" Command="{Binding DisconnectDeviceCommand}"/>
+    </StackPanel>
+  </Grid>
+</Window>
+

@@ -1,0 +1,129 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <!-- App -->
+  <x:String x:Key="App.Title">CanKit Tool</x:String>
+
+  <!-- Menu -->
+  <x:String x:Key="Menu.DeviceManager">Device Manager</x:String>
+  <x:String x:Key="Menu.Settings">Settings</x:String>
+  <x:String x:Key="Menu.Settings.Language">Language...</x:String>
+
+  <!-- MainWindow -->
+  <x:String x:Key="Main.ShowDevices">Show devices:</x:String>
+  <x:String x:Key="Main.SelectAll">Select All</x:String>
+  <x:String x:Key="Main.SelectNone">Select None</x:String>
+
+  <x:String x:Key="Main.Frames">Frames</x:String>
+  <x:String x:Key="Main.Col.Time">Time</x:String>
+  <x:String x:Key="Main.Col.Dir">Dir</x:String>
+  <x:String x:Key="Main.Col.Kind">Kind</x:String>
+  <x:String x:Key="Main.Col.Device">Device</x:String>
+  <x:String x:Key="Main.Col.Id">Id</x:String>
+  <x:String x:Key="Main.Col.Dlc">Dlc</x:String>
+  <x:String x:Key="Main.Col.Data">Data</x:String>
+
+  <x:String x:Key="Main.Logs">Logs</x:String>
+  <x:String x:Key="Main.SendList">Send List</x:String>
+
+  <x:String x:Key="Main.Add">Add...</x:String>
+  <x:String x:Key="Main.Edit">Edit...</x:String>
+  <x:String x:Key="Main.Delete">Delete</x:String>
+  <x:String x:Key="Main.Send">Send</x:String>
+
+  <x:String x:Key="Main.Context.Edit">Edit...</x:String>
+  <x:String x:Key="Main.Context.Delete">Delete</x:String>
+
+  <x:String x:Key="Main.Col.Enabled">Enabled</x:String>
+  <x:String x:Key="Main.Col.IntervalMs">Interval(ms)</x:String>
+  <x:String x:Key="Main.Col.Type">Type</x:String>
+  <x:String x:Key="Main.Col.Flag">Flag</x:String>
+
+  <!-- DeviceManagerWindow -->
+  <x:String x:Key="DeviceMgr.Title">Device Manager</x:String>
+  <x:String x:Key="DeviceMgr.Endpoint">Endpoint</x:String>
+  <x:String x:Key="DeviceMgr.Refresh">Refresh</x:String>
+  <x:String x:Key="DeviceMgr.Connect">Connect Device...</x:String>
+  <x:String x:Key="DeviceMgr.Custom">Custom</x:String>
+  <x:String x:Key="DeviceMgr.Custom.Watermark">e.g. zlg://USBCANFD-200U?index=0#ch1</x:String>
+  <x:String x:Key="DeviceMgr.Probe">Probe Capabilities</x:String>
+  <x:String x:Key="DeviceMgr.Generate">Generate Endpoint...</x:String>
+  <x:String x:Key="DeviceMgr.Connected">Connected Devices</x:String>
+  <x:String x:Key="DeviceMgr.Listening">(Listening)</x:String>
+  <x:String x:Key="DeviceMgr.Disconnect">Disconnect</x:String>
+
+  <!-- SettingsWindow -->
+  <x:String x:Key="Settings.Title">Settings</x:String>
+  <x:String x:Key="Settings.Language">Language</x:String>
+  <x:String x:Key="Settings.Lang.Auto">Follow System</x:String>
+  <x:String x:Key="Settings.Lang.ZhCN">中文 (Chinese)</x:String>
+  <x:String x:Key="Settings.Lang.EnUS">English</x:String>
+  <x:String x:Key="Common.OK">OK</x:String>
+  <x:String x:Key="Common.Cancel">Cancel</x:String>
+
+  <!-- Connection Options -->
+  <x:String x:Key="ConnOpts.Title">Connection Options</x:String>
+  <x:String x:Key="ConnOpts.Protocol">Protocol</x:String>
+  <x:String x:Key="ConnOpts.BitRate">BitRate</x:String>
+  <x:String x:Key="ConnOpts.DataBitRate">DataBitRate</x:String>
+  <x:String x:Key="ConnOpts.ListenOnly">Listen Only</x:String>
+  <x:String x:Key="ConnOpts.ErrorCounterPeriod">Error Counter Period</x:String>
+  <x:String x:Key="ConnOpts.Unit.ms">ms</x:String>
+  <x:String x:Key="ConnOpts.EditFilters">Edit Filters...</x:String>
+  <x:String x:Key="ConnOpts.ApplyHint">Changes apply after OK</x:String>
+
+  <!-- Filter Add Dialog -->
+  <x:String x:Key="Filter.Add.Title">Add Filter</x:String>
+  <x:String x:Key="Filter.Add.Type">Type</x:String>
+  <x:String x:Key="Filter.Add.IdType">IdType</x:String>
+  <x:String x:Key="Filter.Add.Mask">Mask</x:String>
+  <x:String x:Key="Filter.Add.Range">Range</x:String>
+  <x:String x:Key="Filter.Add.Standard">Standard</x:String>
+  <x:String x:Key="Filter.Add.Extend">Extend</x:String>
+  <x:String x:Key="Filter.Add.FromAccCode">From/AccCode</x:String>
+  <x:String x:Key="Filter.Add.ToAccMask">To/AccMask</x:String>
+  <x:String x:Key="Filter.Add.InputHint">You can enter decimal or 0x-prefixed hex.</x:String>
+
+  <!-- Filter Editor -->
+  <x:String x:Key="Filter.Edit.Title">Edit Filters</x:String>
+  <x:String x:Key="Filter.Edit.Add">Add</x:String>
+  <x:String x:Key="Filter.Edit.Delete">Delete</x:String>
+  <x:String x:Key="Filter.Edit.Close">Close</x:String>
+
+  <!-- Edit Frame Dialog -->
+  <x:String x:Key="EditFrame.FrameLabel">Frame</x:String>
+  <x:String x:Key="EditFrame.IdTypeLabel">ID Type</x:String>
+  <x:String x:Key="EditFrame.IdLabel">ID</x:String>
+  <x:String x:Key="EditFrame.DlcLabel">DLC</x:String>
+  <x:String x:Key="EditFrame.DataHint">Data (hex, space/comma separated)</x:String>
+  <x:String x:Key="EditFrame.RTR">RTR</x:String>
+  <x:String x:Key="EditFrame.BRS">BRS</x:String>
+  <x:String x:Key="EditFrame.Close">Close</x:String>
+  <x:String x:Key="EditFrame.Submit.Edit">Edit</x:String>
+  <x:String x:Key="EditFrame.Submit.Add">Add</x:String>
+  <x:String x:Key="EditFrame.Title.Edit">Edit Frame</x:String>
+  <x:String x:Key="EditFrame.Title.Add">Add Frame</x:String>
+  <x:String x:Key="EditFrame.Error.InvalidID">Invalid ID.</x:String>
+  <x:String x:Key="EditFrame.Error.InvalidDLC">Invalid DLC.</x:String>
+  <x:String x:Key="EditFrame.Error.FDNotEnabled">FD mode is not enabled.</x:String>
+  <x:String x:Key="EditFrame.Error.InvalidDATA">Invalid DATA. Use hex bytes like: 01 02 0A FF</x:String>
+  <x:String x:Key="EditFrame.Error.FDDlcRange">FD DLC must be 0..15.</x:String>
+  <x:String x:Key="EditFrame.Error.ExceedsFDDlc">DATA length ({0}) exceeds FD DLC length ({1}).</x:String>
+  <x:String x:Key="EditFrame.Error.CAN20DlcRange">CAN 2.0 DLC must be 0..8.</x:String>
+  <x:String x:Key="EditFrame.Error.ExceedsDlc">DATA length ({0}) exceeds DLC ({1}).</x:String>
+  <x:String x:Key="EditFrame.Error.NotSent">Frame not sent (driver rejected or not ready).</x:String>
+  <x:String x:Key="EditFrame.Error.FailedToSend">Failed to send: {0}</x:String>
+
+  <!-- Endpoint Generator Dialog -->
+  <x:String x:Key="EndpointGen.Title">Generate Endpoint</x:String>
+  <x:String x:Key="EndpointGen.Vendor">Vendor</x:String>
+  <x:String x:Key="EndpointGen.Device">Device</x:String>
+  <x:String x:Key="EndpointGen.DeviceIndex">Device Index</x:String>
+  <x:String x:Key="EndpointGen.Port">Port</x:String>
+  <x:String x:Key="EndpointGen.Preview">Preview:</x:String>
+  <x:String x:Key="EndpointGen.Generate">Generate</x:String>
+  <x:String x:Key="EndpointGen.Cancel">Cancel</x:String>
+
+  <!-- Add Filter Errors -->
+  <x:String x:Key="Filter.Add.Error.InvalidFirst">Invalid first value.</x:String>
+  <x:String x:Key="Filter.Add.Error.InvalidSecond">Invalid second value.</x:String>
+  <x:String x:Key="Filter.Add.Error.RangeInvalid">Range: From must be &lt;= To.</x:String>
+</ResourceDictionary>

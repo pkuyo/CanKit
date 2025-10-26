@@ -1,40 +1,47 @@
 using System.Collections.ObjectModel;
 using Avalonia;
 using Avalonia.Threading;
+using CanKit.Sample.AvaloniaListener.Abstractions;
 using CanKit.Sample.AvaloniaListener.Models;
 
 namespace CanKit.Sample.AvaloniaListener.ViewModels
 {
     public class ConnectionOptionsViewModel : ObservableObject
     {
-        private readonly MainViewModel _main;
+        private readonly IConnectionOptionsContext _ctx;
 
-        public ConnectionOptionsViewModel(MainViewModel? main)
+        public ConnectionOptionsViewModel(IConnectionOptionsContext ctx)
         {
-            _main = main ?? new MainViewModel();
+            _ctx = ctx;
             OpenFiltersCommand = new RelayCommand(_ => OnOpenFilters());
         }
 
+        // Back-compat convenience
+        public ConnectionOptionsViewModel(MainViewModel? main)
+            : this(new ConnectionOptionsContext(main ?? new MainViewModel()))
+        {
+        }
+
         // Pass-through collections
-        public ObservableCollection<int> BitRates => _main.BitRates;
-        public ObservableCollection<int> DataBitRates => _main.DataBitRates;
-        public ObservableCollection<FilterRuleModel> Filters => _main.Filters;
+        public ObservableCollection<int> BitRates => _ctx.BitRates;
+        public ObservableCollection<int> DataBitRates => _ctx.DataBitRates;
+        public ObservableCollection<FilterRuleModel> Filters => _ctx.Filters;
 
         // Capability flags
-        public bool SupportsCan20 => _main.Capabilities?.SupportsCan20 ?? true;
-        public bool SupportsCanFd => _main.Capabilities?.SupportsCanFd ?? false;
-        public bool SupportsListenOnly => _main.SupportsListenOnly;
-        public bool SupportsErrorCounters => _main.SupportsErrorCounters;
+        public bool SupportsCan20 => _ctx.SupportsCan20;
+        public bool SupportsCanFd => _ctx.SupportsCanFd;
+        public bool SupportsListenOnly => _ctx.SupportsListenOnly;
+        public bool SupportsErrorCounters => _ctx.SupportsErrorCounters;
 
         // Selected values
         public bool UseCan20
         {
-            get => _main.UseCan20;
+            get => _ctx.UseCan20;
             set
             {
-                if (_main.UseCan20 != value)
+                if (_ctx.UseCan20 != value)
                 {
-                    _main.UseCan20 = value;
+                    _ctx.UseCan20 = value;
                     OnPropertyChanged();
                     OnPropertyChanged(nameof(UseCanFd));
                 }
@@ -43,12 +50,12 @@ namespace CanKit.Sample.AvaloniaListener.ViewModels
 
         public bool UseCanFd
         {
-            get => _main.UseCanFd;
+            get => _ctx.UseCanFd;
             set
             {
-                if (_main.UseCanFd != value)
+                if (_ctx.UseCanFd != value)
                 {
-                    _main.UseCanFd = value;
+                    _ctx.UseCanFd = value;
                     OnPropertyChanged();
                     OnPropertyChanged(nameof(UseCan20));
                 }
@@ -57,12 +64,12 @@ namespace CanKit.Sample.AvaloniaListener.ViewModels
 
         public int? SelectedBitRate
         {
-            get => _main.SelectedBitRate;
+            get => _ctx.SelectedBitRate;
             set
             {
-                if (_main.SelectedBitRate != value)
+                if (_ctx.SelectedBitRate != value)
                 {
-                    _main.SelectedBitRate = value;
+                    _ctx.SelectedBitRate = value;
                     OnPropertyChanged();
                 }
             }
@@ -70,12 +77,12 @@ namespace CanKit.Sample.AvaloniaListener.ViewModels
 
         public int? SelectedDataBitRate
         {
-            get => _main.SelectedDataBitRate;
+            get => _ctx.SelectedDataBitRate;
             set
             {
-                if (_main.SelectedDataBitRate != value)
+                if (_ctx.SelectedDataBitRate != value)
                 {
-                    _main.SelectedDataBitRate = value;
+                    _ctx.SelectedDataBitRate = value;
                     OnPropertyChanged();
                 }
             }
@@ -83,12 +90,12 @@ namespace CanKit.Sample.AvaloniaListener.ViewModels
 
         public bool ListenOnly
         {
-            get => _main.ListenOnly;
+            get => _ctx.ListenOnly;
             set
             {
-                if (_main.ListenOnly != value)
+                if (_ctx.ListenOnly != value)
                 {
-                    _main.ListenOnly = value;
+                    _ctx.ListenOnly = value;
                     OnPropertyChanged();
                 }
             }
@@ -96,12 +103,12 @@ namespace CanKit.Sample.AvaloniaListener.ViewModels
 
         public int ErrorCountersPeriodMs
         {
-            get => _main.ErrorCountersPeriodMs;
+            get => _ctx.ErrorCountersPeriodMs;
             set
             {
-                if (_main.ErrorCountersPeriodMs != value)
+                if (_ctx.ErrorCountersPeriodMs != value)
                 {
-                    _main.ErrorCountersPeriodMs = value;
+                    _ctx.ErrorCountersPeriodMs = value;
                     OnPropertyChanged();
                 }
             }
@@ -111,17 +118,14 @@ namespace CanKit.Sample.AvaloniaListener.ViewModels
 
         private void OnOpenFilters()
         {
-            Dispatcher.UIThread.Post(async () =>
+            Dispatcher.UIThread.Post(async void () =>
             {
                 try
                 {
                     var dlg = new Views.FilterEditorWindow(Filters);
                     var app = Application.Current;
                     var owner = (app?.ApplicationLifetime as Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime)?.MainWindow;
-                    if (owner != null)
-                        await dlg.ShowDialog<bool?>(owner);
-                    else
-                        await dlg.ShowDialog<bool?>(null!);
+                    await dlg.ShowDialog<bool?>(owner!);
                 }
                 catch
                 {
@@ -131,4 +135,3 @@ namespace CanKit.Sample.AvaloniaListener.ViewModels
         }
     }
 }
-

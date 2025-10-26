@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using CanKit.Core.Endpoints;
+using CanKit.Sample.AvaloniaListener.Abstractions;
 using CanKit.Sample.AvaloniaListener.Models;
 
 namespace CanKit.Sample.AvaloniaListener.Services
@@ -14,7 +15,7 @@ namespace CanKit.Sample.AvaloniaListener.Services
             var list = new List<EndpointInfo>();
             try
             {
-                var entries = BusEndpointEntry.Enumerate("pcan", "kvaser", "socketcan", "zlg");
+                var entries = BusEndpointEntry.Enumerate("pcan", "kvaser", "socketcan", "zlg", "controlcan");
                 foreach (var ep in entries)
                 {
                     list.Add(new EndpointInfo

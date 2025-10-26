@@ -2,6 +2,7 @@ using System;
 using System.Collections.ObjectModel;
 using Avalonia;
 using Avalonia.Threading;
+using CanKit.Sample.AvaloniaListener.Abstractions;
 using CanKit.Sample.AvaloniaListener.Models;
 
 namespace CanKit.Sample.AvaloniaListener.ViewModels
@@ -35,18 +36,14 @@ namespace CanKit.Sample.AvaloniaListener.ViewModels
 
         private void OnAdd()
         {
-            Dispatcher.UIThread.Post(async () =>
+            Dispatcher.UIThread.Post(async void () =>
             {
                 try
                 {
                     var dlg = new Views.AddFilterDialog();
                     var app = Application.Current;
                     var owner = (app?.ApplicationLifetime as Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime)?.MainWindow;
-                    bool? result;
-                    if (owner != null)
-                        result = await dlg.ShowDialog<bool?>(owner);
-                    else
-                        result = await dlg.ShowDialog<bool?>(null!);
+                    bool? result = await dlg.ShowDialog<bool?>(owner!);
 
                     if (result == true && dlg.Result != null)
                     {

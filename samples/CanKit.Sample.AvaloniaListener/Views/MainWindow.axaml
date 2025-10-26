@@ -4,11 +4,11 @@
         xmlns:m="using:CanKit.Sample.AvaloniaListener.Models"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        mc:Ignorable="d" d:DesignWidth="1100" d:DesignHeight="700"
+        mc:Ignorable="d" d:DesignWidth="1300" d:DesignHeight="800"
         x:Class="CanKit.Sample.AvaloniaListener.Views.MainWindow"
         x:DataType="vm:MainViewModel"
-		xmlns:conv="using:CanKit.Sample.AvaloniaListener.Converters"
-        Title="CanKit CAN Listener (Avalonia)">
+        xmlns:conv="using:CanKit.Sample.AvaloniaListener.Converters"
+        Title="{DynamicResource App.Title}">
 
     <Design.DataContext>
         <vm:MainViewModel/>
@@ -20,52 +20,40 @@
             <Setter Property="Margin" Value="0,8,0,4"/>
         </Style>
     </Window.Styles>
-	<Window.Resources>
-		<conv:BitrateConverter x:Key="BitrateConv"/>
-	</Window.Resources>
-    <Grid RowDefinitions="Auto,Auto,Auto,*" ColumnDefinitions="*">
-        <!-- Endpoint Selection -->
-        <StackPanel Margin="8" Orientation="Horizontal" Spacing="8">
-            <TextBlock Text="Endpoint" VerticalAlignment="Center"/>
-            <ComboBox Width="360" ItemsSource="{Binding Endpoints}" SelectedItem="{Binding SelectedEndpoint}">
-                <ComboBox.ItemTemplate>
-                    <DataTemplate x:DataType="m:EndpointInfo">
-                        <TextBlock Text="{Binding DisplayName}"/>
+    <Window.Resources>
+        <conv:BitrateConverter x:Key="BitrateConv"/>
+    </Window.Resources>
+    <Grid RowDefinitions="Auto,Auto,*,Auto" ColumnDefinitions="*">
+        <!-- Top Menu -->
+        <Menu Grid.Row="0">
+            <MenuItem Header="{DynamicResource Menu.DeviceManager}" Command="{Binding OpenDeviceManagerCommand}"/>
+            <MenuItem Header="{DynamicResource Menu.Settings}">
+                <MenuItem Header="{DynamicResource Menu.Settings.Language}" Command="{Binding OpenSettingsCommand}"/>
+            </MenuItem>
+        </Menu>
+
+        <!-- Device filter row -->
+        <Grid Grid.Row="1" Margin="8" ColumnDefinitions="Auto,*,Auto,Auto" VerticalAlignment="Center">
+            <TextBlock Grid.Column="0" Text="{DynamicResource Main.ShowDevices}" VerticalAlignment="Center"/>
+            <ItemsControl Grid.Column="1" ItemsSource="{Binding ConnectedDevices}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:DeviceSessionViewModel">
+                        <CheckBox Content="{Binding DisplayName}" IsChecked="{Binding IsSelectedForView, Mode=TwoWay}" Margin="0,0,12,0"/>
                     </DataTemplate>
-                </ComboBox.ItemTemplate>
-            </ComboBox>
-            <TextBox Width="360" Watermark="custom endpoint..." Text="{Binding CustomEndpoint}" IsVisible="{Binding IsCustomSelected}"/>
-            <Button Content="Refresh" Command="{Binding RefreshEndpointsCommand}"/>
-            <Button Content="Query Caps" Command="{Binding OpenCustomEndpointCommand}"/>
-        </StackPanel>
-
-        <!-- Options (moved to dialog) -->
-        <StackPanel Grid.Row="1" Margin="8" Orientation="Horizontal" Spacing="12">
-            <Button Content="Options..." Click="OnOpenOptions"/>
-        </StackPanel>
-
-        <!-- Actions / Status -->
-        <StackPanel Grid.Row="2" Margin="8" Orientation="Horizontal" Spacing="12">
-            <Button Content="Start" Command="{Binding StartListeningCommand}"/>
-            <Button Content="Stop" Command="{Binding StopListeningCommand}"/>
-            <Button Content="Send..." Click="OnOpenSend"/>
-            <Button Content="Periodic..." Click="OnOpenPeriodic"/>
-            <TextBlock Text="TEC:" VerticalAlignment="Center" IsVisible="{Binding SupportsErrorCounters}"/>
-            <TextBlock Text="{Binding Tec}" VerticalAlignment="Center" IsVisible="{Binding SupportsErrorCounters}"/>
-            <TextBlock Text="REC:" Margin="16,0,0,0" VerticalAlignment="Center" IsVisible="{Binding SupportsErrorCounters}"/>
-            <TextBlock Text="{Binding Rec}" VerticalAlignment="Center" IsVisible="{Binding SupportsErrorCounters}"/>
-            <TextBlock Text="Bus Usage:" Margin="16,0,0,0" VerticalAlignment="Center" IsVisible="{Binding BusUsage}"/>
-            <TextBlock Text="{Binding BusUsage}" VerticalAlignment="Center" IsVisible="{Binding BusUsage}"/>
-        </StackPanel>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <Button Grid.Column="2" Content="{DynamicResource Main.SelectAll}" Command="{Binding SelectAllDevicesCommand}" Margin="12,0,0,0"/>
+            <Button Grid.Column="3" Content="{DynamicResource Main.SelectNone}" Command="{Binding SelectNoneDevicesCommand}" Margin="8,0,0,0"/>
+        </Grid>
 
         <!-- Main Content: Frames and Logs -->
-        <Grid Grid.Row="3" Margin="8" ColumnDefinitions="3*,2*" RowDefinitions="*">
+        <Grid Grid.Row="2" Margin="8" ColumnDefinitions="4*,2*" RowDefinitions="*">
             <Grid Grid.Column="0">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
-                <TextBlock Classes="header" Text="Frames"/>
+                <TextBlock Classes="header" Text="{DynamicResource Main.Frames}"/>
                 <DataGrid Grid.Row="1"
                           ItemsSource="{Binding Frames}"
                           AutoGenerateColumns="False"
@@ -90,12 +78,13 @@
                     </DataGrid.Styles>
 
                     <DataGrid.Columns>
-                        <DataGridTextColumn Header="Time" Binding="{Binding Time}" Width="120"/>
-                        <DataGridTextColumn Header="Dir"  Binding="{Binding Dir}"  MinWidth="40" Width="SizeToHeader"/>
-                        <DataGridTextColumn Header="Kind" Binding="{Binding Kind}" MinWidth="40" Width="SizeToHeader"/>
-                        <DataGridTextColumn Header="Id"   Binding="{Binding Id}"   Width="120"/>
-                        <DataGridTextColumn Header="Dlc"  Binding="{Binding Dlc}"  MinWidth="40" Width="SizeToHeader"/>
-                        <DataGridTextColumn Header="Data" Binding="{Binding Data}" Width="*">
+                        <DataGridTextColumn Header="{DynamicResource Main.Col.Time}" Binding="{Binding Time}" Width="120"/>
+                        <DataGridTextColumn Header="{DynamicResource Main.Col.Dir}"  Binding="{Binding Dir}"  MinWidth="40" Width="SizeToHeader"/>
+                        <DataGridTextColumn Header="{DynamicResource Main.Col.Kind}" Binding="{Binding Kind}" MinWidth="40" Width="SizeToHeader"/>
+                        <DataGridTextColumn Header="{DynamicResource Main.Col.Device}" Binding="{Binding Source}" Width="180"/>
+                        <DataGridTextColumn Header="{DynamicResource Main.Col.Id}"   Binding="{Binding Id}"   Width="120"/>
+                        <DataGridTextColumn Header="{DynamicResource Main.Col.Dlc}"  Binding="{Binding Dlc}"  MinWidth="40" Width="SizeToHeader"/>
+                        <DataGridTextColumn Header="{DynamicResource Main.Col.Data}" Binding="{Binding Data}" Width="*">
                         </DataGridTextColumn>
                     </DataGrid.Columns>
                 </DataGrid>
@@ -105,10 +94,75 @@
                     <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
-                <TextBlock Classes="header" Text="Logs"/>
-                <ListBox Grid.Row="1" ItemsSource="{Binding Logs}"/>
+                <TextBlock Classes="header" Text="{DynamicResource Main.Logs}"/>
+                <ListBox Grid.Row="1" ItemsSource="{Binding Logs}">
+                      <ListBox.Styles>
+                    <Style Selector="ListBoxItem">
+                      <Setter Property="FontSize" Value="12"/>
+                      <Setter Property="MinHeight" Value="5"/>
+                      <Setter Property="Margin" Value="0,0,0,0"/>
+                      <Setter Property="Padding" Value="2,2"/>
+                    </Style>
+                  </ListBox.Styles>
+                </ListBox>
             </Grid>
+        </Grid>
+
+        <!-- Send List -->
+        <Grid Grid.Row="3" Margin="8" RowDefinitions="Auto,Auto,*">
+            <TextBlock Classes="header" Text="{DynamicResource Main.SendList}"/>
+            <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="8" Margin="0,4,0,4">
+                <Button Content="{DynamicResource Main.Add}" Command="{Binding AddSendItemCommand}"/>
+                <Button Content="{DynamicResource Main.Edit}" Command="{Binding EditSendItemCommand}" CommandParameter="{Binding SelectedSendItem}"/>
+                <Button Content="{DynamicResource Main.Delete}" Command="{Binding RemoveSendItemCommand}" CommandParameter="{Binding SelectedSendItem}"/>
+                <Button Content="{DynamicResource Main.Send}" Command="{Binding SendEnabledCommand}"/>
+            </StackPanel>
+            <DataGrid Grid.Row="2"
+                      ItemsSource="{Binding SendItems}"
+                      SelectedItem="{Binding SelectedSendItem, Mode=TwoWay}"
+                      AutoGenerateColumns="False"
+                      IsReadOnly="False"
+                      CanUserSortColumns="False"
+                      RowHeight="28"
+                      MinHeight="200"
+                      ColumnHeaderHeight="32"
+                      Margin="0,2,0,0">
+                <DataGrid.Styles>
+                    <Style Selector="DataGridRow">
+                        <Setter Property="ContextMenu">
+                            <ContextMenu>
+                                <MenuItem Header="{DynamicResource Main.Context.Edit}" Command="{Binding $parent[Window].DataContext.EditSendItemCommand}" CommandParameter="{Binding}"/>
+                                <MenuItem Header="{DynamicResource Main.Context.Delete}" Command="{Binding $parent[Window].DataContext.RemoveSendItemCommand}" CommandParameter="{Binding}"/>
+                            </ContextMenu>
+                        </Setter>
+                    </Style>
+                </DataGrid.Styles>
+                <DataGrid.Columns>
+                    <DataGridCheckBoxColumn Header="{DynamicResource Main.Col.Enabled}" Binding="{Binding IsEnabled, Mode=TwoWay}" Width="70"/>
+                    <DataGridTemplateColumn Header="{DynamicResource Main.Col.Device}" Width="200">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <ComboBox ItemsSource="{Binding $parent[Window].DataContext.ConnectedDevices}"
+                                          SelectedItem="{Binding SelectedDevice, Mode=TwoWay}" MinWidth="200">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:DeviceSessionViewModel">
+                                            <TextBlock Text="{Binding DisplayName}"/>
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                    <DataGridTextColumn Header="{DynamicResource Main.Col.IntervalMs}" Binding="{Binding DelayMs, Mode=TwoWay}" Width="100"/>
+                    <DataGridTextColumn Header="{DynamicResource Main.Col.Type}" Binding="{Binding Kind}" Width="70"/>
+                    <DataGridTextColumn Header="ID" Binding="{Binding IdText}" Width="120"/>
+                    <DataGridTextColumn Header="DLC" Binding="{Binding Dlc}" Width="70"/>
+                    <DataGridTextColumn Header="{DynamicResource Main.Col.Flag}" Binding="{Binding Flag}" Width="70"/>
+                    <DataGridTextColumn Header="{DynamicResource Main.Col.Data}" Binding="{Binding DataText}" Width="*"/>
+                </DataGrid.Columns>
+            </DataGrid>
         </Grid>
     </Grid>
 
 </Window>
+

@@ -4,13 +4,13 @@
         xmlns:vm="using:CanKit.Sample.AvaloniaListener.ViewModels"
         x:Class="CanKit.Sample.AvaloniaListener.Views.FilterEditorWindow"
         x:DataType="vm:FilterEditorViewModel"
-        Title="Edit Filters" Height="360" Width="888"
+        Title="{DynamicResource Filter.Edit.Title}" Height="360" Width="888"
         WindowStartupLocation="CenterOwner">
   <DockPanel Margin="12">
     <StackPanel Orientation="Horizontal" DockPanel.Dock="Bottom" HorizontalAlignment="Right" Spacing="8" Margin="0,8,0,0">
-      <Button Content="Add" Width="80" Command="{Binding AddCommand}"/>
-      <Button Content="Delete" Width="80" Command="{Binding DeleteCommand}"/>
-      <Button Content="Close" Width="80" IsCancel="True" Margin="16,0,0,0"/>
+      <Button Content="{DynamicResource Filter.Edit.Add}" Width="80" Command="{Binding AddCommand}"/>
+      <Button Content="{DynamicResource Filter.Edit.Delete}" Width="80" Command="{Binding DeleteCommand}"/>
+      <Button Content="{DynamicResource Filter.Edit.Close}" Width="80" IsCancel="True" Margin="16,0,0,0"/>
     </StackPanel>
 
     <ListBox x:Name="FilterList" ItemsSource="{Binding Filters}" SelectedItem="{Binding Selected}" BorderBrush="#DDD" BorderThickness="1">

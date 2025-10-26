@@ -12,8 +12,10 @@ namespace CanKit.Sample.AvaloniaListener.Models
         public string Id { get; }
         public int Dlc { get; }
         public string Data { get; }
+        public string Source { get; }
+        public string SourceId { get; }
 
-        private FrameRow(string time, string dir, string kind, string id, int dlc, string data)
+        private FrameRow(string time, string dir, string kind, string id, int dlc, string data, string source = "", string sourceId = "")
         {
             Time = time;
             Dir = dir;
@@ -21,6 +23,8 @@ namespace CanKit.Sample.AvaloniaListener.Models
             Id = id;
             Dlc = dlc;
             Data = data;
+            Source = source;
+            SourceId = sourceId;
         }
 
         public static FrameRow From(ICanFrame f, FrameDirection dir)
@@ -31,6 +35,16 @@ namespace CanKit.Sample.AvaloniaListener.Models
             var idHex = f.IsExtendedFrame ? $"0x{f.ID:X8}" : $"0x{f.ID:X3}";
             string data = HexString(f.Data.Span);
             return new FrameRow(time, d, kind, idHex, f.Dlc, data);
+        }
+
+        public static FrameRow From(ICanFrame f, FrameDirection dir, string sourceId, string sourceDisplay)
+        {
+            var time = DateTime.Now.ToString("HH:mm:ss.fff");
+            var d = dir == FrameDirection.Tx ? "Tx" : "Rx";
+            var kind = f.FrameKind == CanFrameType.CanFd ? "FD" : "2.0";
+            var idHex = f.IsExtendedFrame ? $"0x{f.ID:X8}" : $"0x{f.ID:X3}";
+            string data = HexString(f.Data.Span);
+            return new FrameRow(time, d, kind, idHex, f.Dlc, data, sourceDisplay, sourceId);
         }
 
         private static string HexString(ReadOnlySpan<byte> span)

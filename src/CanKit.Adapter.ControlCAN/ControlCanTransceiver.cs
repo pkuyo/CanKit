@@ -83,7 +83,7 @@ internal sealed class ControlCanTransceiver : ITransceiver
     {
         if (bus is not ControlCanBus ctl)
             throw new ArgumentException("bus type mismatch");
-        if(count < 0)
+        if (count < 0)
             throw new ArgumentOutOfRangeException(nameof(count));
         var cap = Math.Max(1, Math.Min(count, CcApi.BATCH_COUNT));
         var arr = new CcApi.VCI_CAN_OBJ[cap];
@@ -101,7 +101,7 @@ internal sealed class ControlCanTransceiver : ITransceiver
                 };
             }
             count -= (int)got;
-            if(got != recCount)
+            if (got != recCount)
                 yield break;
         }
     }
