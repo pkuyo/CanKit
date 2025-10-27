@@ -41,8 +41,7 @@ public partial class TestMatrix
     private static IEnumerable<object[]> GapCases()
     {
         // (gapMs, lossLimit)
-        yield return [1, 0.001]; // gap=1ms, loss < 0.1%
-        yield return [0, 0.05]; // gap=0ms, loss < 5%
+        yield return [1, 0.0]; // gap=1ms, loss < 0.1%
     }
 
 

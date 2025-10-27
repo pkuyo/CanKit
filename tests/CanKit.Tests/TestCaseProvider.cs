@@ -31,7 +31,6 @@ public class TestCaseProvider : IDisposable
                 Console.WriteLine($"Tried to instantiate test data provider failed, AssemblyName:{env}");
                 Provider = new EmptyTestDataProvider();
             }
-
             AbitRate = Provider.BaudRate?.aBit ?? 1_000_000;
             DbitRate = Provider.BaudRate?.dBit ?? 8_000_000;
         }

@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using CanKit.Core;
 using CanKit.Core.Abstractions;
 using CanKit.Core.Definitions;
+using CanKit.Core.Utils;
 
 namespace CanKit.Tests.Utils;
 
@@ -131,14 +132,14 @@ internal static class TestHelpers
         return result;
     }
 
-    public static async Task SendBurstAsync(ICanBus tx, IEnumerable<ICanFrame> frames, int gapMs)
+    public static async Task SendBurstAsync(ICanBus tx, IEnumerable<ICanFrame> frames, double gapMs)
     {
         var queue = new Queue<ICanFrame>();
         foreach(var fr in frames)
         {
             queue.Enqueue(fr);
 
-            if (queue.Count >= 64)
+            if (queue.Count >= 32)
             {
                 while (queue.Count > 0)
                 {
@@ -146,15 +147,11 @@ internal static class TestHelpers
 
                     for (var j = 0; j < send && queue.Count > 0; j++)
                         queue.Dequeue();
+                    PreciseDelay.Delay(TimeSpan.FromMilliseconds(gapMs), true);
                     if (queue.Count == 0)
                     {
-                        if (gapMs > 0)
-                            await Task.Delay(gapMs);
                         break;
-
                     }
-
-                    await Task.Delay(1);
                 }
             }
         }
@@ -167,8 +164,7 @@ internal static class TestHelpers
                 queue.Dequeue();
             if (queue.Count == 0)
                 break;
-
-            await Task.Delay(1);
+            PreciseDelay.Delay(TimeSpan.FromMilliseconds(gapMs), true);
         }
     }
 

@@ -113,17 +113,17 @@ namespace CanKit.Core.Definitions
         private const int EXT_BIT = 31;
         private const int RTR_BIT = 30;
         private const int ERR_BIT = 29;
-        private const uint ID_MASK = 0x1FFFFFFF;
-
+        private const uint ID_EFF_MASK = 0x1FFFFFFF;
+        private const uint ID_STD_MASK = 0x000007FF;
         /// <summary>
         /// Gets the ID with flag bits removed. (获取去掉标志位后的 ID。)
         /// </summary>
-        public static int GetId(uint raw) => (int)(raw & ID_MASK);
+        public static int GetId(uint raw, bool ide) => (int)(raw & (ide ? ID_EFF_MASK : ID_STD_MASK));
 
         /// <summary>
         /// Writes the ID into the raw value. (将 ID 写入原始值中。)
         /// </summary>
-        public static uint SetId(uint raw, int id) => (raw & ~ID_MASK) | ((uint)id & ID_MASK);
+        public static uint SetId(uint raw, int id) => (raw & ~ID_EFF_MASK) | ((uint)id & ID_EFF_MASK);
 
         public static bool Get(uint raw, int bit) => (raw & (1u << bit)) != 0;
 
@@ -158,6 +158,7 @@ namespace CanKit.Core.Definitions
             if (id < 0) throw new ArgumentOutOfRangeException(nameof(id));
             if (dataInit.Length > 8) throw new ArgumentOutOfRangeException(nameof(dataInit));
             ID = id;
+
             IsRemoteFrame = isRemoteFrame;
             IsExtendedFrame = isExtendedFrame;
             _data = dataInit;
@@ -181,7 +182,10 @@ namespace CanKit.Core.Definitions
             init
             {
                 RawID = CanIdBits.WithRemote(RawID, value);
-                _data = ReadOnlyMemory<byte>.Empty;
+                if (value)
+                {
+                    _data = ReadOnlyMemory<byte>.Empty;
+                }
             }
         }
 
@@ -205,7 +209,7 @@ namespace CanKit.Core.Definitions
         /// </summary>
         public int ID
         {
-            get => CanIdBits.GetId(RawID);
+            get => CanIdBits.GetId(RawID, IsExtendedFrame);
             init
             {
                 if (value < 0) throw new ArgumentOutOfRangeException(nameof(ID));
@@ -279,7 +283,7 @@ namespace CanKit.Core.Definitions
         /// </summary>
         public int ID
         {
-            get => CanIdBits.GetId(RawID);
+            get => CanIdBits.GetId(RawID, IsExtendedFrame);
             init
             {
                 if (value < 0) throw new ArgumentOutOfRangeException(nameof(ID));

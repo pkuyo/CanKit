@@ -12,11 +12,14 @@ namespace CanKit.Adapter.Vector.Native;
 /// </summary>
 internal static class VxlApi
 {
-    public const int BATCH_COUNT = 64;
+    public const int RX_BATCH_COUNT = 256;
+    public const int TX_BATCH_COUNT = 32;
     public const int XL_SUCCESS = 0;
     public const int XL_ERR_QUEUE_IS_EMPTY = 10;
+    public const int XL_ERR_INVALID_PORT = 118;
     public const int XL_ERR_HW_NOT_PRESENT = 129;
     public const int XL_INTERFACE_VERSION = 3;
+    public const int XL_INTERFACE_VERSION_V4 = 4;
     public const ushort XL_CAN_EV_TAG_RX_OK = 0x0400;
     public const ushort XL_CAN_EV_TAG_RX_ERROR = 0x0401;
     public const ushort XL_CAN_EV_TAG_TX_ERROR = 0x0402;
@@ -160,6 +163,14 @@ internal static class VxlApi
         public uint Reserved0;
     }
 
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    public struct XLchipStateBasic
+    {
+        public byte BusStatus;
+        public byte TxErrorCounter;
+        public byte RxErrorCounter;
+    }
+
     [StructLayout(LayoutKind.Explicit)]
     public struct XLcanRxTagData
     {
@@ -205,17 +216,17 @@ internal static class VxlApi
         public ulong Res2;
     }
 
-    [StructLayout(LayoutKind.Explicit)]
+    [StructLayout(LayoutKind.Explicit, Pack = 1)]
     public struct XLeventTagData
     {
         [FieldOffset(0)]
         public XLcanMsg Msg;
 
         [FieldOffset(0)]
-        public XLchipState ChipState;
+        public XLchipStateBasic ChipState;
     }
 
-    [StructLayout(LayoutKind.Sequential)]
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
     public struct XLevent
     {
         public byte Tag;
@@ -237,7 +248,8 @@ internal static class VxlApi
         public byte[] Data;
     }
 
-    [StructLayout(LayoutKind.Sequential, Pack = 8, CharSet = CharSet.Ansi)]
+    // Align with real interop shape
+    [StructLayout(LayoutKind.Sequential, Pack = 1, CharSet = CharSet.Ansi)]
     public struct XLchannelConfig
     {
         [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)]
@@ -302,7 +314,18 @@ internal static class VxlApi
     }
 
     #endregion
+    public enum XLeventType : byte
+    {
+        XL_NO_COMMAND = 0,
+        XL_RECEIVE_MSG = 1,
+        XL_CHIP_STATE  = 4,
+        XL_TRANSCEIVER = 6,
+        XL_TIMER = 8,
+        XL_TRANSMIT_MSG = 10,
+        XL_SYNC_PULSE = 11,
+        XL_APPLICATION_NOTIFICATION = 15,
 
+    };
     private sealed class Handle
     {
         public int Id;
@@ -311,6 +334,7 @@ internal static class VxlApi
         public byte OutputMode = XL_OUTPUT_MODE_NORMAL;
         public readonly ConcurrentQueue<XLcanRxEvent> RxQueue = new();
         public string AppName = string.Empty;
+        public IntPtr NotificationEvent;
 
         // Timing/config
         public uint ClassicBitrate;
@@ -513,10 +537,13 @@ internal static class VxlApi
         return XL_SUCCESS;
     }
 
-    public static int xlCanReceive(int portHandle, ref XLcanRxEvent ev)
+    public static int xlCanReceive(int portHandle, out XLcanRxEvent ev)
     {
         if (!World.Handles.TryGetValue(portHandle, out var handle))
+        {
+            ev = default;
             return XL_ERR_HW_NOT_PRESENT;
+        }
 
         if (handle.RxQueue.TryDequeue(out var item))
         {
@@ -524,7 +551,64 @@ internal static class VxlApi
             return XL_SUCCESS;
         }
 
+        ev = default;
         return XL_ERR_QUEUE_IS_EMPTY;
+    }
+
+    public static unsafe int xlReceive(int portHandle, ref int eventCount, XLevent* events)
+    {
+        if (!World.Handles.TryGetValue(portHandle, out var handle))
+            return XL_ERR_HW_NOT_PRESENT;
+
+        if (events == null || eventCount <= 0)
+        {
+            eventCount = 0;
+            return XL_SUCCESS;
+        }
+
+        int produced = 0;
+        while (produced < eventCount)
+        {
+            if (!handle.RxQueue.TryDequeue(out var rxEv))
+                break;
+
+            var msg = rxEv.TagData.CanRxOkMsg;
+            var e = new XLevent
+            {
+                Tag = (byte)XLeventType.XL_RECEIVE_MSG,
+                ChanIndex = rxEv.ChanIndex,
+                TransId = 0,
+                PortHandle = (ushort)portHandle,
+                Flags = 0,
+                Reserved = 0,
+                TimeStamp = rxEv.TimeStamp,
+                TagData = default
+            };
+
+            // Map RX message to generic event message
+            e.TagData = new XLeventTagData
+            {
+                Msg = new XLcanMsg()
+            };
+
+            e.TagData.Msg.Id = msg.CanId;
+            e.TagData.Msg.Flags = (ushort)(msg.MsgFlags & 0xFFFF);
+            var dlc = (ushort)Math.Min(msg.Dlc, (byte)8);
+            e.TagData.Msg.Dlc = dlc;
+            unsafe
+            {
+                for (int i = 0; i < dlc; i++)
+                {
+                    e.TagData.Msg.Data[i] = msg.Data[i];
+                }
+            }
+
+            events[produced] = e;
+            produced++;
+        }
+
+        eventCount = produced;
+        return produced > 0 ? XL_SUCCESS : XL_ERR_QUEUE_IS_EMPTY;
     }
 
     public static unsafe int xlCanTransmit(int portHandle, ulong accessMask, ref uint count, XLevent* events)
@@ -549,7 +633,7 @@ internal static class VxlApi
             {
                 CanId = evt.TagData.Msg.Id,
                 MsgFlags = (evt.TagData.Msg.Flags & XL_CAN_MSG_FLAG_REMOTE_FRAME) != 0 ? XL_CAN_RXMSG_FLAG_RTR : 0,
-                Dlc = (byte)Math.Min(evt.TagData.Msg.Dlc, 8)
+                Dlc = (byte)Math.Min((int)evt.TagData.Msg.Dlc, 8)
             };
             for (int b = 0; b < rx.Dlc; b++)
             {
@@ -638,6 +722,7 @@ internal static class VxlApi
                 ev.Tag = XL_CAN_EV_TAG_RX_OK;
                 ev.TagData.CanRxOkMsg = rxMsg;
                 target.RxQueue.Enqueue(ev);
+                TrySignal(target.NotificationEvent);
             }
         }
     }
@@ -708,7 +793,13 @@ internal static class VxlApi
         }
     }
 
-    // removed TrySignal (FAKE)
+    private static void TrySignal(IntPtr hEvent)
+    {
+        if (hEvent != IntPtr.Zero)
+        {
+            try { Win32.SetEvent(hEvent); } catch { }
+        }
+    }
 
     private static XLcanRxEvent CreateRxEvent(byte chanIndex)
     {
@@ -716,7 +807,7 @@ internal static class VxlApi
         {
             Size = SizeOfCanRxEvent,
             ChanIndex = chanIndex,
-            TimeStamp = (ulong)Environment.TickCount64,
+            TimeStamp = (ulong)Environment.TickCount,
         };
         ev.TagData = new XLcanRxTagData
         {
@@ -744,5 +835,19 @@ internal static class VxlApi
     // Convert hardware triple to global channel index (return index or -1)
     public static int xlGetChannelIndex(int hwType, int hwIndex, int hwChannel)
         => (hwType == 0 && hwIndex == 0 && (hwChannel == 0 || hwChannel == 1)) ? hwChannel : -1;
+
+    public static int xlSetNotification(int portHandle, IntPtr hEvent)
+    {
+        if (!World.Handles.TryGetValue(portHandle, out var handle))
+            return XL_ERR_HW_NOT_PRESENT;
+        handle.NotificationEvent = hEvent;
+        return XL_SUCCESS;
+    }
+
+    private static class Win32
+    {
+        [DllImport("kernel32.dll", SetLastError = false)]
+        public static extern bool SetEvent(IntPtr hEvent);
+    }
 }
 #endif

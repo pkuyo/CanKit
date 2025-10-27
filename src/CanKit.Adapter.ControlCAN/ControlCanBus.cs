@@ -483,7 +483,7 @@ public sealed class ControlCanBus : ICanBus<ControlCanBusRtConfigurator>, IBusOw
                 {
                     try { errSnap.Invoke(this, info); } catch { }
                 }
-                Thread.Sleep(Math.Max(1, Options.PollingInterval));
+                PreciseDelay.Delay(TimeSpan.FromMilliseconds(Math.Max(1, Options.PollingInterval)), ct: token);
             }
         }
         catch (Exception ex)

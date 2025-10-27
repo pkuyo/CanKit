@@ -72,7 +72,7 @@ public class ThroughputAndFeaturesTests : IClassFixture<TestCaseProvider>
     [Theory]
     [MemberData(nameof(Matrix.TestMatrix.CombinedContinuosFD), MemberType = typeof(Matrix.TestMatrix))]
     public async Task Continuous_Fd_Over5000_With_Gap_And_Loss
-        (string epA, string epB, string _,bool hasFd, int gapMs, double lossLimit, int len, bool brs, bool ide)
+        (string epA, string epB, string _,bool hasFd, double gapMs, double lossLimit, int len, bool brs, bool ide)
     {
         if (!hasFd)
             return;
@@ -93,14 +93,17 @@ public class ThroughputAndFeaturesTests : IClassFixture<TestCaseProvider>
             while (!ct.IsCancellationRequested && v.Received < count)
             {
                 var batch = await rx.ReceiveAsync(Math.Min(512, count - v.Received), 20, ct);
-                foreach (var d in batch) v.Feed(d.CanFrame);
+                foreach (var d in batch)
+                {
+                    v.Feed(d.CanFrame);
+                }
             }
         }, cts.Token);
 
         await TestHelpers.SendBurstAsync(tx, frames, gapMs);
 
         // allow drain
-        await Task.Delay(1000);
+        Thread.Sleep(1000);
         cts.Cancel();
         try { await recTask; } catch { /* ignore */ }
 
@@ -114,7 +117,7 @@ public class ThroughputAndFeaturesTests : IClassFixture<TestCaseProvider>
     [Theory]
     [MemberData(nameof(Matrix.TestMatrix.CombinedContinuosClassic), MemberType = typeof(Matrix.TestMatrix))]
     public async Task Continuous_Classic_Over5000_With_Gap_And_Loss
-        (string epA, string epB, string _, bool hasFd, int gapMs, double lossLimit, int len, bool rtr, bool ide)
+        (string epA, string epB, string _, bool hasFd, double gapMs, double lossLimit, int len, bool rtr, bool ide)
     {
         if (!hasFd)
             return;
@@ -142,13 +145,13 @@ public class ThroughputAndFeaturesTests : IClassFixture<TestCaseProvider>
         await TestHelpers.SendBurstAsync(tx, frames, gapMs);
 
         // allow drain
-        await Task.Delay(1000);
+        Thread.Sleep(1000);
         cts.Cancel();
         try { await recTask; } catch { /* ignore */ }
 
         var lossRate = v.Lost / (double)count;
         lossRate.Should().BeLessThanOrEqualTo(lossLimit);
-        v.BadData.Should().BeLessThanOrEqualTo(1);
+        v.BadData.Should().Be(0);
     }
     // Frame forms: classic std/ext 0 and 8 bytes; classic remote 0 and 8; FD ext 48 and 64
     [Theory]

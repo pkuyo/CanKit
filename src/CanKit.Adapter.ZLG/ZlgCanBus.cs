@@ -662,7 +662,7 @@ namespace CanKit.Adapter.ZLG
                     }
                     else
                     {
-                        Thread.Sleep(Options.PollingInterval);
+                        PreciseDelay.Delay(TimeSpan.FromMilliseconds(Math.Max(1, Options.PollingInterval)), ct: token);
                     }
                     var errSnap = Volatile.Read(ref _errorOccurred);
                     if (errSnap != null && ReadErrorInfo(out var errInfo))

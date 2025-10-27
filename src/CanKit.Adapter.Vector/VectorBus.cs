@@ -82,6 +82,25 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
             }
 
             ActivateChannel();
+/*
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                // Use OS event notification to wake the RX loop instead of polling
+                _rxEvent = new AutoResetEvent(false);
+                try
+                {
+                    VectorErr.ThrowIfError(
+                        VxlApi.xlSetNotification(_portHandle, _rxEvent.SafeWaitHandle.DangerousGetHandle()),
+                        "xlSetNotification");
+                }
+                catch
+                {
+                    _rxEvent.Dispose();
+                    _rxEvent = null;
+                    throw;
+                }
+            }
+            */
         }
         catch
         {
@@ -449,7 +468,10 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
             List<ICanErrorInfo> errInfos = new(VxlApi.RX_BATCH_COUNT);
             while (!_isDisposed)
             {
-                _rxEvent?.WaitOne(Options.PollingInterval);
+                if (_rxEvent != null)
+                {
+                    _rxEvent.WaitOne();
+                }
 
                 while (true)
                 {
@@ -476,7 +498,11 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
                         PreciseDelay.Delay(TimeSpan.FromMilliseconds(Options.PollingInterval));
                     }
 
-                    break;
+                    // When using event, go back to waiting for the next signal
+                    if (_rxEvent != null)
+                        break;
+                    else
+                        break;
                 }
             }
         }

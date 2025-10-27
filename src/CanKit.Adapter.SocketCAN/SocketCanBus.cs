@@ -35,13 +35,9 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
 
     // Cached software filter predicate to avoid rebuilding per-iteration
     private Func<ICanFrame, bool>? _softwareFilterPredicate;
-    private int _subscriberCount;
     private bool _useSoftwareFilter;
     private readonly AsyncFramePipe _asyncRx;
-    private int _asyncConsumerCount;
     private CancellationTokenSource? _stopDelayCts;
-    private int _asyncBufferingLinger;
-    private int _rxLoopRunning;
     internal SocketCanBus(IBusOptions options, ITransceiver transceiver, ICanModelProvider provider)
     {
         Options = new SocketCanBusRtConfigurator();
@@ -68,6 +64,8 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
         // Apply socket options
         ApplySocketConfig(options);
         CanKitLogger.LogDebug("SocketCAN: Initial options applied.");
+
+        StartReceiveLoop();
     }
 
     internal FileDescriptorHandle Handle => _fd!;
@@ -318,51 +316,17 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
     {
         ThrowIfDisposed();
         if (count < 0) throw new ArgumentOutOfRangeException(nameof(count));
-        Interlocked.Increment(ref _subscriberCount);
-        Interlocked.Increment(ref _asyncConsumerCount);
-        Volatile.Write(ref _asyncBufferingLinger, 0);
-        StartReceiveLoopIfNeeded();
-        try
-        {
-            return await _asyncRx.ReceiveBatchAsync(count, timeOut, cancellationToken)
-                .ConfigureAwait(false);
-        }
-        finally
-        {
-            var remAsync = Interlocked.Decrement(ref _asyncConsumerCount);
-            var rem = Interlocked.Decrement(ref _subscriberCount);
-            if (rem == 0 && remAsync == 0)
-            {
-                Volatile.Write(ref _asyncBufferingLinger, 1);
-                RequestStopReceiveLoop();
-            }
-        }
+        return await _asyncRx.ReceiveBatchAsync(count, timeOut, cancellationToken)
+            .ConfigureAwait(false);
     }
 
 #if NET8_0_OR_GREATER
     public async IAsyncEnumerable<CanReceiveData> GetFramesAsync([System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
-        Interlocked.Increment(ref _subscriberCount);
-        Interlocked.Increment(ref _asyncConsumerCount);
-        Volatile.Write(ref _asyncBufferingLinger, 0);
-        StartReceiveLoopIfNeeded();
-        try
+        await foreach (var item in _asyncRx.ReadAllAsync(cancellationToken))
         {
-            await foreach (var item in _asyncRx.ReadAllAsync(cancellationToken))
-            {
-                yield return item;
-            }
-        }
-        finally
-        {
-            var remAsync = Interlocked.Decrement(ref _asyncConsumerCount);
-            var rem = Interlocked.Decrement(ref _subscriberCount);
-            if (rem == 0 && remAsync == 0)
-            {
-                Volatile.Write(ref _asyncBufferingLinger, 1);
-                RequestStopReceiveLoop();
-            }
+            yield return item;
         }
     }
 #endif
@@ -422,30 +386,15 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
 
             lock (_evtGate)
             {
-                var before = _frameReceived;
                 _frameReceived += value;
-                if (!ReferenceEquals(before, _frameReceived))
-                {
-                    Interlocked.Increment(ref _subscriberCount);
-                    StartReceiveLoopIfNeeded();
-                }
             }
         }
         remove
         {
-            bool needStop = false;
             lock (_evtGate)
             {
-                var before = _frameReceived;
                 _frameReceived -= value;
-                if (!ReferenceEquals(before, _frameReceived))
-                {
-                    var now = Interlocked.Decrement(ref _subscriberCount);
-                    if (now == 0 && Volatile.Read(ref _asyncConsumerCount) == 0)
-                        needStop = true;
-                }
             }
-            if (needStop) RequestStopReceiveLoop();
         }
     }
 
@@ -459,13 +408,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
             }
             lock (_evtGate)
             {
-                var before = _errorOccurred;
                 _errorOccurred += value;
-                if (!ReferenceEquals(before, _errorOccurred))
-                {
-                    Interlocked.Increment(ref _subscriberCount);
-                    StartReceiveLoopIfNeeded();
-                }
             }
         }
         remove
@@ -474,19 +417,10 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
             {
                 throw new CanBusConfigurationException("ErrorOccurred subscription requires AllowErrorInfo=true in options.");
             }
-            bool needStop = false;
             lock (_evtGate)
             {
-                var before = _errorOccurred;
                 _errorOccurred -= value;
-                if (!ReferenceEquals(before, _errorOccurred))
-                {
-                    var now = Interlocked.Decrement(ref _subscriberCount);
-                    if (now == 0 && Volatile.Read(ref _asyncConsumerCount) == 0)
-                        needStop = true;
-                }
             }
-            if (needStop) RequestStopReceiveLoop();
         }
     }
 
@@ -751,11 +685,8 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
     }
 
 
-    private void StartReceiveLoopIfNeeded()
+    private void StartReceiveLoop()
     {
-        if (Interlocked.Exchange(ref _rxLoopRunning, 1) == 1)
-            return;
-        DrainReceive();
         _epfd = Libc.epoll_create1(Libc.EPOLL_CLOEXEC);
         if (_epfd.IsInvalid)
         {
@@ -800,8 +731,6 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
         var cancelFd = Volatile.Read(ref _cancelFd);
         var task = Volatile.Read(ref _epollTask);
         var epFd = Volatile.Read(ref _epfd);
-        if (Interlocked.Exchange(ref _rxLoopRunning, 0) == 0)
-            return;
         try
         {
             _asyncRx.Clear();
@@ -829,35 +758,10 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
             Interlocked.CompareExchange(ref _epollTask, task, null);
             Interlocked.CompareExchange(ref _epollCts, cts, null);
             cts?.Dispose();
-            Volatile.Write(ref _asyncBufferingLinger, 0);
             CanKitLogger.LogDebug("SocketCAN: epoll loop stopped.");
         }
     }
 
-    private void RequestStopReceiveLoop()
-    {
-        var delay = Options.ReceiveLoopStopDelayMs;
-        if (delay <= 0)
-        {
-            StopReceiveLoop();
-            return;
-        }
-        _stopDelayCts?.Cancel();
-        var cts = new CancellationTokenSource();
-        _stopDelayCts = cts;
-        Task.Run(async () =>
-        {
-            try
-            {
-                await Task.Delay(delay, cts.Token).ConfigureAwait(false);
-                if (Volatile.Read(ref _subscriberCount) == 0 && Volatile.Read(ref _asyncConsumerCount) == 0)
-                {
-                    StopReceiveLoop();
-                }
-            }
-            catch { /*Ignored*/ }
-        }, cts.Token);
-    }
 
     private void EPollLoop(CancellationToken token)
     {
@@ -865,9 +769,6 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
         {
             while (!token.IsCancellationRequested)
             {
-                if (Volatile.Read(ref _rxLoopRunning) == 0)
-                    break;
-
                 int n = Libc.epoll_wait(_epfd, _events, _events.Length, -1);
                 if (n < 0)
                 {
@@ -962,10 +863,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
                         continue;
                     var evSnap = Volatile.Read(ref _frameReceived);
                     evSnap?.Invoke(this, rec);
-                    if (Volatile.Read(ref _asyncConsumerCount) > 0 || Volatile.Read(ref _asyncBufferingLinger) == 1)
-                    {
-                        _asyncRx.Publish(rec);
-                    }
+                    _asyncRx.Publish(rec);
                 }
             }
             if (gotBatch == 0) break; // drained

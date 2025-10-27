@@ -418,6 +418,9 @@ internal static class VxlApi
     public static int xlCanReceive(int portHandle, out XLcanRxEvent ev)
         => Is64BitProcess ? Native64.xlCanReceive(portHandle, out ev) : Native32.xlCanReceive(portHandle, out ev);
 
+    public static int xlSetNotification(int portHandle, IntPtr hEvent)
+        => Is64BitProcess ? Native64.xlSetNotification(portHandle, hEvent) : Native32.xlSetNotification(portHandle, hEvent);
+
     public static unsafe int xlReceive(int portHandle, ref int eventCount, XLevent* ev)
         => Is64BitProcess ? Native64.xlReceive(portHandle, ref eventCount, ev) :
             Native32.xlReceive(portHandle, ref eventCount, ev);
@@ -499,6 +502,9 @@ internal static class VxlApi
         internal static extern int xlCanReceive(int portHandle, out XLcanRxEvent ev);
 
         [DllImport(DllNameX64, CallingConvention = CallingConvention.Cdecl)]
+        internal static extern int xlSetNotification(int portHandle, IntPtr hEvent);
+
+        [DllImport(DllNameX64, CallingConvention = CallingConvention.Cdecl)]
         internal static unsafe extern int xlReceive(int portHandle, ref int eventCount, XLevent* ev);
 
         [DllImport(DllNameX64, CallingConvention = CallingConvention.Cdecl)]
@@ -567,7 +573,10 @@ internal static class VxlApi
         [DllImport(DllNameX86, CallingConvention = CallingConvention.Cdecl)]
         internal static extern int xlCanReceive(int portHandle, out XLcanRxEvent ev);
 
-        [DllImport(DllNameX64, CallingConvention = CallingConvention.Cdecl)]
+        [DllImport(DllNameX86, CallingConvention = CallingConvention.Cdecl)]
+        internal static extern int xlSetNotification(int portHandle, IntPtr hEvent);
+
+        [DllImport(DllNameX86, CallingConvention = CallingConvention.Cdecl)]
         internal static unsafe extern int xlReceive(int portHandle, ref int eventCount, XLevent* ev);
 
         [DllImport(DllNameX86, CallingConvention = CallingConvention.Cdecl)]
