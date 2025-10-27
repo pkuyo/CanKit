@@ -30,7 +30,6 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
 
     private bool _useSoftwareFilter;
     private readonly AsyncFramePipe _asyncRx;
-    private CancellationTokenSource? _stopDelayCts;
 
     internal PcanBus(IBusOptions options, ITransceiver transceiver)
     {

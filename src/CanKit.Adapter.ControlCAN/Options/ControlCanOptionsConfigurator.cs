@@ -32,7 +32,7 @@ public sealed class ControlCanBusInitConfigurator
     /// <param name="newPollingInterval">Interval in ms (间隔毫秒)。</param>
     public ControlCanBusInitConfigurator PollingInterval(int newPollingInterval)
     {
-        if(newPollingInterval < 0)
+        if (newPollingInterval < 0)
             throw new ArgumentOutOfRangeException(nameof(newPollingInterval));
         Options.PollingInterval = newPollingInterval;
         return this;

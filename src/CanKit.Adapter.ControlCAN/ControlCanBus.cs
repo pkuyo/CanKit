@@ -26,7 +26,6 @@ public sealed class ControlCanBus : ICanBus<ControlCanBusRtConfigurator>, IBusOw
     private CancellationTokenSource? _pollCts;
     private Task? _pollTask;
     private readonly AsyncFramePipe _asyncRx;
-    private CancellationTokenSource? _stopDelayCts;
     private Func<ICanFrame, bool>? _softwareFilterPredicate;
 
     private readonly HashSet<int> _autoSendIndexes = new();
@@ -87,6 +86,7 @@ public sealed class ControlCanBus : ICanBus<ControlCanBusRtConfigurator>, IBusOw
             throw new CanBusCreationException("VCI_StartCAN failed.");
 
         NativeHandle = new BusNativeHandle((nint)((_rawDevType << 24) | (_devIndex << 16) | (uint)Options.ChannelIndex));
+        StartReceiveLoop();
     }
 
     public BusNativeHandle NativeHandle { get; }

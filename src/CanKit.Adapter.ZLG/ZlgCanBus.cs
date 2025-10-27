@@ -45,7 +45,6 @@ namespace CanKit.Adapter.ZLG
         private Func<ICanFrame, bool>? _softwareFilterPredicate;
         private bool _useSoftwareFilter;
         private readonly AsyncFramePipe _asyncRx;
-        private CancellationTokenSource? _stopDelayCts;
         private readonly ZlgDeviceKind _deviceType;
         internal ZlgCanBus(ZlgCanDevice device, IBusOptions options, ITransceiver transceiver, ICanModelProvider provider)
         {

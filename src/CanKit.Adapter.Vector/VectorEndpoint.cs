@@ -21,7 +21,7 @@ internal static class VectorEndpoint
         if (!string.IsNullOrWhiteSpace(path))
         {
             //vector://[appName]/appChannel
-            var slash = path.IndexOf('/')
+            var slash = path!.IndexOf('/')
                         >= 0 ? path.IndexOf('/') : path.IndexOf('\\');
             if (slash >= 0)
             {

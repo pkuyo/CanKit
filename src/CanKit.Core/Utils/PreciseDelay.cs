@@ -16,7 +16,7 @@ public static class PreciseDelay
         if (delay <= TimeSpan.Zero) return;
 
         var start = Stopwatch.GetTimestamp();
-        var freq  = Stopwatch.Frequency;
+        var freq = Stopwatch.Frequency;
         var target = start + (long)(delay.TotalSeconds * freq);
 
         var coarseMs = Math.Max(0, delay.TotalMilliseconds - Math.Max(0.1, spinBackoffMs));
@@ -54,13 +54,13 @@ public static class PreciseDelay
 
     private static class WindowsHighResWaitableTimer
     {
-        private const uint CREATE_WAITABLE_TIMER_MANUAL_RESET   = 0x00000001;
+        private const uint CREATE_WAITABLE_TIMER_MANUAL_RESET = 0x00000001;
         private const uint CREATE_WAITABLE_TIMER_HIGH_RESOLUTION = 0x00000002;
         private const uint TIMER_ALL_ACCESS = 0x001F0003;
         private const uint INFINITE = 0xFFFFFFFF;
 
         [DllImport("kernel32.dll", SetLastError = true)]
-        private static extern IntPtr CreateWaitableTimerEx(IntPtr lpTimerAttributes, string lpTimerName, uint dwFlags, uint dwDesiredAccess);
+        private static extern IntPtr CreateWaitableTimerEx(IntPtr lpTimerAttributes, string? lpTimerName, uint dwFlags, uint dwDesiredAccess);
 
         [DllImport("kernel32.dll", SetLastError = true)]
         private static extern bool SetWaitableTimerEx(IntPtr hTimer, in long lpDueTime, int lPeriod,

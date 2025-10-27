@@ -1,4 +1,5 @@
 #if !FAKE
+#pragma warning disable IDE0055
 using System;
 using System.Runtime.InteropServices;
 

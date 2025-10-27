@@ -30,6 +30,7 @@ internal record VectorChannelInfo
         SupportsCanFd = supportsCanFd;
 
         Capability = BuildCapability();
+        AppName = string.Empty;
     }
     public string AppName { get; init; }
     public ulong ChannelMask { get; init; }

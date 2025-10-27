@@ -29,7 +29,7 @@ public sealed class VectorClassicTransceiver : IVectorTransceiver
                 count = VxlApi.TX_BATCH_COUNT;
                 VectorErr.ThrowIfError(VxlApi.xlCanTransmit(vectorBus.Handle, vectorBus.AccessMask, ref count, events), "xlCanTransmit");
                 sent += (int)count;
-                if(count != VxlApi.TX_BATCH_COUNT)
+                if (count != VxlApi.TX_BATCH_COUNT)
                     return sent;
                 index = 0;
             }
@@ -64,7 +64,7 @@ public sealed class VectorClassicTransceiver : IVectorTransceiver
                 count = VxlApi.TX_BATCH_COUNT;
                 VectorErr.ThrowIfError(VxlApi.xlCanTransmit(vectorBus.Handle, vectorBus.AccessMask, ref count, events), "xlCanTransmit");
                 sent += (int)count;
-                if(count != VxlApi.TX_BATCH_COUNT)
+                if (count != VxlApi.TX_BATCH_COUNT)
                     return sent;
                 index = 0;
             }
@@ -106,7 +106,7 @@ public sealed class VectorClassicTransceiver : IVectorTransceiver
     {
         var ev = stackalloc VxlApi.XLevent[VxlApi.RX_BATCH_COUNT];
         var count = VxlApi.RX_BATCH_COUNT;
-        var status = VxlApi.xlReceive(bus.Handle,ref count, ev);
+        var status = VxlApi.xlReceive(bus.Handle, ref count, ev);
         if (status == VxlApi.XL_ERR_QUEUE_IS_EMPTY)
         {
             return false;
@@ -120,9 +120,9 @@ public sealed class VectorClassicTransceiver : IVectorTransceiver
         {
             if (TryProcessEvent(ev[i], out var data, out var info))
             {
-                if(data != null)
+                if (data != null)
                     frames.Add(data.Value);
-                if(info != null)
+                if (info != null)
                     errorInfos.Add(info);
             }
         }
@@ -263,7 +263,7 @@ public sealed class VectorClassicTransceiver : IVectorTransceiver
         msg.Dlc = (ushort)length;
 
         fixed (byte* dst = msg.Data)
-        fixed(byte* src = frame.Data.Span)
+        fixed (byte* src = frame.Data.Span)
         {
             Unsafe.CopyBlockUnaligned(dst, src, (uint)length);
         }

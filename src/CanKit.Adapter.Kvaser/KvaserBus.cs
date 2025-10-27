@@ -28,7 +28,6 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
 
     private Canlib.kvCallbackDelegate? _kvCallback;
     private readonly AsyncFramePipe _asyncRx;
-    private CancellationTokenSource? _stopDelayCts;
     private readonly Func<ICanFrame, bool> _pred;
 
     internal KvaserBus(IBusOptions options, ITransceiver transceiver, ICanModelProvider provider)

@@ -1,4 +1,5 @@
 #if FAKE
+#pragma warning disable IDE0055
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -316,7 +317,7 @@ internal static class VxlApi
     {
         XL_NO_COMMAND = 0,
         XL_RECEIVE_MSG = 1,
-        XL_CHIP_STATE  = 4,
+        XL_CHIP_STATE = 4,
         XL_TRANSCEIVER = 6,
         XL_TIMER = 8,
         XL_TRANSMIT_MSG = 10,
@@ -332,7 +333,7 @@ internal static class VxlApi
         public byte OutputMode = XL_OUTPUT_MODE_NORMAL;
         public readonly ConcurrentQueue<XLcanRxEvent> RxQueue = new();
         public string AppName = string.Empty;
-        public SafeWaitHandle NotificationEvent;
+        public SafeWaitHandle? NotificationEvent;
 
         // Timing/config
         public uint ClassicBitrate;
@@ -442,7 +443,7 @@ internal static class VxlApi
         {
             if (World.Handles.TryGetValue(portHandle, out var handle))
             {
-                handle.NotificationEvent.Dispose();
+                handle.NotificationEvent?.Dispose();
             }
             World.Handles.Remove(portHandle);
             return XL_SUCCESS;
@@ -796,9 +797,9 @@ internal static class VxlApi
         }
     }
 
-    private static void TrySignal(SafeWaitHandle hEvent)
+    private static void TrySignal(SafeWaitHandle? hEvent)
     {
-        if (!hEvent.IsInvalid)
+        if (hEvent!= null && hEvent.IsInvalid)
         {
             try { Win32.SetEvent(hEvent); } catch { }
         }
@@ -836,7 +837,7 @@ internal static class VxlApi
     public static int xlGetChannelIndex(int hwType, int hwIndex, int hwChannel)
         => (hwType == 0 && hwIndex == 0 && (hwChannel == 0 || hwChannel == 1)) ? hwChannel : -1;
 
-    public static int xlSetNotification(int portHandle,out IntPtr hEvent, int _ = 1 /*Ignore this*/)
+    public static int xlSetNotification(int portHandle, out IntPtr hEvent, int _ = 1 /*Ignore this*/)
     {
         hEvent = IntPtr.Zero;
         if (!World.Handles.TryGetValue(portHandle, out var handle))

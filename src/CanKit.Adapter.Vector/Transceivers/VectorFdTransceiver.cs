@@ -28,7 +28,7 @@ public sealed class VectorFdTransceiver : IVectorTransceiver
                 count = VxlApi.TX_BATCH_COUNT;
                 VectorErr.ThrowIfError(VxlApi.xlCanTransmitEx(vectorBus.Handle, vectorBus.AccessMask, count, ref count, events), "xlCanTransmitEx");
                 sent += (int)count;
-                if(count != VxlApi.TX_BATCH_COUNT)
+                if (count != VxlApi.TX_BATCH_COUNT)
                     return sent;
                 index = 0;
             }
@@ -61,7 +61,7 @@ public sealed class VectorFdTransceiver : IVectorTransceiver
                 count = VxlApi.TX_BATCH_COUNT;
                 VectorErr.ThrowIfError(VxlApi.xlCanTransmitEx(vectorBus.Handle, vectorBus.AccessMask, count, ref count, events), "xlCanTransmitEx");
                 sent += (int)count;
-                if(count != VxlApi.TX_BATCH_COUNT)
+                if (count != VxlApi.TX_BATCH_COUNT)
                     return sent;
                 index = 0;
             }
@@ -100,7 +100,7 @@ public sealed class VectorFdTransceiver : IVectorTransceiver
     public bool ReceiveEvents(VectorBus bus, List<CanReceiveData> frames, List<ICanErrorInfo> errorInfos)
     {
         bool hasAny = false;
-        for(int i = 0; i < VxlApi.RX_BATCH_COUNT; i++)
+        for (int i = 0; i < VxlApi.RX_BATCH_COUNT; i++)
         {
             var status = VxlApi.xlCanReceive(bus.Handle, out var nativeEvent);
             if (status == VxlApi.XL_ERR_QUEUE_IS_EMPTY)

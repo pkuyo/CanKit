@@ -158,7 +158,7 @@ public class TestDataProvider : ITestDataProvider
     public Action<IBusInitOptionsConfigurator>? TestBusInitFunc { get; } = (cfg) =>
     {
         var v = (VectorBusInitConfigurator)cfg;
-        if(v.ProtocolMode == CanProtocolMode.CanFd)
+        if (v.ProtocolMode == CanProtocolMode.CanFd)
         {
             v.ReceiveBufferCapacity(150*5000).PollingInterval(1);
         }

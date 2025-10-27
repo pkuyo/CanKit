@@ -18,8 +18,8 @@ public sealed class VectorBusOptions(ICanModelProvider provider) : IBusOptions
     public CanFeature Features { get; set; } = provider.StaticFeatures;
     public bool AllowErrorInfo { get; set; }
     public bool InternalResistance { get; set; }
-    public new bool BusUsageEnabled { get; set; }
-    public new uint BusUsagePeriodTime { get; set; } = 500;
+    public bool BusUsageEnabled { get; set; }
+    public uint BusUsagePeriodTime { get; set; } = 500;
     public TxRetryPolicy TxRetryPolicy { get; set; } = TxRetryPolicy.AlwaysRetry;
     public int AsyncBufferCapacity { get; set; } = 0;
     public int ReceiveLoopStopDelayMs { get; set; } = 200;
@@ -44,7 +44,7 @@ public sealed class VectorBusInitConfigurator
     /// <param name="newPollingInterval">Interval in ms (间隔毫秒)。</param>
     public VectorBusInitConfigurator PollingInterval(int newPollingInterval)
     {
-        if(newPollingInterval < 0)
+        if (newPollingInterval < 0)
             throw new ArgumentOutOfRangeException(nameof(newPollingInterval));
         Options.PollingInterval = newPollingInterval;
         return this;
@@ -63,7 +63,7 @@ public sealed class VectorBusInitConfigurator
     /// <param name="receiveBufferCapacity">Interval in ms (间隔毫秒)。</param>
     public VectorBusInitConfigurator ReceiveBufferCapacity(int receiveBufferCapacity)
     {
-        if(receiveBufferCapacity < 0)
+        if (receiveBufferCapacity < 0)
             throw new ArgumentOutOfRangeException(nameof(receiveBufferCapacity));
 
         Options.ReceiveBufferCapacity = (uint)receiveBufferCapacity;
@@ -75,7 +75,7 @@ public sealed class VectorBusInitConfigurator
     {
         if (idType == CanFilterIDType.Extend)
         {
-            if((Options.EnabledSoftwareFallback & CanFeature.RangeFilter) != 0)
+            if ((Options.EnabledSoftwareFallback & CanFeature.RangeFilter) != 0)
                 _options!.Filter.softwareFilter.Add(new FilterRule.Range((uint)min, (uint)max, idType));
             else
                 throw new CanKitException(CanKitErrorCode.FeatureNotSupported, "Vector Bus only supports standard ID range filter");

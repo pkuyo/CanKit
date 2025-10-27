@@ -17,7 +17,7 @@ internal static class VectorDriver
     {
         lock (Gate)
         {
-            if (ChannelCache.TryGetValue(channelIndex, out info))
+            if (ChannelCache.TryGetValue(channelIndex, out info!))
                 return true;
         }
 
@@ -26,7 +26,7 @@ internal static class VectorDriver
             lock (Gate)
             {
                 RefreshChannelCache();
-                return ChannelCache.TryGetValue(channelIndex, out info);
+                return ChannelCache.TryGetValue(channelIndex, out info!);
             }
         }
     }

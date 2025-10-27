@@ -87,6 +87,7 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
 
             ActivateChannel();
 
+#if !FAKE
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
                 // Use OS event notification to wake the RX loop instead of polling
@@ -107,6 +108,7 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
                     throw;
                 }
             }
+#endif
         }
         catch
         {
@@ -335,7 +337,7 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
     public IPeriodicTx TransmitPeriodic(ICanFrame frame, PeriodicTxOptions options)
     {
         ThrowIfDisposed();
-        if((Options.EnabledSoftwareFallback & CanFeature.CyclicTx) != 0)
+        if ((Options.EnabledSoftwareFallback & CanFeature.CyclicTx) != 0)
             return SoftwarePeriodicTx.Start(this, frame, options);
         throw new CanFeatureNotSupportedException(CanFeature.CyclicTx, Options.Features);
     }
@@ -492,7 +494,7 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
                 {
                     while (_transceiver.ReceiveEvents(this, receiveData, errInfos))
                     {
-                        foreach(var data in receiveData)
+                        foreach (var data in receiveData)
                         {
                             if (_softwareFilterPredicate is null || !data.CanFrame.IsExtendedFrame || _softwareFilterPredicate(data.CanFrame))
                             {
@@ -501,7 +503,7 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
                             }
                         }
 
-                        foreach(var errInfo in errInfos)
+                        foreach (var errInfo in errInfos)
                         {
                             if (errInfo.Type == FrameErrorType.Controller)
                             {
@@ -513,6 +515,7 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
                                     VxlApi.XL_CHIPSTAT_ERROR_ACTIVE => BusState.ErrActive,
                                     _ => BusState.None
                                 };
+                                _errorCounters = errInfo.ErrorCounters!.Value;
                             }
                             else
                             {

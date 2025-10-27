@@ -37,7 +37,6 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
     private Func<ICanFrame, bool>? _softwareFilterPredicate;
     private bool _useSoftwareFilter;
     private readonly AsyncFramePipe _asyncRx;
-    private CancellationTokenSource? _stopDelayCts;
     internal SocketCanBus(IBusOptions options, ITransceiver transceiver, ICanModelProvider provider)
     {
         Options = new SocketCanBusRtConfigurator();
