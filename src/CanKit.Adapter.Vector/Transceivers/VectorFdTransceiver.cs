@@ -8,29 +8,27 @@ using CanKit.Core.Definitions;
 
 namespace CanKit.Adapter.Vector.Transceivers;
 
-public sealed class VectorFdTransceiver : ITransceiver
+public sealed class VectorFdTransceiver : IVectorTransceiver
 {
     public unsafe int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, IEnumerable<ICanFrame> frames)
     {
         if (bus is not VectorBus vectorBus)
             throw new InvalidOperationException("VectorFdTransceiver requires VectorBus.");
 
-        var events = stackalloc VxlApi.XLcanTxEvent[VxlApi.BATCH_COUNT];
+        var events = stackalloc VxlApi.XLcanTxEvent[VxlApi.TX_BATCH_COUNT];
 
         var index = 0;
         uint count;
         int sent = 0;
         foreach (var frame in frames)
         {
-            if (frame is not CanClassicFrame classic)
-                throw new InvalidOperationException("Vector classic transceiver requires CanClassicFrame.");
-            BuildEvent(vectorBus, classic, &events[index++]);
-            if (index == VxlApi.BATCH_COUNT)
+            BuildEvent(vectorBus, frame, &events[index++]);
+            if (index == VxlApi.TX_BATCH_COUNT)
             {
-                count = VxlApi.BATCH_COUNT;
+                count = VxlApi.TX_BATCH_COUNT;
                 VectorErr.ThrowIfError(VxlApi.xlCanTransmitEx(vectorBus.Handle, vectorBus.AccessMask, count, ref count, events), "xlCanTransmitEx");
                 sent += (int)count;
-                if(count != VxlApi.BATCH_COUNT)
+                if(count != VxlApi.TX_BATCH_COUNT)
                     return sent;
                 index = 0;
             }
@@ -50,22 +48,20 @@ public sealed class VectorFdTransceiver : ITransceiver
         if (bus is not VectorBus vectorBus)
             throw new InvalidOperationException("VectorFdTransceiver requires VectorBus.");
 
-        var events = stackalloc VxlApi.XLcanTxEvent[VxlApi.BATCH_COUNT];
+        var events = stackalloc VxlApi.XLcanTxEvent[VxlApi.TX_BATCH_COUNT];
 
         var index = 0;
         uint count;
         int sent = 0;
         foreach (var frame in frames)
         {
-            if (frame is not CanClassicFrame classic)
-                throw new InvalidOperationException("Vector classic transceiver requires CanClassicFrame.");
-            BuildEvent(vectorBus, classic, &events[index++]);
-            if (index == VxlApi.BATCH_COUNT)
+            BuildEvent(vectorBus, frame, &events[index++]);
+            if (index == VxlApi.TX_BATCH_COUNT)
             {
-                count = VxlApi.BATCH_COUNT;
+                count = VxlApi.TX_BATCH_COUNT;
                 VectorErr.ThrowIfError(VxlApi.xlCanTransmitEx(vectorBus.Handle, vectorBus.AccessMask, count, ref count, events), "xlCanTransmitEx");
                 sent += (int)count;
-                if(count != VxlApi.BATCH_COUNT)
+                if(count != VxlApi.TX_BATCH_COUNT)
                     return sent;
                 index = 0;
             }
@@ -99,7 +95,162 @@ public sealed class VectorFdTransceiver : ITransceiver
     }
 
     public IEnumerable<CanReceiveData> Receive(ICanBus<IBusRTOptionsConfigurator> bus, int count = 1, int timeOut = 0)
-        => ((VectorBus)bus).ReceiveInternal(count);
+        => throw new InvalidOperationException();
+
+    public bool ReceiveEvents(VectorBus bus, List<CanReceiveData> frames, List<ICanErrorInfo> errorInfos)
+    {
+        bool hasAny = false;
+        for(int i = 0; i < VxlApi.RX_BATCH_COUNT; i++)
+        {
+            var status = VxlApi.xlCanReceive(bus.Handle, out var nativeEvent);
+            if (status == VxlApi.XL_ERR_QUEUE_IS_EMPTY)
+            {
+                break;
+            }
+
+            if (!VectorErr.CheckIsInvalidOrThrow(status, "xlCanReceive(loop)", bus))
+            {
+                return false;
+            }
+            if (TryProcessEvent(nativeEvent, out var frame, out var errorInfo))
+            {
+                hasAny = true;
+                if (frame is not null)
+                    frames.Add(frame.Value);
+                if (errorInfo is not null)
+                    errorInfos.Add(errorInfo);
+            }
+        }
+        return hasAny;
+    }
+
+    private bool TryProcessEvent(in VxlApi.XLcanRxEvent nativeEvent, out CanReceiveData? data, out ICanErrorInfo? errorInfo)
+    {
+        data = null;
+        errorInfo = null;
+
+        switch (nativeEvent.Tag)
+        {
+            case VxlApi.XL_CAN_EV_TAG_RX_OK:
+                data = BuildReceiveData(nativeEvent.TagData.CanRxOkMsg);
+                return true;
+            case VxlApi.XL_CAN_EV_TAG_TX_OK:
+                return false;
+            case VxlApi.XL_CAN_EV_TAG_CHIP_STATE:
+                errorInfo = BuildChipStateError(nativeEvent.TagData.ChipState);
+                return true;
+
+            case VxlApi.XL_CAN_EV_TAG_RX_ERROR:
+            case VxlApi.XL_CAN_EV_TAG_TX_ERROR:
+                errorInfo = BuildGenericError(nativeEvent.Tag, nativeEvent.TagData);
+                return true;
+
+            default:
+                return false;
+        }
+    }
+
+    private static CanReceiveData BuildReceiveData(in VxlApi.XLcanRxMsg msg)
+    {
+        var isExtended = (msg.CanId & VxlApi.XL_CAN_EXT_MSG_ID) != 0;
+        var flags = msg.MsgFlags;
+        var isFd = (flags & VxlApi.XL_CAN_RXMSG_FLAG_EDL) != 0;
+
+        var length = isFd ? CanFdFrame.DlcToLen(msg.Dlc) : Math.Min(msg.Dlc, (byte)8);
+        var payload = new byte[length];
+
+        unsafe
+        {
+            fixed (byte* src = msg.Data)
+            fixed (byte* dst = payload)
+            {
+                Unsafe.CopyBlockUnaligned(dst, src, (uint)length);
+            }
+        }
+
+        if (isFd)
+        {
+            var frame = new CanFdFrame((int)(msg.CanId & 0x1FFFFFFF), payload,
+                (flags & VxlApi.XL_CAN_RXMSG_FLAG_BRS) != 0,
+                (flags & VxlApi.XL_CAN_RXMSG_FLAG_ESI) != 0,
+                isExtended)
+            { IsErrorFrame = (flags & VxlApi.XL_CAN_RXMSG_FLAG_EF) != 0 };
+            return new CanReceiveData(frame);
+        }
+        else
+        {
+            var frame = new CanClassicFrame((int)(msg.CanId & 0x1FFFFFFF), payload)
+            {
+                IsExtendedFrame = isExtended,
+                IsRemoteFrame = (flags & VxlApi.XL_CAN_RXMSG_FLAG_RTR) != 0,
+                IsErrorFrame = (flags & VxlApi.XL_CAN_RXMSG_FLAG_EF) != 0
+            };
+            return new CanReceiveData(frame);
+        }
+    }
+
+    private static ICanErrorInfo BuildChipStateError(in VxlApi.XLchipState state)
+    {
+        CanControllerStatus controllerStatus;
+        var busStatus = state.BusStatus;
+
+        if ((busStatus & VxlApi.XL_CHIPSTAT_BUSOFF) != 0)
+            controllerStatus = CanControllerStatus.TxPassive | CanControllerStatus.RxPassive;
+        else if ((busStatus & VxlApi.XL_CHIPSTAT_ERROR_PASSIVE) != 0)
+            controllerStatus = CanControllerStatus.TxPassive | CanControllerStatus.RxPassive;
+        else if ((busStatus & VxlApi.XL_CHIPSTAT_ERROR_WARNING) != 0)
+            controllerStatus = CanControllerStatus.TxWarning | CanControllerStatus.RxWarning;
+        else
+            controllerStatus = CanControllerStatus.Active;
+
+        var counters = new CanErrorCounters
+        {
+            TransmitErrorCounter = state.TxErrorCounter,
+            ReceiveErrorCounter = state.RxErrorCounter
+        };
+
+        return new DefaultCanErrorInfo(
+            FrameErrorType.Controller,
+            controllerStatus,
+            CanProtocolViolationType.None,
+            FrameErrorLocation.Unspecified,
+            DateTime.UtcNow,
+            state.BusStatus,
+            null,
+            FrameDirection.Unknown,
+            null,
+            CanTransceiverStatus.Unspecified,
+            counters,
+            null);
+    }
+
+    private static ICanErrorInfo BuildGenericError(ushort tag, in VxlApi.XLcanRxTagData data)
+    {
+        byte errorCode;
+        try
+        {
+            errorCode = data.CanError.ErrorCode;
+        }
+        catch
+        {
+            errorCode = (byte)(tag & 0xFF);
+        }
+
+        return new DefaultCanErrorInfo(
+            FrameErrorType.BusError,
+            CanControllerStatus.Unknown,
+            CanProtocolViolationType.Unknown,
+            FrameErrorLocation.Unspecified,
+            DateTime.UtcNow,
+            errorCode,
+            null,
+            FrameDirection.Unknown,
+            null,
+            CanTransceiverStatus.Unspecified,
+            null,
+            null);
+    }
+
 
     private static unsafe void BuildEvent(VectorBus bus, in ICanFrame frame, VxlApi.XLcanTxEvent* ev)
     {

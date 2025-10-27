@@ -15,7 +15,16 @@ internal static class VectorErr
         var message = detail ?? $"Vector native call '{operation}' failed with status {status} ({text}).";
         throw new VectorNativeException(operation, status, text, message);
     }
-
+    public static bool CheckIsInvalidOrThrow(int status, string operation, VectorBus bus, string? detail = null)
+    {
+        if (status == VxlApi.XL_SUCCESS)
+            return true;
+        if (bus.IsDispose && status == VxlApi.XL_ERR_INVALID_PORT)
+            return false;
+        var text = VxlApi.GetErrorString(status);
+        var message = detail ?? $"Vector native call '{operation}' failed with status {status} ({text}).";
+        throw new VectorNativeException(operation, status, text, message);
+    }
     public static void LogNonFatal(int status, string operation, string category = "Vector")
     {
         if (status == VxlApi.XL_SUCCESS)

@@ -13,12 +13,27 @@ internal static class VxlApi
     private const string DllNameX64 = "vxlapi64";
     private const string DllNameX86 = "vxlapi";
 
-    public const int BATCH_COUNT = 64;
-
+    public const int RX_BATCH_COUNT = 256;
+    public const int TX_BATCH_COUNT = 32;
     private static readonly bool Is64BitProcess = Environment.Is64BitProcess;
+
+
+    public enum XLeventType : byte
+    {
+        XL_NO_COMMAND = 0,
+        XL_RECEIVE_MSG = 1,
+        XL_CHIP_STATE  = 4,
+        XL_TRANSCEIVER = 6,
+        XL_TIMER = 8,
+        XL_TRANSMIT_MSG = 10,
+        XL_SYNC_PULSE = 11,
+        XL_APPLICATION_NOTIFICATION = 15,
+
+    };
 
     public const int XL_SUCCESS = 0;
     public const int XL_ERR_QUEUE_IS_EMPTY = 10;
+    public const int XL_ERR_INVALID_PORT = 118;
     public const int XL_INTERFACE_VERSION = 3;
     public const int XL_INTERFACE_VERSION_V4 = 4;
     public const int XL_ERR_TX_NOT_POSSIBLE = 12;
@@ -403,6 +418,9 @@ internal static class VxlApi
     public static int xlCanReceive(int portHandle, out XLcanRxEvent ev)
         => Is64BitProcess ? Native64.xlCanReceive(portHandle, out ev) : Native32.xlCanReceive(portHandle, out ev);
 
+    public static unsafe int xlReceive(int portHandle, ref int eventCount, XLevent* ev)
+        => Is64BitProcess ? Native64.xlReceive(portHandle, ref eventCount, ev) :
+            Native32.xlReceive(portHandle, ref eventCount, ev);
     public static unsafe int xlCanTransmit(int portHandle, ulong accessMask, ref uint count, XLevent* events)
         => Is64BitProcess
             ? Native64.xlCanTransmit(portHandle, accessMask, ref count, events)
@@ -481,6 +499,9 @@ internal static class VxlApi
         internal static extern int xlCanReceive(int portHandle, out XLcanRxEvent ev);
 
         [DllImport(DllNameX64, CallingConvention = CallingConvention.Cdecl)]
+        internal static unsafe extern int xlReceive(int portHandle, ref int eventCount, XLevent* ev);
+
+        [DllImport(DllNameX64, CallingConvention = CallingConvention.Cdecl)]
         internal static unsafe extern int xlCanTransmit(int portHandle, ulong accessMask, ref uint count, XLevent* events);
 
         [DllImport(DllNameX64, CallingConvention = CallingConvention.Cdecl)]
@@ -545,6 +566,9 @@ internal static class VxlApi
 
         [DllImport(DllNameX86, CallingConvention = CallingConvention.Cdecl)]
         internal static extern int xlCanReceive(int portHandle, out XLcanRxEvent ev);
+
+        [DllImport(DllNameX64, CallingConvention = CallingConvention.Cdecl)]
+        internal static unsafe extern int xlReceive(int portHandle, ref int eventCount, XLevent* ev);
 
         [DllImport(DllNameX86, CallingConvention = CallingConvention.Cdecl)]
         internal static unsafe extern int xlCanTransmit(int portHandle, ulong accessMask, ref uint count, XLevent* events);

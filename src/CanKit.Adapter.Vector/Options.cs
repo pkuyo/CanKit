@@ -27,10 +27,10 @@ public sealed class VectorBusOptions(ICanModelProvider provider) : IBusOptions
     /// <summary>
     /// Polling interval in ms (only linux) (轮询间隔，毫秒，仅在linux下使用)。
     /// </summary>
-    public int PollingInterval { get; set; } = 20;
+    public int PollingInterval { get; set; } = 5;
 
     /// <summary>
-    /// receive buffer capacity (in frames). (接收缓冲区，按帧为单位)
+    /// receive buffer capacity (in byte). (接收缓冲区，按字节为单位)
     /// </summary>
     public uint ReceiveBufferCapacity { get; set; } = 4096;
 }
@@ -58,7 +58,7 @@ public sealed class VectorBusInitConfigurator
 
 
     /// <summary>
-    /// Set receive buffer capacity (in frames). (设置接收缓冲区，按帧为单位)。
+    /// Set receive buffer capacity (in byte). (设置接收缓冲区，按字节为单位)。
     /// </summary>
     /// <param name="receiveBufferCapacity">Interval in ms (间隔毫秒)。</param>
     public VectorBusInitConfigurator ReceiveBufferCapacity(int receiveBufferCapacity)
@@ -119,7 +119,7 @@ public sealed class VectorBusRtConfigurator
     }
 
     /// <summary>
-    /// receive buffer capacity (in frames). (接收缓冲区，按帧为单位)
+    /// receive buffer capacity (in byte). (接收缓冲区，按字节为单位)
     /// </summary>
     public uint ReceiveBufferCapacity => Options.ReceiveBufferCapacity;
 }

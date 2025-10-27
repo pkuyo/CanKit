@@ -2,6 +2,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using CanKit.Adapter.Vector.Diagnostics;
 using CanKit.Adapter.Vector.Native;
+using CanKit.Adapter.Vector.Transceivers;
 using CanKit.Adapter.Vector.Utils;
 using CanKit.Core.Abstractions;
 using CanKit.Core.Definitions;
@@ -14,7 +15,7 @@ namespace CanKit.Adapter.Vector;
 public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
 {
     private readonly object _evtGate = new();
-    private readonly ITransceiver _transceiver;
+    private readonly IVectorTransceiver _transceiver;
     private readonly AsyncFramePipe _asyncRx;
     private readonly IDisposable _driverScope;
 
@@ -25,16 +26,14 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
     private Func<ICanFrame, bool>? _softwareFilterPredicate;
 
     private CancellationTokenSource? _stopDelayCts;
-    private int _asyncConsumerCount;
-    private int _subscriberCount;
-    private int _asyncBufferingLinger;
-    private int _drainRunning;
     private bool _isDisposed;
     private bool _isActivated;
 
     private readonly int _portHandle;
     private readonly ulong _accessMask;
     private readonly AutoResetEvent? _rxEvent;
+
+    public bool IsDispose => _isDisposed;
 
     public VectorBusRtConfigurator Options { get; }
 
@@ -52,7 +51,7 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
         _driverScope = VectorDriver.Acquire();
         Options = new VectorBusRtConfigurator();
         Options.Init((VectorBusOptions)options);
-        _transceiver = transceiver;
+        _transceiver = (IVectorTransceiver)transceiver;
         _asyncRx = new AsyncFramePipe(Options.AsyncBufferCapacity > 0 ? Options.AsyncBufferCapacity : null);
 
         var vectorOptions = (VectorBusOptions)options;
@@ -93,6 +92,7 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
             _driverScope.Dispose();
             throw;
         }
+        Task.Run(RxDrainLoop);
     }
 
     private void UpdateCapabilities(IBusOptions options, VectorChannelInfo info)
@@ -198,6 +198,7 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
         VectorErr.ThrowIfError(VxlApi.xlCanResetAcceptance(_portHandle, _accessMask, 1), "xlCanResetAcceptance(STD)");
         VectorErr.ThrowIfError(VxlApi.xlCanResetAcceptance(_portHandle, _accessMask, 2), "xlCanResetAcceptance(EXT)");
         bool stdRest = false;
+        bool extRest = false;
         foreach (var rule in options.Filter.filterRules)
         {
             if (rule is FilterRule.Mask mask)
@@ -207,8 +208,15 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
                 if (type == 1 && !stdRest)
                 {
                     VectorErr.ThrowIfError(VxlApi.xlCanSetChannelAcceptance(_portHandle, _accessMask, 0xFFF, 0xFFF, 1),
-                        "xlCanResetAcceptance(STD)");
+                        "xlCanSetChannelAcceptance(STD)");
                     stdRest = true;
+                }
+
+                if (type == 2 && !extRest)
+                {
+                    extRest = true;
+                    VectorErr.ThrowIfError(VxlApi.xlCanSetChannelAcceptance(_portHandle, _accessMask, 0xFFFFFFFF, 0xFFFFFFFF, 2),
+                        "xlCanSetChannelAcceptance(STD)");
                 }
 
                 VectorErr.ThrowIfError(
@@ -218,6 +226,12 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
             }
             else if (rule is FilterRule.Range range) /*Only std*/
             {
+                if (!stdRest)
+                {
+                    VectorErr.ThrowIfError(VxlApi.xlCanSetChannelAcceptance(_portHandle, _accessMask, 0xFFF, 0xFFF, 1),
+                        "xlCanSetChannelAcceptance(STD)");
+                    stdRest = true;
+                }
                 VectorErr.ThrowIfError(VxlApi.xlCanAddAcceptanceRange(_portHandle, _accessMask, range.From, range.To),
                     "xlCanAddAcceptanceRange(STD)");
             }
@@ -236,6 +250,7 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
         ConfigureOutputMode(options.WorkMode);
         ApplyHardwareFilters(options);
         _softwareFilterPredicate = FilterRule.Build(options.Filter.SoftwareFilterRules);
+        Console.WriteLine(options.Filter.SoftwareFilterRules.Count);
     }
 
     public void Reset()
@@ -311,79 +326,20 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
         return ReceiveAsync(count, timeout).GetAwaiter().GetResult();
     }
 
-    internal IEnumerable<CanReceiveData> ReceiveInternal(int count = 1)
-    {
-        ThrowIfDisposed();
-        if (count < 0) throw new ArgumentOutOfRangeException(nameof(count));
-
-        int emitted = 0;
-
-        while (count == 0 || emitted < count)
-        {
-            var status = VxlApi.xlCanReceive(_portHandle, out var nativeEvent);
-            if (status == VxlApi.XL_ERR_QUEUE_IS_EMPTY)
-            {
-                yield break;
-            }
-
-            VectorErr.ThrowIfError(status, "xlCanReceive");
-
-            if (TryProcessEvent(nativeEvent, out var frame, out var errorInfo))
-            {
-                if (_softwareFilterPredicate == null || _softwareFilterPredicate(frame.CanFrame))
-                {
-                    emitted++;
-                    yield return frame;
-                }
-            }
-            else if (errorInfo != null)
-            {
-                _errorFrameReceived?.Invoke(this, errorInfo);
-            }
-        }
-    }
-
     public async Task<IReadOnlyList<CanReceiveData>> ReceiveAsync(int count = 1, int timeOut = 0, CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
-        Interlocked.Increment(ref _subscriberCount);
-        Interlocked.Increment(ref _asyncConsumerCount);
-        Volatile.Write(ref _asyncBufferingLinger, 0);
-        StartRxLoopIfNeed();
         if (count < 0) throw new ArgumentOutOfRangeException(nameof(count));
-        try
-        {
-            return await _asyncRx.ReceiveBatchAsync(count, timeOut, cancellationToken).ConfigureAwait(false);
-        }
-        finally
-        {
-            var remAsync = Interlocked.Decrement(ref _asyncConsumerCount);
-            var rem = Interlocked.Decrement(ref _subscriberCount);
-            if (rem == 0 && remAsync == 0)
-            {
-                Volatile.Write(ref _asyncBufferingLinger, 1);
-                RequestStopRxLoop();
-            }
-        }
+        return await _asyncRx.ReceiveBatchAsync(count, timeOut, cancellationToken).ConfigureAwait(false);
     }
 
 #if NET8_0_OR_GREATER
     public async IAsyncEnumerable<CanReceiveData> GetFramesAsync([EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
-        StartRxLoopIfNeed();
-        Interlocked.Increment(ref _asyncConsumerCount);
-        try
+        await foreach (var frame in _asyncRx.ReadAllAsync(cancellationToken))
         {
-            await foreach (var frame in _asyncRx.ReadAllAsync(cancellationToken))
-            {
-                yield return frame;
-            }
-        }
-        finally
-        {
-            Interlocked.Decrement(ref _asyncConsumerCount);
-            RequestStopRxLoop();
+            yield return frame;
         }
     }
 #endif
@@ -396,8 +352,6 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
             lock (_evtGate)
             {
                 _frameReceived += value;
-                _subscriberCount++;
-                StartRxLoopIfNeed();
             }
         }
         remove
@@ -405,8 +359,6 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
             lock (_evtGate)
             {
                 _frameReceived -= value;
-                _subscriberCount = Math.Max(0, _subscriberCount - 1);
-                RequestStopRxLoop();
             }
         }
     }
@@ -419,7 +371,6 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
             lock (_evtGate)
             {
                 _errorFrameReceived += value;
-                StartRxLoopIfNeed();
             }
         }
         remove
@@ -427,7 +378,6 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
             lock (_evtGate)
             {
                 _errorFrameReceived -= value;
-                RequestStopRxLoop();
             }
         }
     }
@@ -440,7 +390,6 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
             lock (_evtGate)
             {
                 _backgroundException += value;
-                StartRxLoopIfNeed();
             }
         }
         remove
@@ -448,7 +397,6 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
             lock (_evtGate)
             {
                 _backgroundException -= value;
-                RequestStopRxLoop();
             }
         }
     }
@@ -490,67 +438,45 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
         }
     }
 
-    private void StartRxLoopIfNeed()
-    {
-        if (Volatile.Read(ref _drainRunning) == 1 || _isDisposed)
-            return;
-        if (Interlocked.Exchange(ref _drainRunning, 1) == 1)
-            return;
-        Task.Run(RxDrainLoop);
-    }
 
-    private void RequestStopRxLoop()
-    {
-        if (_subscriberCount <= 0 && _asyncConsumerCount <= 0)
-        {
-            _stopDelayCts?.Cancel();
-            var cts = new CancellationTokenSource();
-            _stopDelayCts = cts;
-            Task.Delay(Options.ReceiveLoopStopDelayMs).ContinueWith(_ =>
-            {
-                if (!cts.IsCancellationRequested)
-                    Interlocked.Exchange(ref _drainRunning, 0);
-            }, TaskScheduler.Default);
-        }
-    }
+
 
     private void RxDrainLoop()
     {
         try
         {
-            while (Volatile.Read(ref _drainRunning) == 1 && !_isDisposed)
+            List<CanReceiveData> receiveData = new(VxlApi.RX_BATCH_COUNT);
+            List<ICanErrorInfo> errInfos = new(VxlApi.RX_BATCH_COUNT);
+            while (!_isDisposed)
             {
-                if (_rxEvent != null)
-                {
-                    _rxEvent.WaitOne(Options.PollingInterval);
-                }
+                _rxEvent?.WaitOne(Options.PollingInterval);
 
                 while (true)
                 {
-                    var status = VxlApi.xlCanReceive(_portHandle, out var nativeEvent);
-                    if (status == VxlApi.XL_ERR_QUEUE_IS_EMPTY)
+                    while (_transceiver.ReceiveEvents(this, receiveData, errInfos))
                     {
-                        if (_rxEvent == null)
-                            Thread.Sleep(Options.PollingInterval);
-                        break;
-                    }
-                    VectorErr.ThrowIfError(status, "xlCanReceive(loop)");
-
-                    if (TryProcessEvent(nativeEvent, out var frame, out var errorInfo))
-                    {
-                        if (_softwareFilterPredicate == null || _softwareFilterPredicate(frame.CanFrame))
+                        foreach(var data in receiveData)
                         {
-                            _asyncRx.Publish(frame);
-                            _frameReceived?.Invoke(this, frame);
+                            if (_softwareFilterPredicate is null || !data.CanFrame.IsExtendedFrame || _softwareFilterPredicate(data.CanFrame))
+                            {
+                                _frameReceived?.Invoke(this, data);
+                                _asyncRx.Publish(data);
+                            }
                         }
+
+                        foreach(var errInfo in errInfos)
+                        {
+                            _errorFrameReceived?.Invoke(this, errInfo);
+                        }
+                        receiveData.Clear();
+                        errInfos.Clear();
                     }
-                    else if (errorInfo != null)
+                    if (_rxEvent == null)
                     {
-                        _errorFrameReceived?.Invoke(this, errorInfo);
+                        PreciseDelay.Delay(TimeSpan.FromMilliseconds(Options.PollingInterval));
                     }
 
-                    if (_rxEvent == null)
-                        break; // Linux polling path processes one event per loop
+                    break;
                 }
             }
         }
@@ -559,138 +485,6 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
             _backgroundException?.Invoke(this, ex);
         }
     }
-
-    private bool TryProcessEvent(in VxlApi.XLcanRxEvent nativeEvent, out CanReceiveData data, out ICanErrorInfo? errorInfo)
-    {
-        data = default;
-        errorInfo = null;
-
-        switch (nativeEvent.Tag)
-        {
-            case VxlApi.XL_CAN_EV_TAG_RX_OK:
-                data = BuildReceiveData(nativeEvent.TagData.CanRxOkMsg);
-                return true;
-
-            case VxlApi.XL_CAN_EV_TAG_TX_OK:
-                return false;
-
-            case VxlApi.XL_CAN_EV_TAG_CHIP_STATE:
-                errorInfo = BuildChipStateError(nativeEvent.TagData.ChipState);
-                return false;
-
-            case VxlApi.XL_CAN_EV_TAG_RX_ERROR:
-            case VxlApi.XL_CAN_EV_TAG_TX_ERROR:
-                errorInfo = BuildGenericError(nativeEvent.Tag, nativeEvent.TagData);
-                return false;
-
-            default:
-                return false;
-        }
-    }
-
-    private static CanReceiveData BuildReceiveData(in VxlApi.XLcanRxMsg msg)
-    {
-        var isExtended = (msg.CanId & VxlApi.XL_CAN_EXT_MSG_ID) != 0;
-        var flags = msg.MsgFlags;
-        var isFd = (flags & VxlApi.XL_CAN_RXMSG_FLAG_EDL) != 0;
-
-        var length = isFd ? CanFdFrame.DlcToLen(msg.Dlc) : Math.Min(msg.Dlc, (byte)8);
-        var payload = new byte[length];
-
-        unsafe
-        {
-            fixed (byte* src = msg.Data)
-            fixed (byte* dest = payload)
-            {
-                Unsafe.CopyBlockUnaligned(src, dest, (uint)length);
-            }
-        }
-
-        if (isFd)
-        {
-            var frame = new CanFdFrame((int)(msg.CanId & 0x1FFFFFFF), payload,
-                (flags & VxlApi.XL_CAN_RXMSG_FLAG_BRS) != 0,
-                (flags & VxlApi.XL_CAN_RXMSG_FLAG_ESI) != 0,
-                isExtended)
-            { IsErrorFrame = (flags & VxlApi.XL_CAN_RXMSG_FLAG_EF) != 0 };
-            return new CanReceiveData(frame);
-        }
-        else
-        {
-            var frame = new CanClassicFrame((int)(msg.CanId & 0x1FFFFFFF), payload)
-            {
-                IsExtendedFrame = isExtended,
-                IsRemoteFrame = (flags & VxlApi.XL_CAN_RXMSG_FLAG_RTR) != 0,
-                IsErrorFrame = (flags & VxlApi.XL_CAN_RXMSG_FLAG_EF) != 0
-            };
-            return new CanReceiveData(frame);
-        }
-    }
-
-    private static ICanErrorInfo BuildChipStateError(in VxlApi.XLchipState state)
-    {
-        CanControllerStatus controllerStatus;
-        var busStatus = state.BusStatus;
-
-        if ((busStatus & VxlApi.XL_CHIPSTAT_BUSOFF) != 0)
-            controllerStatus = CanControllerStatus.TxPassive | CanControllerStatus.RxPassive;
-        else if ((busStatus & VxlApi.XL_CHIPSTAT_ERROR_PASSIVE) != 0)
-            controllerStatus = CanControllerStatus.TxPassive | CanControllerStatus.RxPassive;
-        else if ((busStatus & VxlApi.XL_CHIPSTAT_ERROR_WARNING) != 0)
-            controllerStatus = CanControllerStatus.TxWarning | CanControllerStatus.RxWarning;
-        else
-            controllerStatus = CanControllerStatus.Active;
-
-        var counters = new CanErrorCounters
-        {
-            TransmitErrorCounter = state.TxErrorCounter,
-            ReceiveErrorCounter = state.RxErrorCounter
-        };
-
-        return new DefaultCanErrorInfo(
-            FrameErrorType.Controller,
-            controllerStatus,
-            CanProtocolViolationType.None,
-            FrameErrorLocation.Unspecified,
-            DateTime.UtcNow,
-            state.BusStatus,
-            null,
-            FrameDirection.Unknown,
-            null,
-            CanTransceiverStatus.Unspecified,
-            counters,
-            null);
-    }
-
-    private static ICanErrorInfo BuildGenericError(ushort tag, in VxlApi.XLcanRxTagData data)
-    {
-        byte errorCode;
-        try
-        {
-            errorCode = data.CanError.ErrorCode;
-        }
-        catch
-        {
-            errorCode = (byte)(tag & 0xFF);
-        }
-
-        return new DefaultCanErrorInfo(
-            FrameErrorType.BusError,
-            CanControllerStatus.Unknown,
-            CanProtocolViolationType.Unknown,
-            FrameErrorLocation.Unspecified,
-            DateTime.UtcNow,
-            errorCode,
-            null,
-            FrameDirection.Unknown,
-            null,
-            CanTransceiverStatus.Unspecified,
-            null,
-            null);
-    }
-
-    private static VxlApi.XLcanRxEvent CreateReceiveEvent()
-        => new VxlApi.XLcanRxEvent { Size = VxlApi.SizeOfCanRxEvent };
 
     private void ThrowIfDisposed()
     {
