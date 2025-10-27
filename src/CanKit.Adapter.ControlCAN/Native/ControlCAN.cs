@@ -1,5 +1,5 @@
 // Real ControlCAN interop (disabled in FAKE builds)
-
+#pragma warning disable IDE0055
 #pragma warning disable CS0649
 #if !FAKE
 using System;

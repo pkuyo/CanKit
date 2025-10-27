@@ -1,8 +1,4 @@
 <linker>
-  <!-- Keep provider + factory for reflection-based discovery -->
-  <assembly fullname="CanKit.Adapter.Vector">
-    <type fullname="CanKit.Adapter.Vector.VectorProvider" preserve="all" />
-    <type fullname="CanKit.Adapter.Vector.VectorFactory" preserve="all" />
-  </assembly>
+    <assembly fullname="CanKit.Adapter.Vector" preserve="all" />
 </linker>
 

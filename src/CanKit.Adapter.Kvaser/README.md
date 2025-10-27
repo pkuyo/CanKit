@@ -47,6 +47,22 @@ foreach (var rx in bus.Receive(1, 100))
 }
 ```
 
+## Bus Usage (Bus Load)
+
+- Before calling `BusUsage()`, you must request statistics and wait briefly; or simply use `BusUsageAsync()` which handles the request + wait.
+
+```csharp
+var kbus = (CanKit.Adapter.Kvaser.KvaserBus)bus;
+
+// Option 1: manual request + read
+kbus.RequestBusUsage();
+await Task.Delay(250);
+var load1 = kbus.BusUsage();
+
+// Option 2: async helper
+var load2 = await kbus.BusUsageAsync();
+```
+
 ## Discover Endpoints
 
 ```csharp

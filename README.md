@@ -4,9 +4,12 @@
 [![.NET Standard 2.0](https://img.shields.io/badge/.NET%20Standard-2.0-512BD4?logo=dotnet&logoColor=white)](#)
 [![.NET 8](https://img.shields.io/badge/.NET-8.0-512BD4?logo=dotnet&logoColor=white)](#)
 
+[![CI-adapter-vector](https://github.com/pkuyo/CanKit/actions/workflows/vector-ci.yml/badge.svg)](https://github.com/pkuyo/CanKit/actions/workflows/vector-ci.yml)
 [![CI-adapter-kvaser](https://github.com/pkuyo/CanKit/actions/workflows/kvaser-ci.yml/badge.svg)](https://github.com/pkuyo/CanKit/actions/workflows/kvaser-ci.yml)
 [![CI-adapter-pcan](https://github.com/pkuyo/CanKit/actions/workflows/pcan-ci.yml/badge.svg)](https://github.com/pkuyo/CanKit/actions/workflows/pcan-ci.yml)
 [![CI-adapter-socketcan](https://github.com/pkuyo/CanKit/actions/workflows/socketcan-ci.yml/badge.svg)](https://github.com/pkuyo/CanKit/actions/workflows/socketcan-ci.yml)
+[![CI-adapter-controlCAN](https://github.com/pkuyo/CanKit/actions/workflows/controlcan-ci.yml/badge.svg)](https://github.com/pkuyo/CanKit/actions/workflows/controlcan-ci.yml)
+[![CI-adapter-zlgcan](https://github.com/pkuyo/CanKit/actions/workflows/zlg-ci.yml/badge.svg)](https://github.com/pkuyo/CanKit/actions/workflows/zlg-ci.yml)
 [![CI-adapter-virtual](https://github.com/pkuyo/CanKit/actions/workflows/virtual-ci.yml/badge.svg)](https://github.com/pkuyo/CanKit/actions/workflows/virtual-ci.yml)
 
 
@@ -21,7 +24,7 @@ For Chinese readers, see: [README_CN.md](README_CN.md)
 
 ----
 
-Below is a quick CAN listener/sender demo using CanKit. With multi-vendor support, you can get hands-on with CanKit¡¯s features in minutes. [CanKit ToolKit](https://github.com/pkuyo/CanKit-Toolkit) 
+Below is a quick CAN listener/sender demo using CanKit. With multi-vendor support, you can get hands-on with CanKitï¿½ï¿½s features in minutes. [CanKit ToolKit](https://github.com/pkuyo/CanKit-Toolkit) 
 
 ![Preview](https://github.com/pkuyo/CanKit-Toolkit/blob/master/docs/pics/cankitdemo_preview1.png)
 

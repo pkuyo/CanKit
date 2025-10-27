@@ -7,16 +7,19 @@
 [![.NET Standard 2.0](https://img.shields.io/badge/.NET%20Standard-2.0-512BD4?logo=dotnet&logoColor=white)](#)
 [![.NET 8](https://img.shields.io/badge/.NET-8.0-512BD4?logo=dotnet&logoColor=white)](#)
 
+[![CI-adapter-vector](https://github.com/pkuyo/CanKit/actions/workflows/vector-ci.yml/badge.svg)](https://github.com/pkuyo/CanKit/actions/workflows/vector-ci.yml)
 [![CI-adapter-kvaser](https://github.com/pkuyo/CanKit/actions/workflows/kvaser-ci.yml/badge.svg)](https://github.com/pkuyo/CanKit/actions/workflows/kvaser-ci.yml)
 [![CI-adapter-pcan](https://github.com/pkuyo/CanKit/actions/workflows/pcan-ci.yml/badge.svg)](https://github.com/pkuyo/CanKit/actions/workflows/pcan-ci.yml)
 [![CI-adapter-socketcan](https://github.com/pkuyo/CanKit/actions/workflows/socketcan-ci.yml/badge.svg)](https://github.com/pkuyo/CanKit/actions/workflows/socketcan-ci.yml)
+[![CI-adapter-controlCAN](https://github.com/pkuyo/CanKit/actions/workflows/controlcan-ci.yml/badge.svg)](https://github.com/pkuyo/CanKit/actions/workflows/controlcan-ci.yml)
+[![CI-adapter-zlgcan](https://github.com/pkuyo/CanKit/actions/workflows/zlg-ci.yml/badge.svg)](https://github.com/pkuyo/CanKit/actions/workflows/zlg-ci.yml)
 [![CI-adapter-virtual](https://github.com/pkuyo/CanKit/actions/workflows/virtual-ci.yml/badge.svg)](https://github.com/pkuyo/CanKit/actions/workflows/virtual-ci.yml)
 
 **CanKit** 是一个统一的、跨平台的、支持多厂商的高性能 c# CAN 通信库。
 
 支持通过 Endpoint 字符串或强类型入口打开总线，并在不同适配器上提供尽可能一致的收发、过滤、周期发送、错误帧与诊断体验。
 
- - 适配厂商：PCAN-Basic (Peak CAN), CANlib(Kvaser), SocketCAN (Linux), ZLG(周立功)
+ - **适配厂商**：vxlApi(Vector), PCAN-Basic (Peak CAN), CANlib(Kvaser), SocketCAN (Linux), ZLG(周立功), ControlCAN(广成，创芯，周立功)
 
  ----
 
@@ -33,10 +36,12 @@
 dotnet add package CanKit.Core
 
 # Adapters（按需选择）
+dotnet add package CanKit.Adapter.Vector
 dotnet add package CanKit.Adapter.PCAN
 dotnet add package CanKit.Adapter.Kvaser
 dotnet add package CanKit.Adapter.SocketCAN
 dotnet add package CanKit.Adapter.ZLG
+dotnet add package CanKit.Adapter.ControlCAN
 dotnet add package CanKit.Adapter.Virtual
 ```
 
@@ -70,11 +75,12 @@ dotnet add package CanKit.Adapter.Virtual
 ## 快速开始
 
 通过 Endpoint 打开，然后发送/接收（示例Endpoint）：
-
+- Vector: `vector://AppName/0`
 - PCAN: `pcan://PCAN_USBBUS1`
 - Kvaser: `kvaser://0` or `kvaser://?ch=0`
 - SocketCAN (Linux): `socketcan://can0#netlink`
 - ZLG: `zlg://USBCANFD-200U?index=0#ch1`
+- ControlCAN: `controlcan://USBCAN2?index=0#ch1`
 - Virtual: `virtual://alpha/0`
 
 ### 发送 & 接收
@@ -95,8 +101,8 @@ var sentCount = bus.Transmit(frame);
 // 异步发送同一帧
 sentCount = await bus.TransmitAsync(frame);
 
-// 同步接收（最多 1 帧），单位为毫秒
-var items = bus.Receive(1, timeOut: 100);
+// 同步接收（最多 2 帧），单位为毫秒
+var items = bus.Receive(2, timeOut: 100);
 
 // 异步批量接收（最多 10 帧），带超时
 var list = await bus.ReceiveAsync(10, timeOut: 500);
@@ -121,10 +127,7 @@ bus.FrameReceived += (_, rec) =>
     Console.WriteLine($"RX {f.FrameKind} ID=0x{f.ID:X} DLC={f.Dlc}");
 };
 
-// 单帧发送（同步 + 异步）
 var frame = new CanClassicFrame(0x123, new byte[] { 0x11, 0x22, 0x33 });
-var sentCount = bus.Transmit(frame);
-sentCount = await bus.TransmitAsync(frame);
 
 // 批量发送（同步 + 异步）
 var frames = new[] { frame, frame, frame, frame };
@@ -148,7 +151,7 @@ var bus = Kvaser.Open(0, cfg => cfg.TimingFd(1_000_000, 2_000_000));
 
 ```csharp
 using CanKit.Core.Endpoints;
-foreach (var ep in BusEndpointEntry.Enumerate("pcan", "kvaser", "socketcan", "zlg", "virtual"))
+foreach (var ep in BusEndpointEntry.Enumerate("pcan", "kvaser", "socketcan", "virtual"))
 {
     Console.WriteLine($"{ep.Title ?? ep.Endpoint} -> {ep.Endpoint}");
 }
@@ -163,22 +166,21 @@ Console.WriteLine($"support: {capability.Features}")
 ```
 
 ## 适配器说明
-
+- Vector (Windows/Linux): 安装 `XL-Driver-Library`, 并在`Vector Hardware Manager` 设置好app映射。
 - PCAN（Windows）：安装 PCAN 驱动与 PCAN-Basic；确保 `PCANBasic.dll` 可加载（进程位数匹配 x86/x64）。
 - Kvaser（Windows/Linux）：安装 Kvaser Driver + CANlib；确保 canlib 可加载并能访问通道。
 - SocketCAN（Linux）：启用内核 SocketCAN，创建/配置接口（`ip link …`）；安装 `libsocketcan`。
 - ZLG（Windows）：确保 `zlgcan.dll` 在加载路径，且位数与进程匹配。**强烈建议**编译为x86程序，对于一部分老设备（USBCAN1/2等）不开启会导致无法正常开启设备。
+- ControlCAN(Windows): 确保 `ControlCAN.dll` 在加载路径且与进程匹配。
 - Virtual：无需驱动。
 
 
 ## 行为差异
 
-- 超时语义：部分适配器对 TX 超时不生效（如 PCAN, Kvaser）；SocketCAN 对 TX/RX 超时均支持；ZLG 的 RX 超时传入底层。
+- 超时语义：SocketCAN 对 TX/RX 超时均支持； 其余均只支持RX超时。
 - 过滤器：各家支持的过滤类型不同（掩码/范围）；不足可启用软件回退。
-- 错误帧/计数/总线利用率：可用性视适配器与驱动而定。
+- 错误帧/计数/总线利用率：可用性视适配器与驱动而定。部分设备需要先请求数据在获取（kvaser的总线利用率, Vector的错误计数）
 - 周期发送：部分设备可使用硬件周期发送；否则用软件周期发送回退。
-
-> 详细适配器差异请参考英文文档（稍后提供中文版差异页）。
 
 
 ## 入门

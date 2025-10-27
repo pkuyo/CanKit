@@ -6,16 +6,32 @@
     <Platforms>x64;x86;AnyCPU</Platforms>
     <AssemblyName>CanKit.Adapter.ControlCAN</AssemblyName>
     <Nullable>enable</Nullable>
+    <Version>$(CanKitCoreVersion)</Version>
+    <Description>ControlCAN.dll的CanKit封装，支持周立功，广成，创芯</Description>
+    <PackageTags>CAN;can bus;ControlCAN;CanKit</PackageTags>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <FileVersion>$(CanKitCoreFileVersion)</FileVersion>
+    <Authors>Pkuyo</Authors>
+    <RepositoryUrl>https://github.com/pkuyo/CanKit</RepositoryUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
     <Configurations>Debug;Release;Fake</Configurations>
+    <Platforms>AnyCPU</Platforms>
   </PropertyGroup>
 
-  <ItemGroup>
-    <ProjectReference Include="..\CanKit.Core\CanKit.Core.csproj" />
-  </ItemGroup>
+    <ItemGroup Condition="'$(UseLocalProjectReferences)'=='true'">
+        <ProjectReference Include="..\CanKit.Core\CanKit.Core.csproj"/>
+    </ItemGroup>
 
-  <ItemGroup>
-    <None Include="buildTransitive\**\*.*" Pack="true" PackagePath="buildTransitive\" />
-  </ItemGroup>
+    <ItemGroup Condition="'$(UseLocalProjectReferences)'!='true'">
+        <PackageReference Include="CanKit.Core" Version="$(CanKitCoreVersion)"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <None Include="buildTransitive\**\*.*" Pack="true" PackagePath="buildTransitive\"/>
+    </ItemGroup>
+    <ItemGroup>
+        <None Include="README.md" Pack="true" PackagePath="" />
+    </ItemGroup>
 
 </Project>
 
