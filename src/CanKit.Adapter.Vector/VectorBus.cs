@@ -9,6 +9,7 @@ using CanKit.Core.Definitions;
 using CanKit.Core.Diagnostics;
 using CanKit.Core.Exceptions;
 using CanKit.Core.Utils;
+using Microsoft.Win32.SafeHandles;
 
 namespace CanKit.Adapter.Vector;
 
@@ -18,6 +19,7 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
     private readonly IVectorTransceiver _transceiver;
     private readonly AsyncFramePipe _asyncRx;
     private readonly IDisposable _driverScope;
+    private CancellationTokenSource _pollCts;
 
     private EventHandler<CanReceiveData>? _frameReceived;
     private EventHandler<ICanErrorInfo>? _errorFrameReceived;
@@ -25,13 +27,15 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
 
     private Func<ICanFrame, bool>? _softwareFilterPredicate;
 
-    private CancellationTokenSource? _stopDelayCts;
     private bool _isDisposed;
     private bool _isActivated;
 
     private readonly int _portHandle;
     private readonly ulong _accessMask;
-    private readonly AutoResetEvent? _rxEvent;
+    private readonly ManualResetEvent? _rxEvent;
+
+    private BusState _busState;
+    private CanErrorCounters _errorCounters;
 
     public bool IsDispose => _isDisposed;
 
@@ -41,7 +45,7 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
 
     IBusRTOptionsConfigurator ICanBus.Options => Options;
 
-    public BusState BusState => BusState.None;
+    public BusState BusState => _busState;
 
     internal int Handle => _portHandle;
     internal ulong AccessMask => _accessMask;
@@ -59,7 +63,7 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
                    ?? throw new CanBusCreationException($"Vector channel index {vectorOptions.ChannelIndex} is not available.");
 
         _accessMask = info.ChannelMask;
-
+        _pollCts = new CancellationTokenSource();
         UpdateCapabilities(options, info);
 
         ulong permissionMask = _accessMask;
@@ -82,25 +86,27 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
             }
 
             ActivateChannel();
-/*
+
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
                 // Use OS event notification to wake the RX loop instead of polling
-                _rxEvent = new AutoResetEvent(false);
                 try
                 {
                     VectorErr.ThrowIfError(
-                        VxlApi.xlSetNotification(_portHandle, _rxEvent.SafeWaitHandle.DangerousGetHandle()),
+                        VxlApi.xlSetNotification(_portHandle, out var evHandle, 1),
                         "xlSetNotification");
+                    _rxEvent = new ManualResetEvent(false)
+                    {
+                        SafeWaitHandle = new SafeWaitHandle(evHandle, false)
+                    };
                 }
                 catch
                 {
-                    _rxEvent.Dispose();
+                    _rxEvent?.Dispose();
                     _rxEvent = null;
                     throw;
                 }
             }
-            */
         }
         catch
         {
@@ -111,7 +117,7 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
             _driverScope.Dispose();
             throw;
         }
-        Task.Run(RxDrainLoop);
+        Task.Run(() => RxDrainLoop(_pollCts.Token));
     }
 
     private void UpdateCapabilities(IBusOptions options, VectorChannelInfo info)
@@ -423,7 +429,13 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
     public CanErrorCounters ErrorCounters()
     {
         ThrowIfDisposed();
-        return new CanErrorCounters();
+        return _errorCounters;
+    }
+
+
+    public void RequestBusState()
+    {
+        VectorErr.ThrowIfError(VxlApi.xlCanRequestChipState(_portHandle, _accessMask), "xlCanRequestChipState()");
     }
 
     public void Dispose()
@@ -451,7 +463,6 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
         }
         finally
         {
-            try { _rxEvent?.Set(); } catch { }
             _rxEvent?.Dispose();
             _driverScope.Dispose();
         }
@@ -460,7 +471,7 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
 
 
 
-    private void RxDrainLoop()
+    private void RxDrainLoop(CancellationToken token)
     {
         try
         {
@@ -470,8 +481,12 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
             {
                 if (_rxEvent != null)
                 {
-                    _rxEvent.WaitOne();
+                    var handles = new[] { _rxEvent, token.WaitHandle };
+                    WaitHandle.WaitAny(handles);
                 }
+
+                if (token.IsCancellationRequested)
+                    break;
 
                 while (true)
                 {
@@ -488,7 +503,22 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
 
                         foreach(var errInfo in errInfos)
                         {
-                            _errorFrameReceived?.Invoke(this, errInfo);
+                            if (errInfo.Type == FrameErrorType.Controller)
+                            {
+                                _busState = errInfo.RawErrorCode switch
+                                {
+                                    VxlApi.XL_CHIPSTAT_BUSOFF => BusState.BusOff,
+                                    VxlApi.XL_CHIPSTAT_ERROR_PASSIVE => BusState.ErrPassive,
+                                    VxlApi.XL_CHIPSTAT_ERROR_WARNING => BusState.ErrWarning,
+                                    VxlApi.XL_CHIPSTAT_ERROR_ACTIVE => BusState.ErrActive,
+                                    _ => BusState.None
+                                };
+                            }
+                            else
+                            {
+                                _errorFrameReceived?.Invoke(this, errInfo);
+                            }
+
                         }
                         receiveData.Clear();
                         errInfos.Clear();
@@ -497,12 +527,10 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
                     {
                         PreciseDelay.Delay(TimeSpan.FromMilliseconds(Options.PollingInterval));
                     }
-
-                    // When using event, go back to waiting for the next signal
-                    if (_rxEvent != null)
-                        break;
                     else
-                        break;
+                    {
+                        _rxEvent.Reset();
+                    }
                 }
             }
         }

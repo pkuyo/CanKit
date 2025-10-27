@@ -217,12 +217,29 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
     public float BusUsage()
     {
         CanKitErr.ThrowIfNotSupport(Options.Features, CanFeature.BusUsage);
-        KvaserUtils.ThrowIfError(Canlib.canRequestBusStatistics(_handle), "canRequestBusStatistics",
-            "Failed to request bus usage");
         KvaserUtils.ThrowIfError(Canlib.canGetBusStatistics(_handle, out var stat,
                 (UIntPtr)(uint)Marshal.SizeOf<Canlib.canBusStatistics>()), "canRequestBusStatistics",
             "Failed to get bus usage");
         return stat.busLoad / 100f;
+    }
+
+    public async Task<float> BusUsageAsync()
+    {
+        CanKitErr.ThrowIfNotSupport(Options.Features, CanFeature.BusUsage);
+        KvaserUtils.ThrowIfError(Canlib.canRequestBusStatistics(_handle), "canRequestBusStatistics",
+            "Failed to request bus usage");
+        await Task.Delay(250);
+        KvaserUtils.ThrowIfError(Canlib.canGetBusStatistics(_handle, out var stat,
+                (UIntPtr)(uint)Marshal.SizeOf<Canlib.canBusStatistics>()), "canRequestBusStatistics",
+            "Failed to get bus usage");
+        return stat.busLoad / 100f;
+    }
+
+    public void RequestBusUsage()
+    {
+        CanKitErr.ThrowIfNotSupport(Options.Features, CanFeature.BusUsage);
+        KvaserUtils.ThrowIfError(Canlib.canRequestBusStatistics(_handle), "canRequestBusStatistics",
+            "Failed to request bus usage");
     }
 
     public CanErrorCounters ErrorCounters()

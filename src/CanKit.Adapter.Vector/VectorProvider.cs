@@ -45,7 +45,6 @@ public sealed class VectorProvider : ICanModelProvider, ICanCapabilityProvider
         {
             info = info with
             {
-                ChannelMask = mask,
                 AppName = busOptions.ChannelName!,
                 AppChannelIndex = busOptions.ChannelIndex
             };

@@ -36,7 +36,7 @@ public static class ZLGCAN
 
     // ZLG device types (subset used in tests)
     public static readonly UInt32 ZCAN_USBCAN2                 = 4;
-    public static readonly UInt32 ZCAN_PCIE_CANFD_200U_M2      = 63;
+    public static readonly UInt32 ZCAN_PCIE_CANFD_200U         = 39;
     public static readonly UInt32 ZCAN_USBCANFD_200U           = 41;
 
     // Status OK
@@ -122,7 +122,7 @@ public static class ZLGCAN
     private static bool IsLinkedPair(UInt32 devType, UInt32 index, int ch)
     {
         if (index != 0) return false;
-        if (devType == ZCAN_USBCANFD_200U || devType == ZCAN_USBCAN2 || devType == ZCAN_PCIE_CANFD_200U_M2)
+        if (devType == ZCAN_USBCANFD_200U || devType == ZCAN_USBCAN2 || devType == ZCAN_PCIE_CANFD_200U)
         {
             return ch is 0 or 1;
         }

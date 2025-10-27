@@ -43,15 +43,10 @@ namespace CanKit.Adapter.ZLG
 
         private Task? _pollTask;
         private Func<ICanFrame, bool>? _softwareFilterPredicate;
-
-        private int _subscriberCount;
         private bool _useSoftwareFilter;
         private readonly AsyncFramePipe _asyncRx;
-        private int _asyncConsumerCount;
         private CancellationTokenSource? _stopDelayCts;
-        private int _asyncBufferingLinger;
         private readonly ZlgDeviceKind _deviceType;
-        private int _rxLoopRunning;
         internal ZlgCanBus(ZlgCanDevice device, IBusOptions options, ITransceiver transceiver, ICanModelProvider provider)
         {
             _devicePtr = device.NativeHandler.DangerousGetHandle();
@@ -106,6 +101,7 @@ namespace CanKit.Adapter.ZLG
             ZlgErr.ThrowIfError(ZLGCAN.ZCAN_StartCAN(_handle), nameof(ZLGCAN.ZCAN_StartCAN), _handle);
             _transceiver = transceiver;
             CanKitLogger.LogDebug("ZLG: Initial options applied.");
+            StartReceiveLoop();
         }
 
         public ZlgChannelHandle Handle => _handle;
@@ -224,13 +220,12 @@ namespace CanKit.Adapter.ZLG
             {
                 return;
             }
-
             try
             {
 
                 try
                 {
-                    //StopReceiveLoop();
+                    StopReceiveLoop();
                     Reset();
                 }
                 catch (CanKitException ex)
@@ -255,34 +250,17 @@ namespace CanKit.Adapter.ZLG
         {
             add
             {
-                bool needStart = false;
                 lock (_evtGate)
                 {
-                    var before = _frameReceived;
                     _frameReceived += value;
-                    if (!ReferenceEquals(before, _frameReceived))
-                    {
-                        Interlocked.Increment(ref _subscriberCount);
-                        needStart = (before == null) && Volatile.Read(ref _asyncConsumerCount) == 0;
-                    }
                 }
-                if (needStart) StartReceiveLoopIfNeeded();
             }
             remove
             {
-                bool needStop = false;
                 lock (_evtGate)
                 {
-                    var before = _frameReceived;
                     _frameReceived -= value;
-                    if (!ReferenceEquals(before, _frameReceived))
-                    {
-                        var now = Interlocked.Decrement(ref _subscriberCount);
-                        if (now == 0 && Volatile.Read(ref _asyncConsumerCount) == 0)
-                            needStop = true;
-                    }
                 }
-                if (needStop) RequestStopReceiveLoop();
             }
         }
 
@@ -297,18 +275,10 @@ namespace CanKit.Adapter.ZLG
                 {
                     throw new CanBusConfigurationException("ErrorOccurred subscription requires AllowErrorInfo=true in options.");
                 }
-                bool needStart = false;
                 lock (_evtGate)
                 {
-                    var before = _errorOccurred;
                     _errorOccurred += value;
-                    if (!ReferenceEquals(before, _errorOccurred))
-                    {
-                        Interlocked.Increment(ref _subscriberCount);
-                        needStart = (before == null) && Volatile.Read(ref _asyncConsumerCount) == 0;
-                    }
                 }
-                if (needStart) StartReceiveLoopIfNeeded();
             }
             remove
             {
@@ -316,19 +286,10 @@ namespace CanKit.Adapter.ZLG
                 {
                     throw new CanBusConfigurationException("ErrorOccurred subscription requires AllowErrorInfo=true in options.");
                 }
-                bool needStop = false;
                 lock (_evtGate)
                 {
-                    var before = _errorOccurred;
                     _errorOccurred -= value;
-                    if (!ReferenceEquals(before, _errorOccurred))
-                    {
-                        var now = Interlocked.Decrement(ref _subscriberCount);
-                        if (now == 0 && Volatile.Read(ref _asyncConsumerCount) == 0)
-                            needStop = true;
-                    }
                 }
-                if (needStop) RequestStopReceiveLoop();
             }
         }
 
@@ -558,10 +519,8 @@ namespace CanKit.Adapter.ZLG
                 throw new CanBusDisposedException();
         }
 
-        private void StartReceiveLoopIfNeeded()
+        private void StartReceiveLoop()
         {
-            if (Interlocked.Exchange(ref _rxLoopRunning, 1) == 1)
-                return;
 
             _pollCts = new CancellationTokenSource();
             var token = _pollCts.Token;
@@ -578,9 +537,6 @@ namespace CanKit.Adapter.ZLG
         {
             var task = Volatile.Read(ref _pollTask);
             var cts = Volatile.Read(ref _pollCts);
-
-            if (Interlocked.Exchange(ref _rxLoopRunning, 0) == 0)
-                return;
             try
             {
                 _asyncRx.Clear();
@@ -593,45 +549,14 @@ namespace CanKit.Adapter.ZLG
                 Interlocked.CompareExchange(ref _pollTask, task, null);
                 Interlocked.CompareExchange(ref _pollCts, cts, null);
                 cts?.Dispose();
-                Volatile.Write(ref _asyncBufferingLinger, 0);
                 CanKitLogger.LogDebug("ZLG: Poll loop stopped.");
             }
-        }
-
-        private void RequestStopReceiveLoop()
-        {
-            var delay = Options.ReceiveLoopStopDelayMs;
-            if (delay <= 0)
-            {
-                StopReceiveLoop();
-                return;
-            }
-            _stopDelayCts?.Cancel();
-            var cts = new CancellationTokenSource();
-            _stopDelayCts = cts;
-            Task.Run(async () =>
-            {
-                try
-                {
-                    await Task.Delay(delay, cts.Token).ConfigureAwait(false);
-                    if (Volatile.Read(ref _subscriberCount) == 0 && Volatile.Read(ref _asyncConsumerCount) == 0)
-                    {
-                        StopReceiveLoop();
-                    }
-                }
-                catch { /*Ignored*/ }
-            }, cts.Token);
         }
 
         private void PollLoop(CancellationToken token)
         {
             while (!token.IsCancellationRequested)
             {
-                if (Volatile.Read(ref _rxLoopRunning) == 0)
-                {
-                    break;
-                }
-
                 try
                 {
                     const int batch = 64;
@@ -650,9 +575,7 @@ namespace CanKit.Adapter.ZLG
                                 }
                                 var evSnap = Volatile.Read(ref _frameReceived);
                                 evSnap?.Invoke(this, frame);
-
-                                if (Volatile.Read(ref _asyncConsumerCount) > 0 || Volatile.Read(ref _asyncBufferingLinger) == 1)
-                                    _asyncRx.Publish(frame);
+                                _asyncRx.Publish(frame);
                             }
                             catch (Exception ex)
                             {
@@ -703,52 +626,19 @@ namespace CanKit.Adapter.ZLG
         public async Task<IReadOnlyList<CanReceiveData>> ReceiveAsync(int count = 1, int timeOut = 0, CancellationToken cancellationToken = default)
         {
             ThrowIfDisposed();
-            Interlocked.Increment(ref _subscriberCount);
-            Interlocked.Increment(ref _asyncConsumerCount);
-            Volatile.Write(ref _asyncBufferingLinger, 0);
-            StartReceiveLoopIfNeeded();
             if (count < 0) throw new ArgumentOutOfRangeException(nameof(count));
-            try
-            {
-                return await _asyncRx.ReceiveBatchAsync(count, timeOut, cancellationToken).ConfigureAwait(false);
-            }
-            finally
-            {
-                var remAsync = Interlocked.Decrement(ref _asyncConsumerCount);
-                var rem = Interlocked.Decrement(ref _subscriberCount);
-                if (rem == 0 && remAsync == 0)
-                {
-                    Volatile.Write(ref _asyncBufferingLinger, 1);
-                    RequestStopReceiveLoop();
-                }
-            }
+            return await _asyncRx.ReceiveBatchAsync(count, timeOut, cancellationToken).ConfigureAwait(false);
         }
 
 #if NET8_0_OR_GREATER
         public async IAsyncEnumerable<CanReceiveData> GetFramesAsync([System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
             ThrowIfDisposed();
-            Interlocked.Increment(ref _subscriberCount);
-            Interlocked.Increment(ref _asyncConsumerCount);
-            Volatile.Write(ref _asyncBufferingLinger, 0);
-            StartReceiveLoopIfNeeded();
-            try
+            await foreach (var item in _asyncRx.ReadAllAsync(cancellationToken))
             {
-                await foreach (var item in _asyncRx.ReadAllAsync(cancellationToken))
-                {
-                    yield return item;
-                }
+                yield return item;
             }
-            finally
-            {
-                var remAsync = Interlocked.Decrement(ref _asyncConsumerCount);
-                var rem = Interlocked.Decrement(ref _subscriberCount);
-                if (rem == 0 && remAsync == 0)
-                {
-                    Volatile.Write(ref _asyncBufferingLinger, 1);
-                    RequestStopReceiveLoop();
-                }
-            }
+
         }
 #endif
 

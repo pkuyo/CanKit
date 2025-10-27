@@ -145,7 +145,7 @@ public sealed class VectorClassicTransceiver : IVectorTransceiver
                 return true;
 
             case VxlApi.XLeventType.XL_CHIP_STATE:
-                errorInfo = BuildChipStateError(nativeEvent.TagData.ChipState);
+                errorInfo = BuildChipState(nativeEvent.TagData.ChipState);
                 return true;
 
             default:
@@ -153,7 +153,7 @@ public sealed class VectorClassicTransceiver : IVectorTransceiver
         }
     }
 
-    private static ICanErrorInfo BuildChipStateError(in VxlApi.XLchipStateBasic state)
+    private static ICanErrorInfo BuildChipState(in VxlApi.XLchipStateBasic state)
     {
         CanControllerStatus controllerStatus;
         var busStatus = state.BusStatus;

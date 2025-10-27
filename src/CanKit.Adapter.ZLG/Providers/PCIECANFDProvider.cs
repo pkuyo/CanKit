@@ -14,6 +14,8 @@ public class PCIECANFD200UProvider : ZlgCanProvider
                                                  CanFeature.Echo |
                                                  CanFeature.CanFd |
                                                  CanFeature.RangeFilter;
+
+    public override ZlgFeature ZlgFeature => ZlgFeature.MergeReceive;
 }
 
 public class PCIECANFDProvider(DeviceType deviceType) : ZlgCanProvider

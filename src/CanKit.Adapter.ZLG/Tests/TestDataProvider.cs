@@ -14,7 +14,7 @@ public class TestDataProvider : ITestDataProvider
         [
             ("zlg://ZCAN_USBCAN2?index=0#ch0", "zlg://ZCAN_USBCAN2?index=0#ch1", false),
             ("zlg://ZCAN_USBCANFD_200U?index=0#ch0", "zlg://ZCAN_USBCANFD_200U?index=0#ch1", true),
-            ("zlg://ZCAN_PCIE_CANFD_200U_M2?index=0#ch0", "zlg://ZCAN_PCIE_CANFD_200U_M2?index=0#ch1", true),
+            ("zlg://ZCAN_PCIE_CANFD_200U?index=0#ch0", "zlg://ZCAN_PCIE_CANFD_200U?index=0#ch1", true),
         ];
 
     //ZLG没有给出明确的ACC定义方式，故暂不测试

@@ -26,11 +26,7 @@ public sealed class ControlCanBus : ICanBus<ControlCanBusRtConfigurator>, IBusOw
     private CancellationTokenSource? _pollCts;
     private Task? _pollTask;
     private readonly AsyncFramePipe _asyncRx;
-    private int _asyncConsumerCount;
-    private int _subscriberCount;
     private CancellationTokenSource? _stopDelayCts;
-    private int _asyncBufferingLinger;
-    private int _rxLoopRunning;
     private Func<ICanFrame, bool>? _softwareFilterPredicate;
 
     private readonly HashSet<int> _autoSendIndexes = new();
@@ -271,49 +267,15 @@ public sealed class ControlCanBus : ICanBus<ControlCanBusRtConfigurator>, IBusOw
     {
         ThrowIfDisposed();
         if (count < 0) throw new ArgumentOutOfRangeException(nameof(count));
-        Interlocked.Increment(ref _subscriberCount);
-        Interlocked.Increment(ref _asyncConsumerCount);
-        Volatile.Write(ref _asyncBufferingLinger, 0);
-        StartReceiveLoopIfNeeded();
-        try
-        {
-            return await _asyncRx.ReceiveBatchAsync(count, timeOut, cancellationToken).ConfigureAwait(false);
-        }
-        finally
-        {
-            var remAsync = Interlocked.Decrement(ref _asyncConsumerCount);
-            var rem = Interlocked.Decrement(ref _subscriberCount);
-            if (rem == 0 && remAsync == 0)
-            {
-                Volatile.Write(ref _asyncBufferingLinger, 1);
-                RequestStopReceiveLoop();
-            }
-        }
+        return await _asyncRx.ReceiveBatchAsync(count, timeOut, cancellationToken).ConfigureAwait(false);
     }
 
 #if NET8_0_OR_GREATER
     public async IAsyncEnumerable<CanReceiveData> GetFramesAsync([System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
-        Interlocked.Increment(ref _subscriberCount);
-        Interlocked.Increment(ref _asyncConsumerCount);
-        Volatile.Write(ref _asyncBufferingLinger, 0);
-        StartReceiveLoopIfNeeded();
-        try
-        {
-            await foreach (var item in _asyncRx.ReadAllAsync(cancellationToken))
-                yield return item;
-        }
-        finally
-        {
-            var remAsync = Interlocked.Decrement(ref _asyncConsumerCount);
-            var rem = Interlocked.Decrement(ref _subscriberCount);
-            if (rem == 0 && remAsync == 0)
-            {
-                Volatile.Write(ref _asyncBufferingLinger, 1);
-                RequestStopReceiveLoop();
-            }
-        }
+        await foreach (var item in _asyncRx.ReadAllAsync(cancellationToken))
+            yield return item;
     }
 #endif
 
@@ -325,30 +287,15 @@ public sealed class ControlCanBus : ICanBus<ControlCanBusRtConfigurator>, IBusOw
         {
             lock (_evtGate)
             {
-                var before = _frameReceived;
                 _frameReceived += value;
-                if (!ReferenceEquals(before, _frameReceived))
-                {
-                    Interlocked.Increment(ref _subscriberCount);
-                    StartReceiveLoopIfNeeded();
-                }
             }
         }
         remove
         {
-            bool needStop = false;
             lock (_evtGate)
             {
-                var before = _frameReceived;
                 _frameReceived -= value;
-                if (!ReferenceEquals(before, _frameReceived))
-                {
-                    var now = Interlocked.Decrement(ref _subscriberCount);
-                    if (now == 0 && Volatile.Read(ref _asyncConsumerCount) == 0)
-                        needStop = true;
-                }
             }
-            if (needStop) RequestStopReceiveLoop();
         }
     }
 
@@ -360,32 +307,17 @@ public sealed class ControlCanBus : ICanBus<ControlCanBusRtConfigurator>, IBusOw
                 throw new CanBusConfigurationException("ErrorOccurred subscription requires AllowErrorInfo=true in options.");
             lock (_evtGate)
             {
-                var before = _errorOccurred;
                 _errorOccurred += value;
-                if (!ReferenceEquals(before, _errorOccurred))
-                {
-                    Interlocked.Increment(ref _subscriberCount);
-                    StartReceiveLoopIfNeeded();
-                }
             }
         }
         remove
         {
             if (!Options.AllowErrorInfo)
                 throw new CanBusConfigurationException("ErrorOccurred subscription requires AllowErrorInfo=true in options.");
-            bool needStop = false;
             lock (_evtGate)
             {
-                var before = _errorOccurred;
                 _errorOccurred -= value;
-                if (!ReferenceEquals(before, _errorOccurred))
-                {
-                    var now = Interlocked.Decrement(ref _subscriberCount);
-                    if (now == 0 && Volatile.Read(ref _asyncConsumerCount) == 0)
-                        needStop = true;
-                }
             }
-            if (needStop) RequestStopReceiveLoop();
         }
     }
 
@@ -412,11 +344,9 @@ public sealed class ControlCanBus : ICanBus<ControlCanBusRtConfigurator>, IBusOw
         if (_isDisposed) throw new CanBusDisposedException();
     }
 
-    private void StartReceiveLoopIfNeeded()
+    private void StartReceiveLoop()
     {
-        if (Interlocked.Exchange(ref _rxLoopRunning, 1) == 1) return;
         _pollCts = new CancellationTokenSource();
-        DrainReceive();
         _pollTask = Task.Run(() => PollLoop(_pollCts.Token), _pollCts.Token);
         CanKitLogger.LogDebug("ControlCAN: Poll loop started.");
     }
@@ -425,9 +355,6 @@ public sealed class ControlCanBus : ICanBus<ControlCanBusRtConfigurator>, IBusOw
     {
         var task = Volatile.Read(ref _pollTask);
         var cts = Volatile.Read(ref _pollCts);
-
-        if (Interlocked.Exchange(ref _rxLoopRunning, 0) == 0)
-            return;
         try
         {
             _asyncRx.Clear();
@@ -440,32 +367,8 @@ public sealed class ControlCanBus : ICanBus<ControlCanBusRtConfigurator>, IBusOw
             Interlocked.CompareExchange(ref _pollTask, task, null);
             Interlocked.CompareExchange(ref _pollCts, cts, null);
             cts?.Dispose();
-            Volatile.Write(ref _asyncBufferingLinger, 0);
             CanKitLogger.LogDebug("ControlCAN: Poll loop stopped.");
         }
-    }
-
-    private void RequestStopReceiveLoop()
-    {
-        var delay = Options.ReceiveLoopStopDelayMs;
-        if (delay <= 0)
-        {
-            StopReceiveLoop();
-            return;
-        }
-        _stopDelayCts?.Cancel();
-        var cts = new CancellationTokenSource();
-        _stopDelayCts = cts;
-        Task.Run(async () =>
-        {
-            try
-            {
-                await Task.Delay(delay, cts.Token).ConfigureAwait(false);
-                if (Volatile.Read(ref _subscriberCount) == 0 && Volatile.Read(ref _asyncConsumerCount) == 0)
-                    StopReceiveLoop();
-            }
-            catch { }
-        }, cts.Token);
     }
 
     private void PollLoop(CancellationToken token)
@@ -474,8 +377,6 @@ public sealed class ControlCanBus : ICanBus<ControlCanBusRtConfigurator>, IBusOw
         {
             while (!token.IsCancellationRequested)
             {
-                if (Volatile.Read(ref _rxLoopRunning) == 0)
-                    break;
 
                 DrainReceive();
                 var errSnap = Volatile.Read(ref _errorOccurred);
@@ -502,8 +403,7 @@ public sealed class ControlCanBus : ICanBus<ControlCanBusRtConfigurator>, IBusOw
                 if (_softwareFilterPredicate != null && !_softwareFilterPredicate(frame.CanFrame))
                     continue;
                 _frameReceived?.Invoke(this, frame);
-                if (Volatile.Read(ref _asyncConsumerCount) > 0 || Volatile.Read(ref _asyncBufferingLinger) == 1)
-                    _asyncRx.Publish(frame);
+                _asyncRx.Publish(frame);
                 any = true;
             }
             if (!any) break;

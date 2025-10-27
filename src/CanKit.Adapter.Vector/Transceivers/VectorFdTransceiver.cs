@@ -137,7 +137,7 @@ public sealed class VectorFdTransceiver : IVectorTransceiver
             case VxlApi.XL_CAN_EV_TAG_TX_OK:
                 return false;
             case VxlApi.XL_CAN_EV_TAG_CHIP_STATE:
-                errorInfo = BuildChipStateError(nativeEvent.TagData.ChipState);
+                errorInfo = BuildChipState(nativeEvent.TagData.ChipState);
                 return true;
 
             case VxlApi.XL_CAN_EV_TAG_RX_ERROR:
@@ -189,7 +189,7 @@ public sealed class VectorFdTransceiver : IVectorTransceiver
         }
     }
 
-    private static ICanErrorInfo BuildChipStateError(in VxlApi.XLchipState state)
+    private static ICanErrorInfo BuildChipState(in VxlApi.XLchipState state)
     {
         CanControllerStatus controllerStatus;
         var busStatus = state.BusStatus;

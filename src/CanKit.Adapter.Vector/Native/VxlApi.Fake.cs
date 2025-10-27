@@ -3,13 +3,11 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
 
 namespace CanKit.Adapter.Vector.Native;
 
-/// <summary>
-/// FAKE backend used for tests when the real Vector driver is unavailable.
-/// Provides a very small in-memory emulation layer matching the real P/Invoke signatures.
-/// </summary>
+
 internal static class VxlApi
 {
     public const int RX_BATCH_COUNT = 256;
@@ -334,7 +332,7 @@ internal static class VxlApi
         public byte OutputMode = XL_OUTPUT_MODE_NORMAL;
         public readonly ConcurrentQueue<XLcanRxEvent> RxQueue = new();
         public string AppName = string.Empty;
-        public IntPtr NotificationEvent;
+        public SafeWaitHandle NotificationEvent;
 
         // Timing/config
         public uint ClassicBitrate;
@@ -400,10 +398,9 @@ internal static class VxlApi
             RawData = new uint[10],
             Reserved = new uint[3]
         };
-        for (int i = 1; i < config.Channel.Length; i++)
+        for (int i = 2; i < config.Channel.Length; i++)
         {
-            if (i != 1)
-                config.Channel[i] = default;
+            config.Channel[i] = default;
         }
         return XL_SUCCESS;
     }
@@ -428,7 +425,7 @@ internal static class VxlApi
             {
                 Id = World.NextHandle++,
                 Mask = accessMask,
-                AppName = appName ?? string.Empty
+                AppName = appName
             };
             World.Handles[handle.Id] = handle;
             portHandle = handle.Id;
@@ -437,10 +434,16 @@ internal static class VxlApi
         }
     }
 
+    public static int xlCanRequestChipState(int portHandle, ulong channelMask) => XL_SUCCESS;
+
     public static int xlClosePort(int portHandle)
     {
         lock (World.Gate)
         {
+            if (World.Handles.TryGetValue(portHandle, out var handle))
+            {
+                handle.NotificationEvent.Dispose();
+            }
             World.Handles.Remove(portHandle);
             return XL_SUCCESS;
         }
@@ -793,9 +796,9 @@ internal static class VxlApi
         }
     }
 
-    private static void TrySignal(IntPtr hEvent)
+    private static void TrySignal(SafeWaitHandle hEvent)
     {
-        if (hEvent != IntPtr.Zero)
+        if (!hEvent.IsInvalid)
         {
             try { Win32.SetEvent(hEvent); } catch { }
         }
@@ -816,7 +819,6 @@ internal static class VxlApi
         return ev;
     }
 
-    // Map appName/appChannel to hardware triple (hwType/hwIndex/hwChannel)
     public static int xlGetApplConfig(string appName, uint appChannel, ref uint hwType, ref uint hwIndex, ref uint hwChannel, uint busType)
     {
         // Only CAN bus type supported in FAKE
@@ -831,23 +833,50 @@ internal static class VxlApi
         }
         return XL_ERR_HW_NOT_PRESENT;
     }
-
-    // Convert hardware triple to global channel index (return index or -1)
     public static int xlGetChannelIndex(int hwType, int hwIndex, int hwChannel)
         => (hwType == 0 && hwIndex == 0 && (hwChannel == 0 || hwChannel == 1)) ? hwChannel : -1;
 
-    public static int xlSetNotification(int portHandle, IntPtr hEvent)
+    public static int xlSetNotification(int portHandle,out IntPtr hEvent, int _ = 1 /*Ignore this*/)
     {
+        hEvent = IntPtr.Zero;
         if (!World.Handles.TryGetValue(portHandle, out var handle))
             return XL_ERR_HW_NOT_PRESENT;
-        handle.NotificationEvent = hEvent;
+        var ev = Win32.CreateManualResetEventHandle();
+        hEvent = ev.DangerousGetHandle();
+        handle.NotificationEvent = ev;
         return XL_SUCCESS;
     }
 
     private static class Win32
     {
-        [DllImport("kernel32.dll", SetLastError = false)]
-        public static extern bool SetEvent(IntPtr hEvent);
+
+        [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+        internal static extern SafeWaitHandle CreateEventExW(
+            IntPtr lpEventAttributes,
+            string? lpName,
+            uint dwFlags,
+            uint dwDesiredAccess);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        internal static extern bool SetEvent(SafeWaitHandle hEvent);
+        internal static SafeWaitHandle CreateManualResetEventHandle()
+        {
+            var h = CreateEventExW(
+                IntPtr.Zero,
+                null, // 想跨进程共享可给名字，如 "Global\\MyEvt"
+                CREATE_EVENT_MANUAL_RESET /*| Native.CREATE_EVENT_INITIAL_SET*/,
+                DESIRED_ACCESS);
+
+            if (h.IsInvalid) throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+            return h;
+        }
+
+        internal const uint CREATE_EVENT_MANUAL_RESET = 0x00000001;
+        internal const uint CREATE_EVENT_INITIAL_SET  = 0x00000002;
+
+        internal const uint EVENT_MODIFY_STATE = 0x0002;
+        internal const uint SYNCHRONIZE        = 0x00100000;
+        internal const uint DESIRED_ACCESS     = EVENT_MODIFY_STATE | SYNCHRONIZE;
     }
 }
 #endif
