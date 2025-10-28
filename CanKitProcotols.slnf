@@ -1,0 +1,11 @@
+{
+    "solution": 
+    {
+        "path": "CanKit.sln",
+        "projects":
+        [
+            "src\\core\\CanKit.Core\\CanKit.Core.csproj",
+            "src\\protocols\\CanKit.Protocol.IsoTp\\CanKit.Protocol.IsoTp.csproj",
+        ] 
+    }
+}

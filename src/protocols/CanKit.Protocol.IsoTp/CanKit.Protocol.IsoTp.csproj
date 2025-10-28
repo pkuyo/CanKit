@@ -1,12 +1,12 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
-        <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
+        <ImplicitUsings>enable</ImplicitUsings>
         <LangVersion>12</LangVersion>
-        <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
         <Version>$(CanKitCoreVersion)</Version>
-        <Description>Virtual in-process CAN adapter for CanKit for development, testing, and simulation.</Description>
-        <PackageTags>CAN;can bus;CANFD;;Adapter;CanKit</PackageTags>
+        <Description>TODO</Description>
+        <PackageTags>CAN;can bus;CANFD;ISOTP;CanKit</PackageTags>
         <AssemblyVersion>1.0.0.0</AssemblyVersion>
         <FileVersion>$(CanKitCoreFileVersion)</FileVersion>
         <Authors>Pkuyo</Authors>
@@ -24,11 +24,14 @@
         <PackageReference Include="CanKit.Core" Version="$(CanKitCoreVersion)"/>
     </ItemGroup>
 
+    <ItemGroup Condition="'$(Configuration)'!='Fake'">
+        <PackageReference Include="Peak.PCANBasic.NET" Version="4.10.1.968"/>
+    </ItemGroup>
 
     <ItemGroup>
         <None Include="buildTransitive\**\*.*" Pack="true" PackagePath="buildTransitive\"/>
     </ItemGroup>
     <ItemGroup>
-        <None Include="README.md" Pack="true" PackagePath=""/>
+        <None Include="README.md" Pack="true" PackagePath="" />
     </ItemGroup>
 </Project>
