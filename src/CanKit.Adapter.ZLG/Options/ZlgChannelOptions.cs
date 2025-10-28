@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using CanKit.Adapter.ZLG.Definitions;
 using CanKit.Core.Abstractions;
 using CanKit.Core.Attributes;
@@ -12,7 +12,7 @@ namespace CanKit.Adapter.ZLG.Options
         /// <summary>
         /// merge receive, one device only call one times (合并接收，一个设备只需要启用一次)
         /// </summary>
-        public bool? MergeReceive { get; set; } = false;
+        public bool? MergeReceive { get; set; }
 
         /// <summary>
         /// Polling interval in ms (轮询间隔，毫秒)。

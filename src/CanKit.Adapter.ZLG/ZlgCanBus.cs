@@ -324,14 +324,14 @@ namespace CanKit.Adapter.ZLG
                     $"channel {Options.ChannelIndex}");
             }
 
-            if (zlgOption.MergeReceive.HasValue)
+            if (zlgOption.MergeReceive.HasValue && zlgOption.ZlgFeatures.HasFlag(ZlgFeature.MergeReceive))
             {
                 ZlgErr.ThrowIfError(
                     ZLGCAN.ZCAN_SetValue(
                         _devicePtr,
                         Options.ChannelIndex + "/set_device_recv_merge",
                         zlgOption.MergeReceive.Value ? "1" : "0"),
-                    "ZCAN_SetValue(canfd_abit_baud_rate)");
+                    "ZCAN_SetValue(set_device_recv_merge)");
             }
 
             if (zlgOption.ProtocolMode == CanProtocolMode.CanFd)

@@ -26,7 +26,7 @@ namespace CanKit.Adapter.ZLG.Native
         public const int CANFD_BRS = 0x01;
         public const int CANFD_ESI = 0x02;
 
-        public const int BATCH_COUNT = 64;
+        public const int BATCH_COUNT = 256;
         #region 设备类型
         public static UInt32 ZCAN_PCI9810 = 2;
         public static UInt32 ZCAN_USBCAN1 = 3;
