@@ -18,15 +18,11 @@
     </PropertyGroup>
 
     <ItemGroup Condition="'$(UseLocalProjectReferences)'=='true'">
-        <ProjectReference Include="..\CanKit.Core\CanKit.Core.csproj"/>
+        <ProjectReference Include="..\..\core\CanKit.Core\CanKit.Core.csproj"/>
     </ItemGroup>
 
     <ItemGroup Condition="'$(UseLocalProjectReferences)'!='true'">
         <PackageReference Include="CanKit.Core" Version="$(CanKitCoreVersion)"/>
-    </ItemGroup>
-
-    <ItemGroup>
-        <ProjectReference Include="..\CanKit.Core\CanKit.Core.csproj" />
     </ItemGroup>
     
     <ItemGroup>

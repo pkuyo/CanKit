@@ -3,13 +3,13 @@ name: CI-adapter-pcan
 on:
   push:
     paths:
-      - 'src/CanKit.Core/**'
-      - 'src/CanKit.Adapter.PCAN/**'
+      - 'src/core/CanKit.Core/**'
+      - 'src/adapters/CanKit.Adapter.PCAN/**'
       - 'tests/CanKit.Tests/**'
   pull_request:
     paths:
-      - 'src/CanKit.Core/**'
-      - 'src/CanKit.Adapter.PCAN/**'
+      - 'src/core/CanKit.Core/**'
+      - 'src/adapters/CanKit.Adapter.PCAN/**'
       - 'tests/CanKit.Tests/**'
 jobs:
   windows:

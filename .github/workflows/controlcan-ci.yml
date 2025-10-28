@@ -3,13 +3,13 @@ name: CI-adapter-controlCAN
 on:
   push:
     paths:
-      - 'src/CanKit.Core/**'
-      - 'src/CanKit.Adapter.ControlCAN/**'
+      - 'src/core/CanKit.Core/**'
+      - 'src/adapters/CanKit.Adapter.ControlCAN/**'
       - 'tests/CanKit.Tests/**'
   pull_request:
     paths:
-      - 'src/CanKit.Core/**'
-      - 'src/CanKit.Adapter.ControlCAN/**'
+      - 'src/core/CanKit.Core/**'
+      - 'src/adapters/CanKit.Adapter.ControlCAN/**'
       - 'tests/CanKit.Tests/**'
 jobs:
   windows:

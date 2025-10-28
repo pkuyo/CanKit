@@ -18,14 +18,14 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\CanKit.Adapter.ControlCAN\CanKit.Adapter.ControlCAN.csproj" />
-    <ProjectReference Include="..\..\src\CanKit.Adapter.Vector\CanKit.Adapter.Vector.csproj" />
-    <ProjectReference Include="..\..\src\CanKit.Core\CanKit.Core.csproj" />
-    <ProjectReference Include="..\..\src\CanKit.Adapter.Virtual\CanKit.Adapter.Virtual.csproj" />
-    <ProjectReference Include="..\..\src\CanKit.Adapter.SocketCAN\CanKit.Adapter.SocketCAN.csproj" />
-    <ProjectReference Include="..\..\src\CanKit.Adapter.PCAN\CanKit.Adapter.PCAN.csproj" />
-    <ProjectReference Include="..\..\src\CanKit.Adapter.Kvaser\CanKit.Adapter.Kvaser.csproj" />
-    <ProjectReference Include="..\..\src\CanKit.Adapter.ZLG\CanKit.Adapter.ZLG.csproj" />
+    <ProjectReference Include="..\..\src\core\CanKit.Core\CanKit.Core.csproj" />
+    <ProjectReference Include="..\..\src\adapters\CanKit.Adapter.ControlCAN\CanKit.Adapter.ControlCAN.csproj" />
+    <ProjectReference Include="..\..\src\adapters\CanKit.Adapter.Vector\CanKit.Adapter.Vector.csproj" />
+    <ProjectReference Include="..\..\src\adapters\CanKit.Adapter.Virtual\CanKit.Adapter.Virtual.csproj" />
+    <ProjectReference Include="..\..\src\adapters\CanKit.Adapter.SocketCAN\CanKit.Adapter.SocketCAN.csproj" />
+    <ProjectReference Include="..\..\src\adapters\CanKit.Adapter.PCAN\CanKit.Adapter.PCAN.csproj" />
+    <ProjectReference Include="..\..\src\adapters\CanKit.Adapter.Kvaser\CanKit.Adapter.Kvaser.csproj" />
+    <ProjectReference Include="..\..\src\adapters\CanKit.Adapter.ZLG\CanKit.Adapter.ZLG.csproj" />
   </ItemGroup>
 </Project>
 

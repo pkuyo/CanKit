@@ -3,13 +3,13 @@ name: CI-adapter-socketcan
 on:
   push:
     paths:
-      - 'src/CanKit.Core/**'
-      - 'src/CanKit.Adapter.SocketCAN/**'
+      - 'src/core/CanKit.Core/**'
+      - 'src/adapters/CanKit.Adapter.SocketCAN/**'
       - 'tests/CanKit.Tests/**'
   pull_request:
     paths:
-      - 'src/CanKit.Core/**'
-      - 'src/CanKit.Adapter.SocketCAN/**'
+      - 'src/core/CanKit.Core/**'
+      - 'src/adapters/CanKit.Adapter.SocketCAN/**'
       - 'tests/CanKit.Tests/**'
 jobs:
   linux:
