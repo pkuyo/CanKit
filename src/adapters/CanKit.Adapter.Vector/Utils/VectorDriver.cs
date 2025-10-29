@@ -78,7 +78,6 @@ internal static class VectorDriver
                 ch.HwChannel,
                 transceiver,
                 ch.ChannelCapabilities,
-                ch.ChannelBusCapabilities,
                 ch.ConnectedBusType,
                 supportsFd);
 

@@ -39,28 +39,9 @@ namespace CanKit.Core.Definitions
         public CanFeature EnabledSoftwareFallback => Options.EnabledSoftwareFallback;
         public bool AllowErrorInfo => Options.AllowErrorInfo;
         public int AsyncBufferCapacity => Options.AsyncBufferCapacity;
-        public int ReceiveLoopStopDelayMs => Options.ReceiveLoopStopDelayMs;
 
-        IBusRTOptionsConfigurator IBusRTOptionsConfigurator.SetAsyncBufferCapacity(int capacity)
-            => SetAsyncBufferCapacity(capacity);
+        public IBufferAllocator BufferAllocator => Options.BufferAllocator;
 
-        IBusRTOptionsConfigurator IBusRTOptionsConfigurator.SetReceiveLoopStopDelayMs(int milliseconds)
-            => SetReceiveLoopStopDelayMs(milliseconds);
-
-        public virtual TSelf SetAsyncBufferCapacity(int capacity)
-        {
-            if (capacity <= 0)
-                throw new ArgumentOutOfRangeException(nameof(capacity));
-            Options.AsyncBufferCapacity = capacity;
-            return (TSelf)this;
-        }
-        public virtual TSelf SetReceiveLoopStopDelayMs(int milliseconds)
-        {
-            if (milliseconds <= 0)
-                throw new ArgumentOutOfRangeException(nameof(milliseconds));
-            Options.ReceiveLoopStopDelayMs = milliseconds;
-            return (TSelf)this;
-        }
     }
 
     public class DeviceInitOptionsConfigurator<TDeviceOptions, TSelf>
@@ -156,8 +137,8 @@ namespace CanKit.Core.Definitions
         IBusInitOptionsConfigurator IBusInitOptionsConfigurator.SetAsyncBufferCapacity(int capacity)
             => SetAsyncBufferCapacity(capacity);
 
-        IBusInitOptionsConfigurator IBusInitOptionsConfigurator.SetReceiveLoopStopDelayMs(int delayMs)
-            => SetReceiveLoopStopDelayMs(delayMs);
+        IBusInitOptionsConfigurator IBusInitOptionsConfigurator.BufferAllocator(IBufferAllocator bufferAllocator)
+            => BufferAllocator(bufferAllocator);
 
         public virtual IBusInitOptionsConfigurator Custom(string key, object value) => this;
 
@@ -330,6 +311,12 @@ namespace CanKit.Core.Definitions
             if (milliseconds < 0)
                 throw new ArgumentOutOfRangeException(nameof(milliseconds));
             Options.ReceiveLoopStopDelayMs = milliseconds;
+            return (TSelf)this;
+        }
+
+        public virtual TSelf BufferAllocator(IBufferAllocator bufferAllocator)
+        {
+            Options.BufferAllocator = bufferAllocator;
             return (TSelf)this;
         }
     }

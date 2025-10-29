@@ -88,18 +88,6 @@ public interface IBusRTOptionsConfigurator : ICanOptionsConfigurator
     CanFeature EnabledSoftwareFallback { get; }
 
     /// <summary>
-    /// Set capacity for internal async receive buffer (设置异步接收缓冲区容量)。
-    /// </summary>
-    /// <param name="capacity">Buffer capacity in frames (缓冲区容量，单位：帧)。</param>
-    IBusRTOptionsConfigurator SetAsyncBufferCapacity(int capacity);
-
-    /// <summary>
-    /// Set delay before stopping receive loop in milliseconds (设置停止接收循环前的延时，毫秒)。
-    /// </summary>
-    /// <param name="milliseconds">Delay in milliseconds (延时时间，毫秒)。</param>
-    IBusRTOptionsConfigurator SetReceiveLoopStopDelayMs(int milliseconds);
-
-    /// <summary>
     /// Enable error information monitoring  (启用错误信息监听)。
     /// </summary>
     bool AllowErrorInfo { get; }
@@ -109,11 +97,11 @@ public interface IBusRTOptionsConfigurator : ICanOptionsConfigurator
     /// </summary>
     int AsyncBufferCapacity { get; }
 
-
     /// <summary>
-    /// Delay in milliseconds before stopping the receive loop (停止接收循环延时，毫秒)。
+    /// Buffer allocator used for frame payloads at runtime.
+    /// 运行时用于帧数据缓冲区的分配器。
     /// </summary>
-    int ReceiveLoopStopDelayMs { get; }
+    IBufferAllocator BufferAllocator { get; }
 }
 
 /// <summary>
@@ -345,10 +333,13 @@ public interface IBusInitOptionsConfigurator : ICanOptionsConfigurator
     IBusInitOptionsConfigurator SetAsyncBufferCapacity(int capacity);
 
     /// <summary>
-    /// Set delay before stopping receive loop in milliseconds (设置停止接收循环前的延时，毫秒)。
+    /// Set the buffer allocator for frame payloads.
+    /// ZH: 设置用于帧负载的数据缓冲区分配器。
     /// </summary>
-    /// <param name="delayMs">Delay in milliseconds (延时时间，毫秒)。</param>
-    IBusInitOptionsConfigurator SetReceiveLoopStopDelayMs(int delayMs);
+    /// <param name="bufferAllocator">Allocator instance. ZH: 分配器实例。</param>
+    /// <returns>The configurator for chaining. ZH: 返回配置器以便链式调用。</returns>
+    IBusInitOptionsConfigurator BufferAllocator(IBufferAllocator bufferAllocator);
+
 
     /// <summary>
     /// Set custom option value (设置自定义选项值)。

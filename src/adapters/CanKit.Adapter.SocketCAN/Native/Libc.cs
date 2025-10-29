@@ -12,8 +12,9 @@ namespace CanKit.Adapter.SocketCAN.Native;
 #pragma warning disable CS8981
 internal static class Libc
 {
-    public const int BATCH_COUNT = 64;
+    public const int BATCH_COUNT = 32;
 
+    public const int MSG_CONFIRM = 0x800;
     //errno
     public const int EOPNOTSUPP = 95;
     public const int EPERM = 1;

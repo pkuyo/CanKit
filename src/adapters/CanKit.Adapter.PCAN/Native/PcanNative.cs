@@ -50,13 +50,13 @@ internal static class PcanBasicNative
     [DllImport("PCANBasic.dll", EntryPoint = "CAN_Read")]
     public static extern TPCANStatus CAN_Read(
         TPCANHandle Channel,
-        out TPCANMsg Message,
+        out TpcanMsg Message,
         out TPCANTimestamp Timestamp);
 
     [DllImport("PCANBasic.dll", EntryPoint = "CAN_ReadFD")]
     public static extern TPCANStatus CAN_ReadFD(
         TPCANHandle Channel,
-        out TPCANMsgFD Message,
+        out TpcanMsgFd Message,
         out TPCANTimestampFD Timestamp);
 
     public static TimeSpan ToTimeSpan(this TPCANTimestamp ts)

@@ -12,7 +12,7 @@ namespace CanKit.Protocol.IsoTp.Core;
 internal enum TxState { Idle, WaitFc, SendCf, WaitFcAfterBlock, Failed }
 internal enum RxState { Idle, RecvCf, Failed }
 
-public sealed class IsoTpChannelCore
+internal sealed class IsoTpChannelCore : IDisposable
 {
     public IsoTpEndpoint Endpoint { get; }
     public RxFcPolicy FcPolicy { get; }
@@ -35,7 +35,7 @@ public sealed class IsoTpChannelCore
     private byte _expectSn = 1;
     private readonly Deadline _nCr = new();
 
-    private readonly ConcurrentQueue<ICanFrame> _pendingFc = new();
+    private readonly ConcurrentQueue<PoolFrame> _pendingFc = new();
     private readonly ConcurrentQueue<PoolFrame> _pendingData = new();
 
     public IsoTpChannelCore(IsoTpEndpoint ep, RxFcPolicy policy)
@@ -45,8 +45,9 @@ public sealed class IsoTpChannelCore
 
     public bool Match(in CanReceiveData rx)
     {
-        // TODO: 严格匹配 {CAN_ID==Endpoint.RxId, IDE==Endpoint.IsExtendedId, N_AI?}
-        return false;
+        return rx.CanFrame.IsExtendedFrame == Endpoint.IsExtendedId &&
+               rx.CanFrame.ID == Endpoint.RxId &&
+               (!Endpoint.IsExtendedAddress || (Endpoint.SourceAddress == rx.CanFrame.Data.Span[0]));
     }
 
     public void OnRx(in CanReceiveData rx)
@@ -102,14 +103,29 @@ public sealed class IsoTpChannelCore
         return _pendingData.IsEmpty;
     }
 
-    public void ProcessTimers()
+    public PoolFrame? DequeueFC()
     {
-        if (_tx == TxState.WaitFc && _nBs.Expired())
-            throw new IsoTpException(IsoTpErrorCode.Timeout_N_Bs, "Wait FC timeout", Endpoint);
-        if (_tx == TxState.WaitFcAfterBlock && _nCs.Expired())
-            throw new IsoTpException(IsoTpErrorCode.Timeout_N_Cs, "Wait next FC timeout", Endpoint);
-        if (_rx == RxState.RecvCf && _nCr.Expired())
-            throw new IsoTpException(IsoTpErrorCode.Timeout_N_Cr, "Wait CF timeout", Endpoint);
+        if (_pendingFc.TryDequeue(out var poolFrame))
+        {
+            return poolFrame;
+        }
+        return null;
+    }
+
+    public bool TryPeekData(out ICanFrame frame)
+    {
+        var re = _pendingData.TryPeek(out var pf);
+        frame = pf.CanFrame;
+        return re;
+    }
+
+    public PoolFrame? DequeueData()
+    {
+        if (_pendingData.TryDequeue(out var poolFrame))
+        {
+            return poolFrame;
+        }
+        return null;
     }
 
     public void BeginSend(ReadOnlySpan<byte> pdu, bool padding, bool canfd, TimeSpan nBs)
@@ -130,5 +146,32 @@ public sealed class IsoTpChannelCore
         // 后续 CF 分段可延迟生成（依据 STmin/BS），或一次性预拆（简单但占内存）
 
         int CalcSfMax(bool canfd, Addressing addr) => canfd ? 62 : (addr == Addressing.Extended ? 6 : 7);
+    }
+
+
+    private void EnqueueFC(FlowStatus fs)
+    {
+        var bs = (byte)FcPolicy.BS;
+        var st = FrameCodec.EncodeStmin(FcPolicy.STmin);
+        _pendingFc.Enqueue(FrameCodec.BuildFC(Endpoint, fs, bs, st, /*padding*/true, /*canfd*/false));
+    }
+
+    // —— 定时器巡检 —— //
+    public void ProcessTimers()
+    {
+        if (_tx == TxState.WaitFc && _nBs.Expired())
+            throw new IsoTpException(IsoTpErrorCode.Timeout_N_Bs, "Wait FC timeout", Endpoint);
+        if (_tx == TxState.WaitFcAfterBlock && _nCs.Expired())
+            throw new IsoTpException(IsoTpErrorCode.Timeout_N_Cs, "Wait next FC timeout", Endpoint);
+        if (_rx == RxState.RecvCf && _nCr.Expired())
+            throw new IsoTpException(IsoTpErrorCode.Timeout_N_Cr, "Wait CF timeout", Endpoint);
+    }
+
+    public void Dispose()
+    {
+        while (_pendingFc.TryDequeue(out var result))
+        {
+            try { result.Dispose(); } catch { /*Ignored*/ }
+        }
     }
 }

@@ -112,7 +112,8 @@ public sealed class VectorFdTransceiver : IVectorTransceiver
             {
                 return false;
             }
-            if (TryProcessEvent(nativeEvent, out var frame, out var errorInfo))
+            if (TryProcessEvent(nativeEvent, bus, out var frame, out var errorInfo,
+                    bus.Options.WorkMode == ChannelWorkMode.Echo))
             {
                 hasAny = true;
                 if (frame is not null)
@@ -124,25 +125,32 @@ public sealed class VectorFdTransceiver : IVectorTransceiver
         return hasAny;
     }
 
-    private bool TryProcessEvent(in VxlApi.XLcanRxEvent nativeEvent, out CanReceiveData? data, out ICanErrorInfo? errorInfo)
+    private bool TryProcessEvent(in VxlApi.XLcanRxEvent nativeEvent, ICanBus bus, out CanReceiveData? data, out ICanErrorInfo? errorInfo, bool receiveEcho)
     {
         data = null;
         errorInfo = null;
-
+        var timeSpan = TimeSpanEx.FromNanoseconds(nativeEvent.TimeStamp);
         switch (nativeEvent.Tag)
         {
             case VxlApi.XL_CAN_EV_TAG_RX_OK:
-                data = BuildReceiveData(nativeEvent.TagData.CanRxOkMsg);
+
+                data = BuildReceiveData(nativeEvent.TagData.CanRxOkMsg, bus, timeSpan, false);
                 return true;
             case VxlApi.XL_CAN_EV_TAG_TX_OK:
+                if (receiveEcho)
+                {
+                    data = BuildReceiveData(nativeEvent.TagData.CanTxOkMsg, bus, timeSpan, true);
+                }
                 return false;
             case VxlApi.XL_CAN_EV_TAG_CHIP_STATE:
                 errorInfo = BuildChipState(nativeEvent.TagData.ChipState);
                 return true;
 
             case VxlApi.XL_CAN_EV_TAG_RX_ERROR:
+                errorInfo = BuildGenericError(nativeEvent.Tag, nativeEvent.TagData, timeSpan, false);
+                return true;
             case VxlApi.XL_CAN_EV_TAG_TX_ERROR:
-                errorInfo = BuildGenericError(nativeEvent.Tag, nativeEvent.TagData);
+                errorInfo = BuildGenericError(nativeEvent.Tag, nativeEvent.TagData, timeSpan, true);
                 return true;
 
             default:
@@ -150,19 +158,19 @@ public sealed class VectorFdTransceiver : IVectorTransceiver
         }
     }
 
-    private static CanReceiveData BuildReceiveData(in VxlApi.XLcanRxMsg msg)
+    private static CanReceiveData BuildReceiveData(in VxlApi.XLcanRxMsg msg, ICanBus bus, TimeSpan timeSpan, bool isEcho)
     {
         var isExtended = (msg.CanId & VxlApi.XL_CAN_EXT_MSG_ID) != 0;
         var flags = msg.MsgFlags;
         var isFd = (flags & VxlApi.XL_CAN_RXMSG_FLAG_EDL) != 0;
 
         var length = isFd ? CanFdFrame.DlcToLen(msg.Dlc) : Math.Min(msg.Dlc, (byte)8);
-        var payload = new byte[length];
+        var payload = bus.Options.BufferAllocator.Rent(length);
 
         unsafe
         {
             fixed (byte* src = msg.Data)
-            fixed (byte* dst = payload)
+            fixed (byte* dst = payload.Memory.Span)
             {
                 Unsafe.CopyBlockUnaligned(dst, src, (uint)length);
             }
@@ -173,9 +181,14 @@ public sealed class VectorFdTransceiver : IVectorTransceiver
             var frame = new CanFdFrame((int)(msg.CanId & 0x1FFFFFFF), payload,
                 (flags & VxlApi.XL_CAN_RXMSG_FLAG_BRS) != 0,
                 (flags & VxlApi.XL_CAN_RXMSG_FLAG_ESI) != 0,
-                isExtended)
+                isExtended,
+                ownMemory: bus.Options.BufferAllocator.FrameNeedDispose)
             { IsErrorFrame = (flags & VxlApi.XL_CAN_RXMSG_FLAG_EF) != 0 };
-            return new CanReceiveData(frame);
+            return new CanReceiveData(frame)
+            {
+                IsEcho = isEcho,
+                ReceiveTimestamp = timeSpan
+            };
         }
         else
         {
@@ -185,7 +198,11 @@ public sealed class VectorFdTransceiver : IVectorTransceiver
                 IsRemoteFrame = (flags & VxlApi.XL_CAN_RXMSG_FLAG_RTR) != 0,
                 IsErrorFrame = (flags & VxlApi.XL_CAN_RXMSG_FLAG_EF) != 0
             };
-            return new CanReceiveData(frame);
+            return new CanReceiveData(frame)
+            {
+                IsEcho = isEcho,
+                ReceiveTimestamp = timeSpan
+            };
         }
     }
 
@@ -224,7 +241,7 @@ public sealed class VectorFdTransceiver : IVectorTransceiver
             null);
     }
 
-    private static ICanErrorInfo BuildGenericError(ushort tag, in VxlApi.XLcanRxTagData data)
+    private static ICanErrorInfo BuildGenericError(ushort tag, in VxlApi.XLcanRxTagData data, TimeSpan timeSpan, bool isTx)
     {
         byte errorCode;
         try
@@ -243,8 +260,8 @@ public sealed class VectorFdTransceiver : IVectorTransceiver
             FrameErrorLocation.Unspecified,
             DateTime.UtcNow,
             errorCode,
-            null,
-            FrameDirection.Unknown,
+            timeSpan,
+            isTx ? FrameDirection.Tx : FrameDirection.Rx,
             null,
             CanTransceiverStatus.Unspecified,
             null,

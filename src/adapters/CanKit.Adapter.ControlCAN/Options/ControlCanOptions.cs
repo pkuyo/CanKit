@@ -29,5 +29,6 @@ public sealed class ControlCanBusOptions(ICanModelProvider provider) : IBusOptio
     public TxRetryPolicy TxRetryPolicy { get; set; } = TxRetryPolicy.AlwaysRetry;
     public int AsyncBufferCapacity { get; set; } = 0;
     public int ReceiveLoopStopDelayMs { get; set; } = 200;
+    public IBufferAllocator BufferAllocator { get; set; } = new DefaultBufferAllocator();
     public int PollingInterval { get; set; } = 10;
 }

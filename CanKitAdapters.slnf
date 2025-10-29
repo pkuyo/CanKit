@@ -6,6 +6,8 @@
         [
             "src\\core\\CanKit.Core\\CanKit.Core.csproj",
             "src\\adapters\\CanKit.Adapter.Kvaser\\CanKit.Adapter.Kvaser.csproj",
+            "src\\adapters\\CanKit.Adapter.ControlCAN\\CanKit.Adapter.ControlCAN.csproj",
+            "src\\adapters\\CanKit.Adapter.Vector\\CanKit.Adapter.Vector.csproj",
             "src\\adapters\\CanKit.Adapter.PCAN\\CanKit.Adapter.PCAN.csproj",
             "src\\adapters\\CanKit.Adapter.Virtual\\CanKit.Adapter.Virtual.csproj",
             "src\\adapters\\CanKit.Adapter.SocketCAN\\CanKit.Adapter.SocketCAN.csproj",

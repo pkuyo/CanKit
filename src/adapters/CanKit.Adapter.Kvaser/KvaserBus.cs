@@ -93,7 +93,14 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
     public void ApplyConfig(ICanOptions options)
     {
         if (options is not KvaserBusOptions kc) return;
-
+        if (kc.WorkMode == ChannelWorkMode.Echo)
+        {
+            var value = 1;
+            KvaserUtils.ThrowIfError(
+                Canlib.canIoCtl(_handle, Canlib.canIOCTL_SET_TXACK, ref value, (uint)Marshal.SizeOf<int>()),
+                "canIoCtl(canIOCTL_SET_TXACK)",
+                "Kvaser bus set echo mode failed");
+        }
         // Set filter rules
         var rules = kc.Filter.filterRules;
         if (rules.Count > 0)

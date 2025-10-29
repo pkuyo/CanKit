@@ -78,7 +78,7 @@ public class ZlgCanMergeTransceiver : ITransceiver
                 count -= rec;
                 for (int i = 0; i < rec; i++)
                 {
-                    yield return ZlgUtils.FromZCANData(in buf[i]);
+                    yield return ZlgUtils.FromZCANData(in buf[i], bus.Options.BufferAllocator);
                 }
             }
         }

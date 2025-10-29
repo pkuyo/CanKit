@@ -66,7 +66,7 @@ public class FilterTests : IClassFixture<TestCaseProvider>
                 cfg.AccMask(r.AccCode, r.AccMask, (CanFilterIDType)r.Ide);
             }
 
-            cfg.EnableErrorInfo().SetAsyncBufferCapacity(8192).SetReceiveLoopStopDelayMs(200);
+            cfg.EnableErrorInfo().SetAsyncBufferCapacity(8192);
         });
         using var tx = TestHelpers.OpenClassic(epB);
 

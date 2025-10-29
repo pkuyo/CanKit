@@ -37,6 +37,7 @@ namespace CanKit.Adapter.ZLG.Options
         public bool InternalResistance { get; set; }
         public int AsyncBufferCapacity { get; set; } = 0;
         public int ReceiveLoopStopDelayMs { get; set; } = 200;
+        public IBufferAllocator BufferAllocator { get; set; } = new DefaultBufferAllocator();
         public bool BusUsageEnabled { get; set; }
         public uint BusUsagePeriodTime { get; set; } = 200;
         public TxRetryPolicy TxRetryPolicy { get; set; } = TxRetryPolicy.AlwaysRetry;

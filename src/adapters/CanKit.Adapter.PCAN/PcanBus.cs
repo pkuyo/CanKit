@@ -63,6 +63,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
 
         CanKitLogger.LogInformation($"PCAN: Initializing on '{_handle}', Mode={options.ProtocolMode}, Features={Options.Features}");
 
+        ApplyConfigBeforeInit((PcanBusOptions)options);
 
         // Initialize according to selected protocol mode
         if (options.ProtocolMode == CanProtocolMode.CanFd)
@@ -90,7 +91,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
         }
 
         // Apply initial options
-        ApplyConfig(options);
+        ApplyConfig((PcanBusOptions)options);
         CanKitLogger.LogDebug("PCAN: Initial options applied.");
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
@@ -122,10 +123,26 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
         _owner = owner;
     }
 
-    public void ApplyConfig(ICanOptions options)
+    private void ApplyConfigBeforeInit(PcanBusOptions pc)
     {
-        if (options is not PcanBusOptions pc)
-            return;
+        if (pc.WorkMode == ChannelWorkMode.ListenOnly)
+        {
+            PcanUtils.ThrowIfError(Api.SetValue(_handle, PcanParameter.ListenOnly, ParameterValue.Activation.On),
+                "SetValue(ListenOnly)", "PcanBus set ListenOnly workmode error");
+        }
+    }
+
+    private void ApplyConfig(PcanBusOptions pc)
+    {
+        if (pc.WorkMode == ChannelWorkMode.Echo)
+        {
+            var result = Api.SetValue(_handle, PcanParameter.AllowEchoFrames, ParameterValue.Activation.On);
+            if (result != PcanStatus.OK)
+            {
+                CanKitLogger.LogWarning("PCAN: set WokeMode=Echo failed");
+                pc.WorkMode = ChannelWorkMode.Normal;
+            }
+        }
 
         var rules = pc.Filter.filterRules;
         if (rules.Count > 0)

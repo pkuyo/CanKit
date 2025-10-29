@@ -161,9 +161,9 @@ public sealed class KvaserFdTransceiver : ITransceiver
         if (count < 0) throw new ArgumentOutOfRangeException(nameof(count));
 
         int recCount = 0;
+        var data = new byte[64];
         while (true)
         {
-            byte[] data = new byte[64];
             int id;
             int flags;
             uint time;
@@ -177,16 +177,23 @@ public sealed class KvaserFdTransceiver : ITransceiver
                 var esi = (flags & Canlib.canFDMSG_ESI) != 0;
                 var isErr = (flags & Canlib.canMSG_ERROR_FRAME) != 0;
                 var isRtr = (flags & Canlib.canMSG_RTR) != 0;
-
+                var payLoad = bus.Options.BufferAllocator.Rent(dlc);
+                data.AsSpan().Slice(0, dlc).CopyTo(payLoad.Memory.Span);
                 ICanFrame frame = isFd
-                    ? new CanFdFrame(id, new ArraySegment<byte>(data, 0, (byte)dlc), brs, esi)
-                    { IsExtendedFrame = isExt, IsErrorFrame = isErr }
-                    : new CanClassicFrame(id, new ArraySegment<byte>(data, 0, dlc))
-                    { IsExtendedFrame = isExt, IsErrorFrame = isErr, IsRemoteFrame = isRtr };
+                    ? new CanFdFrame(id, payLoad, brs, esi, isExt,
+                        bus.Options.BufferAllocator.FrameNeedDispose)
+                    { IsErrorFrame = isErr }
+                    : new CanClassicFrame(id, payLoad, isExt, isRtr,
+                            bus.Options.BufferAllocator.FrameNeedDispose)
+                    { IsErrorFrame = isErr };
 
                 var kch = (KvaserBus)bus;
                 var ticks = time * kch.Options.TimerScaleMicroseconds * 10L; // us -> ticks
-                yield return new CanReceiveData(frame) { ReceiveTimestamp = TimeSpan.FromTicks(ticks) };
+                yield return new CanReceiveData(frame)
+                {
+                    ReceiveTimestamp = TimeSpan.FromTicks(ticks),
+                    IsEcho = (flags & Canlib.canMSG_TXACK) != 0,
+                };
 
                 recCount++;
                 if (recCount == count)

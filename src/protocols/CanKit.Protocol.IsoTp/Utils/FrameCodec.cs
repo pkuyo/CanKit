@@ -15,7 +15,7 @@ internal static partial class FrameCodec
         var pciStart = (ep.IsExtendedAddress ? 1 : 0);
         var typeNum = data[pciStart] >> 4;
         var fd = rx.CanFrame.FrameKind == CanFrameType.CanFd;
-        if (typeNum >= 4 || rx.CanFrame.ID != ep.RxId || (ep.SourceAddress != null && ep.SourceAddress != data[0]))
+        if (typeNum >= 4)
         {
             pci = default;
             return false;

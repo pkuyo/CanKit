@@ -18,7 +18,7 @@ internal static class TestHelpers
         {
             cfg.SetProtocolMode(CanProtocolMode.Can20).Baud(TestCaseProvider.AbitRate);
             if (enableFallbackAll) cfg.SoftwareFeaturesFallBack(CanFeature.All);
-            cfg.EnableErrorInfo().SetAsyncBufferCapacity(asyncBuf).SetReceiveLoopStopDelayMs(200);
+            cfg.EnableErrorInfo().SetAsyncBufferCapacity(asyncBuf);
             TestCaseProvider.Provider.TestBusInitFunc?.Invoke(cfg);
         });
 
@@ -29,7 +29,7 @@ internal static class TestHelpers
         {
             cfg.SetProtocolMode(CanProtocolMode.CanFd).Fd(TestCaseProvider.AbitRate, TestCaseProvider.DbitRate);
             if (enableFallbackAll) cfg.SoftwareFeaturesFallBack(CanFeature.All);
-            cfg.EnableErrorInfo().SetAsyncBufferCapacity(asyncBuf).SetReceiveLoopStopDelayMs(200);
+            cfg.EnableErrorInfo().SetAsyncBufferCapacity(asyncBuf);
             TestCaseProvider.Provider.TestBusInitFunc?.Invoke(cfg);
         });
 

@@ -1,4 +1,5 @@
-﻿using CanKit.Core.Definitions;
+﻿using System.Runtime.CompilerServices;
+using CanKit.Core.Definitions;
 using CanKit.Core.Exceptions;
 using CanKit.Adapter.Kvaser.Native;
 
@@ -11,7 +12,13 @@ public static class KvaserUtils
         if (status != Canlib.canStatus.canOK)
             throw new Exceptions.KvaserCanException(operation, message, status);
     }
-
+    public static unsafe void Clear(Span<byte> data, int len)
+    {
+        fixed (byte* ptr = data)
+        {
+            Unsafe.InitBlockUnaligned(ptr, 0, (uint)len);
+        }
+    }
     public static int MapToKvaserConst(int bitrate)
     {
         switch (bitrate)

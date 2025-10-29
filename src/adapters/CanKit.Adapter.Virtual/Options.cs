@@ -21,6 +21,7 @@ public sealed class VirtualBusOptions(ICanModelProvider provider) : IBusOptions
     public bool AllowErrorInfo { get; set; }
     public int AsyncBufferCapacity { get; set; } = 0;
     public int ReceiveLoopStopDelayMs { get; set; } = 200;
+    public IBufferAllocator BufferAllocator { get; set; } = new DefaultBufferAllocator();
 
     // Virtual specific: session id to join a hub
     public string SessionId { get; set; } = "default";

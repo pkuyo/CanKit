@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using CanKit.Adapter.Kvaser.Native;
 using CanKit.Adapter.Kvaser.Utils;
 using CanKit.Core.Abstractions;
@@ -137,9 +138,10 @@ public sealed class KvaserClassicTransceiver : ITransceiver
     {
         var ch = (KvaserBus)bus;
         if (count < 0) throw new ArgumentOutOfRangeException(nameof(count));
+        var data = new byte[8];
         while (true)
         {
-            var data = new byte[8];
+            KvaserUtils.Clear(data, 8);
             int id;
             int flags;
             uint time;
@@ -151,11 +153,18 @@ public sealed class KvaserClassicTransceiver : ITransceiver
                 var isExt = (flags & Canlib.canMSG_EXT) != 0;
                 var isRtr = (flags & Canlib.canMSG_RTR) != 0;
                 var isErr = (flags & Canlib.canMSG_ERROR_FRAME) != 0;
-                var frame = new CanClassicFrame(id, new ArraySegment<byte>(data, 0, dlc), isExt)
-                { IsRemoteFrame = isRtr, IsErrorFrame = isErr };
+                var payLoad = bus.Options.BufferAllocator.Rent(dlc);
+                data.AsSpan().Slice(0, dlc).CopyTo(payLoad.Memory.Span);
+                var frame = new CanClassicFrame(id, payLoad, isExt, isRtr,
+                        bus.Options.BufferAllocator.FrameNeedDispose)
+                { IsErrorFrame = isErr };
                 var kch = (KvaserBus)bus;
                 var ticks = time * kch.Options.TimerScaleMicroseconds * 10L; // us -> ticks
-                yield return new CanReceiveData(frame) { ReceiveTimestamp = TimeSpan.FromTicks(ticks) };
+                yield return new CanReceiveData(frame)
+                {
+                    ReceiveTimestamp = TimeSpan.FromTicks(ticks),
+                    IsEcho = (flags & Canlib.canMSG_TXACK) != 0,
+                };
             }
             else if (st == Canlib.canStatus.canERR_NOMSG)
             {

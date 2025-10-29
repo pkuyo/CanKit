@@ -101,5 +101,10 @@ namespace CanKit.Core.Abstractions
         /// Milliseconds to wait after a stop request before terminating the receive loop (接收循环停止延迟，毫秒)。
         /// </summary>
         int ReceiveLoopStopDelayMs { get; set; }
+
+        /// <summary>
+        /// Buffer allocator used to create frame payloads. （用于创建帧数据缓冲区的分配器。）
+        /// </summary>
+        IBufferAllocator BufferAllocator { get; set; }
     }
 }

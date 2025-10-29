@@ -95,7 +95,7 @@ internal sealed class ControlCanTransceiver : ITransceiver
             for (int i = 0; i < got; i++)
             {
                 var obj = arr[i];
-                var frame = obj.FromNative();
+                var frame = obj.FromNative(bus.Options.BufferAllocator);
                 yield return new CanReceiveData(frame)
                 {
                     ReceiveTimestamp = TimeSpan.FromTicks(obj.TimeStamp * TimeSpan.TicksPerMillisecond / 10),

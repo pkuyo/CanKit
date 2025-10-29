@@ -17,7 +17,8 @@ public sealed class PcanProvider : ICanModelProvider, ICanCapabilityProvider
                                         CanFeature.CanFd |
                                         CanFeature.RangeFilter |
                                         CanFeature.ErrorFrame |
-                                        CanFeature.ListenOnly;
+                                        CanFeature.ListenOnly |
+                                        CanFeature.Echo;
 
     public ICanFactory Factory => CanRegistry.Registry.Factory("PCAN");
 

@@ -111,7 +111,7 @@ namespace CanKit.Adapter.ZLG.Transceivers
                         yield break;
                     for (int i = 0; i < recCount; i++)
                     {
-                        yield return new CanReceiveData(buf[i].frame.FromReceiveData())
+                        yield return new CanReceiveData(buf[i].frame.FromReceiveData(bus.Options.BufferAllocator))
                         {
                             // ZLG timestamp is in microseconds
                             ReceiveTimestamp = TimeSpan.FromTicks((long)buf[i].timestamp * 10)

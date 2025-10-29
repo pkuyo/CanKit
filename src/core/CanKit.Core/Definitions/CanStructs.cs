@@ -225,6 +225,11 @@ public readonly record struct CanReceiveData(ICanFrame CanFrame)
     /// System time corresponding to this record. (该记录对应的系统时间。)
     /// </summary>
     public DateTime SystemTimestamp { get; } = DateTime.Now;
+
+    /// <summary>
+    /// TODO:
+    /// </summary>
+    public bool IsEcho { get; init; }
 }
 
 /// <summary>

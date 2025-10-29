@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 
 namespace CanKit.Core.Definitions
 {
@@ -6,7 +7,7 @@ namespace CanKit.Core.Definitions
     /// <summary>
     /// Minimal data set describing a CAN frame. (描述 CAN 帧的最小数据集合。)
     /// </summary>
-    public interface ICanFrame
+    public interface ICanFrame : IDisposable
     {
         /// <summary>
         /// Gets the frame type, e.g., Classical CAN or CAN FD. (获取帧的类型，例如经典 CAN 或 CAN FD。)
@@ -16,7 +17,7 @@ namespace CanKit.Core.Definitions
         /// <summary>
         /// Gets or initializes the frame payload data. (获取或初始化帧数据。)
         /// </summary>
-        ReadOnlyMemory<byte> Data { get; init; }
+        ReadOnlyMemory<byte> Data { get; }
 
         /// <summary>
         /// Gets the frame's DLC value. (获取帧的 DLC 值。)
@@ -31,12 +32,23 @@ namespace CanKit.Core.Definitions
         /// <summary>
         /// Indicates whether this is an error frame. (是否为错误帧。)
         /// </summary>
-        public bool IsErrorFrame { get; }
+        bool IsErrorFrame { get; }
 
         /// <summary>
         /// Indicates whether the frame uses the extended ID format. (指示该帧是否为扩展帧。)
         /// </summary>
-        public bool IsExtendedFrame { get; }
+        bool IsExtendedFrame { get; }
+
+        /// <summary>
+        /// Indicates whether the frame owns its payload memory and should be disposed to release it.
+        /// 指示该帧是否“拥有”其负载内存，需要通过释放来归还/释放内存。
+        /// </summary>
+        /// <remarks>
+        /// When true, the payload is backed by a rented/pooled buffer and <c>Dispose()</c> should be called.
+        /// When false, the payload is backed by memory that does not require disposal (e.g., plain arrays).
+        /// 当为 true 时，负载由租借/池化的缓冲区提供，应调用 <c>Dispose()</c>；当为 false 时，负载由无需释放的内存支持（例如普通数组）。
+        /// </remarks>
+        bool OwnMemory { get; }
     }
 
     /// <summary>
@@ -143,6 +155,8 @@ namespace CanKit.Core.Definitions
     {
         private readonly ReadOnlyMemory<byte> _data;
 
+        private readonly IMemoryOwner<byte>? _memoryOwner;
+
 
         /// <summary>
         /// Creates a Classical CAN frame from a standard or extended ID. (通过标准/扩展 ID 创建经典帧。)
@@ -156,12 +170,34 @@ namespace CanKit.Core.Definitions
             bool isRemoteFrame = false)
         {
             if (id < 0) throw new ArgumentOutOfRangeException(nameof(id));
-            if (dataInit.Length > 8) throw new ArgumentOutOfRangeException(nameof(dataInit));
             ID = id;
-
             IsRemoteFrame = isRemoteFrame;
             IsExtendedFrame = isExtendedFrame;
-            _data = dataInit;
+            _data = Validate(dataInit);
+        }
+
+        /// <summary>
+        /// Creates a Classical CAN frame using an existing memory owner for the payload.
+        /// ZH: 使用外部提供的内存拥有者作为负载来创建经典 CAN 帧。
+        /// </summary>
+        /// <param name="id">ID without flag bits. ZH: 不包含标志位的 ID。</param>
+        /// <param name="memoryOwner">The memory owner providing the payload. ZH: 提供负载数据的内存拥有者。</param>
+        /// <param name="isExtendedFrame">Whether this is an extended frame. ZH: 是否为扩展帧。</param>
+        /// <param name="isRemoteFrame">Whether this is a remote (RTR) frame. ZH: 是否为远程（RTR）帧。</param>
+        /// <param name="ownMemory">If true, disposing the frame disposes <paramref name="memoryOwner"/>.
+        /// ZH: 若为 true，释放该帧时将同时释放 <paramref name="memoryOwner"/>。</param>
+        public CanClassicFrame(int id, IMemoryOwner<byte> memoryOwner,
+            bool isExtendedFrame = false,
+            bool isRemoteFrame = false,
+            bool ownMemory = true)
+        {
+            if (id < 0) throw new ArgumentOutOfRangeException(nameof(id));
+            OwnMemory = ownMemory;
+            _memoryOwner = memoryOwner;
+            _data = Validate(memoryOwner.Memory);
+            ID = id;
+            IsRemoteFrame = isRemoteFrame;
+            IsExtendedFrame = isExtendedFrame;
         }
 
         /// <summary>
@@ -172,6 +208,8 @@ namespace CanKit.Core.Definitions
             get => CanIdBits.IsExtended(RawID);
             init => RawID = CanIdBits.WithExtended(RawID, value);
         }
+
+        public bool OwnMemory { get; }
 
         /// <summary>
         /// Indicates whether the frame is a remote (RTR) frame. (指示该帧是否为远程帧（RTR）。)
@@ -223,8 +261,6 @@ namespace CanKit.Core.Definitions
         public ReadOnlyMemory<byte> Data
         {
             get => _data;
-            init => _data = Validate(value);
-
         }
 
         /// <summary>
@@ -241,6 +277,8 @@ namespace CanKit.Core.Definitions
                 "Classic CAN frame data length cannot exceed 8 bytes.");
             return src;
         }
+
+        public void Dispose() => _memoryOwner?.Dispose();
     }
 
 
@@ -258,11 +296,36 @@ namespace CanKit.Core.Definitions
         /// <param name="BRS">Indicates whether Bit Rate Switching (BRS).（是否启用BRS。）</param>
         /// <param name="ESI">ndicates whether the transmitter is in Error State.（发送方是否处于错误状态。）</param>
         /// <param name="isExtendedFrame">Indicates whether this is an extended frame. (指示是否为扩展帧。)</param>
-        public CanFdFrame(int id, ReadOnlyMemory<byte> dataInit = default, bool BRS = false, bool ESI = false, bool isExtendedFrame = false)
+        public CanFdFrame(int id, ReadOnlyMemory<byte> dataInit = default,
+            bool BRS = false, bool ESI = false, bool isExtendedFrame = false)
         {
             if (id < 0) throw new ArgumentOutOfRangeException(nameof(id));
             ID = id;
             _data = Validate(dataInit);
+            IsExtendedFrame = isExtendedFrame;
+            BitRateSwitch = BRS;
+            ErrorStateIndicator = ESI;
+        }
+
+        /// <summary>
+        /// Creates a CAN FD frame using an existing memory owner for the payload.
+        /// ZH: 使用外部提供的内存拥有者作为负载来创建 CAN FD 帧。
+        /// </summary>
+        /// <param name="id">ID without flag bits. ZH: 不包含标志位的 ID。</param>
+        /// <param name="memoryOwner">The memory owner providing the payload. ZH: 提供负载数据的内存拥有者。</param>
+        /// <param name="BRS">Enable Bit Rate Switching in data phase. ZH: 数据阶段是否启用 BRS。</param>
+        /// <param name="ESI">Transmitter in Error State Indicator. ZH: 发送端错误状态指示。</param>
+        /// <param name="isExtendedFrame">Whether this is an extended frame. ZH: 是否为扩展帧。</param>
+        /// <param name="ownMemory">If true, disposing the frame disposes <paramref name="memoryOwner"/>.
+        /// ZH: 若为 true，释放该帧时将同时释放 <paramref name="memoryOwner"/>。</param>
+        public CanFdFrame(int id, IMemoryOwner<byte> memoryOwner,
+            bool BRS = false, bool ESI = false, bool isExtendedFrame = false, bool ownMemory = true)
+        {
+            if (id < 0) throw new ArgumentOutOfRangeException(nameof(id));
+            ID = id;
+            _memoryOwner = memoryOwner;
+            _data = Validate(_memoryOwner.Memory);
+            OwnMemory = ownMemory;
             IsExtendedFrame = isExtendedFrame;
             BitRateSwitch = BRS;
             ErrorStateIndicator = ESI;
@@ -299,6 +362,8 @@ namespace CanKit.Core.Definitions
             get => CanIdBits.IsExtended(RawID);
             init => RawID = CanIdBits.WithExtended(RawID, value);
         }
+
+        public bool OwnMemory { get; }
 
         /// <summary>
         /// Indicates whether this is an error frame. (指示该帧是否为错误帧。)
@@ -374,6 +439,10 @@ namespace CanKit.Core.Definitions
         }
 
         private readonly ReadOnlyMemory<byte> _data;
+
+        private readonly IMemoryOwner<byte>? _memoryOwner;
+
+        public void Dispose() => _memoryOwner?.Dispose();
     }
 
     /// <summary>

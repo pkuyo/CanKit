@@ -21,7 +21,9 @@ namespace CanKit.Adapter.SocketCAN.Native;
 #nullable disable
 internal static class Libc
 {
-    public const int BATCH_COUNT = 64;
+    public const int BATCH_COUNT = 32;
+
+    public const int MSG_CONFIRM = 0x800;
 
     public const int EOPNOTSUPP = 95;
     public const int EPERM = 1;

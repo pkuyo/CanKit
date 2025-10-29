@@ -53,8 +53,8 @@ public static class Canlib
     public const int canMSG_EXT = 0x0004;
     public const int canMSG_ERROR_FRAME = 0x0020;
     public const int canMSG_SINGLE_SHOT = 0x1000000;
-    public const int canMSG_TXNACK = 0x2000000;
-    public const int canMSG_ABL = 0x4000000;
+    public const int canMSG_LOCAL_TXACK = 0x10000000;
+    public const int canMSG_TXACK = 0x0040;
 
     // CAN FD message flags
     public const int canFDMSG_FDF = 0x010000;
@@ -76,6 +76,9 @@ public static class Canlib
     public const uint canIOCTL_FLUSH_TX_BUFFER = 11;
     public const uint canIOCTL_SET_TIMER_SCALE = 6;
     public const uint canIOCTL_SET_RX_QUEUE_SIZE = 27;
+    public const uint canIOCTL_SET_LOCAL_TXACK = 46;
+    public const uint canIOCTL_SET_LOCAL_TXECHO = 32;
+    public const uint canIOCTL_SET_TXACK = 7;
 
     // Predefined classic bitrates
     public const int canBITRATE_1M = -1;

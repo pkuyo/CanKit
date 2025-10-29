@@ -118,7 +118,7 @@ public sealed class VectorClassicTransceiver : IVectorTransceiver
         }
         for (int i = 0; i < count; i++)
         {
-            if (TryProcessEvent(ev[i], out var data, out var info))
+            if (TryProcessEvent(ev[i], bus, out var data, out var info, bus.Options.WorkMode == ChannelWorkMode.Echo))
             {
                 if (data != null)
                     frames.Add(data.Value);
@@ -129,19 +129,19 @@ public sealed class VectorClassicTransceiver : IVectorTransceiver
 
         return true;
     }
-    private bool TryProcessEvent(in VxlApi.XLevent nativeEvent, out CanReceiveData? data, out ICanErrorInfo? errorInfo)
+    private bool TryProcessEvent(in VxlApi.XLevent nativeEvent, ICanBus bus, out CanReceiveData? data, out ICanErrorInfo? errorInfo, bool echo)
     {
         data = null;
         errorInfo = null;
-
+        var timeSpan = TimeSpanEx.FromNanoseconds(nativeEvent.TimeStamp);
         switch ((VxlApi.XLeventType)nativeEvent.Tag)
         {
             case VxlApi.XLeventType.XL_RECEIVE_MSG:
-                (data, errorInfo) = BuildReceiveData(nativeEvent.TagData.Msg);
+                (data, errorInfo) = BuildReceiveData(nativeEvent.TagData.Msg, bus, echo, false, timeSpan);
                 return true;
 
             case VxlApi.XLeventType.XL_TRANSMIT_MSG:
-                (_, errorInfo) = BuildReceiveData(nativeEvent.TagData.Msg);
+                (data, errorInfo) = BuildReceiveData(nativeEvent.TagData.Msg, bus, echo, true, timeSpan);
                 return true;
 
             case VxlApi.XLeventType.XL_CHIP_STATE:
@@ -187,14 +187,15 @@ public sealed class VectorClassicTransceiver : IVectorTransceiver
             counters,
             null);
     }
-    private static unsafe (CanReceiveData? receiveData, ICanErrorInfo? errorInfo) BuildReceiveData(in VxlApi.XLcanMsg msg)
+    private static unsafe (CanReceiveData? receiveData, ICanErrorInfo? errorInfo)
+        BuildReceiveData(in VxlApi.XLcanMsg msg, ICanBus bus, bool recEcho, bool isEcho, TimeSpan timeSpan)
     {
         var dlc = msg.Dlc;
         if (dlc > 8) dlc = 8; // classic CAN payload upper bound
 
-        var payload = new byte[dlc];
+        var payload = bus.Options.BufferAllocator.Rent(dlc);
         fixed (byte* src = msg.Data)
-        fixed (byte* dst = payload)
+        fixed (byte* dst = payload.Memory.Span)
         {
             Unsafe.CopyBlockUnaligned(dst, src, dlc);
         }
@@ -205,12 +206,10 @@ public sealed class VectorClassicTransceiver : IVectorTransceiver
 
         if (isError)
         {
-            var errFrame = new CanClassicFrame((int)(msg.Id & (~VxlApi.XL_CAN_EXT_MSG_ID)), payload)
-            {
-                IsExtendedFrame = isExtended,
-                IsRemoteFrame = isRtr,
-                IsErrorFrame = true
-            };
+            var errFrame = new CanClassicFrame((int)(msg.Id & (~VxlApi.XL_CAN_EXT_MSG_ID)), payload, isExtended,
+                isRtr,
+                bus.Options.BufferAllocator.FrameNeedDispose)
+            { IsErrorFrame = true };
             FrameErrorType type = FrameErrorType.BusError;
             if ((msg.Flags & VxlApi.XL_CAN_RXMSG_FLAG_ARB_LOST) != 0)
                 type |= FrameErrorType.ArbitrationLost;
@@ -222,8 +221,8 @@ public sealed class VectorClassicTransceiver : IVectorTransceiver
                 FrameErrorLocation.Unspecified,
                 DateTime.UtcNow,
                 msg.Flags,
-                null,
-                FrameDirection.Unknown,
+                timeSpan,
+                isEcho ? FrameDirection.Tx : FrameDirection.Rx,
                 null,
                 CanTransceiverStatus.Unspecified,
                 null,
@@ -232,16 +231,19 @@ public sealed class VectorClassicTransceiver : IVectorTransceiver
             return (null, errInfo);
         }
 
-
-        var frame = new CanClassicFrame((int)(msg.Id & 0x1FFFFFFF), payload)
+        if (recEcho && isEcho)
         {
-            IsExtendedFrame = isExtended,
-            IsRemoteFrame = isRtr,
-            IsErrorFrame = false
-        };
-        Console.WriteLine($"0x{frame.ID:X}, {frame.IsExtendedFrame}, 0x{(msg.Id & 0x1FFFFFFF):X}");
+            return (null, null);
+        }
 
-        return (new CanReceiveData(frame), null);
+        var frame = new CanClassicFrame((int)(msg.Id & 0x1FFFFFFF), payload, isExtended,
+                isRtr, bus.Options.BufferAllocator.FrameNeedDispose);
+        return (new CanReceiveData(frame)
+        {
+            ReceiveTimestamp = timeSpan,
+            IsEcho = isEcho
+
+        }, null);
     }
     private static unsafe void BuildEvent(VectorBus bus, in CanClassicFrame frame, VxlApi.XLevent* ev)
     {

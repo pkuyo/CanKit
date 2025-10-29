@@ -32,7 +32,7 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
 
     private readonly int _portHandle;
     private readonly ulong _accessMask;
-    private readonly ManualResetEvent? _rxEvent;
+    private readonly ManualResetEvent? _rxEvent = null;
 
     private BusState _busState;
     private CanErrorCounters _errorCounters;

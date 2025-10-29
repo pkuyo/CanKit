@@ -7,7 +7,6 @@ namespace CanKit.Core.Utils;
 
 public static class CanKitExtension
 {
-
     /// <summary>
     /// 获取错误帧原始数据区（来自 ICanFrame.Data），为空则返回 Empty。
     /// </summary>

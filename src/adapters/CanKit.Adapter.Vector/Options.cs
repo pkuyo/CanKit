@@ -23,6 +23,7 @@ public sealed class VectorBusOptions(ICanModelProvider provider) : IBusOptions
     public TxRetryPolicy TxRetryPolicy { get; set; } = TxRetryPolicy.AlwaysRetry;
     public int AsyncBufferCapacity { get; set; } = 0;
     public int ReceiveLoopStopDelayMs { get; set; } = 200;
+    public IBufferAllocator BufferAllocator { get; set; } = new DefaultBufferAllocator();
 
     /// <summary>
     /// Polling interval in ms (only linux) (轮询间隔，毫秒，仅在linux下使用)。

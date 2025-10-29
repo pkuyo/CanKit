@@ -26,6 +26,7 @@ public sealed class SocketCanBusOptions(ICanModelProvider provider) : IBusOption
 
     public CanFeature Features { get; set; } = provider.StaticFeatures;
     public int ReceiveLoopStopDelayMs { get; set; } = 200;
+    public IBufferAllocator BufferAllocator { get; set; } = new DefaultBufferAllocator();
 
     /// <summary>
     /// Prefer kernel-provided timestamps (hardware if available, fallback to software)

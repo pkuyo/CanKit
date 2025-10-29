@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 using System.Runtime.CompilerServices;
 using CanKit.Adapter.PCAN.Native;
 using CanKit.Core.Abstractions;
@@ -204,7 +205,7 @@ public sealed class PcanFdTransceiver : ITransceiver
         if (count < 0) throw new ArgumentOutOfRangeException(nameof(count));
         for (int i = 0; i < count; i++)
         {
-            var st = PcanBasicNative.CAN_ReadFD((UInt16)ch.Handle, out TPCANMsgFD pmsg, out var timestamp);
+            var st = PcanBasicNative.CAN_ReadFD((UInt16)ch.Handle, out var pmsg, out var timestamp);
             if (st == TPCANStatus.PCAN_ERROR_QRCVEMPTY)
                 break;
             if (st != TPCANStatus.PCAN_ERROR_OK)
@@ -216,14 +217,13 @@ public sealed class PcanFdTransceiver : ITransceiver
             var isExt = (pmsg.MSGTYPE & TPCANMessageType.PCAN_MESSAGE_EXTENDED) != 0;
             var isErr = (pmsg.MSGTYPE & TPCANMessageType.PCAN_MESSAGE_ERRFRAME) != 0;
             var ticks = timestamp * 10UL; // microseconds -> ticks (100ns)
-            int len;
             if (!isFd)
             {
                 var isRtr = (pmsg.MSGTYPE & TPCANMessageType.PCAN_MESSAGE_RTR) != 0;
-
-                len = Math.Min(pmsg.DATA.Length, pmsg.DLC);
-                var scf = len == 0 ? ReadOnlyMemory<byte>.Empty : new ReadOnlyMemory<byte>(pmsg.DATA, 0, len);
-                var cf = new CanClassicFrame((int)pmsg.ID, scf, isExt) { IsRemoteFrame = isRtr, IsErrorFrame = isErr };
+                var scf = CopyFd(pmsg, bus);
+                var cf = new CanClassicFrame((int)pmsg.ID, scf, isExt, isRtr,
+                    bus.Options.BufferAllocator.FrameNeedDispose)
+                { IsErrorFrame = isErr };
 
                 yield return new CanReceiveData(cf) { ReceiveTimestamp = TimeSpan.FromTicks((long)ticks) };
                 continue;
@@ -232,13 +232,24 @@ public sealed class PcanFdTransceiver : ITransceiver
             var brs = (pmsg.MSGTYPE & TPCANMessageType.PCAN_MESSAGE_BRS) != 0;
             var esi = (pmsg.MSGTYPE & TPCANMessageType.PCAN_MESSAGE_ESI) != 0;
 
-
-            len = Math.Min(pmsg.DATA.Length, CanFdFrame.DlcToLen(pmsg.DLC));
-            var sfd = len == 0 ? ReadOnlyMemory<byte>.Empty : new ReadOnlyMemory<byte>(pmsg.DATA, 0, len);
-            var fd = new CanFdFrame((int)pmsg.ID, sfd, brs, esi) { IsExtendedFrame = isExt, IsErrorFrame = isErr };
+            var sfd = CopyFd(pmsg, bus);
+            var fd = new CanFdFrame((int)pmsg.ID, sfd, brs, esi, isExt,
+                bus.Options.BufferAllocator.FrameNeedDispose)
+            { IsErrorFrame = isErr };
 
 
             yield return new CanReceiveData(fd) { ReceiveTimestamp = TimeSpan.FromTicks((long)ticks) };
+        }
+
+        unsafe IMemoryOwner<byte> CopyFd(in PcanBasicNative.TpcanMsgFd msg, ICanBus bus)
+        {
+            var data = bus.Options.BufferAllocator.Rent(CanFdFrame.DlcToLen(msg.DLC));
+            fixed (byte* src = msg.DATA)
+            fixed (byte* dst = data.Memory.Span)
+            {
+                Unsafe.CopyBlockUnaligned(dst, src, (uint)CanFdFrame.DlcToLen(msg.DLC));
+            }
+            return data;
         }
     }
 }

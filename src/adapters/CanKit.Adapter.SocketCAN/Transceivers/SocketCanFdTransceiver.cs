@@ -238,7 +238,7 @@ public sealed class SocketCanFdTransceiver : ITransceiver
         bool inf = count == 0;
         while (inf || count > 0)
         {
-            var end = ReceiveBatch(ch.Handle, Math.Min(Libc.BATCH_COUNT, count), preferTs, batchResult);
+            var end = ReceiveBatch(ch, Math.Min(Libc.BATCH_COUNT, count), preferTs, batchResult);
             count -= batchResult.Count;
             foreach (var r in batchResult)
                 yield return r;
@@ -248,8 +248,9 @@ public sealed class SocketCanFdTransceiver : ITransceiver
         }
     }
 
-    private static unsafe bool ReceiveBatch(FileDescriptorHandle fd, int oneBatch, bool preferTs, List<CanReceiveData> result)
+    private static unsafe bool ReceiveBatch(SocketCanBus bus, int oneBatch, bool preferTs, List<CanReceiveData> result)
     {
+        var fd = bus.Handle;
         var sizeClassic = Marshal.SizeOf<Libc.can_frame>();
         var sizeFd = Marshal.SizeOf<Libc.canfd_frame>();
         Libc.canfd_frame* fdBuf = stackalloc Libc.canfd_frame[Libc.BATCH_COUNT];
@@ -289,8 +290,8 @@ public sealed class SocketCanFdTransceiver : ITransceiver
             for (int i = 0; i < recvd; i++)
             {
                 var msg = msgs[i].msg_hdr;
-                var tsSpan = ExtractTimestamp(ref msg);
-                BuildFromFdOrClassic(&fdBuf[i], (int)msgs[i].msg_len, tsSpan, result, sizeClassic, sizeFd);
+                var tsSpan = ExtractTimeSpan(ref msg);
+                BuildFromFdOrClassic(&fdBuf[i], bus, (int)msgs[i].msg_len, msg.msg_flags, tsSpan, result, sizeClassic, sizeFd);
             }
         }
         else
@@ -325,14 +326,15 @@ public sealed class SocketCanFdTransceiver : ITransceiver
             for (int i = 0; i < recvd; i++)
             {
                 var msg = msgs[i].msg_hdr;
-                var tsSpan = ExtractTimestamp(ref msg);
-                BuildFromFdOrClassic(&fdBuf[i], (int)msgs[i].msg_len, tsSpan, result, sizeClassic, sizeFd);
+                var tsSpan = ExtractTimeSpan(ref msg);
+                BuildFromFdOrClassic(&fdBuf[i], bus, (int)msgs[i].msg_len, msg.msg_flags, tsSpan, result, sizeClassic, sizeFd);
             }
         }
         return false;
     }
 
-    private static unsafe void BuildFromFdOrClassic(Libc.canfd_frame* buf, int n, TimeSpan tsSpan, List<CanReceiveData> acc, int sizeClassic, int sizeFd)
+    private static unsafe void BuildFromFdOrClassic(Libc.canfd_frame* buf, ICanBus bus, int n, int flag,
+        TimeSpan tsSpan, List<CanReceiveData> acc, int sizeClassic, int sizeFd)
     {
         if (n <= 0) return;
         if (tsSpan == TimeSpan.Zero)
@@ -344,8 +346,8 @@ public sealed class SocketCanFdTransceiver : ITransceiver
         if (n == sizeFd)
         {
             int dataLen = buf->len;
-            var data = dataLen == 0 ? Array.Empty<byte>() : new byte[dataLen];
-            fixed (byte* pData = data)
+            var data = bus.Options.BufferAllocator.Rent(dataLen);
+            fixed (byte* pData = data.Memory.Span)
             {
                 Unsafe.CopyBlockUnaligned(pData, buf->data, (uint)Math.Min(dataLen, 64));
             }
@@ -356,31 +358,40 @@ public sealed class SocketCanFdTransceiver : ITransceiver
             var rawIdFd = (ext)
                 ? (buf->can_id & Libc.CAN_EFF_MASK)
                 : (buf->can_id & Libc.CAN_SFF_MASK);
-            acc.Add(new CanReceiveData(new CanFdFrame((int)rawIdFd, data, brs, esi, ext)
+            acc.Add(new CanReceiveData(new CanFdFrame((int)rawIdFd, data, brs, esi, ext,
+                    bus.Options.BufferAllocator.FrameNeedDispose)
             { IsErrorFrame = err })
-            { ReceiveTimestamp = tsSpan });
+            {
+                ReceiveTimestamp = tsSpan,
+                IsEcho = (flag & Libc.MSG_CONFIRM) != 0
+            });
         }
         else if (n == sizeClassic)
         {
             var cf = (Libc.can_frame*)buf;
             int dataLen = cf->can_dlc;
-            var data2 = dataLen == 0 ? Array.Empty<byte>() : new byte[dataLen];
-            fixed (byte* pData = data2)
+            var data2 = bus.Options.BufferAllocator.Rent(dataLen);
+            fixed (byte* pData = data2.Memory.Span)
             {
                 Unsafe.CopyBlockUnaligned(pData, cf->data, (uint)Math.Min(dataLen, 8));
             }
             bool err = (cf->can_id & Libc.CAN_ERR_FLAG) != 0;
-            bool ext = (buf->can_id & Libc.CAN_EFF_FLAG) != 0;
+            bool ext = (cf->can_id & Libc.CAN_EFF_FLAG) != 0;
+            bool rtr = (cf->can_id & Libc.CAN_RTR_FLAG) != 0;
             var rawIdC = (ext)
                 ? (cf->can_id & Libc.CAN_EFF_MASK)
                 : (cf->can_id & Libc.CAN_SFF_MASK);
-            acc.Add(new CanReceiveData(new CanClassicFrame((int)rawIdC, data2, ext)
+            acc.Add(new CanReceiveData(new CanClassicFrame((int)rawIdC, data2, ext, rtr,
+                bus.Options.BufferAllocator.FrameNeedDispose)
             { IsErrorFrame = err })
-            { ReceiveTimestamp = tsSpan });
+            {
+                ReceiveTimestamp = tsSpan,
+                IsEcho = (flag & Libc.MSG_CONFIRM) != 0
+            });
         }
     }
 
-    private static unsafe TimeSpan ExtractTimestamp(ref Libc.msghdr msg)
+    private static unsafe TimeSpan ExtractTimeSpan(ref Libc.msghdr msg)
     {
         if (msg.msg_control == null || msg.msg_controllen == UIntPtr.Zero) return TimeSpan.Zero;
         byte* c = (byte*)msg.msg_control;

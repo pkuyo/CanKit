@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Runtime.CompilerServices;
+using CanKit.Core.Abstractions;
 using CanKit.Core.Definitions;
 using CcApi = CanKit.Adapter.ControlCAN.Native.ControlCAN;
 
@@ -17,13 +18,13 @@ internal static class ControlCanUtils
         return cid;
     }
 
-    public static CanClassicFrame FromNative(this in CcApi.VCI_CAN_OBJ obj)
+    public static CanClassicFrame FromNative(this in CcApi.VCI_CAN_OBJ obj, IBufferAllocator bufferAllocator)
     {
-        var data = new byte[obj.DataLen];
+        var data = bufferAllocator.Rent(obj.DataLen);
 
         unsafe
         {
-            fixed (byte* dst = data)
+            fixed (byte* dst = data.Memory.Span)
             fixed (byte* src = obj.Data)
             {
                 Unsafe.CopyBlockUnaligned(dst, src, obj.DataLen);
@@ -32,7 +33,8 @@ internal static class ControlCanUtils
 
         return new CanClassicFrame((int)(obj.ExternFlag == 1
                 ? obj.ID & CcApi.CAN_EFF_MASK : obj.ID & CcApi.CAN_SFF_MASK),
-            data, obj.ExternFlag == 1, obj.RemoteFlag == 1);
+            data, obj.ExternFlag == 1, obj.RemoteFlag == 1,
+            bufferAllocator.FrameNeedDispose);
     }
 
     public static unsafe void ToNative(this in CanClassicFrame f, CcApi.VCI_CAN_OBJ* pObj, bool retry)

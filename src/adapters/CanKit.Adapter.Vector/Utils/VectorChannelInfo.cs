@@ -13,7 +13,6 @@ internal record VectorChannelInfo
         uint hardwareChannel,
         string? transceiverName,
         uint channelCapabilities,
-        uint channelBusCapabilities,
         uint connectedBusType,
         bool supportsCanFd)
     {
@@ -25,7 +24,6 @@ internal record VectorChannelInfo
         HardwareChannel = hardwareChannel;
         TransceiverName = transceiverName;
         ChannelCapabilities = channelCapabilities;
-        ChannelBusCapabilities = channelBusCapabilities;
         ConnectedBusType = connectedBusType;
         SupportsCanFd = supportsCanFd;
 
@@ -45,7 +43,6 @@ internal record VectorChannelInfo
     public uint HardwareChannel { get; }
     public string? TransceiverName { get; }
     public uint ChannelCapabilities { get; }
-    public uint ChannelBusCapabilities { get; }
     public uint ConnectedBusType { get; }
     public bool SupportsCanFd { get; }
 
@@ -62,12 +59,11 @@ internal record VectorChannelInfo
         features |= CanFeature.MaskFilter | CanFeature.RangeFilter;
 
         // XL driver reports error frames; expose ErrorFrame capability.
-        features |= CanFeature.ErrorFrame;
+        features |= CanFeature.ErrorFrame | CanFeature.Echo;
 
         var custom = new Dictionary<string, object?>
         {
             { "xl_channel_caps", ChannelCapabilities },
-            { "xl_bus_caps", ChannelBusCapabilities },
             { "xl_connected_bus", ConnectedBusType },
             { "xl_transceiver", TransceiverName },
             { "xl_hw_type", HardwareType },

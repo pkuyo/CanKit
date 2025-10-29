@@ -4,7 +4,9 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading;
+using CanKit.Adapter.PCAN.Native;
 using Microsoft.Win32.SafeHandles;
 
 namespace Peak.Can.Basic.BackwardCompatibility
@@ -91,6 +93,8 @@ namespace Peak.Can.Basic
     {
         MessageFilter = 4,
         ReceiveEvent = 3,
+        ListenOnly = 8,
+        AllowEchoFrames = 44,
         ChannelCondition = 13,
         ChannelFeatures = 22,
         AllowErrorFrames = 32,
@@ -429,21 +433,31 @@ namespace Peak.Can.Basic
         }
 
         // Internal helpers for fake native
-        internal static bool TryDequeue(PcanChannel ch, out TPCANMsg msg, out uint micros)
+        internal static unsafe bool TryDequeue(PcanChannel ch, out PcanBasicNative.TpcanMsg msg, out uint micros)
         {
             msg = default; micros = 0;
             var s = World.Get(ch);
             if (s.Rx.TryDequeue(out var f))
             {
                 var len = (byte)Math.Min(8, f.Data.Length);
-                msg = new TPCANMsg(f.Id, f.Type, len, f.Data);
+                msg = new PcanBasicNative.TpcanMsg()
+                {
+                    ID = f.Id,
+                    MSGTYPE = f.Type,
+                    LEN = len
+                };
+                fixed (byte* src = f.Data)
+                fixed (byte* dst = msg.DATA)
+                {
+                    Unsafe.CopyBlock(dst, src, len);
+                }
                 micros = (uint)(f.TsUs % uint.MaxValue);
                 return true;
             }
             return false;
         }
 
-        internal static bool TryDequeueFd(PcanChannel ch, out TPCANMsgFD msg, out ulong micros)
+        internal static unsafe bool TryDequeueFd(PcanChannel ch, out PcanBasicNative.TpcanMsgFd msg, out ulong micros)
         {
             msg = default; micros = 0;
             var s = World.Get(ch);
@@ -461,7 +475,19 @@ namespace Peak.Can.Basic
                 {
                     dlc = (byte)Math.Min(8, f.Data.Length);
                 }
-                msg = new TPCANMsgFD(f.Id, f.Type, dlc, f.Data);
+
+                msg = new PcanBasicNative.TpcanMsgFd
+                {
+                    ID = f.Id,
+                    DLC = dlc,
+                    MSGTYPE = f.Type
+                };
+                fixed (byte* src = f.Data)
+                fixed (byte* dst = msg.DATA)
+                {
+                    Unsafe.CopyBlockUnaligned(dst, src,
+                        (uint)CanKit.Core.Definitions.CanFdFrame.DlcToLen(dlc));
+                }
                 micros = f.TsUs;
                 return true;
             }

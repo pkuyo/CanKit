@@ -168,7 +168,7 @@ namespace CanKit.Core.Definitions
         ErrorFrame    = 1 << 8,
         TxRetryPolicy = 1 << 9,
         RangeFilter   = 1 << 10,
-
+        TxTimeOut     = 1 << 11,
         Filters       = MaskFilter | RangeFilter,
         All           = int.MaxValue,
     }

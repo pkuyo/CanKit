@@ -83,7 +83,7 @@ internal static class PcanBasicNative
         }
     }
 
-    public static TPCANStatus CAN_Read(TPCANHandle Channel, out TPCANMsg Message, out TPCANTimestamp Timestamp)
+    public static TPCANStatus CAN_Read(TPCANHandle Channel, out TpcanMsg Message, out TPCANTimestamp Timestamp)
     {
         if (Api.TryDequeue((PcanChannel)Channel, out var msg, out uint micros))
         {
@@ -100,7 +100,7 @@ internal static class PcanBasicNative
         return TPCANStatus.PCAN_ERROR_QRCVEMPTY;
     }
 
-    public static TPCANStatus CAN_ReadFD(TPCANHandle Channel, out TPCANMsgFD Message, out TPCANTimestampFD Timestamp)
+    public static TPCANStatus CAN_ReadFD(TPCANHandle Channel, out TpcanMsgFd Message, out TPCANTimestampFD Timestamp)
     {
         if (Api.TryDequeueFd((PcanChannel)Channel, out var msg, out ulong micros))
         {

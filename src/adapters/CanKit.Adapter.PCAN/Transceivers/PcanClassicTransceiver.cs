@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 using System.Runtime.CompilerServices;
 using CanKit.Adapter.PCAN.Native;
 using CanKit.Core.Abstractions;
@@ -159,7 +160,7 @@ public sealed class PcanClassicTransceiver : ITransceiver
         if (count < 0) throw new ArgumentOutOfRangeException(nameof(count));
         for (int i = 0; i < count; i++)
         {
-            var st = PcanBasicNative.CAN_Read((UInt16)ch.Handle, out TPCANMsg pmsg, out var timestamp);
+            var st = PcanBasicNative.CAN_Read((UInt16)ch.Handle, out PcanBasicNative.TpcanMsg pmsg, out var timestamp);
             if (st == TPCANStatus.PCAN_ERROR_QRCVEMPTY)
                 break;
             if (st != TPCANStatus.PCAN_ERROR_OK)
@@ -170,12 +171,26 @@ public sealed class PcanClassicTransceiver : ITransceiver
             var isRtr = (pmsg.MSGTYPE & TPCANMessageType.PCAN_MESSAGE_RTR) != 0;
             var isErr = (pmsg.MSGTYPE & TPCANMessageType.PCAN_MESSAGE_ERRFRAME) != 0;
 
-            var len = Math.Min(pmsg.DATA.Length, pmsg.LEN);
-            var slice = len == 0 ? ReadOnlyMemory<byte>.Empty : new ReadOnlyMemory<byte>(pmsg.DATA, 0, len);
-            var frame = new CanClassicFrame((int)pmsg.ID, slice, isExt) { IsRemoteFrame = isRtr, IsErrorFrame = isErr };
+
+            var slice = Copy(pmsg, bus);
+            var frame = new CanClassicFrame((int)pmsg.ID, slice, isExt, isRtr,
+                    bus.Options.BufferAllocator.FrameNeedDispose)
+            { IsErrorFrame = isErr };
 
             // Assume PCAN timestamp is in microseconds. Convert to TimeSpan
             yield return new CanReceiveData(frame) { ReceiveTimestamp = timestamp.ToTimeSpan() };
+
+            unsafe IMemoryOwner<byte> Copy(in PcanBasicNative.TpcanMsg msg, ICanBus bus)
+            {
+                var data = bus.Options.BufferAllocator.Rent(msg.LEN);
+                fixed (byte* src = msg.DATA)
+                fixed (byte* dst = data.Memory.Span)
+                {
+                    Unsafe.CopyBlockUnaligned(dst, src, msg.LEN);
+                }
+
+                return data;
+            }
         }
     }
 }

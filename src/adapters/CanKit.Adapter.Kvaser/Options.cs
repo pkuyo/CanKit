@@ -31,6 +31,7 @@ public sealed class KvaserBusOptions(ICanModelProvider provider) : IBusOptions
     public bool AllowErrorInfo { get; set; }
     public int AsyncBufferCapacity { get; set; } = 0;
     public int ReceiveLoopStopDelayMs { get; set; } = 200;
+    public IBufferAllocator BufferAllocator { get; set; } = new DefaultBufferAllocator();
 
     public int? ReceiveBufferCapacity { get; set; }
 
