@@ -1,6 +1,7 @@
 ﻿using System.Buffers;
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
+using CanKit.Core.Abstractions;
 using CanKit.Core.Definitions;
 using CanKit.Core.Utils;
 using CanKit.Protocol.IsoTp.Defines;
@@ -29,18 +30,46 @@ internal sealed class IsoTpChannelCore : IDisposable
     private readonly Deadline _nCs = new();
 
     private RxState _rx = RxState.Idle;
-    private IMemoryOwner<byte>? _rxBufOwner;
-    private Memory<byte> _rxBuf;
     private int _rxWritten;
     private byte _expectSn = 1;
     private readonly Deadline _nCr = new();
 
-    private readonly ConcurrentQueue<PoolFrame> _pendingFc = new();
-    private readonly ConcurrentQueue<PoolFrame> _pendingData = new();
+    private readonly ConcurrentQueue<ICanFrame> _pendingFc = new();
+    private readonly ConcurrentQueue<TxOperation> _pendingMsg = new();
 
-    public IsoTpChannelCore(IsoTpEndpoint ep, RxFcPolicy policy)
+    private IBufferAllocator _allocator;
+
+    private sealed class TxOperation : IDisposable
     {
-        Endpoint = ep; FcPolicy = policy;
+        public TxOperation(CancellationTokenRegistration ctr)
+        {
+            Ctr = ctr;
+        }
+        public void Dispose()
+        {
+            while (PendingData.Count != 0)
+            {
+                PendingData.Dequeue().Dispose();
+            }
+            Ctr.Dispose();
+        }
+
+        public TaskCompletionSource<bool> Tcs { get; } =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public CancellationTokenRegistration Ctr { get; }
+
+        public Queue<ICanFrame> PendingData { get; } = new();
+
+        private volatile bool _cancelRequested;
+    }
+
+
+    public IsoTpChannelCore(IsoTpEndpoint ep, RxFcPolicy policy, IBufferAllocator allocator)
+    {
+        Endpoint = ep;
+        FcPolicy = policy;
+        _allocator = allocator;
     }
 
     public bool Match(in CanReceiveData rx)
@@ -100,10 +129,10 @@ internal sealed class IsoTpChannelCore : IDisposable
         // 满足：非 WAIT_FC；上次CF距今 ≥ max(STmin, globalGuard)
         if (_tx != TxState.SendCf && _tx != TxState.Idle) return false;
         // TODO: 判断 STmin/GlobalBusGuard
-        return _pendingData.IsEmpty;
+        return !_pendingMsg.IsEmpty;
     }
 
-    public PoolFrame? DequeueFC()
+    public ICanFrame? DequeueFC()
     {
         if (_pendingFc.TryDequeue(out var poolFrame))
         {
@@ -114,17 +143,21 @@ internal sealed class IsoTpChannelCore : IDisposable
 
     public bool TryPeekData(out ICanFrame frame)
     {
-        var re = _pendingData.TryPeek(out var pf);
-        frame = pf.CanFrame;
-        return re;
+        //var re = _pendingData.TryPeek(out var pf);
+        //frame = pf;
+        //return re;
+        frame = null;
+        return false;
     }
 
-    public PoolFrame? DequeueData()
+    public ICanFrame? DequeueData()
     {
+        /*
         if (_pendingData.TryDequeue(out var poolFrame))
         {
             return poolFrame;
         }
+        */
         return null;
     }
 
@@ -133,17 +166,16 @@ internal sealed class IsoTpChannelCore : IDisposable
         if (_tx != TxState.Idle) throw new IsoTpException(IsoTpErrorCode.Busy, "Channel busy", Endpoint);
         if (pdu.Length <= CalcSfMax(canfd, Endpoint.Addressing))
         {
-            _pendingData.Enqueue(FrameCodec.BuildSF(Endpoint, pdu, padding, canfd));
+            //_pendingMsg.Enqueue(new TxOperation());
+            //_pendingData.Enqueue(FrameCodec.BuildSF(Endpoint, _allocator, pdu, padding, canfd));
             return;
         }
-        // FF + 后续 CF 分段入队（这里只入队FF；CF按 FC 后再分段入队亦可）
-        _pendingData.Enqueue(FrameCodec.BuildFF(Endpoint, pdu.Length, pdu, padding));
+        //_pendingData.Enqueue(FrameCodec.BuildFF(Endpoint, _allocator, pdu.Length, pdu, padding));
         _tx = TxState.WaitFc;
         _nBs.Arm(nBs);
         _txTotalLen = pdu.Length;
-        //_txSent = first.Length;
         _sn = 1;
-        // 后续 CF 分段可延迟生成（依据 STmin/BS），或一次性预拆（简单但占内存）
+        // TODO:分包
 
         int CalcSfMax(bool canfd, Addressing addr) => canfd ? 62 : (addr == Addressing.Extended ? 6 : 7);
     }
@@ -153,10 +185,8 @@ internal sealed class IsoTpChannelCore : IDisposable
     {
         var bs = (byte)FcPolicy.BS;
         var st = FrameCodec.EncodeStmin(FcPolicy.STmin);
-        _pendingFc.Enqueue(FrameCodec.BuildFC(Endpoint, fs, bs, st, /*padding*/true, /*canfd*/false));
+        _pendingFc.Enqueue(FrameCodec.BuildFC(Endpoint, _allocator, fs, bs, st, /*padding*/true, /*canfd*/false));
     }
-
-    // —— 定时器巡检 —— //
     public void ProcessTimers()
     {
         if (_tx == TxState.WaitFc && _nBs.Expired())

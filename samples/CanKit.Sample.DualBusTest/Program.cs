@@ -97,7 +97,7 @@ internal static class Program
                 cfg.Baud(bitrate).SetProtocolMode(CanProtocolMode.Can20).InternalRes(enableRes);
             }
 
-            cfg.EnableErrorInfo().SetAsyncBufferCapacity(asyncBuf).SetReceiveLoopStopDelayMs(200);
+            cfg.EnableErrorInfo().SetAsyncBufferCapacity(asyncBuf);
             if (softFilter)
             {
                 cfg.SoftwareFeaturesFallBack(CanFeature.Filters);

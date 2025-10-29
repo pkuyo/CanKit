@@ -11,7 +11,6 @@ internal sealed class Router
 
     public bool Route(in CanReceiveData rx)
     {
-        // TODO: 按 RxId/IDE（以及扩展/混合寻址时 N_AI 首字节）找到归属通道
         foreach (var ch in _channels)
             if (ch.Match(rx)) { ch.OnRx(rx); return true; }
         return false;

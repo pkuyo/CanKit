@@ -10,56 +10,66 @@ namespace CanKit.Protocol.IsoTp.Core;
 
 internal sealed class IsoTpScheduler
 {
-    private readonly ICanBus _can;
-    private readonly bool canTxTimeout;
+    private readonly ICanBus _bus;
+    private readonly bool _canEcho;
     private readonly IsoTpOptions _opt;
     private readonly Router _router = new();
     private readonly List<IsoTpChannelCore> _channels = new();
     private readonly List<(double score, IsoTpChannelCore ch)> _candidates = new();
     private long _lastDataTxTicks;
 
-    private Stopwatch N_AsStopWatch = new();
+    private Stopwatch _asStopWatch = new();
+    private ManualResetEvent _ackEvent = new(false);
+    private ICanFrame? _ackFrame;
 
-    public IsoTpScheduler(ICanBus can, IsoTpOptions opt)
+    public IsoTpScheduler(ICanBus bus, IsoTpOptions opt)
     {
-        _can = can;
+        _bus = bus;
         _opt = opt;
-        canTxTimeout = _can.Options.Features.HasFlag(CanFeature.TxTimeOut);
+        _canEcho = (_bus.Options.Features & CanFeature.Echo) != 0;
     }
 
     public void Register(IsoTpChannelCore ch) { _channels.Add(ch); _router.Register(ch); }
     public void Unregister(IsoTpChannelCore ch) { _channels.Remove(ch); _router.Unregister(ch); }
 
-    public void TransmitWithAs(PoolFrame poolFrame)
+    public void TransmitWithAs(ICanFrame poolFrame)
     {
-        if (canTxTimeout)
+        try
         {
-            if (_can.Transmit([poolFrame.CanFrame], _opt.N_As.Milliseconds) == 0)
-                throw new IsoTpException(IsoTpErrorCode.Timeout_N_As, "TODO");
-        }
-        else
-        {
-            N_AsStopWatch.Restart();
+            _asStopWatch.Restart();
+            _ackFrame = poolFrame;
             while (true)
             {
-                if (_can.Transmit(poolFrame.CanFrame) == 1)
+                if (_bus.Transmit(poolFrame) == 1)
+                {
+                    if (_canEcho && !_ackEvent.WaitOne(_opt.N_As - _asStopWatch.Elapsed))
+                    {
+                        throw new IsoTpException(IsoTpErrorCode.Timeout_N_As, "TODO");
+                    }
                     break;
+                }
                 PreciseDelay.Delay(TimeSpan.FromMilliseconds(1));
-                if(N_AsStopWatch.Elapsed > _opt.N_As)
+                if(_asStopWatch.Elapsed > _opt.N_As)
                     throw new IsoTpException(IsoTpErrorCode.Timeout_N_As, "TODO");
             }
         }
+        finally
+        {
+            _asStopWatch.Stop();
+            _ackEvent.Reset();
+            _ackFrame = null;
+        }
+
     }
 
     public async Task RunAsync(CancellationToken ct)
     {
-        // 订阅底层事件：有帧就路由；后台异常→抛到上层
-        _can.FrameReceived += (_, rx) => _router.Route(rx);
-        _can.BackgroundExceptionOccurred += (_, ex) => throw new IsoTpException(IsoTpErrorCode.BackgroundException, ex.Message, null, ex);
+        _bus.FrameReceived += BusOnFrameReceived;
+        _bus.BackgroundExceptionOccurred += BusOnBackgroundExceptionOccurred;
 
         while (!ct.IsCancellationRequested)
         {
-            // 1) 先发所有 FC（最高优先）
+            // FC优先
             foreach (var ch in _channels)
             {
                 while (true)
@@ -76,7 +86,7 @@ internal sealed class IsoTpScheduler
                 ch.ProcessTimers();
             }
 
-            // 3) 收集候选数据帧
+
             _candidates.Clear();
             var now = Stopwatch.GetTimestamp();
             foreach (var ch in _channels)
@@ -88,7 +98,7 @@ internal sealed class IsoTpScheduler
                 _candidates.Add((score, ch));
             }
 
-            // 4) 选择一帧（公平 + 防饿），遵守BusGuard（仅对数据帧）
+
             if (_candidates.Count > 0 && RespectBusGuard(now))
             {
                 _candidates.Sort((a, b) => b.score.CompareTo(a.score));
@@ -101,7 +111,7 @@ internal sealed class IsoTpScheduler
                 }
             }
 
-            // 5) 稍作让渡
+
             await Task.Yield();
         }
     }
@@ -115,7 +125,24 @@ internal sealed class IsoTpScheduler
 
     private static double Score(IsoTpChannelCore ch, ICanFrame f, long nowTicks)
     {
-        // 简化的有效分：可按优先级/aging/截止时间扩展
+        // TODO:优先级计算
         return nowTicks * 1e-12;
+    }
+
+    private void BusOnFrameReceived(object sender, CanReceiveData e)
+    {
+        _router.Route(e);
+        if (_canEcho && e.IsEcho && _ackFrame is not null)
+        {
+            if (e.CanFrame.ID == _ackFrame.ID && e.CanFrame.Data.Span.SequenceEqual(_ackFrame.Data.Span))
+            {
+                _ackEvent.Set();
+            }
+        }
+    }
+
+    private void BusOnBackgroundExceptionOccurred(object _, Exception e)
+    {
+        throw new IsoTpException(IsoTpErrorCode.BackgroundException, e.Message, null, e);
     }
 }

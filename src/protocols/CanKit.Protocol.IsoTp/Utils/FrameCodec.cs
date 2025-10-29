@@ -1,5 +1,6 @@
 ﻿using System.Buffers;
 using System.Runtime.CompilerServices;
+using CanKit.Core.Abstractions;
 using CanKit.Core.Definitions;
 using CanKit.Protocol.IsoTp.Defines;
 
@@ -82,7 +83,7 @@ internal static partial class FrameCodec
         return true;
     }
 
-    internal static unsafe PoolFrame BuildSF(in IsoTpEndpoint ep, ReadOnlySpan<byte> payload, bool padding, bool canfd)
+    internal static unsafe ICanFrame BuildSF(in IsoTpEndpoint ep, IBufferAllocator allocator, ReadOnlySpan<byte> payload, bool padding, bool canfd)
     {
         var pciStart = (ep.IsExtendedAddress ? 1 : 0);
         var len = payload.Length + 2 + pciStart;
@@ -115,22 +116,24 @@ internal static partial class FrameCodec
                     (uint)(len - pciStart - 1 - payload.Length));
             }
         }
-        return new PoolFrame(canfd
+        return canfd
             ? new CanClassicFrame(ep.TxId, data, ep.IsExtendedId)
-            : new CanFdFrame(ep.TxId, data, ep.IsExtendedId), data);
+            : new CanFdFrame(ep.TxId, data, ep.IsExtendedId);
     }
 
-    internal static unsafe PoolFrame BuildFF(in IsoTpEndpoint ep,
+    internal static unsafe ICanFrame BuildFF(in IsoTpEndpoint ep,
+        IBufferAllocator allocator,
         int totalLen,
         ReadOnlySpan<byte> firstChunk,
         bool canfd)
     {
         var len = canfd ? 64 : 8;
         var pciStart = (ep.IsExtendedAddress ? 1 : 0);
-        var data = ArrayPool<byte>.Shared.Rent(len);
+        var data = allocator.Rent(len);
+        var span = data.Memory.Span;
         if (ep.IsExtendedAddress)
         {
-            data[0] = ep.TargetAddress!.Value;
+            span[0] = ep.TargetAddress!.Value;
         }
 
         if (firstChunk.Length > 4095)
@@ -140,32 +143,33 @@ internal static partial class FrameCodec
                 throw new Exception(); //TODO:异常处理
             }
             var dataLen = firstChunk.Length;
-            data[pciStart] = (byte)PciType.FF << 4;
-            data[pciStart + 1] = 0;
-            data[pciStart + 2] = (byte)((dataLen >> 24) & 0xFF);
-            data[pciStart + 3] = (byte)((dataLen >> 16) & 0xFF);
-            data[pciStart + 4] = (byte)((dataLen >> 8) & 0xFF);
-            data[pciStart + 5] = (byte)(dataLen & 0xFF);
+            span[pciStart] = (byte)PciType.FF << 4;
+            span[pciStart + 1] = 0;
+            span[pciStart + 2] = (byte)((dataLen >> 24) & 0xFF);
+            span[pciStart + 3] = (byte)((dataLen >> 16) & 0xFF);
+            span[pciStart + 4] = (byte)((dataLen >> 8) & 0xFF);
+            span[pciStart + 5] = (byte)(dataLen & 0xFF);
             pciStart += 4;
         }
         else
         {
-            data[pciStart] = (byte)(((byte)PciType.FF << 4) | (totalLen >> 8));
-            data[pciStart+1] = (byte)(totalLen & 0xFF);
+            span[pciStart] = (byte)(((byte)PciType.FF << 4) | (totalLen >> 8));
+            span[pciStart + 1] = (byte)(totalLen & 0xFF);
         }
 
         fixed (byte* src = firstChunk)
-        fixed (byte* dst = data)
+        fixed (byte* dst = span)
         {
             Unsafe.CopyBlockUnaligned(dst + pciStart + 2, src, (uint)(len - pciStart - 2));
         }
 
-        return new PoolFrame(canfd
+        return canfd
             ? new CanClassicFrame(ep.TxId, data, ep.IsExtendedId)
-            : new CanFdFrame(ep.TxId, data, ep.IsExtendedId), data);
+            : new CanFdFrame(ep.TxId, data, ep.IsExtendedId);
     }
 
-    internal static unsafe PoolFrame BuildCF(in IsoTpEndpoint ep, byte sn, ReadOnlySpan<byte> chunk, bool padding, bool canfd)
+    internal static unsafe ICanFrame BuildCF(in IsoTpEndpoint ep, IBufferAllocator allocator,
+        byte sn, ReadOnlySpan<byte> chunk, bool padding, bool canfd)
     {
         var pciStart = (ep.IsExtendedAddress ? 1 : 0);
         var len = chunk.Length + 2 + pciStart;
@@ -173,14 +177,15 @@ internal static partial class FrameCodec
         {
             len = canfd ? NextFdLen(len) : 8;
         }
-        var data = ArrayPool<byte>.Shared.Rent(len);
+        var data = allocator.Rent(len);
+        var span = data.Memory.Span;
         if (ep.IsExtendedAddress)
         {
-            data[0] = ep.TargetAddress!.Value;
+            span[0] = ep.TargetAddress!.Value;
         }
-        data[pciStart] = (byte)(((byte)PciType.CF << 4) | (sn & 0xF));
+        span[pciStart] = (byte)(((byte)PciType.CF << 4) | (sn & 0xF));
         fixed (byte* src = chunk)
-        fixed (byte* dst = data)
+        fixed (byte* dst = span)
         {
             Unsafe.CopyBlockUnaligned(dst + pciStart + 1, src, (uint)chunk.Length);
             if (padding)
@@ -189,35 +194,37 @@ internal static partial class FrameCodec
                     (uint)(len - pciStart - 1 - chunk.Length));
             }
         }
-        return new PoolFrame(canfd
-            ? new CanClassicFrame(ep.TxId, data, ep.IsExtendedId)
-            : new CanFdFrame(ep.TxId, data, ep.IsExtendedId), data);
+        return canfd
+            ? new CanClassicFrame(ep.TxId, data, ep.IsExtendedId, allocator.FrameNeedDispose)
+            : new CanFdFrame(ep.TxId, data, ep.IsExtendedId, allocator.FrameNeedDispose);
     }
 
-    internal static unsafe PoolFrame BuildFC(in IsoTpEndpoint ep, FlowStatus fs, byte bs, byte stmin, bool padding, bool canfd)
+    internal static unsafe ICanFrame BuildFC(in IsoTpEndpoint ep, IBufferAllocator allocator,
+        FlowStatus fs, byte bs, byte stmin, bool padding, bool canfd)
     {
         var pciStart = (ep.IsExtendedAddress ? 1 : 0);
         var len = padding ? 8 : pciStart + 2;
-        var data = ArrayPool<byte>.Shared.Rent(len);
+        var data = allocator.Rent(len);
+        var span = data.Memory.Span;
         if (ep.IsExtendedAddress)
         {
-            data[0] = ep.TargetAddress!.Value;
+            span[0] = ep.TargetAddress!.Value;
         }
-        data[pciStart] = (byte)(((byte)PciType.FF << 4) | ((byte)fs & 0xF));
-        data[pciStart + 1] = bs;
-        data[pciStart + 2] = stmin;
+        span[pciStart] = (byte)(((byte)PciType.FF << 4) | ((byte)fs & 0xF));
+        span[pciStart + 1] = bs;
+        span[pciStart + 2] = stmin;
         if (padding)
         {
-            fixed (byte* dst = data)
+            fixed (byte* dst = span)
             {
 
                 Unsafe.InitBlockUnaligned(dst + pciStart + 1, 0,
                         (uint)(len - pciStart - 1));
             }
         }
-        return new PoolFrame(canfd
-            ? new CanClassicFrame(ep.TxId, data, ep.IsExtendedId)
-            : new CanFdFrame(ep.TxId, data, ep.IsExtendedId), data);
+        return canfd
+            ? new CanClassicFrame(ep.TxId, data, ep.IsExtendedId, allocator.FrameNeedDispose)
+            : new CanFdFrame(ep.TxId, data, ep.IsExtendedId, allocator.FrameNeedDispose);
     }
 
     internal static byte EncodeStmin(TimeSpan st)
