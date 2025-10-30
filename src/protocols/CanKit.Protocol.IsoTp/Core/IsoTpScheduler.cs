@@ -22,6 +22,10 @@ internal sealed class IsoTpScheduler
     private ManualResetEvent _ackEvent = new(false);
     private ICanFrame? _ackFrame;
 
+    internal event Action<IsoTpChannelCore.TxOperation>? TxOperationTransmitted;
+
+    internal event Action<IsoTpChannelCore.TxOperation, Exception>? TxOperationExceptionOccurred;
+
     public IsoTpScheduler(ICanBus bus, IsoTpOptions opt)
     {
         _bus = bus;
@@ -32,26 +36,41 @@ internal sealed class IsoTpScheduler
     public void Register(IsoTpChannelCore ch) { _channels.Add(ch); _router.Register(ch); }
     public void Unregister(IsoTpChannelCore ch) { _channels.Remove(ch); _router.Unregister(ch); }
 
-    public void TransmitWithAs(ICanFrame poolFrame)
+    public void TransmitWithAs(in IsoTpChannelCore.TxOperation operation)
     {
         try
         {
             _asStopWatch.Restart();
-            _ackFrame = poolFrame;
+            _ackFrame = operation.Dequeue();
             while (true)
             {
-                if (_bus.Transmit(poolFrame) == 1)
+                if (_bus.Transmit(_ackFrame) == 1)
                 {
                     if (_canEcho && !_ackEvent.WaitOne(_opt.N_As - _asStopWatch.Elapsed))
                     {
-                        throw new IsoTpException(IsoTpErrorCode.Timeout_N_As, "TODO");
+                        TxOperationExceptionOccurred?.Invoke
+                            (operation, new IsoTpException(IsoTpErrorCode.Timeout_N_As, "TODO"));
                     }
                     break;
                 }
+
                 PreciseDelay.Delay(TimeSpan.FromMilliseconds(1));
-                if(_asStopWatch.Elapsed > _opt.N_As)
-                    throw new IsoTpException(IsoTpErrorCode.Timeout_N_As, "TODO");
+                if (_asStopWatch.Elapsed > _opt.N_As)
+                {
+                    TxOperationExceptionOccurred?.Invoke
+                        (operation, new IsoTpException(IsoTpErrorCode.Timeout_N_As, "TODO"));
+                }
             }
+
+            if (operation.Empty)
+            {
+                TxOperationTransmitted?.Invoke(operation);
+            }
+        }
+        catch (Exception e)
+        {
+            operation.Dispose();
+            TxOperationExceptionOccurred?.Invoke(operation, e);
         }
         finally
         {
@@ -64,8 +83,11 @@ internal sealed class IsoTpScheduler
 
     public async Task RunAsync(CancellationToken ct)
     {
-        _bus.FrameReceived += BusOnFrameReceived;
-        _bus.BackgroundExceptionOccurred += BusOnBackgroundExceptionOccurred;
+        _bus.FrameReceived += OnFrameReceived;
+        _bus.BackgroundExceptionOccurred += OnBackgroundExceptionOccurred;
+        TxOperationTransmitted += OnOperationTransmitted;
+        TxOperationExceptionOccurred += OnTxExceptionOccurred;
+
 
         while (!ct.IsCancellationRequested)
         {
@@ -74,8 +96,9 @@ internal sealed class IsoTpScheduler
             {
                 while (true)
                 {
-                    using var pf = ch.DequeueFC();
-                    if (pf is null) break;
+                    using var pf = ch.TryDequeueFC();
+                    if (pf is null)
+                        break;
                     TransmitWithAs(pf);
                 }
             }
@@ -94,7 +117,7 @@ internal sealed class IsoTpScheduler
                 if (!ch.IsReadyToSendData(now, _opt.GlobalBusGuard)) continue;
                 if (!ch.TryPeekData(out var f))
                     continue;
-                var score = Score(ch, f, now);
+                var score = Score(ch, f!, now);
                 _candidates.Add((score, ch));
             }
 
@@ -103,10 +126,9 @@ internal sealed class IsoTpScheduler
             {
                 _candidates.Sort((a, b) => b.score.CompareTo(a.score));
                 var (score, ch) = _candidates[0];
-                using var dataPf = ch.DequeueData();
-                if (dataPf != null)
+                if (ch.TryPeekOperation(out var operation))
                 {
-                    TransmitWithAs(dataPf);
+                    TransmitWithAs(operation);
                     _lastDataTxTicks = Stopwatch.GetTimestamp();
                 }
             }
@@ -115,6 +137,8 @@ internal sealed class IsoTpScheduler
             await Task.Yield();
         }
     }
+
+
 
     private bool RespectBusGuard(long nowTicks)
     {
@@ -129,7 +153,17 @@ internal sealed class IsoTpScheduler
         return nowTicks * 1e-12;
     }
 
-    private void BusOnFrameReceived(object sender, CanReceiveData e)
+    private void OnOperationTransmitted(IsoTpChannelCore.TxOperation operation)
+    {
+        _router.Route(operation);
+    }
+
+    private void OnTxExceptionOccurred(IsoTpChannelCore.TxOperation operation, Exception exception)
+    {
+        _router.Route(operation, exception);
+    }
+
+    private void OnFrameReceived(object? sender, CanReceiveData e)
     {
         _router.Route(e);
         if (_canEcho && e.IsEcho && _ackFrame is not null)
@@ -141,7 +175,7 @@ internal sealed class IsoTpScheduler
         }
     }
 
-    private void BusOnBackgroundExceptionOccurred(object _, Exception e)
+    private void OnBackgroundExceptionOccurred(object? _, Exception e)
     {
         throw new IsoTpException(IsoTpErrorCode.BackgroundException, e.Message, null, e);
     }

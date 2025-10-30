@@ -94,7 +94,7 @@ internal static partial class FrameCodec
         var data = ArrayPool<byte>.Shared.Rent(len);
         if (ep.IsExtendedAddress)
         {
-            data[0] = ep.TargetAddress!.Value;
+            data[0] = ep.RxAddress!.Value;
         }
 
         if (canfd && payload.Length + pciStart > 7)
@@ -133,7 +133,7 @@ internal static partial class FrameCodec
         var span = data.Memory.Span;
         if (ep.IsExtendedAddress)
         {
-            span[0] = ep.TargetAddress!.Value;
+            span[0] = ep.RxAddress!.Value;
         }
 
         if (firstChunk.Length > 4095)
@@ -181,7 +181,7 @@ internal static partial class FrameCodec
         var span = data.Memory.Span;
         if (ep.IsExtendedAddress)
         {
-            span[0] = ep.TargetAddress!.Value;
+            span[0] = ep.RxAddress!.Value;
         }
         span[pciStart] = (byte)(((byte)PciType.CF << 4) | (sn & 0xF));
         fixed (byte* src = chunk)
@@ -208,7 +208,7 @@ internal static partial class FrameCodec
         var span = data.Memory.Span;
         if (ep.IsExtendedAddress)
         {
-            span[0] = ep.TargetAddress!.Value;
+            span[0] = ep.RxAddress!.Value;
         }
         span[pciStart] = (byte)(((byte)PciType.FF << 4) | ((byte)fs & 0xF));
         span[pciStart + 1] = bs;

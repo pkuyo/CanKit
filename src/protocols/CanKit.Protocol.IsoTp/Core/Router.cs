@@ -12,7 +12,42 @@ internal sealed class Router
     public bool Route(in CanReceiveData rx)
     {
         foreach (var ch in _channels)
-            if (ch.Match(rx)) { ch.OnRx(rx); return true; }
+        {
+            if (ch.Match(rx))
+            {
+                ch.OnRx(rx);
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public bool Route(in IsoTpChannelCore.TxOperation tx)
+    {
+        foreach (var ch in _channels)
+        {
+            if (ch.Match(tx))
+            {
+                ch.OnTx(tx);
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public bool Route(in IsoTpChannelCore.TxOperation tx, Exception exception)
+    {
+        foreach (var ch in _channels)
+        {
+            if (ch.Match(tx))
+            {
+                ch.OnTxFailed(tx, exception);
+                return true;
+            }
+        }
+
         return false;
     }
 }

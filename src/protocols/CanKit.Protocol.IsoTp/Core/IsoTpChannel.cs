@@ -17,17 +17,16 @@ public sealed class IsoTpChannel : IDisposable
     { Core = core; Scheduler = sch; Options = opt; }
 
 
-    public Task SendAsync(ReadOnlyMemory<byte> pdu, CancellationToken ct = default)
+    public Task<bool> SendAsync(ReadOnlyMemory<byte> pdu, CancellationToken ct = default)
     {
-        Core.BeginSend(pdu.Span, Options.ClassicCanPadding, Options.UseCanFd, Options.N_Bs);
-        return Task.CompletedTask;
+        return Core.SendAsync(pdu.Span, Options.ClassicCanPadding, Options.UseCanFd, ct);
     }
 
 
     public async Task<IsoTpDatagram> RequestAsync(ReadOnlyMemory<byte> request, CancellationToken ct = default)
     {
-        Core.BeginSend(request.Span, Options.ClassicCanPadding, Options.UseCanFd, Options.N_Bs);
-        await Task.Yield();
+        await Core.SendAsync(request.Span, Options.ClassicCanPadding, Options.UseCanFd, ct);
+
         throw new NotImplementedException("Hook Rx completion here.");
     }
 
