@@ -9,4 +9,6 @@ internal sealed class Deadline
     public void Arm(TimeSpan ts) => _ticks = Stopwatch.GetTimestamp() + (long)(ts.TotalSeconds * Stopwatch.Frequency);
     public void Disarm() => _ticks = 0;
     public bool Expired() => Armed && Stopwatch.GetTimestamp() > _ticks;
+
+    public double Remaining => (Stopwatch.GetTimestamp() - _ticks) / (double)Stopwatch.Frequency;
 }

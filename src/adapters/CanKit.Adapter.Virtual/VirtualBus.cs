@@ -140,7 +140,6 @@ public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, IBusOwnershi
             .ConfigureAwait(false);
     }
 
-#if NET8_0_OR_GREATER
     public async IAsyncEnumerable<CanReceiveData> GetFramesAsync(
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
@@ -150,7 +149,6 @@ public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, IBusOwnershi
             yield return item;
         }
     }
-#endif
 
     public VirtualBusRtConfigurator Options { get; }
 

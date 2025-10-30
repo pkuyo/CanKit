@@ -319,7 +319,6 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
             .ConfigureAwait(false);
     }
 
-#if NET8_0_OR_GREATER
     public async IAsyncEnumerable<CanReceiveData> GetFramesAsync([System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
@@ -328,7 +327,6 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
             yield return item;
         }
     }
-#endif
 
     public void ClearBuffer() => throw new NotSupportedException("SocketCAN does not support clear buffer");
 

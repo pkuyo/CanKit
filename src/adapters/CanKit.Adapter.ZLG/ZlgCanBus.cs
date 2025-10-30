@@ -629,7 +629,6 @@ namespace CanKit.Adapter.ZLG
             return await _asyncRx.ReceiveBatchAsync(count, timeOut, cancellationToken).ConfigureAwait(false);
         }
 
-#if NET8_0_OR_GREATER
         public async IAsyncEnumerable<CanReceiveData> GetFramesAsync([System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
             ThrowIfDisposed();
@@ -639,7 +638,6 @@ namespace CanKit.Adapter.ZLG
             }
 
         }
-#endif
 
         internal int GetAutoSendIndex(bool add = true)
         {

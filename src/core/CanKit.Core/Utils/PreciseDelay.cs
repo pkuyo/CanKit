@@ -1,8 +1,10 @@
 using System;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Win32.SafeHandles;
 
 namespace CanKit.Core.Utils;
 
@@ -51,13 +53,55 @@ public static class PreciseDelay
         }
     }
 
+    public static async Task DelayAsync(TimeSpan delay,
+        bool onWindowsUseTimeBeginPeriod = false,
+        double spinBackoffMs = 0.8,
+        CancellationToken ct = default)
+    {
+        if (delay <= TimeSpan.Zero) return;
+
+        var start = Stopwatch.GetTimestamp();
+        var freq = Stopwatch.Frequency;
+        var target = start + (long)(delay.TotalSeconds * freq);
+
+        var coarseMs = Math.Max(0, delay.TotalMilliseconds - Math.Max(0.1, spinBackoffMs));
+        if (coarseMs >= 0.5)
+        {
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                using var _ = onWindowsUseTimeBeginPeriod ? new TimePeriodScope(1) : null;
+                await WindowsHighResWaitableTimer.SleepMsAsync(coarseMs, ct);
+            }
+            else
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(coarseMs), ct);
+            }
+        }
+        while (true)
+        {
+            ct.ThrowIfCancellationRequested();
+            long now = Stopwatch.GetTimestamp();
+            if (now >= target) break;
+
+            double remainingUs = (target - now) * 1_000_000.0 / freq;
+            if (remainingUs > 150)
+            {
+                Thread.SpinWait(200);
+            }
+            else
+            {
+                while (Stopwatch.GetTimestamp() < target) { }
+                break;
+            }
+        }
+    }
+
 
     private static class WindowsHighResWaitableTimer
     {
         private const uint CREATE_WAITABLE_TIMER_MANUAL_RESET = 0x00000001;
         private const uint CREATE_WAITABLE_TIMER_HIGH_RESOLUTION = 0x00000002;
         private const uint TIMER_ALL_ACCESS = 0x001F0003;
-        private const uint INFINITE = 0xFFFFFFFF;
 
         [DllImport("kernel32.dll", SetLastError = true)]
         private static extern IntPtr CreateWaitableTimerEx(IntPtr lpTimerAttributes, string? lpTimerName, uint dwFlags, uint dwDesiredAccess);
@@ -67,43 +111,82 @@ public static class PreciseDelay
                                                       IntPtr pfnCompletionRoutine, IntPtr lpArgToCompletionRoutine,
                                                       IntPtr wakeContext, uint tolerableDelay /* 100ns 单位 */);
 
-        [DllImport("kernel32.dll", SetLastError = true)]
-        private static extern uint WaitForSingleObject(IntPtr hHandle, uint dwMilliseconds);
 
         [DllImport("kernel32.dll", SetLastError = true)]
         private static extern bool CloseHandle(IntPtr hObject);
 
         public static void SleepMs(double ms, CancellationToken ct)
         {
-            // 负值表示相对时间（100ns 单位）
             long due100ns = -(long)(ms * 10_000.0);
 
             IntPtr h = CreateWaitableTimerEx(IntPtr.Zero, null,
                                              CREATE_WAITABLE_TIMER_HIGH_RESOLUTION | CREATE_WAITABLE_TIMER_MANUAL_RESET,
                                              TIMER_ALL_ACCESS);
             if (h == IntPtr.Zero)
-                throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
-
-            try
+                throw new Win32Exception(Marshal.GetLastWin32Error());
+            var wh = new ManualResetEvent(false)
+            { SafeWaitHandle = new SafeWaitHandle(h, ownsHandle: true) };
+            if (!SetWaitableTimerEx(h, in due100ns, 0, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, 0))
+                throw new Win32Exception(Marshal.GetLastWin32Error());
+            while (true)
             {
-                if (!SetWaitableTimerEx(h, in due100ns, 0, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, 0))
-                    throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+                ct.ThrowIfCancellationRequested();
+                if (wh.WaitOne(10))
+                    break;
+            }
+        }
 
-                // 轮询取消（Windows WaitForSingleObject 无法直接用 CancellationToken）
-                while (true)
+
+        public static Task SleepMsAsync(double ms, CancellationToken ct)
+        {
+            long due100ns = -(long)(ms * 10_000.0);
+
+            IntPtr h = CreateWaitableTimerEx(
+                IntPtr.Zero, null,
+                CREATE_WAITABLE_TIMER_HIGH_RESOLUTION | CREATE_WAITABLE_TIMER_MANUAL_RESET,
+                TIMER_ALL_ACCESS);
+
+            if (h == IntPtr.Zero)
+                throw new Win32Exception(Marshal.GetLastWin32Error());
+            var wh = new ManualResetEvent(false)
+            {
+                SafeWaitHandle = new SafeWaitHandle(h, ownsHandle: true)
+            };
+
+            if (!SetWaitableTimerEx(h, in due100ns, 0, IntPtr.Zero, IntPtr.Zero, IntPtr.Zero, 0))
+                throw new Win32Exception(Marshal.GetLastWin32Error());
+
+            var tcs = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
+            RegisteredWaitHandle? rwh = null;
+            CancellationTokenRegistration ctr = default;
+
+
+            rwh = ThreadPool.RegisterWaitForSingleObject(
+                wh, static (state, _) => ((Action)state!).Invoke(),
+                (Action)CompleteSuccess,
+                Timeout.Infinite,
+                true);
+
+            if (ct.CanBeCanceled)
+            {
+                ctr = ct.Register(() =>
                 {
-                    ct.ThrowIfCancellationRequested();
-                    const uint SLICE_MS = 10;
-                    var result = WaitForSingleObject(h, SLICE_MS);
-                    if (result == 0 /* WAIT_OBJECT_0 */) break;
-                    if (result != 0x00000102 /* WAIT_TIMEOUT */)
-                        throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
-                }
+                    try { rwh?.Unregister(null); } catch { /*Ignored*/ }
+                    wh.Dispose();
+                    tcs.TrySetCanceled(ct);
+                });
             }
-            finally
+
+            return tcs.Task;
+
+            void CompleteSuccess()
             {
-                CloseHandle(h);
+                try { rwh?.Unregister(null); } catch { /*Ignored*/ }
+                wh.Dispose();
+                ctr.Dispose();
+                tcs.TrySetResult(null);
             }
+
         }
     }
 
@@ -113,11 +196,11 @@ public static class PreciseDelay
         public TimePeriodScope(uint milliseconds)
         {
             _ms = milliseconds;
-            try { timeBeginPeriod(_ms); } catch { /* 忽略失败 */ }
+            try { timeBeginPeriod(_ms); } catch { /*Ignored*/ }
         }
         public void Dispose()
         {
-            try { timeEndPeriod(_ms); } catch { /* 忽略失败 */ }
+            try { timeEndPeriod(_ms); } catch {  /*Ignored*/ }
         }
 
         [DllImport("winmm.dll", EntryPoint = "timeBeginPeriod")]

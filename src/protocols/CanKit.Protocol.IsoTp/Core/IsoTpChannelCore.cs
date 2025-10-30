@@ -209,7 +209,8 @@ internal sealed class IsoTpChannelCore : IDisposable
         }
 
         var operation = new TxOperation(Endpoint.TxId, Endpoint.TxAddress);
-        operation.Ctr = ct.Register(() => OnTxFailed(operation, new OperationCanceledException("User canceled send")));
+        operation.Ctr = ct.Register(() => OnTxFailed(operation, new OperationCanceledException("User canceled send")),
+            false);
         _pendingOperations.Enqueue(operation);
 
         var sfMax = CalcSfMax(canFd, Endpoint.IsExtendedAddress);
@@ -254,15 +255,6 @@ internal sealed class IsoTpChannelCore : IDisposable
             FrameCodec.BuildFC(Endpoint, _allocator, fs, bs, st, /*padding*/true,
                 /*canfd*/false));
         _pendingFc.Enqueue(txOperation);
-    }
-    public void ProcessTimers()
-    {
-        if (_tx == TxState.WaitFc && _nBs.Expired())
-            throw new IsoTpException(IsoTpErrorCode.Timeout_N_Bs, "Wait FC timeout", Endpoint);
-        if (_tx == TxState.WaitFcAfterBlock && _nCs.Expired())
-            throw new IsoTpException(IsoTpErrorCode.Timeout_N_Cs, "Wait next FC timeout", Endpoint);
-        if (_rx == RxState.RecvCf && _nCr.Expired())
-            throw new IsoTpException(IsoTpErrorCode.Timeout_N_Cr, "Wait CF timeout", Endpoint);
     }
 
     public TxOperation? TryDequeueFC()

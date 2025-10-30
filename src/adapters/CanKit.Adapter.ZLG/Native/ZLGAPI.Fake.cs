@@ -60,7 +60,7 @@ public static class ZLGCAN
         public IntPtr Handle;
         public readonly Dictionary<int, Channel> Channels = new();
         public readonly ConcurrentQueue<ZCANDataObj> MergeRx = new();
-        public readonly AutoResetEvent MergeRxEvt = new(false);
+        public AutoResetEvent MergeRxEvt = new AutoResetEvent(false);
         public bool BusUsageEnabled;
         public uint BusUsagePeriodMs = 200;
         public ulong LastBusUsageTs = 0;
@@ -467,7 +467,7 @@ public static class ZLGCAN
         while (count < len)
         {
             var remaining = wait_time + start - Environment.TickCount;
-            //if (remaining <= 0 && wait_time != -1) break;
+            if (remaining <= 0 && wait_time != -1) break;
             ch.RxEvtClassic.WaitOne(TimeSpan.FromMilliseconds(Math.Min(remaining, 10)));
             DequeueQueue();
         }
@@ -494,7 +494,7 @@ public static class ZLGCAN
         while (count < len)
         {
             var remaining = wait_time + start - Environment.TickCount;
-            //if (remaining <= 0 && wait_time != -1) break;
+            if (remaining <= 0 && wait_time != -1) break;
             ch.RxEvtFd.WaitOne(TimeSpan.FromMilliseconds(Math.Min(remaining, 10)));
             DequeueQueue();
         }

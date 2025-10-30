@@ -360,7 +360,6 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
         return await _asyncRx.ReceiveBatchAsync(count, timeOut, cancellationToken).ConfigureAwait(false);
     }
 
-#if NET8_0_OR_GREATER
     public async IAsyncEnumerable<CanReceiveData> GetFramesAsync([EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
@@ -369,7 +368,6 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
             yield return frame;
         }
     }
-#endif
 
     public event EventHandler<CanReceiveData> FrameReceived
     {

@@ -167,15 +167,13 @@ namespace CanKit.Core.Abstractions
         /// <returns>Received frames (收到的帧集合)。当达到期望数量或超时/取消时返回。</returns>
         Task<IReadOnlyList<CanReceiveData>> ReceiveAsync(int count = 1, int timeOut = 0, CancellationToken cancellationToken = default);
 
-
-#if NET8_0_OR_GREATER
         /// <summary>
         /// Stream received frames asynchronously (异步流式获取接收帧)
         /// </summary>
         /// <param name="cancellationToken">Cancellation (取消令牌)</param>
         /// <returns>IAsyncEnumerable of frames</returns>
         IAsyncEnumerable<CanReceiveData> GetFramesAsync(CancellationToken cancellationToken = default);
-#endif
+
 
         /// <summary>
         /// Raised when a new CAN frame is received (接收到新 CAN 帧时触发)。

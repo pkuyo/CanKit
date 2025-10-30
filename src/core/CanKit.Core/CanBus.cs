@@ -147,6 +147,13 @@ public static class CanBus
         return Open<TBus, TBusOptions, TInitCfg>(device, typedChOptions, typedInitCfg);
     }
 
+
+    public static QueuedCanBus WithQueuedTx(this ICanBus inner, QueuedCanBusOptions? options = null)
+    {
+        options ??= new QueuedCanBusOptions();
+        return new QueuedCanBus(inner, options);
+    }
+
     private sealed class DeviceOwner(ICanDevice device) : IDisposable
     {
         private ICanDevice? _device = device;

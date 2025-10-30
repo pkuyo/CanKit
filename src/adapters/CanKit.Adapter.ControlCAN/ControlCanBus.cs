@@ -270,14 +270,12 @@ public sealed class ControlCanBus : ICanBus<ControlCanBusRtConfigurator>, IBusOw
         return await _asyncRx.ReceiveBatchAsync(count, timeOut, cancellationToken).ConfigureAwait(false);
     }
 
-#if NET8_0_OR_GREATER
     public async IAsyncEnumerable<CanReceiveData> GetFramesAsync([System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
         await foreach (var item in _asyncRx.ReadAllAsync(cancellationToken))
             yield return item;
     }
-#endif
 
     public BusState BusState => BusState.Unknown;
 

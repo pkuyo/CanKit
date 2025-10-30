@@ -1,9 +1,11 @@
 using System.Diagnostics;
+using CanKit.Core;
 using CanKit.Core.Abstractions;
 using CanKit.Core.Definitions;
 using CanKit.Core.Utils;
 using CanKit.Protocol.IsoTp.Defines;
 using CanKit.Protocol.IsoTp.Diagnostics;
+using CanKit.Protocol.IsoTp.Utils;
 
 namespace CanKit.Protocol.IsoTp.Core;
 
@@ -17,19 +19,19 @@ internal sealed class IsoTpScheduler
     private readonly List<IsoTpChannelCore> _channels = new();
     private readonly List<(double score, IsoTpChannelCore ch)> _candidates = new();
     private long _lastDataTxTicks;
-
-    private Stopwatch _asStopWatch = new();
-    private ManualResetEvent _ackEvent = new(false);
-    private ICanFrame? _ackFrame;
+    private AsyncAutoResetEvent _txOrTimeOutEvent = new();
 
     internal event Action<IsoTpChannelCore.TxOperation>? TxOperationTransmitted;
 
     internal event Action<IsoTpChannelCore.TxOperation, Exception>? TxOperationExceptionOccurred;
 
-    public IsoTpScheduler(ICanBus bus, IsoTpOptions opt)
+    public IsoTpScheduler(ICanBus bus, IsoTpOptions options)
     {
-        _bus = bus;
-        _opt = opt;
+        if(options.QueuedCanBusOptions is not null)
+            _bus = bus.WithQueuedTx(options.QueuedCanBusOptions);
+        else
+            _bus = bus;
+        _opt = options;
         _canEcho = (_bus.Options.Features & CanFeature.Echo) != 0;
     }
 
@@ -38,47 +40,14 @@ internal sealed class IsoTpScheduler
 
     public void TransmitWithAs(in IsoTpChannelCore.TxOperation operation)
     {
-        try
+        if (_bus.Transmit(operation.Dequeue()) == 0)
         {
-            _asStopWatch.Restart();
-            _ackFrame = operation.Dequeue();
-            while (true)
-            {
-                if (_bus.Transmit(_ackFrame) == 1)
-                {
-                    if (_canEcho && !_ackEvent.WaitOne(_opt.N_As - _asStopWatch.Elapsed))
-                    {
-                        TxOperationExceptionOccurred?.Invoke
-                            (operation, new IsoTpException(IsoTpErrorCode.Timeout_N_As, "TODO"));
-                    }
-                    break;
-                }
-
-                PreciseDelay.Delay(TimeSpan.FromMilliseconds(1));
-                if (_asStopWatch.Elapsed > _opt.N_As)
-                {
-                    TxOperationExceptionOccurred?.Invoke
-                        (operation, new IsoTpException(IsoTpErrorCode.Timeout_N_As, "TODO"));
-                }
-            }
-
-            if (operation.Empty)
-            {
-                TxOperationTransmitted?.Invoke(operation);
-            }
+            throw new IsoTpException(IsoTpErrorCode.BusTxRejected);
         }
-        catch (Exception e)
+        else
         {
-            operation.Dispose();
-            TxOperationExceptionOccurred?.Invoke(operation, e);
-        }
-        finally
-        {
-            _asStopWatch.Stop();
-            _ackEvent.Reset();
-            _ackFrame = null;
-        }
 
+        }
     }
 
     public async Task RunAsync(CancellationToken ct)
@@ -101,12 +70,6 @@ internal sealed class IsoTpScheduler
                         break;
                     TransmitWithAs(pf);
                 }
-            }
-
-            // 2) 定时器巡检
-            foreach (var ch in _channels)
-            {
-                ch.ProcessTimers();
             }
 
 
@@ -132,9 +95,6 @@ internal sealed class IsoTpScheduler
                     _lastDataTxTicks = Stopwatch.GetTimestamp();
                 }
             }
-
-
-            await Task.Yield();
         }
     }
 
@@ -166,17 +126,56 @@ internal sealed class IsoTpScheduler
     private void OnFrameReceived(object? sender, CanReceiveData e)
     {
         _router.Route(e);
-        if (_canEcho && e.IsEcho && _ackFrame is not null)
-        {
-            if (e.CanFrame.ID == _ackFrame.ID && e.CanFrame.Data.Span.SequenceEqual(_ackFrame.Data.Span))
-            {
-                _ackEvent.Set();
-            }
-        }
     }
 
     private void OnBackgroundExceptionOccurred(object? _, Exception e)
     {
         throw new IsoTpException(IsoTpErrorCode.BackgroundException, e.Message, null, e);
     }
+
+
+
+    public static ulong ComputeFnv1a64(in CanFdFrame frame)
+    {
+        const ulong FNV_OFFSET = 1469598103934665603UL;
+        const ulong FNV_PRIME = 1099511628211UL;
+        ulong h = FNV_OFFSET;
+
+        void MixByte(byte b) { h ^= b; h *= FNV_PRIME; }
+        unchecked {
+            for (int i = 0; i < 4; i++) MixByte((byte)((frame.ID >> (8*i)) & 0xFF));
+        }
+        MixByte((byte)((1 << 4) | ((frame.BitRateSwitch ? 1 : 0) << 3) |
+                       ((frame.ErrorStateIndicator ? 1 : 0) << 2) |
+                       ((frame.IsErrorFrame ? 1 : 0) << 1) |
+                       (frame.IsExtendedFrame ? 1 : 0)));
+        MixByte(frame.Dlc);
+
+        var span = frame.Data.Span;
+        for (int i = 0; i < span.Length; i++) MixByte(span[i]);
+
+        return h;
+    }
+
+    public static ulong ComputeFnv1a64(in CanClassicFrame frame)
+    {
+        const ulong FNV_OFFSET = 1469598103934665603UL;
+        const ulong FNV_PRIME = 1099511628211UL;
+        ulong h = FNV_OFFSET;
+
+        void MixByte(byte b) { h ^= b; h *= FNV_PRIME; }
+        unchecked {
+            for (int i = 0; i < 4; i++) MixByte((byte)((frame.ID >> (8*i)) & 0xFF));
+        }
+        MixByte((byte)(((frame.IsRemoteFrame ? 1 : 0) << 2) |
+                       ((frame.IsErrorFrame ? 1 : 0) << 1) |
+                       (frame.IsExtendedFrame ? 1 : 0)));
+        MixByte(frame.Dlc);
+
+        var span = frame.Data.Span;
+        for (int i = 0; i < span.Length; i++) MixByte(span[i]);
+
+        return h;
+    }
+
 }
