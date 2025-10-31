@@ -1,5 +1,6 @@
 ﻿using System.Buffers;
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using CanKit.Core.Abstractions;
 using CanKit.Core.Definitions;
@@ -15,18 +16,15 @@ internal enum RxState { Idle, RecvCf }
 
 internal sealed class IsoTpChannelCore : IDisposable
 {
+
     internal sealed class TxOperation : IDisposable
     {
 
-        private volatile bool _cancelRequested;
-
-        private readonly Queue<ICanFrame> _pendingData = new();
+        private readonly Queue<TxFrame> _pendingFrames = new();
 
         public CancellationTokenRegistration Ctr { get; set; }
 
-        public bool Canceled => _cancelRequested;
-
-        public bool Empty => _pendingData.Count == 0;
+        public bool Empty => _pendingFrames.Count == 0;
 
         public int TxAddress { get; }
         public int? ExtendAddress { get; }
@@ -36,62 +34,60 @@ internal sealed class IsoTpChannelCore : IDisposable
 
         public DateTime StartedAt { get; } = DateTime.Now;
 
+        public int BS { get; set; } = 0;
+
+        public int TxCount { get; set; }
+
         public TxOperation(int txAddress, int? extendAddress)
         {
             TxAddress = txAddress;
             ExtendAddress = extendAddress;
         }
 
-        public void Enqueue(ICanFrame canFrame)
-        {
-            _pendingData.Enqueue(canFrame);
-        }
+        public void Enqueue(ICanFrame canFrame, PciType type)
+            => _pendingFrames.Enqueue(new TxFrame(canFrame, type));
 
-        public ICanFrame Dequeue()
-        {
-            return _pendingData.Dequeue();
-        }
+        public TxFrame Dequeue() => _pendingFrames.Dequeue();
 
-        public bool TryPeek(out ICanFrame? canFrame)
+        public bool TryPeek(out TxFrame canFrame)
         {
 #if NET5_0_OR_GREATER
-            return _pendingData.TryPeek(out canFrame);
+            return _pendingFrames.TryPeek(out canFrame);
 #else
-            if (_pendingData.Count == 0)
+            if (_pendingFrames.Count == 0)
             {
-                canFrame = _pendingData.Peek();
+                canFrame = _pendingFrames.Peek();
                 return true;
             }
 
-            canFrame = null;
+            canFrame = default;
             return false;
 #endif
         }
 
         public void Dispose()
         {
-            _cancelRequested = true;
-            while (_pendingData.Count != 0)
+            while (_pendingFrames.Count != 0)
             {
-                _pendingData.Dequeue().Dispose();
+                _pendingFrames.Dequeue().Frame.Dispose();
             }
             Ctr.Dispose();
         }
 
     }
 
-    private readonly struct FcStat
-    {
-
-    }
+    internal readonly record struct TxFrame(ICanFrame Frame, PciType Type);
 
     private TxState _tx = TxState.Idle;
     private RxState _rx = RxState.Idle;
 
-    private readonly Deadline _nAs = new();
-    private readonly Deadline _nBs = new();
-    private readonly Deadline _nCs = new();
-    private readonly Deadline _nCr = new();
+    private readonly QueuedDeadline? _nAs;
+    private readonly Deadline _nBs;
+    private readonly Deadline _nCs;
+
+    private readonly QueuedDeadline? _nAr;
+    private readonly Deadline _nBr;
+    private readonly Deadline _nCr;
 
 
     private readonly ConcurrentQueue<TxOperation> _pendingFc = new();
@@ -108,6 +104,17 @@ internal sealed class IsoTpChannelCore : IDisposable
         Options = options;
         FcPolicy = policy;
         _allocator = allocator;
+
+        if (options.N_AxCheck)
+        {
+            _nAs = new QueuedDeadline(Options.N_As);
+            _nAr = new QueuedDeadline(Options.N_Ar);
+        }
+        _nBs = new Deadline(Options.N_Bs);
+        _nBr = new Deadline(Options.N_Br);
+
+        _nCs = new Deadline(Options.N_Cs);
+        _nCr = new Deadline(Options.N_Cr);
     }
 
     public bool Match(in CanReceiveData rx)
@@ -123,34 +130,100 @@ internal sealed class IsoTpChannelCore : IDisposable
                tx.ExtendAddress == Endpoint.TxAddress;
     }
 
-    public void OnRx(in CanReceiveData rx)
+    private void UpdateTxDeadline(TxOperation operation, ICanFrame frame, PciType type)
     {
-        if (!FrameCodec.TryParsePci(rx, Endpoint, out var pci)) return;
+        switch (type)
+        {
+            case PciType.FF:
+                _nAs?.Enqueue(frame);
+                _nBs.Restart();
+                break;
+            case PciType.CF:
+                _nAs?.Enqueue(frame);
+                _nCs.Restart();
+                break;
+            case PciType.FC:
+                _nAr?.Enqueue(frame);
+                break;
+        }
+    }
 
+    private void UpdateTxState(TxOperation operation, ICanFrame frame, PciType type)
+    {
+        switch (type)
+        {
+            case PciType.FF:
+                _tx = TxState.WaitFc;
+                break;
+            case PciType.CF when (operation.TxCount == operation.BS && operation.BS != 0):
+                _tx = TxState.WaitFcAfterBlock;
+                break;
+            case PciType.FC:
+                _rx = RxState.RecvCf;
+                break;
+        }
+    }
+
+    private void UpdateRxDeadline(ICanFrame frame, Pci pci)
+    {
         switch (pci.Type)
         {
-            case PciType.SF: OnRxSF(rx, pci); break;
-            case PciType.FF: OnRxFF(rx, pci); break;
-            case PciType.CF: OnRxCF(rx, pci); break;
-            case PciType.FC: OnRxFC(pci); break;
+            case PciType.FF:
+                _nBr.Restart();
+                break;
+            case PciType.FC when pci.FS == FlowStatus.CTS:
+                _nCs.Restart();
+                break;
         }
     }
 
-    public void OnTx(TxOperation operation)
+    public void OnRx(in CanReceiveData rx)
     {
-        operation.Tcs.SetResult(true);
-        operation.Dispose();
-        if (TryPeekOperation(out var opera) && opera == operation)
+        if (rx.IsEcho)
         {
-            _pendingOperations.TryDequeue(out _);
+            if (!Options.N_AxCheck)
+                return;
+            _nAs?.Dequeue(rx.CanFrame);
+            _nAr?.Dequeue(rx.CanFrame);
         }
+        else
+        {
+            if (!FrameCodec.TryParsePci(rx, Endpoint, out var pci)) return;
+
+            UpdateRxDeadline(rx.CanFrame, pci);
+
+            switch (pci.Type)
+            {
+                case PciType.SF: OnRxSF(rx, pci); break;
+                case PciType.FF: OnRxFF(rx, pci); break;
+                case PciType.CF: OnRxCF(rx, pci); break;
+                case PciType.FC: OnRxFC(pci); break;
+            }
+        }
+
     }
 
-    public void OnTxFailed(TxOperation operation, Exception exception)
+    public void OnTx(TxOperation operation, in TxFrame frame)
+    {
+       if(operation.Empty)
+       {
+           operation.Tcs.SetResult(true);
+           operation.Dispose();
+           if (frame.Type is not PciType.FC)
+           {
+               Debug.Assert(TryPeekOperation(out var opera) && opera == operation);
+               _pendingOperations.TryDequeue(out _);
+           }
+       }
+       UpdateTxDeadline(operation, frame.Frame, frame.Type);
+    }
+
+    public void OnTxFailed(TxOperation operation, in TxFrame frame, Exception exception)
     {
         operation.Tcs.SetException(exception);
         operation.Dispose();
-        if (TryPeekOperation(out var opera) && opera == operation)
+
+        if(TryPeekOperation(out var opera) && opera == operation)
         {
             _pendingOperations.TryDequeue(out _);
         }
@@ -163,16 +236,12 @@ internal sealed class IsoTpChannelCore : IDisposable
 
     private void OnRxFF(in CanReceiveData rx, Pci pci)
     {
-        // TODO: 分配缓冲，拷贝首段；根据 FcPolicy 立即入队 FC(CTS)
-        //_rx = RxState.RecvCf; _expectSn = 1;
-        _nCr.Arm(/*N_Cr*/ TimeSpan.FromMilliseconds(1000));
+        _nCr.Reset();
     }
 
     private void OnRxCF(in CanReceiveData rx, Pci pci)
     {
         if (_rx != RxState.RecvCf) return;
-        // TODO: 校验 SN，拷贝数据，_nCr.Arm(N_Cr)；块满时 Enqueue FC(CTS/WT/OVFLW)
-        // 完成时上交完整PDU并回 Idle
     }
 
     private void OnRxFC(Pci pci)
@@ -182,16 +251,15 @@ internal sealed class IsoTpChannelCore : IDisposable
         {
             case FlowStatus.CTS:
                 //_bsCur = pci.BS; _bsCnt = 0; _stmin = pci.STmin; _tx = TxState.SendCf;
+                _nBs.Reset();
                 break;
             case FlowStatus.WT:
-                _nBs.Arm(/*N_Bs*/ TimeSpan.FromMilliseconds(1000));
+                _nBs.Restart();
                 break;
             case FlowStatus.OVFLW:
                 _tx = TxState.Failed; /* TODO: 报错 */ break;
         }
     }
-
-
 
     public bool IsReadyToSendData(long nowTicks, TimeSpan? globalGuard)
     {
@@ -209,25 +277,26 @@ internal sealed class IsoTpChannelCore : IDisposable
         }
 
         var operation = new TxOperation(Endpoint.TxId, Endpoint.TxAddress);
-        operation.Ctr = ct.Register(() => OnTxFailed(operation, new OperationCanceledException("User canceled send")),
+        operation.Ctr = ct.Register(() => OnTxFailed(operation, default, new OperationCanceledException("User canceled send")),
             false);
         _pendingOperations.Enqueue(operation);
 
         var sfMax = CalcSfMax(canFd, Endpoint.IsExtendedAddress);
         if (data.Length <= sfMax)
         {
-            operation.Enqueue(FrameCodec.BuildSF(Endpoint, _allocator, data, padding, canFd));
+            operation.Enqueue(FrameCodec.BuildSF(Endpoint, _allocator, data, padding, canFd), PciType.SF);
         }
         else
         {
-            operation.Enqueue(FrameCodec.BuildFF(Endpoint, _allocator, data.Length, data, canFd));
+            operation.Enqueue(FrameCodec.BuildFF(Endpoint, _allocator, data.Length, data, canFd), PciType.FF);
             _tx = TxState.WaitFc;
             int index = sfMax;
             int cfLen = CalcCfMax(canFd, Endpoint.IsExtendedAddress);
             byte sn = 0;
             while (index < data.Length)
             {
-                operation.Enqueue(FrameCodec.BuildCF(Endpoint, _allocator, sn, data.Slice(index), padding, canFd));
+                operation.Enqueue(FrameCodec.BuildCF(Endpoint, _allocator, sn, data.Slice(index), padding, canFd),
+                    PciType.CF);
                 sn = (byte)((sn + 1) % 16);
                 index += cfLen;
             }
@@ -253,7 +322,7 @@ internal sealed class IsoTpChannelCore : IDisposable
         var txOperation = new TxOperation(Endpoint.TxId, Endpoint.TxAddress);
         txOperation.Enqueue(
             FrameCodec.BuildFC(Endpoint, _allocator, fs, bs, st, /*padding*/true,
-                /*canfd*/false));
+                /*canfd*/false), PciType.FC);
         _pendingFc.Enqueue(txOperation);
     }
 
@@ -273,12 +342,13 @@ internal sealed class IsoTpChannelCore : IDisposable
     public bool TryPeekData(out ICanFrame? frame)
     {
         frame = null;
+        var re = false;
         if (TryPeekOperation(out var txOperation))
         {
-            return txOperation.TryPeek(out frame);
+            re = txOperation.TryPeek(out var txF);
+            frame = txF.Frame;
         }
-
-        return false;
+        return re;
     }
 
     public void Dispose()

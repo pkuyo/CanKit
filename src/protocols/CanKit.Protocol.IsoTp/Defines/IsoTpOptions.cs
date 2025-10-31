@@ -8,6 +8,8 @@ public sealed class IsoTpOptions
     public bool ClassicCanPadding { get; init; } = true;
     public TimeSpan? GlobalBusGuard { get; init; } = null;   // 数据帧最小全局间隔（FC不受限）
 
+    public bool N_AxCheck { get; init; } = false;
+
     public QueuedCanBusOptions? QueuedCanBusOptions { get; init; } = null;
 
     public TimeSpan N_As { get; init; } = TimeSpan.FromMilliseconds(100);
@@ -16,4 +18,6 @@ public sealed class IsoTpOptions
     public TimeSpan N_Br { get; init; } = TimeSpan.FromMilliseconds(1000);
     public TimeSpan N_Cs { get; init; } = TimeSpan.FromMilliseconds(1000);
     public TimeSpan N_Cr { get; init; } = TimeSpan.FromMilliseconds(1000);
+
+    public int MaxFrameLength { get; init; } = int.MaxValue;
 }

@@ -2,13 +2,27 @@
 
 namespace CanKit.Protocol.IsoTp.Defines;
 
-internal sealed class Deadline
+internal sealed class Deadline(TimeSpan timeOut, bool actived = false)
 {
-    private long _ticks;
-    public bool Armed => _ticks != 0;
-    public void Arm(TimeSpan ts) => _ticks = Stopwatch.GetTimestamp() + (long)(ts.TotalSeconds * Stopwatch.Frequency);
-    public void Disarm() => _ticks = 0;
-    public bool Expired() => Armed && Stopwatch.GetTimestamp() > _ticks;
+    private Stopwatch _stopwatch = new();
 
-    public double Remaining => (Stopwatch.GetTimestamp() - _ticks) / (double)Stopwatch.Frequency;
+    private bool _actived = actived;
+
+    private readonly TimeSpan _timeOut = timeOut;
+    private bool Actived => _actived;
+    public bool TimeOut => _stopwatch.Elapsed > _timeOut;
+
+    public TimeSpan Remaining => (_timeOut - _stopwatch.Elapsed);
+
+    public void Reset() => _stopwatch.Reset();
+
+    public void Restart() => _stopwatch.Restart();
+
+    public void SetActive(bool newActive)
+    {
+        if(newActive && !_stopwatch.IsRunning)
+            _stopwatch.Start();
+        else if(!newActive && _stopwatch.IsRunning)
+            _stopwatch.Stop();
+    }
 }

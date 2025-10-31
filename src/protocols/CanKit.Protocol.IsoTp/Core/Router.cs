@@ -23,13 +23,13 @@ internal sealed class Router
         return false;
     }
 
-    public bool Route(in IsoTpChannelCore.TxOperation tx)
+    public bool Route(IsoTpChannelCore.TxOperation tx, in IsoTpChannelCore.TxFrame frame)
     {
         foreach (var ch in _channels)
         {
             if (ch.Match(tx))
             {
-                ch.OnTx(tx);
+                ch.OnTx(tx, frame);
                 return true;
             }
         }
@@ -37,13 +37,13 @@ internal sealed class Router
         return false;
     }
 
-    public bool Route(in IsoTpChannelCore.TxOperation tx, Exception exception)
+    public bool Route(in IsoTpChannelCore.TxOperation tx, in IsoTpChannelCore.TxFrame frame, Exception exception)
     {
         foreach (var ch in _channels)
         {
             if (ch.Match(tx))
             {
-                ch.OnTxFailed(tx, exception);
+                ch.OnTxFailed(tx, frame, exception);
                 return true;
             }
         }

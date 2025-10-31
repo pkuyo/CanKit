@@ -21,9 +21,15 @@ internal sealed class IsoTpScheduler
     private long _lastDataTxTicks;
     private AsyncAutoResetEvent _txOrTimeOutEvent = new();
 
-    internal event Action<IsoTpChannelCore.TxOperation>? TxOperationTransmitted;
+    internal delegate void TxOperationTransmittedHandle(IsoTpChannelCore.TxOperation operation,
+        in IsoTpChannelCore.TxFrame frame);
 
-    internal event Action<IsoTpChannelCore.TxOperation, Exception>? TxOperationExceptionOccurred;
+    internal delegate void TxOperationExceptionOccurredHandle(IsoTpChannelCore.TxOperation operation,
+        in IsoTpChannelCore.TxFrame frame, Exception exception);
+
+    internal event TxOperationTransmittedHandle? TxOperationTransmitted;
+
+    internal event TxOperationExceptionOccurredHandle? TxOperationExceptionOccurred;
 
     public IsoTpScheduler(ICanBus bus, IsoTpOptions options)
     {
@@ -38,15 +44,17 @@ internal sealed class IsoTpScheduler
     public void Register(IsoTpChannelCore ch) { _channels.Add(ch); _router.Register(ch); }
     public void Unregister(IsoTpChannelCore ch) { _channels.Remove(ch); _router.Unregister(ch); }
 
-    public void TransmitWithAs(in IsoTpChannelCore.TxOperation operation)
+    public void TransmitTxOperation(in IsoTpChannelCore.TxOperation operation)
     {
-        if (_bus.Transmit(operation.Dequeue()) == 0)
+        var txFrame = operation.Dequeue();
+        using var frame = txFrame.Frame;
+        if (_bus.Transmit(frame) == 0)
         {
-            throw new IsoTpException(IsoTpErrorCode.BusTxRejected);
+            TxOperationExceptionOccurred?.Invoke(operation, txFrame, new IsoTpException(IsoTpErrorCode.BusTxRejected));
         }
         else
         {
-
+            TxOperationTransmitted?.Invoke(operation, txFrame);
         }
     }
 
@@ -68,7 +76,7 @@ internal sealed class IsoTpScheduler
                     using var pf = ch.TryDequeueFC();
                     if (pf is null)
                         break;
-                    TransmitWithAs(pf);
+                    TransmitTxOperation(pf);
                 }
             }
 
@@ -91,7 +99,7 @@ internal sealed class IsoTpScheduler
                 var (score, ch) = _candidates[0];
                 if (ch.TryPeekOperation(out var operation))
                 {
-                    TransmitWithAs(operation);
+                    TransmitTxOperation(operation);
                     _lastDataTxTicks = Stopwatch.GetTimestamp();
                 }
             }
@@ -113,14 +121,15 @@ internal sealed class IsoTpScheduler
         return nowTicks * 1e-12;
     }
 
-    private void OnOperationTransmitted(IsoTpChannelCore.TxOperation operation)
+    private void OnOperationTransmitted(IsoTpChannelCore.TxOperation operation, in IsoTpChannelCore.TxFrame frame)
     {
-        _router.Route(operation);
+        _router.Route(operation, frame);
     }
 
-    private void OnTxExceptionOccurred(IsoTpChannelCore.TxOperation operation, Exception exception)
+    private void OnTxExceptionOccurred(IsoTpChannelCore.TxOperation operation,
+        in IsoTpChannelCore.TxFrame frame, Exception exception)
     {
-        _router.Route(operation, exception);
+        _router.Route(operation, frame, exception);
     }
 
     private void OnFrameReceived(object? sender, CanReceiveData e)
@@ -132,50 +141,4 @@ internal sealed class IsoTpScheduler
     {
         throw new IsoTpException(IsoTpErrorCode.BackgroundException, e.Message, null, e);
     }
-
-
-
-    public static ulong ComputeFnv1a64(in CanFdFrame frame)
-    {
-        const ulong FNV_OFFSET = 1469598103934665603UL;
-        const ulong FNV_PRIME = 1099511628211UL;
-        ulong h = FNV_OFFSET;
-
-        void MixByte(byte b) { h ^= b; h *= FNV_PRIME; }
-        unchecked {
-            for (int i = 0; i < 4; i++) MixByte((byte)((frame.ID >> (8*i)) & 0xFF));
-        }
-        MixByte((byte)((1 << 4) | ((frame.BitRateSwitch ? 1 : 0) << 3) |
-                       ((frame.ErrorStateIndicator ? 1 : 0) << 2) |
-                       ((frame.IsErrorFrame ? 1 : 0) << 1) |
-                       (frame.IsExtendedFrame ? 1 : 0)));
-        MixByte(frame.Dlc);
-
-        var span = frame.Data.Span;
-        for (int i = 0; i < span.Length; i++) MixByte(span[i]);
-
-        return h;
-    }
-
-    public static ulong ComputeFnv1a64(in CanClassicFrame frame)
-    {
-        const ulong FNV_OFFSET = 1469598103934665603UL;
-        const ulong FNV_PRIME = 1099511628211UL;
-        ulong h = FNV_OFFSET;
-
-        void MixByte(byte b) { h ^= b; h *= FNV_PRIME; }
-        unchecked {
-            for (int i = 0; i < 4; i++) MixByte((byte)((frame.ID >> (8*i)) & 0xFF));
-        }
-        MixByte((byte)(((frame.IsRemoteFrame ? 1 : 0) << 2) |
-                       ((frame.IsErrorFrame ? 1 : 0) << 1) |
-                       (frame.IsExtendedFrame ? 1 : 0)));
-        MixByte(frame.Dlc);
-
-        var span = frame.Data.Span;
-        for (int i = 0; i < span.Length; i++) MixByte(span[i]);
-
-        return h;
-    }
-
 }
