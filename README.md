@@ -86,7 +86,7 @@ using var bus = CanBus.Open(
     cfg => cfg.TimingClassic(500_000)); // 500 kbit/s for classic CAN
 
 // Transmit a classic CAN frame (sync)
-var frame = new CanClassicFrame(0x123, new byte[] { 0x11, 0x22, 0x33 });
+var frame = CanFrame.Classic(0x123, new byte[] { 0x11, 0x22, 0x33 });
 var sentCount = bus.Transmit(frame);
 
 // Transmit the same frame (async)
@@ -120,7 +120,7 @@ bus.FrameReceived += (_, rec) =>
 };
 
 // Single frame TX (sync + async)
-var frame = new CanClassicFrame(0x123, new byte[] { 0x11, 0x22, 0x33 });
+var frame = CanFrame.Classic(0x123, new byte[] { 0x11, 0x22, 0x33 });
 var sentCount = bus.Transmit(frame);
 sentCount = await bus.TransmitAsync(frame);
 

@@ -46,7 +46,7 @@ using var bus = CanBus.Open(
 );
 
 // 发送一个经典 CAN 帧（ID 0x123）
-var tx = new CanClassicFrame(0x123, new byte[] { 1, 2, 3 });
+var tx = CanFrame.Classic(0x123, new byte[] { 1, 2, 3 });
 bus.Transmit(tx);
 
 // 接收（带超时，单位毫秒）

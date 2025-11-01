@@ -40,9 +40,9 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CanKit.Tests", "tests\CanKi
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "adapters", "adapters", "{02EA681E-C7D8-13C7-8484-4AC65E1B71E8}"
 EndProject
-Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "protocols", "protocols", "{F6B4CD19-2CD8-4066-894A-A8E9D6C21336}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "transports", "transports", "{F6B4CD19-2CD8-4066-894A-A8E9D6C21336}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CanKit.Protocol.IsoTp", "src\protocols\CanKit.Protocol.IsoTp\CanKit.Protocol.IsoTp.csproj", "{2D523383-1131-4A55-9E50-C2E99817706A}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CanKit.Transport.IsoTp", "src\transports\CanKit.Transport.IsoTp\CanKit.Transport.IsoTp.csproj", "{2D523383-1131-4A55-9E50-C2E99817706A}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CanKit.Abstractions", "src\core\CanKit.Abstractions\CanKit.Abstractions.csproj", "{1B6D3D33-A6D8-4F75-878E-391C53B2CDED}"
 EndProject

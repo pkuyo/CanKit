@@ -1,6 +1,7 @@
 ﻿using CanKit.Abstractions.API.Common;
 using CanKit.Abstractions.API.Common.Definitions;
 using CanKit.Abstractions.API.Transport;
+using CanKit.Abstractions.API.Transport.Definitions;
 using CanKit.Core.Definitions;
 using CanKit.Protocol.IsoTp.Defines;
 using CanKit.Protocol.IsoTp.Options;

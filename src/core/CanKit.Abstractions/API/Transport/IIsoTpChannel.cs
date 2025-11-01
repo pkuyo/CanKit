@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Threading;
 using System.Threading.Tasks;
+using CanKit.Abstractions.API.Transport.Definitions;
 
 namespace CanKit.Abstractions.API.Transport;
 

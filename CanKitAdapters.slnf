@@ -4,6 +4,7 @@
         "path": "CanKit.sln",
         "projects":
         [
+            "src\\core\\CanKit.Abstractions\\CanKit.Abstractions.csproj",
             "src\\core\\CanKit.Core\\CanKit.Core.csproj",
             "src\\adapters\\CanKit.Adapter.Kvaser\\CanKit.Adapter.Kvaser.csproj",
             "src\\adapters\\CanKit.Adapter.ControlCAN\\CanKit.Adapter.ControlCAN.csproj",

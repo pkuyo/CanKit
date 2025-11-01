@@ -95,7 +95,7 @@ using var bus = CanBus.Open(
     cfg => cfg.TimingClassic(500_000)); // 经典 CAN 500 kbps
 
 // 同步发送一帧经典 CAN
-var frame = new CanClassicFrame(0x123, new byte[] { 0x11, 0x22, 0x33 });
+var frame = CanFrame.Classic(0x123, new byte[] { 0x11, 0x22, 0x33 });
 var sentCount = bus.Transmit(frame);
 
 // 异步发送同一帧
@@ -127,7 +127,7 @@ bus.FrameReceived += (_, rec) =>
     Console.WriteLine($"RX {f.FrameKind} ID=0x{f.ID:X} DLC={f.Dlc}");
 };
 
-var frame = new CanClassicFrame(0x123, new byte[] { 0x11, 0x22, 0x33 });
+var frame = CanFrame.Classic(0x123, new byte[] { 0x11, 0x22, 0x33 });
 
 // 批量发送（同步 + 异步）
 var frames = new[] { frame, frame, frame, frame };

@@ -36,7 +36,7 @@ using CanKit.Core.Definitions;
 using var bus = CanBus.Open("vector://CanKit/0", cfg => cfg.Fd(500_000, 2_000_000));
 
 // Transmit
-bus.Transmit(new CanClassicFrame(0x123, new byte[] { 1, 2, 3 }));
+bus.Transmit(CanFrame.Classic(0x123, new byte[] { 1, 2, 3 }));
 
 // Receive (timeout in ms)
 foreach (var rx in bus.Receive(1, 100))

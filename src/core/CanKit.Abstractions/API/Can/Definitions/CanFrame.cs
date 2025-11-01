@@ -9,7 +9,12 @@ namespace CanKit.Abstractions.API.Can.Definitions
     [Flags]
     public enum FrameFlags : ushort
     {
-        None = 0, Ext = 1, Rtr = 2, Brs = 4, Esi = 8, Error = 16
+        None = 0,
+        Ext = 1,
+        Rtr = 2,
+        Brs = 4,
+        Esi = 8,
+        Error = 16
     }
 
     public readonly record struct CanFrame : IDisposable
@@ -43,26 +48,56 @@ namespace CanKit.Abstractions.API.Can.Definitions
         /// </summary>
         public int ID => (int)(_id & (IsExtendedFrame ? ID_EFF_MASK : ID_STD_MASK));
 
+        /// <summary>
+        /// Type of the CAN frame (Classical CAN 2.0 or CAN FD). (帧类型：CAN 2.0 或 CAN FD)
+        /// </summary>
         public CanFrameType FrameKind { get; }
 
         bool OwnMemory { get; }
 
+        /// <summary>
+        /// Payload bytes of the frame. (帧的载荷数据)
+        /// </summary>
         public ReadOnlyMemory<byte> Data { get; }
 
+        /// <summary>
+        /// Bitwise frame flags such as EXT, RTR, BRS, ESI, and Error. (帧的标志位集合，例如 EXT、RTR、BRS、ESI 和 Error)
+        /// </summary>
         public FrameFlags Flags { get; init; }
 
+        /// <summary>
+        /// Data Length Code derived from the payload length. (根据载荷长度计算得到的 DLC)
+        /// </summary>
         public byte Dlc => LenToDlc(Data.Length);
 
+        /// <summary>
+        /// Payload length in bytes. (载荷的字节长度)
+        /// </summary>
         public int Len => Data.Length;
 
+        /// <summary>
+        /// True if the frame uses an extended 29-bit identifier. (当使用 29 位扩展 ID 时为 true)
+        /// </summary>
         public bool IsExtendedFrame => (Flags & FrameFlags.Ext) != 0;
 
+        /// <summary>
+        /// True if the frame is marked as an error frame. (当标记为错误帧时为 true)
+        /// </summary>
         public bool IsErrorFrame => (Flags & FrameFlags.Error) != 0;
 
+        /// <summary>
+        /// True if Bit Rate Switching (BRS) is enabled in the data phase. (当数据相位启用速率切换 BRS 时为 true)
+        /// </summary>
         public bool BitRateSwitch => (Flags & FrameFlags.Brs) != 0;
 
+        /// <summary>
+        /// True if the transmitter is in Error State (ESI). (当发送端处于错误状态 ESI 时为 true)
+        /// </summary>
         public bool ErrorStateIndicator => (Flags & FrameFlags.Esi) != 0;
 
+        /// <summary>
+        /// True if the frame is a Remote (RTR) frame. (当为远程请求帧 RTR 时为 true)
+        /// </summary>
         public bool IsRemoteFrame => (Flags & FrameFlags.Rtr) != 0;
 
         /// <summary>
@@ -157,6 +192,12 @@ namespace CanKit.Abstractions.API.Can.Definitions
         }
 
 
+        /// <summary>
+        /// Creates a frame with the specified flags and payload. (使用指定标志与载荷创建帧)
+        /// </summary>
+        /// <param name="id">ID without flag bits. (不包含标志位的 ID)</param>
+        /// <param name="flags">Frame flags to apply. (要应用的帧标志)</param>
+        /// <param name="dataInit">Frame payload. (帧的载荷数据)</param>
         public static CanFrame Create(int id, FrameFlags flags, ReadOnlyMemory<byte> dataInit = default)
         {
             if (id < 0) throw new ArgumentOutOfRangeException(nameof(id));
@@ -166,6 +207,14 @@ namespace CanKit.Abstractions.API.Can.Definitions
             };
         }
 
+        /// <summary>
+        /// Creates a frame with the specified flags using an external memory owner for the payload.
+        /// 使用外部提供的内存所有者作为载荷并应用指定标志创建帧。
+        /// </summary>
+        /// <param name="id">ID without flag bits. (不包含标志位的 ID)</param>
+        /// <param name="flags">Frame flags to apply. (要应用的帧标志)</param>
+        /// <param name="memoryOwner">Memory owner that holds the payload. (承载载荷数据的内存所有者)</param>
+        /// <param name="ownMemory">If true, disposing the frame disposes <paramref name="memoryOwner"/>. (若为 true，释放帧时同时释放 <paramref name="memoryOwner"/>)</param>
         public static CanFrame Create(int id, FrameFlags flags, IMemoryOwner<byte> memoryOwner, bool ownMemory = true)
         {
             if (id < 0) throw new ArgumentOutOfRangeException(nameof(id));
@@ -222,6 +271,9 @@ namespace CanKit.Abstractions.API.Can.Definitions
             return src;
         }
 
+        /// <summary>
+        /// Releases the owned memory if this frame owns its payload memory. (若该帧拥有其载荷内存，则释放该内存)
+        /// </summary>
         public void Dispose() => _memoryOwner?.Dispose();
     }
 }

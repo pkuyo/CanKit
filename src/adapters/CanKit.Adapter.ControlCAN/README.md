@@ -41,7 +41,7 @@ using var bus = CanBus.Open("controlcan://USBCAN2?index=0#ch1",
     cfg => cfg.Baud(500_000));
 
 // 发送
-bus.Transmit(new CanClassicFrame(0x321, new byte[] { 0xAA, 0xBB }));
+bus.Transmit(CanFrame.Classic(0x321, new byte[] { 0xAA, 0xBB }));
 
 // 接收（带超时，单位：毫秒）
 foreach (var rx in bus.Receive(1, 100))

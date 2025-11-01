@@ -1,6 +1,7 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using CanKit.Abstractions.API.Can;
 using CanKit.Abstractions.API.Can.Definitions;
@@ -100,13 +101,13 @@ namespace CanKit.Adapter.ZLG.Transceivers
         {
             var pool = ArrayPool<ZLGCAN.ZCAN_Receive_Data>.Shared;
             var buf = pool.Rent(ZLGCAN.BATCH_COUNT);
-            var startTime = Environment.TickCount;
+            var stopWatch = new Stopwatch();
             if (count < 0) throw new ArgumentOutOfRangeException(nameof(count));
             try
             {
                 while (count > 0)
                 {
-                    var remaining = timeOut - Environment.TickCount + startTime;
+                    var remaining = timeOut - (int)stopWatch.Elapsed.TotalMilliseconds;
                     if (timeOut == -1)
                         remaining = -1;
                     var recCount = ZLGCAN.ZCAN_Receive(((ZlgCanBus)bus).Handle, buf, (uint)Math.Min(count, ZLGCAN.BATCH_COUNT), remaining);

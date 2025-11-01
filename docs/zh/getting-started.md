@@ -53,7 +53,7 @@ bus.FrameReceived += (s, rec) =>
 };
 
 // 发送一帧经典 CAN
-bus.Transmit(new[] { new CanClassicFrame(0x123, new byte[]{ 0x01, 0x02 }) });
+bus.Transmit(new[] { CanFrame.Classic(0x123, new byte[]{ 0x01, 0x02 }) });
 
 // 同步接收（1 帧，超时 100ms）
 var items = bus.Receive(1, timeOut: 100);
@@ -104,7 +104,7 @@ cfg.SoftwareFeaturesFallBack(CanKit.Core.Definitions.CanFeature.Filters)
 
 ```csharp
 var handle = bus.TransmitPeriodic(
-    new CanClassicFrame(0x321, new byte[]{ 0xAA }),
+    CanFrame.Classic(0x321, new byte[]{ 0xAA }),
     new PeriodicTxOptions { IntervalMs = 100 });
 
 // 停止周期发送

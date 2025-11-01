@@ -1,4 +1,4 @@
-﻿namespace CanKit.Abstractions.API.Transport;
+﻿namespace CanKit.Abstractions.API.Transport.Definitions;
 
 public enum Addressing { Normal, NormalFixed, Functional, Extended, Mixed }
 

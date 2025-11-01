@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Buffers;
 
-namespace CanKit.Abstractions.API.Transport;
+namespace CanKit.Abstractions.API.Transport.Definitions;
 
 public class IsoTpDatagram(IMemoryOwner<byte> owner) : IDisposable
 {

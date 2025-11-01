@@ -2,6 +2,7 @@ using System;
 using System.Buffers;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using CanKit.Abstractions.API.Can;
 using CanKit.Abstractions.API.Can.Definitions;
@@ -70,10 +71,12 @@ public class ZlgCanMergeTransceiver : ITransceiver
         var buf = pool.Rent(ZLGCAN.BATCH_COUNT);
         try
         {
-            var startTick = Environment.TickCount;
+            var stopWatch = new Stopwatch();
             while (count > 0)
             {
-                var remaining = timeOut < 0 ? -1 : timeOut - Environment.TickCount + startTick;
+                var remaining = timeOut - (int)stopWatch.Elapsed.TotalMilliseconds;
+                if (timeOut == -1)
+                    remaining = -1;
                 var rec = 0;
                 rec = (int)ZLGCAN.ZCAN_ReceiveData(canBus.Handle.DeviceHandle, buf,
                     Math.Min(ZLGCAN.BATCH_COUNT, (uint)count), remaining);

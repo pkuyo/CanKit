@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -204,7 +205,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
     {
         ThrowIfDisposed();
         int sendCount = 0;
-        var startTime = Environment.TickCount;
+        var stopWatch = new Stopwatch();
         var pollFd = new Libc.pollfd { fd = _fd.DangerousGetHandle().ToInt32(), events = Libc.POLLOUT };
         var needSend = frames.ToArray();
         var wrote = _transceiver.Transmit(this, needSend.AsSpan());
@@ -213,7 +214,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
         while ((timeOut < 0 || remainingTime > 0) && sendCount < needSend.Length)
         {
             remainingTime = timeOut > 0
-                ? Math.Max(0, timeOut - (Environment.TickCount - startTime))
+                ? Math.Max(0, timeOut - (int)(stopWatch.Elapsed.TotalMilliseconds))
                 : timeOut;
 
 
@@ -248,7 +249,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
     {
         ThrowIfDisposed();
         int sendCount = 0;
-        var startTime = Environment.TickCount;
+        var stopWatch = new Stopwatch();
         var pollFd = new Libc.pollfd { fd = _fd.DangerousGetHandle().ToInt32(), events = Libc.POLLOUT };
         var needSend = frames.ToArray();
         var wrote = _transceiver.Transmit(this, needSend.AsSpan());
@@ -257,7 +258,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
         while ((timeOut < 0 || remainingTime > 0) && sendCount < needSend.Length)
         {
             remainingTime = timeOut > 0
-                ? Math.Max(0, timeOut - (Environment.TickCount - startTime))
+                ? (int)Math.Max(0, timeOut - stopWatch.ElapsedMilliseconds)
                 : timeOut;
 
 
