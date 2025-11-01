@@ -1,4 +1,5 @@
-﻿using CanKit.Core.Definitions;
+﻿using CanKit.Abstractions.API.Can;
+using CanKit.Core.Definitions;
 using CanKit.Core.Exceptions;
 
 namespace CanKit.Adapter.ControlCAN.Diagnostics;

@@ -1,3 +1,5 @@
+using CanKit.Abstractions.API.Common;
+using CanKit.Abstractions.API.Common.Definitions;
 using CanKit.Adapter.SocketCAN.Native;
 using CanKit.Core.Definitions;
 using CanKit.Core.Exceptions;

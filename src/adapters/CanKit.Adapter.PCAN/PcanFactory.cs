@@ -1,7 +1,11 @@
+using CanKit.Abstractions.API.Can;
+using CanKit.Abstractions.API.Common;
+using CanKit.Abstractions.API.Common.Definitions;
+using CanKit.Abstractions.Attributes;
+using CanKit.Abstractions.SPI.Factories;
+using CanKit.Abstractions.SPI.Providers;
 using CanKit.Adapter.PCAN.Definitions;
 using CanKit.Adapter.PCAN.Transceivers;
-using CanKit.Core.Abstractions;
-using CanKit.Core.Attributes;
 using CanKit.Core.Definitions;
 using CanKit.Core.Exceptions;
 

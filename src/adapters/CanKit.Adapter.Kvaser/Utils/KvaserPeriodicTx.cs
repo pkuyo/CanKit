@@ -1,5 +1,8 @@
 using System;
-using CanKit.Core.Abstractions;
+using CanKit.Abstractions.API.Can;
+using CanKit.Abstractions.API.Can.Definitions;
+using CanKit.Abstractions.API.Common;
+using CanKit.Abstractions.API.Common.Definitions;
 using CanKit.Core.Definitions;
 using CanKit.Core.Diagnostics;
 using CanKit.Core.Exceptions;
@@ -11,10 +14,10 @@ public sealed class KvaserPeriodicTx : IPeriodicTx
 {
     private readonly KvaserBus _bus;
     private int _bufNo = -1;
-    private ICanFrame _frame;
+    private CanFrame _frame;
     private bool _stopped;
 
-    private KvaserPeriodicTx(KvaserBus bus, int bufNo, ICanFrame frame, PeriodicTxOptions options)
+    private KvaserPeriodicTx(KvaserBus bus, int bufNo, CanFrame frame, PeriodicTxOptions options)
     {
         _bus = bus;
         _bufNo = bufNo;
@@ -32,7 +35,7 @@ public sealed class KvaserPeriodicTx : IPeriodicTx
         StartBuffer();
     }
 
-    public static bool TryStart(KvaserBus bus, ICanFrame frame, PeriodicTxOptions options, out KvaserPeriodicTx? periodicTx)
+    public static bool TryStart(KvaserBus bus, CanFrame frame, PeriodicTxOptions options, out KvaserPeriodicTx? periodicTx)
     {
         periodicTx = null;
 
@@ -73,11 +76,11 @@ public sealed class KvaserPeriodicTx : IPeriodicTx
 
     }
 
-    public void Update(ICanFrame? frame = null, TimeSpan? period = null, int? repeatCount = null)
+    public void Update(CanFrame? frame = null, TimeSpan? period = null, int? repeatCount = null)
     {
         if (_stopped) throw new CanBusDisposedException();
 
-        if (frame is not null) _frame = frame;
+        if (frame is not null) _frame = frame.Value;
         if (period is not null) Period = period.Value <= TimeSpan.Zero ? TimeSpan.FromMilliseconds(1) : period.Value;
         if (repeatCount is not null) RepeatCount = repeatCount.Value;
 
@@ -114,7 +117,7 @@ public sealed class KvaserPeriodicTx : IPeriodicTx
         KvaserUtils.ThrowIfError(Canlib.canObjBufEnable(_bus.Handle, _bufNo), "canObjBufEnable", "Failed to enable periodic buffer");
     }
 
-    private void ProgramBuffer(ICanFrame frame, TimeSpan period)
+    private void ProgramBuffer(CanFrame frame, TimeSpan period)
     {
         if (_bufNo < 0) return;
 
@@ -126,18 +129,18 @@ public sealed class KvaserPeriodicTx : IPeriodicTx
         int dlc = data.Length;
 
         uint flags = 0;
-        if (frame is CanFdFrame fd)
+        if (frame.FrameKind is CanFrameType.CanFd)
         {
             flags |= Canlib.canFDMSG_FDF;
-            if (fd.BitRateSwitch) flags |= Canlib.canFDMSG_BRS;
-            if (fd.ErrorStateIndicator) flags |= Canlib.canFDMSG_ESI;
-            if (fd.IsExtendedFrame) flags |= Canlib.canMSG_EXT;
+            if (frame.BitRateSwitch) flags |= Canlib.canFDMSG_BRS;
+            if (frame.ErrorStateIndicator) flags |= Canlib.canFDMSG_ESI;
+            if (frame.IsExtendedFrame) flags |= Canlib.canMSG_EXT;
             if (_bus.Options.TxRetryPolicy == TxRetryPolicy.NoRetry) flags |= Canlib.canMSG_SINGLE_SHOT;
         }
-        else if (frame is CanClassicFrame classic)
+        else if (frame.FrameKind is CanFrameType.Can20)
         {
-            if (classic.IsExtendedFrame) flags |= Canlib.canMSG_EXT;
-            if (classic.IsRemoteFrame) flags |= Canlib.canMSG_RTR;
+            if (frame.IsExtendedFrame) flags |= Canlib.canMSG_EXT;
+            if (frame.IsRemoteFrame) flags |= Canlib.canMSG_RTR;
             if (_bus.Options.TxRetryPolicy == TxRetryPolicy.NoRetry) flags |= Canlib.canMSG_SINGLE_SHOT;
         }
 

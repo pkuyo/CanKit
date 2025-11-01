@@ -4,7 +4,9 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
-using CanKit.Core.Abstractions;
+using CanKit.Abstractions.API.Can;
+using CanKit.Abstractions.API.Can.Definitions;
+using CanKit.Abstractions.API.Common;
 using CanKit.Core.Definitions;
 using CanKit.Core.Diagnostics;
 
@@ -19,8 +21,8 @@ namespace CanKit.Core.Utils
         private readonly object _gate = new();
 
 
-        private ICanFrame _frame;
-        private readonly ICanFrame[] _txBuf = new ICanFrame[1];
+        private CanFrame _frame;
+        private readonly CanFrame[] _txBuf = new CanFrame[1];
 
         private long _jitterMin, _jitterMax, _jitterLastNs, _jitterSumNs, _jitterCount;
         private TimeSpan _period;
@@ -31,7 +33,7 @@ namespace CanKit.Core.Utils
 
         private PlatformContext _ctx;
 
-        private SoftwarePeriodicTx(ICanBus bus, ICanFrame frame, PeriodicTxOptions options)
+        private SoftwarePeriodicTx(ICanBus bus, CanFrame frame, PeriodicTxOptions options)
         {
             if (options.Period < TimeSpan.FromMilliseconds(2))
             {
@@ -55,7 +57,7 @@ namespace CanKit.Core.Utils
         public int RemainingCount => _remaining;
         public event EventHandler? Completed;
 
-        public static IPeriodicTx Start(ICanBus bus, ICanFrame frame, PeriodicTxOptions options)
+        public static IPeriodicTx Start(ICanBus bus, CanFrame frame, PeriodicTxOptions options)
         {
             var h = new SoftwarePeriodicTx(bus, frame, options);
             h.Start();
@@ -86,11 +88,11 @@ namespace CanKit.Core.Utils
             }
         }
 
-        public void Update(ICanFrame? frame = null, TimeSpan? period = null, int? repeatCount = null)
+        public void Update(CanFrame? frame = null, TimeSpan? period = null, int? repeatCount = null)
         {
             lock (_gate)
             {
-                if (frame is not null) _frame = frame;
+                if (frame is not null) _frame = frame.Value;
                 if (period.HasValue && period.Value > TimeSpan.Zero)
                 {
                     if (period.Value < TimeSpan.FromMilliseconds(2))

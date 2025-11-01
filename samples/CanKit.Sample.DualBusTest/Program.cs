@@ -4,8 +4,11 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
+using CanKit.Abstractions.API.Can;
+using CanKit.Abstractions.API.Can.Definitions;
+using CanKit.Abstractions.API.Common;
+using CanKit.Abstractions.API.Common.Definitions;
 using CanKit.Core;
-using CanKit.Core.Abstractions;
 using CanKit.Core.Definitions;
 
 namespace CanKit.Sample.DualBusTest;
@@ -17,7 +20,7 @@ internal static class Program
     private const int DefaultFdArbBitrate = 1_000_000; // 1M arbitration
     private const int DefaultFdDataBitrate = 8_000_000; // 8M data
 
-    private static ICanFrame[]? _seqFrames;
+    private static CanFrame[]? _seqFrames;
     private static int _batchSize;
     private static int _gapMs;
     private static int _rxTimeout;
@@ -309,7 +312,7 @@ internal static class Program
     private static async Task SendBurst(ICanBus tx, bool asyncTx)
     {
         var seq = 0;
-        var queue = new Queue<ICanFrame>(_batchSize);
+        var queue = new Queue<CanFrame>(_batchSize);
 
         for (var i = 0; i < _count; i++)
         {
@@ -341,11 +344,11 @@ internal static class Program
     }
 
 
-    private static ICanFrame GetFrame(byte seq) => _seqFrames![seq];
+    private static CanFrame GetFrame(byte seq) => _seqFrames![seq];
 
-    private static ICanFrame[] CreateFrameRing(uint baseId, bool extended, bool useFd, bool brs, int len)
+    private static CanFrame[] CreateFrameRing(uint baseId, bool extended, bool useFd, bool brs, int len)
     {
-        var ring = new ICanFrame[256];
+        var ring = new CanFrame[256];
         var l = Math.Max(len, 1);
 
         for (var seq = 0; seq < 256; seq++)
@@ -361,8 +364,8 @@ internal static class Program
 
             var id = baseId | (uint)seq;
             ring[seq] = useFd
-                ? new CanFdFrame((int)id, mem, brs) { IsExtendedFrame = extended }
-                : new CanClassicFrame((int)id, mem, extended);
+                ? CanFrame.Fd((int)id, mem, brs, extended)
+                : CanFrame.Classic((int)id, mem, extended);
         }
 
         return ring;
@@ -466,7 +469,7 @@ internal static class Program
         public int BadData { get; private set; }
         public int ErrorFrames { get; private set; }
 
-        public void Feed(ICanFrame fr)
+        public void Feed(CanFrame fr)
         {
             lock (_lock)
             {

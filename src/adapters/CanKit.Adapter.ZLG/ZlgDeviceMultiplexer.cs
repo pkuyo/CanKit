@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Concurrent;
 using System.Threading;
-using CanKit.Core.Abstractions;
+using CanKit.Abstractions.API.Can;
+using CanKit.Abstractions.API.Common;
+using CanKit.Abstractions.API.Common.Definitions;
 using CanKit.Core.Definitions;
 
 namespace CanKit.Adapter.ZLG;

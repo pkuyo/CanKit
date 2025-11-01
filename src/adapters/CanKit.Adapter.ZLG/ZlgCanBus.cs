@@ -4,13 +4,19 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
+using CanKit.Abstractions.API.Can;
+using CanKit.Abstractions.API.Can.Definitions;
+using CanKit.Abstractions.API.Common;
+using CanKit.Abstractions.API.Common.Definitions;
+using CanKit.Abstractions.SPI;
+using CanKit.Abstractions.SPI.Common;
+using CanKit.Abstractions.SPI.Providers;
 using CanKit.Adapter.ZLG.Definitions;
 using CanKit.Adapter.ZLG.Diagnostics;
 using CanKit.Adapter.ZLG.Native;
 using CanKit.Adapter.ZLG.Options;
 using CanKit.Adapter.ZLG.Transceivers;
 using CanKit.Adapter.ZLG.Utils;
-using CanKit.Core.Abstractions;
 using CanKit.Core.Definitions;
 using CanKit.Core.Diagnostics;
 using CanKit.Core.Exceptions;
@@ -42,7 +48,7 @@ namespace CanKit.Adapter.ZLG
         private CancellationTokenSource? _pollCts;
 
         private Task? _pollTask;
-        private Func<ICanFrame, bool>? _softwareFilterPredicate;
+        private Func<CanFrame, bool>? _softwareFilterPredicate;
         private bool _useSoftwareFilter;
         private readonly AsyncFramePipe _asyncRx;
         private readonly ZlgDeviceKind _deviceType;
@@ -75,9 +81,9 @@ namespace CanKit.Adapter.ZLG
                 config.config.canfd.dbit_timing = dataRate;
             }
 
-            if (options.Filter.filterRules.Count > 0)
+            if (options.Filter.FilterRules.Count > 0)
             {
-                if (options.Filter.filterRules[0] is FilterRule.Mask mask)
+                if (options.Filter.FilterRules[0] is FilterRule.Mask mask)
                 {
                     config.config.can.acc_code = mask.AccCode;
                     config.config.can.acc_mask = mask.AccMask;
@@ -125,28 +131,28 @@ namespace CanKit.Adapter.ZLG
             ZlgErr.ThrowIfError(ZLGCAN.ZCAN_ClearBuffer(_handle), nameof(ZLGCAN.ZCAN_ClearBuffer), _handle);
         }
 
-        public int Transmit(IEnumerable<ICanFrame> frames, int _ = 0)
+        public int Transmit(IEnumerable<CanFrame> frames, int _ = 0)
         {
             ThrowIfDisposed();
             return _transceiver.Transmit(this, frames);
         }
 
-        public int Transmit(ReadOnlySpan<ICanFrame> frames, int _ = 0)
+        public int Transmit(ReadOnlySpan<CanFrame> frames, int _ = 0)
         {
             ThrowIfDisposed();
             return _transceiver.Transmit(this, frames);
         }
 
-        public int Transmit(ICanFrame[] frames, int _ = 0)
+        public int Transmit(CanFrame[] frames, int _ = 0)
             => Transmit(frames.AsSpan());
 
-        public int Transmit(ArraySegment<ICanFrame> frames, int _ = 0)
+        public int Transmit(ArraySegment<CanFrame> frames, int _ = 0)
             => Transmit(frames.AsSpan());
 
-        public int Transmit(in ICanFrame frame)
+        public int Transmit(in CanFrame frame)
             => _transceiver.Transmit(this, frame);
 
-        public IPeriodicTx TransmitPeriodic(ICanFrame frame, PeriodicTxOptions options)
+        public IPeriodicTx TransmitPeriodic(CanFrame frame, PeriodicTxOptions options)
         {
             ThrowIfDisposed();
             if ((Options.Features & CanFeature.CyclicTx) != 0)
@@ -417,9 +423,9 @@ namespace CanKit.Adapter.ZLG
         public void ApplyConfigAfterInit(ICanOptions options)
         {
             var zlgOption = (ZlgBusOptions)options;
-            if (zlgOption.Filter.filterRules.Count > 0)
+            if (zlgOption.Filter.FilterRules.Count > 0)
             {
-                if (zlgOption.Filter.filterRules[0] is FilterRule.Mask mask
+                if (zlgOption.Filter.FilterRules[0] is FilterRule.Mask mask
 #if !FAKE
                     && (options.Features & CanFeature.MaskFilter) != 0
 #endif
@@ -436,21 +442,21 @@ namespace CanKit.Adapter.ZLG
                             Options.ChannelIndex + "/acc_mask", $"0x{mask.AccMask:X}"),
                         "ZCAN_SetValue(acc_mask)");
 
-                    foreach (var rule in zlgOption.Filter.filterRules.Skip(1))
+                    foreach (var rule in zlgOption.Filter.FilterRules.Skip(1))
                     {
                         if (zlgOption.EnabledSoftwareFallback.HasFlag(CanFeature.RangeFilter))
                         {
-                            zlgOption.Filter.softwareFilter.Add(rule);
+                            zlgOption.Filter.FilterRules.Add(rule);
                         }
                     }
                 }
                 else
                 {
-                    foreach (var rule in zlgOption.Filter.filterRules)
+                    foreach (var rule in zlgOption.Filter.FilterRules)
                     {
                         if (rule is not FilterRule.Range range || !zlgOption.Features.HasFlag(CanFeature.RangeFilter))
                         {
-                            zlgOption.Filter.softwareFilter.Add(rule);
+                            zlgOption.Filter.SoftwareFilterRules.Add(rule);
                             continue;
                         }
                         ZlgErr.ThrowIfError(
@@ -509,7 +515,7 @@ namespace CanKit.Adapter.ZLG
         {
             ThrowIfDisposed();
 
-            return (int)ZLGCAN.ZCAN_GetReceiveNum(_handle, (byte)Options.ProtocolMode);
+            return (int)ZLGCAN.ZCAN_GetReceiveNum(_handle, (byte)((byte)(Options.ProtocolMode)-1));
         }
 
         private void ThrowIfDisposed()
@@ -606,7 +612,7 @@ namespace CanKit.Adapter.ZLG
             }
         }
 
-        public Task<int> TransmitAsync(IEnumerable<ICanFrame> frames, int timeOut = 0, CancellationToken cancellationToken = default)
+        public Task<int> TransmitAsync(IEnumerable<CanFrame> frames, int timeOut = 0, CancellationToken cancellationToken = default)
             => Task.Run(() =>
             {
                 try { return Transmit(frames, timeOut); }
@@ -614,7 +620,7 @@ namespace CanKit.Adapter.ZLG
                 catch (Exception ex) { HandleBackgroundException(ex); throw; }
             }, cancellationToken);
 
-        public Task<int> TransmitAsync(ICanFrame frame, CancellationToken cancellationToken = default)
+        public Task<int> TransmitAsync(CanFrame frame, CancellationToken cancellationToken = default)
             => Task.Run(() =>
             {
                 try { return Transmit(frame); }

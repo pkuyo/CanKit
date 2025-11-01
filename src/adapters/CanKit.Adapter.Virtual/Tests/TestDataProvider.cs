@@ -1,6 +1,8 @@
-﻿using CanKit.Core.Abstractions;
+﻿using CanKit.Abstractions.API.Can;
+using CanKit.Abstractions.API.Can.Definitions;
+using CanKit.Abstractions.API.Common;
+using CanKit.Abstractions.SPI.Tests;
 using CanKit.Core.Definitions;
-using CanKit.Tests;
 
 namespace CanKit.Adapter.Virtual.Tests;
 
@@ -132,15 +134,15 @@ public class TestDataProvider : ITestDataProvider
         )
     ];
 
-    public IEnumerable<(ICanFrame frame, TimeSpan period, int count)> PeriodicCountCases { get; } =
+    public IEnumerable<(CanFrame frame, TimeSpan period, int count)> PeriodicCountCases { get; } =
     [
-        (new CanClassicFrame(0x501, new byte[] { 0x5, 0x1 }), TimeSpan.FromMilliseconds(5), 10),
-        (new CanFdFrame(0x501, new byte[] { 0x5, 0x1 }, true), TimeSpan.FromMilliseconds(5), 10),
-        (new CanClassicFrame(0x1ABCDEFF, new byte[] { 0x5, 0x1 }, true), TimeSpan.FromMilliseconds(5), 10),
-        (new CanFdFrame(0x1ABCDEFF, new byte[] { 0x5, 0x1 }, true, true), TimeSpan.FromMilliseconds(5), 10)
+        (CanFrame.Classic(0x501, new byte[] { 0x5, 0x1 }), TimeSpan.FromMilliseconds(5), 10),
+        (CanFrame.Fd(0x501, new byte[] { 0x5, 0x1 }, true), TimeSpan.FromMilliseconds(5), 10),
+        (CanFrame.Classic(0x1ABCDEFF, new byte[] { 0x5, 0x1 }, true), TimeSpan.FromMilliseconds(5), 10),
+        (CanFrame.Fd(0x1ABCDEFF, new byte[] { 0x5, 0x1 }, true, true), TimeSpan.FromMilliseconds(5), 10)
     ];
 
-    public IEnumerable<(ICanFrame frame, TimeSpan period, float deviation)> PeriodicPeriodCases { get; } = [];
+    public IEnumerable<(CanFrame frame, TimeSpan period, float deviation)> PeriodicPeriodCases { get; } = [];
     public (int aBit, int dBit)? BaudRate { get; } = null;
 
     public Action<IBusInitOptionsConfigurator>? TestBusInitFunc { get; } = null;

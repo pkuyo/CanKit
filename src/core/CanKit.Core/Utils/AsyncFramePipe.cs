@@ -6,6 +6,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using CanKit.Core.Definitions;
 using System.Threading.Channels;
+using CanKit.Abstractions.API.Common;
+using CanKit.Abstractions.API.Common.Definitions;
 
 namespace CanKit.Core.Utils;
 

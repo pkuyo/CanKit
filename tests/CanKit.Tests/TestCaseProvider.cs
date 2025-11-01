@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using CanKit.Abstractions.SPI.Tests;
 using CanKit.Tests.Utils;
 
 namespace CanKit.Tests;

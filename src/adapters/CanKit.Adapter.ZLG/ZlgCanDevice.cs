@@ -1,8 +1,9 @@
+using CanKit.Abstractions.API.Can;
+using CanKit.Abstractions.API.Common;
 using CanKit.Adapter.ZLG.Definitions;
 using CanKit.Adapter.ZLG.Diagnostics;
 using CanKit.Adapter.ZLG.Native;
 using CanKit.Adapter.ZLG.Options;
-using CanKit.Core.Abstractions;
 using CanKit.Core.Exceptions;
 
 namespace CanKit.Adapter.ZLG

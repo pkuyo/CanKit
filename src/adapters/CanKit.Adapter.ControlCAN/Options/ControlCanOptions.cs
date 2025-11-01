@@ -1,5 +1,10 @@
 using System.Collections.Generic;
-using CanKit.Core.Abstractions;
+using CanKit.Abstractions.API.Can;
+using CanKit.Abstractions.API.Common;
+using CanKit.Abstractions.API.Common.Definitions;
+using CanKit.Abstractions.SPI;
+using CanKit.Abstractions.SPI.Common;
+using CanKit.Abstractions.SPI.Providers;
 using CanKit.Core.Definitions;
 
 namespace CanKit.Adapter.ControlCAN.Options;
@@ -18,17 +23,14 @@ public sealed class ControlCanBusOptions(ICanModelProvider provider) : IBusOptio
     public CanBusTiming BitTiming { get; set; }
     public ChannelWorkMode WorkMode { get; set; }
     public CanProtocolMode ProtocolMode { get; set; }
-    public CanFilter Filter { get; set; } = new();
+    public ICanFilter Filter { get; set; } = new CanFilter();
     public CanFeature EnabledSoftwareFallback { get; set; }
     public CanFeature Features { get; set; } = provider.StaticFeatures;
     public Capability Capabilities { get; set; } = new(provider.StaticFeatures, new Dictionary<string, object?>());
     public bool AllowErrorInfo { get; set; }
     public bool InternalResistance { get; set; }
-    public bool BusUsageEnabled { get; set; }
-    public uint BusUsagePeriodTime { get; set; } = 200;
     public TxRetryPolicy TxRetryPolicy { get; set; } = TxRetryPolicy.AlwaysRetry;
     public int AsyncBufferCapacity { get; set; } = 0;
-    public int ReceiveLoopStopDelayMs { get; set; } = 200;
     public IBufferAllocator BufferAllocator { get; set; } = new DefaultBufferAllocator();
     public int PollingInterval { get; set; } = 10;
 }

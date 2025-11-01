@@ -1,11 +1,17 @@
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using System.Text;
+using CanKit.Abstractions.API.Can;
+using CanKit.Abstractions.API.Can.Definitions;
+using CanKit.Abstractions.API.Common;
+using CanKit.Abstractions.API.Common.Definitions;
+using CanKit.Abstractions.SPI;
+using CanKit.Abstractions.SPI.Common;
+using CanKit.Abstractions.SPI.Providers;
 using CanKit.Adapter.SocketCAN.Diagnostics;
 using CanKit.Adapter.SocketCAN.Definitions;
 using CanKit.Adapter.SocketCAN.Native;
 using CanKit.Adapter.SocketCAN.Utils;
-using CanKit.Core.Abstractions;
 using CanKit.Core.Definitions;
 using CanKit.Core.Diagnostics;
 using CanKit.Core.Exceptions;
@@ -34,7 +40,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
     private IDisposable? _owner;
 
     // Cached software filter predicate to avoid rebuilding per-iteration
-    private Func<ICanFrame, bool>? _softwareFilterPredicate;
+    private Func<CanFrame, bool>? _softwareFilterPredicate;
     private bool _useSoftwareFilter;
     private readonly AsyncFramePipe _asyncRx;
     internal SocketCanBus(IBusOptions options, ITransceiver transceiver, ICanModelProvider provider)
@@ -114,7 +120,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
                 }
                 else if ((Options.EnabledSoftwareFallback & CanFeature.RangeFilter) != 0)
                 {
-                    sc.Filter.softwareFilter.Add(r);
+                    sc.Filter.SoftwareFilterRules.Add(r);
                 }
             }
         }
@@ -194,7 +200,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
     }
 
 
-    public int Transmit(IEnumerable<ICanFrame> frames, int timeOut = 0)
+    public int Transmit(IEnumerable<CanFrame> frames, int timeOut = 0)
     {
         ThrowIfDisposed();
         int sendCount = 0;
@@ -229,7 +235,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
             }
 
             wrote = _transceiver.Transmit(this,
-                new ArraySegment<ICanFrame>(needSend, sendCount, needSend.Length - sendCount).AsSpan());
+                new ArraySegment<CanFrame>(needSend, sendCount, needSend.Length - sendCount).AsSpan());
             sendCount += wrote;
 
         }
@@ -238,7 +244,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
 
     }
 
-    public int Transmit(ReadOnlySpan<ICanFrame> frames, int timeOut = 0)
+    public int Transmit(ReadOnlySpan<CanFrame> frames, int timeOut = 0)
     {
         ThrowIfDisposed();
         int sendCount = 0;
@@ -273,7 +279,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
             }
 
             wrote = _transceiver.Transmit(this,
-                new ArraySegment<ICanFrame>(needSend, sendCount, needSend.Length - sendCount).AsSpan());
+                new ArraySegment<CanFrame>(needSend, sendCount, needSend.Length - sendCount).AsSpan());
             sendCount += wrote;
 
         }
@@ -282,13 +288,13 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
 
     }
 
-    public int Transmit(ICanFrame[] frames, int timeOut = 0)
+    public int Transmit(CanFrame[] frames, int timeOut = 0)
         => Transmit(frames.AsSpan(), timeOut);
 
-    public int Transmit(ArraySegment<ICanFrame> frames, int timeOut = 0)
+    public int Transmit(ArraySegment<CanFrame> frames, int timeOut = 0)
         => Transmit(frames.AsSpan(), timeOut);
 
-    public int Transmit(in ICanFrame frame)
+    public int Transmit(in CanFrame frame)
         => _transceiver.Transmit(this, frame);
 
     public IEnumerable<CanReceiveData> Receive(int count = 1, int timeOut = 0)
@@ -300,7 +306,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
         return ReceiveAsync(count, timeOut).GetAwaiter().GetResult();
     }
 
-    public Task<int> TransmitAsync(IEnumerable<ICanFrame> frames, int timeOut = 0, CancellationToken cancellationToken = default)
+    public Task<int> TransmitAsync(IEnumerable<CanFrame> frames, int timeOut = 0, CancellationToken cancellationToken = default)
         => Task.Run(() =>
         {
             try { return Transmit(frames, timeOut); }
@@ -308,7 +314,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
             catch (Exception ex) { HandleBackgroundException(ex); throw; }
         }, cancellationToken);
 
-    public Task<int> TransmitAsync(ICanFrame frame, CancellationToken cancellationToken = default)
+    public Task<int> TransmitAsync(CanFrame frame, CancellationToken cancellationToken = default)
         => Task.FromResult(Transmit(frame));
 
     public async Task<IReadOnlyList<CanReceiveData>> ReceiveAsync(int count = 1, int timeOut = 0, CancellationToken cancellationToken = default)
@@ -350,7 +356,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
         return default;
     }
 
-    public IPeriodicTx TransmitPeriodic(ICanFrame frame, PeriodicTxOptions options)
+    public IPeriodicTx TransmitPeriodic(CanFrame frame, PeriodicTxOptions options)
     {
         ThrowIfDisposed();
         return new BCMPeriodicTx(this, frame, options, Options);
@@ -826,10 +832,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
             {
                 gotBatch++;
                 var frame = rec.CanFrame;
-                bool isErr = frame is CanClassicFrame { IsErrorFrame: true } ||
-                             frame is CanFdFrame { IsErrorFrame: true };
-
-                if (isErr)
+                if (frame.IsErrorFrame)
                 {
                     uint raw = frame.ToCanID();
                     uint err = raw & Libc.CAN_ERR_MASK;
@@ -843,12 +846,12 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
                         SocketCanErr.ToControllerStatus(span),
                         SocketCanErr.ToProtocolViolationType(span),
                         SocketCanErr.ToErrorLocation(span),
+                        SocketCanErr.ToTransceiverStatus(span),
                         sysTs,
                         err,
                         rec.ReceiveTimestamp,
                         SocketCanErr.InferFrameDirection(err, span),
                         SocketCanErr.ToArbitrationLostBit(err, span),
-                        SocketCanErr.ToTransceiverStatus(span),
                         SocketCanErr.ToErrorCounters(err, span),
                         frame);
                     var errSnap = Volatile.Read(ref _errorOccurred);

@@ -1,6 +1,9 @@
 ﻿using System;
 using System.Runtime.CompilerServices;
-using CanKit.Core.Abstractions;
+using CanKit.Abstractions.API.Can;
+using CanKit.Abstractions.API.Can.Definitions;
+using CanKit.Abstractions.SPI;
+using CanKit.Abstractions.SPI.Common;
 using CanKit.Core.Definitions;
 using CcApi = CanKit.Adapter.ControlCAN.Native.ControlCAN;
 
@@ -8,7 +11,7 @@ namespace CanKit.Adapter.ControlCAN.Utils;
 
 internal static class ControlCanUtils
 {
-    public static uint ToCanID(this in CanClassicFrame frame)
+    public static uint ToCanID(this in CanFrame frame)
     {
         var id = (uint)frame.ID;
         var cid = frame.IsExtendedFrame ? ((id & CcApi.CAN_EFF_MASK) | CcApi.CAN_EFF_FLAG)
@@ -18,7 +21,7 @@ internal static class ControlCanUtils
         return cid;
     }
 
-    public static CanClassicFrame FromNative(this in CcApi.VCI_CAN_OBJ obj, IBufferAllocator bufferAllocator)
+    public static CanFrame FromNative(this in CcApi.VCI_CAN_OBJ obj, IBufferAllocator bufferAllocator)
     {
         var data = bufferAllocator.Rent(obj.DataLen);
 
@@ -31,13 +34,13 @@ internal static class ControlCanUtils
             }
         }
 
-        return new CanClassicFrame((int)(obj.ExternFlag == 1
+        return CanFrame.Classic((int)(obj.ExternFlag == 1
                 ? obj.ID & CcApi.CAN_EFF_MASK : obj.ID & CcApi.CAN_SFF_MASK),
             data, obj.ExternFlag == 1, obj.RemoteFlag == 1,
             bufferAllocator.FrameNeedDispose);
     }
 
-    public static unsafe void ToNative(this in CanClassicFrame f, CcApi.VCI_CAN_OBJ* pObj, bool retry)
+    public static unsafe void ToNative(this in CanFrame f, CcApi.VCI_CAN_OBJ* pObj, bool retry)
     {
         var dataLen = Math.Min(f.Dlc, (byte)8);
         var span = f.Data.Span;

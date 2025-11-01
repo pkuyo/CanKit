@@ -1,6 +1,10 @@
 using System;
 using System.Linq;
-using CanKit.Core.Abstractions;
+using CanKit.Abstractions.API.Can;
+using CanKit.Abstractions.API.Common;
+using CanKit.Abstractions.API.Common.Definitions;
+using CanKit.Abstractions.SPI;
+using CanKit.Abstractions.SPI.Common;
 using CanKit.Core.Utils;
 
 namespace CanKit.Core.Definitions
@@ -29,8 +33,6 @@ namespace CanKit.Core.Definitions
         public string? ChannelName => Options.ChannelName;
         public CanBusTiming BitTiming => Options.BitTiming;
         public TxRetryPolicy TxRetryPolicy => Options.TxRetryPolicy;
-        public bool BusUsageEnabled => Options.BusUsageEnabled;
-        public uint BusUsagePeriodTime => Options.BusUsagePeriodTime;
         public ChannelWorkMode WorkMode => Options.WorkMode;
         public bool InternalResistance => Options.InternalResistance;
         public CanProtocolMode ProtocolMode => Options.ProtocolMode;
@@ -67,8 +69,6 @@ namespace CanKit.Core.Definitions
         public string? ChannelName => Options.ChannelName;
         public CanBusTiming BitTiming => Options.BitTiming;
         public TxRetryPolicy TxRetryPolicy => Options.TxRetryPolicy;
-        public bool BusUsageEnabled => Options.BusUsageEnabled;
-        public uint BusUsagePeriodTime => Options.BusUsagePeriodTime;
         public ChannelWorkMode WorkMode => Options.WorkMode;
         public bool InternalResistance => Options.InternalResistance;
         public CanProtocolMode ProtocolMode => Options.ProtocolMode;
@@ -76,7 +76,6 @@ namespace CanKit.Core.Definitions
         public CanFeature EnabledSoftwareFallback => Options.EnabledSoftwareFallback;
         public bool AllowErrorInfo => Options.AllowErrorInfo;
         public int AsyncBufferCapacity => Options.AsyncBufferCapacity;
-        public int ReceiveLoopStopDelayMs => Options.ReceiveLoopStopDelayMs;
 
 
         IBusInitOptionsConfigurator IBusInitOptionsConfigurator.Baud(int baud, uint? clockMHz, ushort? samplePointPermille)
@@ -94,9 +93,6 @@ namespace CanKit.Core.Definitions
         IBusInitOptionsConfigurator IBusInitOptionsConfigurator.TimingFd(CanFdTiming timing)
             => TimingFd(timing);
 
-        IBusInitOptionsConfigurator IBusInitOptionsConfigurator.BusUsage(int periodMs)
-            => BusUsage(periodMs);
-
         IBusInitOptionsConfigurator IBusInitOptionsConfigurator.SetTxRetryPolicy(TxRetryPolicy retryPolicy)
             => SetTxRetryPolicy(retryPolicy);
 
@@ -109,8 +105,8 @@ namespace CanKit.Core.Definitions
         IBusInitOptionsConfigurator IBusInitOptionsConfigurator.SetProtocolMode(CanProtocolMode mode)
             => SetProtocolMode(mode);
 
-        IBusInitOptionsConfigurator IBusInitOptionsConfigurator.SetFilter(CanFilter filter)
-            => SetFilter(filter);
+        IBusInitOptionsConfigurator IBusInitOptionsConfigurator.SetFilter(ICanFilter filter)
+            => SetFilter((CanFilter)filter);
 
         IBusInitOptionsConfigurator IBusInitOptionsConfigurator.SoftwareFeaturesFallBack(CanFeature features)
             => SoftwareFeaturesFallBack(features);
@@ -195,15 +191,6 @@ namespace CanKit.Core.Definitions
             return (TSelf)this;
         }
 
-        public virtual TSelf BusUsage(int periodMs = 1000)
-        {
-            CanKitErr.ThrowIfNotSupport(_feature, CanFeature.BusUsage);
-            if (periodMs < 0) throw new ArgumentOutOfRangeException(nameof(periodMs));
-            Options.BusUsageEnabled = true;
-            Options.BusUsagePeriodTime = (uint)periodMs;
-            return (TSelf)this;
-        }
-
         public virtual TSelf SetTxRetryPolicy(TxRetryPolicy retryPolicy)
         {
             Options.TxRetryPolicy = retryPolicy;
@@ -241,7 +228,7 @@ namespace CanKit.Core.Definitions
             return (TSelf)this;
         }
 
-        public virtual TSelf SetFilter(CanFilter filter)
+        public virtual TSelf SetFilter(ICanFilter filter)
         {
             var enableMask = ((_feature & CanFeature.MaskFilter) != 0) |
                              ((EnabledSoftwareFallback & CanFeature.MaskFilter) != 0);
@@ -275,7 +262,7 @@ namespace CanKit.Core.Definitions
                 throw new ArgumentException($"Invalid range: min ({min}) must be less than or equal to max ({max}).",
                     nameof(max));
             }
-            Options.Filter.filterRules.Add(new FilterRule.Range((uint)min, (uint)max, idType));
+            Options.Filter.FilterRules.Add(new FilterRule.Range((uint)min, (uint)max, idType));
             return (TSelf)this;
 
         }
@@ -284,13 +271,13 @@ namespace CanKit.Core.Definitions
         {
             CanKitErr.ThrowIfNotSupport(_feature, CanFeature.MaskFilter);
             // For AccMask, do not throw on negative; allow patterns like -1 (0xFFFFFFFF)
-            Options.Filter.filterRules.Add(new FilterRule.Mask((uint)accCode, (uint)accMask, idType));
+            Options.Filter.FilterRules.Add(new FilterRule.Mask((uint)accCode, (uint)accMask, idType));
             return (TSelf)this;
         }
         public virtual TSelf AccMask(uint accCode, uint accMask, CanFilterIDType idType = CanFilterIDType.Standard)
         {
             CanKitErr.ThrowIfNotSupport(_feature, CanFeature.MaskFilter);
-            Options.Filter.filterRules.Add(new FilterRule.Mask(accCode, accMask, idType));
+            Options.Filter.FilterRules.Add(new FilterRule.Mask(accCode, accMask, idType));
             return (TSelf)this;
         }
         public virtual TSelf EnableErrorInfo()
@@ -304,13 +291,6 @@ namespace CanKit.Core.Definitions
             if (capacity <= 0)
                 throw new ArgumentOutOfRangeException(nameof(capacity));
             Options.AsyncBufferCapacity = capacity;
-            return (TSelf)this;
-        }
-        public virtual TSelf SetReceiveLoopStopDelayMs(int milliseconds)
-        {
-            if (milliseconds < 0)
-                throw new ArgumentOutOfRangeException(nameof(milliseconds));
-            Options.ReceiveLoopStopDelayMs = milliseconds;
             return (TSelf)this;
         }
 

@@ -3,8 +3,11 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
+using CanKit.Abstractions.API.Can;
+using CanKit.Abstractions.API.Can.Definitions;
+using CanKit.Abstractions.API.Common;
+using CanKit.Abstractions.API.Common.Definitions;
 using CanKit.Core;
-using CanKit.Core.Abstractions;
 using CanKit.Core.Definitions;
 using CanKit.Core.Utils;
 
@@ -35,34 +38,34 @@ internal static class TestHelpers
 
     }
 
-    public static ICanFrame[] CreateClassicSeq(uint baseId, bool extended, bool rtr, int len)
+    public static CanFrame[] CreateClassicSeq(uint baseId, bool extended, bool rtr, int len)
     {
         len = Math.Max(len, 0);
         if (rtr)
         {
             len = 0;
         }
-        var ring = new ICanFrame[256];
+        var ring = new CanFrame[256];
         for (var seq = 0; seq < 256; seq++)
         {
             var payload = new byte[Math.Min(Math.Max(len, 0), 8)];
             if (payload.Length > 0) payload[0] = (byte)seq;
             for (var i = 1; i < payload.Length; i++) payload[i] = (byte)(i ^ seq);
-            ring[seq] = new CanClassicFrame((int)(baseId | (uint)seq), payload, extended, rtr);
+            ring[seq] = CanFrame.Classic((int)(baseId | (uint)seq), payload, extended, rtr);
         }
         return ring;
     }
 
-    public static ICanFrame[] CreateFdSeq(uint baseId, bool extended, bool brs, int len)
+    public static CanFrame[] CreateFdSeq(uint baseId, bool extended, bool brs, int len)
     {
         len = Math.Min(Math.Max(len, 0), 64);
-        var ring = new ICanFrame[256];
+        var ring = new CanFrame[256];
         for (var seq = 0; seq < 256; seq++)
         {
             var payload = new byte[len];
             if (payload.Length > 0) payload[0] = (byte)seq;
             for (var i = 1; i < payload.Length; i++) payload[i] = (byte)(i ^ seq);
-            ring[seq] = new CanFdFrame((int)(baseId | (uint)seq), payload, brs, false, extended);
+            ring[seq] = CanFrame.Fd((int)(baseId | (uint)seq), payload, brs, false, extended);
         }
         return ring;
     }
@@ -77,7 +80,7 @@ internal static class TestHelpers
         public int OutOfOrder { get; private set; }
         public int BadData { get; private set; }
 
-        public void Feed(ICanFrame fr)
+        public void Feed(CanFrame fr)
         {
             lock (_lock)
             {
@@ -132,9 +135,9 @@ internal static class TestHelpers
         return result;
     }
 
-    public static async Task SendBurstAsync(ICanBus tx, IEnumerable<ICanFrame> frames, double gapMs)
+    public static async Task SendBurstAsync(ICanBus tx, IEnumerable<CanFrame> frames, double gapMs)
     {
-        var queue = new Queue<ICanFrame>();
+        var queue = new Queue<CanFrame>();
         foreach(var fr in frames)
         {
             queue.Enqueue(fr);
@@ -168,7 +171,7 @@ internal static class TestHelpers
         }
     }
 
-    public static IEnumerable<ICanFrame> GenerateSeqFrames(ICanFrame[] ring, int count)
+    public static IEnumerable<CanFrame> GenerateSeqFrames(CanFrame[] ring, int count)
     {
         var seq = 0;
         for (var i = 0; i < count; i++)

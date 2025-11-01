@@ -1,4 +1,7 @@
 using System;
+using CanKit.Abstractions.API.Can;
+using CanKit.Abstractions.API.Common;
+using CanKit.Abstractions.API.Common.Definitions;
 using CanKit.Core.Definitions;
 using CanKit.Core.Diagnostics;
 using CcApi = CanKit.Adapter.ControlCAN.Native.ControlCAN;
@@ -56,12 +59,12 @@ internal static class ControlCanErr
             ctrl,
             prot,
             loc,
+            CanTransceiverStatus.Unspecified,
             DateTime.Now,
             err.ErrCode,
             null,
             dir,
             arbBit,
-            CanTransceiverStatus.Unspecified,
             new CanErrorCounters
             {
                 TransmitErrorCounter = tec,

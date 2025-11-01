@@ -1,4 +1,6 @@
 using System;
+using CanKit.Abstractions.API.Common;
+using CanKit.Abstractions.API.Common.Definitions;
 using CanKit.Core.Definitions;
 
 namespace CanKit.Adapter.ControlCAN.Definitions;

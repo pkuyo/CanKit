@@ -3,6 +3,8 @@
 using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using CanKit.Abstractions.API.Can;
+using CanKit.Abstractions.API.Can.Definitions;
 using Peak.Can.Basic;
 using Peak.Can.Basic.BackwardCompatibility;
 
@@ -71,7 +73,7 @@ internal static class PcanBasicNative
         {
             var id = message->ID;
             var type = message->MSGTYPE;
-            int len = Math.Min(64, (int)CanKit.Core.Definitions.CanFdFrame.DlcToLen(message->DLC));
+            int len = Math.Min(64, CanFrame.DlcToLen(message->DLC));
             var data = new byte[len];
             for (int i = 0; i < len; i++) data[i] = message->DATA[i];
             Api.Submit((PcanChannel)channel, id, type, data, isFd: true);

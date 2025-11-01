@@ -3,7 +3,12 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using CanKit.Core.Abstractions;
+using CanKit.Abstractions.API.Can;
+using CanKit.Abstractions.API.Can.Definitions;
+using CanKit.Abstractions.API.Common;
+using CanKit.Abstractions.API.Common.Definitions;
+using CanKit.Abstractions.SPI;
+using CanKit.Abstractions.SPI.Common;
 using CanKit.Core.Definitions;
 using CanKit.Core.Diagnostics;
 using CanKit.Core.Exceptions;
@@ -23,7 +28,7 @@ public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, IBusOwnershi
     private readonly AsyncFramePipe _asyncRx;
     private readonly ConcurrentQueue<CanReceiveData> _rxQueue = new();
 
-    private Func<ICanFrame, bool>? _softwareFilterPredicate;
+    private Func<CanFrame, bool>? _softwareFilterPredicate;
     private bool _useSoftwareFilter;
 
     private EventHandler<CanReceiveData>? _frameReceived;
@@ -86,28 +91,28 @@ public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, IBusOwnershi
     }
 
     //non-support time out
-    public int Transmit(IEnumerable<ICanFrame> frames, int _ = 0)
+    public int Transmit(IEnumerable<CanFrame> frames, int _ = 0)
     {
         ThrowIfDisposed();
         return _transceiver.Transmit(this, frames);
     }
 
-    public int Transmit(ReadOnlySpan<ICanFrame> frames, int _ = 0)
+    public int Transmit(ReadOnlySpan<CanFrame> frames, int _ = 0)
     {
         ThrowIfDisposed();
         return _transceiver.Transmit(this, frames);
     }
 
-    public int Transmit(ICanFrame[] frames, int _ = 0)
+    public int Transmit(CanFrame[] frames, int _ = 0)
         => Transmit(frames.AsSpan());
 
-    public int Transmit(ArraySegment<ICanFrame> frames, int _ = 0)
+    public int Transmit(ArraySegment<CanFrame> frames, int _ = 0)
         => Transmit(frames.AsSpan());
 
-    public int Transmit(in ICanFrame frame)
+    public int Transmit(in CanFrame frame)
         => _transceiver.Transmit(this, frame);
 
-    public IPeriodicTx TransmitPeriodic(ICanFrame frame, PeriodicTxOptions options)
+    public IPeriodicTx TransmitPeriodic(CanFrame frame, PeriodicTxOptions options)
     {
         ThrowIfDisposed();
         if ((Options.EnabledSoftwareFallback & CanFeature.CyclicTx) == 0)
@@ -126,10 +131,10 @@ public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, IBusOwnershi
         return ReceiveAsync(count, timeOut).GetAwaiter().GetResult();
     }
 
-    public Task<int> TransmitAsync(IEnumerable<ICanFrame> frames, int timeOut = 0, CancellationToken cancellationToken = default)
+    public Task<int> TransmitAsync(IEnumerable<CanFrame> frames, int timeOut = 0, CancellationToken cancellationToken = default)
         => Task.FromResult(Transmit(frames, timeOut));
 
-    public Task<int> TransmitAsync(ICanFrame frame, CancellationToken cancellationToken = default)
+    public Task<int> TransmitAsync(CanFrame frame, CancellationToken cancellationToken = default)
         => Task.FromResult(Transmit(frame));
 
     public async Task<IReadOnlyList<CanReceiveData>> ReceiveAsync(int count = 1, int timeOut = 0, CancellationToken cancellationToken = default)

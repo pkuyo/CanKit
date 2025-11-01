@@ -4,10 +4,13 @@ using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
+using CanKit.Abstractions.API.Can;
+using CanKit.Abstractions.API.Can.Definitions;
+using CanKit.Abstractions.API.Common;
+using CanKit.Abstractions.API.Common.Definitions;
 using CanKit.Adapter.SocketCAN.Native;
 using CanKit.Adapter.SocketCAN.Definitions;
 using CanKit.Adapter.SocketCAN.Utils;
-using CanKit.Core.Abstractions;
 using CanKit.Core.Definitions;
 using CanKit.Core.Exceptions;
 
@@ -15,7 +18,7 @@ namespace CanKit.Adapter.SocketCAN.Transceivers;
 
 public sealed class SocketCanClassicTransceiver : ITransceiver
 {
-    public int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, IEnumerable<ICanFrame> frames)
+    public int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, IEnumerable<CanFrame> frames)
     {
 
         var ch = (SocketCanBus)bus;
@@ -47,8 +50,7 @@ public sealed class SocketCanClassicTransceiver : ITransceiver
                     if (sent != Libc.BATCH_COUNT)
                         break;
                 }
-                var cf = (CanClassicFrame)f;
-                fr[index] = cf.ToCanFrame();
+                fr[index] = f.ToCanFrame();
                 iov[index].iov_base = &fr[index];
                 iov[index].iov_len = (UIntPtr)frameSize;
                 msgs[index].msg_hdr = new Libc.msghdr
@@ -81,7 +83,7 @@ public sealed class SocketCanClassicTransceiver : ITransceiver
         }
     }
 
-    public int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, ReadOnlySpan<ICanFrame> frames)
+    public int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, ReadOnlySpan<CanFrame> frames)
     {
 
         var ch = (SocketCanBus)bus;
@@ -113,8 +115,7 @@ public sealed class SocketCanClassicTransceiver : ITransceiver
                     if (sent != Libc.BATCH_COUNT)
                         break;
                 }
-                var cf = (CanClassicFrame)f;
-                fr[index] = cf.ToCanFrame();
+                fr[index] = f.ToCanFrame();
                 iov[index].iov_base = &fr[index];
                 iov[index].iov_len = (UIntPtr)frameSize;
                 msgs[index].msg_hdr = new Libc.msghdr
@@ -147,7 +148,7 @@ public sealed class SocketCanClassicTransceiver : ITransceiver
         }
     }
 
-    public int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, in ICanFrame frame)
+    public int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, in CanFrame frame)
     {
         var ch = (SocketCanBus)bus;
         unsafe
@@ -157,12 +158,12 @@ public sealed class SocketCanClassicTransceiver : ITransceiver
             Libc.iovec* iov = stackalloc Libc.iovec[Libc.BATCH_COUNT];
             Libc.mmsghdr* msgs = stackalloc Libc.mmsghdr[Libc.BATCH_COUNT];
 
-            if (frame is not CanClassicFrame cf)
+            if (frame.FrameKind is not CanFrameType.Can20)
             {
                 throw new InvalidOperationException("SocketCAN classic transceiver requires CanClassicFrame.");
             }
 
-            fr[0] = cf.ToCanFrame();
+            fr[0] = frame.ToCanFrame();
             iov[0].iov_base = &fr[0];
             iov[0].iov_len = (UIntPtr)frameSize;
             msgs[0].msg_hdr = new Libc.msghdr
@@ -314,7 +315,7 @@ public sealed class SocketCanClassicTransceiver : ITransceiver
         var rawId = ((fr->can_id & Libc.CAN_EFF_FLAG) != 0)
             ? (fr->can_id & Libc.CAN_EFF_MASK)
             : (fr->can_id & Libc.CAN_SFF_MASK);
-        var re = new CanReceiveData(new CanClassicFrame((int)rawId, data, ext, rtr,
+        var re = new CanReceiveData(CanFrame.Classic((int)rawId, data, ext, rtr,
             bus.Options.BufferAllocator.FrameNeedDispose))
         {
             ReceiveTimestamp = tsSpan,

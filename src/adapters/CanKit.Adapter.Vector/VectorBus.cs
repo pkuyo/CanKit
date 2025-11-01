@@ -1,10 +1,14 @@
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using CanKit.Abstractions.API.Can;
+using CanKit.Abstractions.API.Can.Definitions;
+using CanKit.Abstractions.API.Common;
+using CanKit.Abstractions.API.Common.Definitions;
+using CanKit.Abstractions.SPI.Providers;
 using CanKit.Adapter.Vector.Diagnostics;
 using CanKit.Adapter.Vector.Native;
 using CanKit.Adapter.Vector.Transceivers;
 using CanKit.Adapter.Vector.Utils;
-using CanKit.Core.Abstractions;
 using CanKit.Core.Definitions;
 using CanKit.Core.Diagnostics;
 using CanKit.Core.Exceptions;
@@ -25,7 +29,7 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
     private EventHandler<ICanErrorInfo>? _errorFrameReceived;
     private EventHandler<Exception>? _backgroundException;
 
-    private Func<ICanFrame, bool>? _softwareFilterPredicate;
+    private Func<CanFrame, bool>? _softwareFilterPredicate;
 
     private bool _isDisposed;
     private bool _isActivated;
@@ -226,7 +230,7 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
         VectorErr.ThrowIfError(VxlApi.xlCanResetAcceptance(_portHandle, _accessMask, 2), "xlCanResetAcceptance(EXT)");
         bool stdRest = false;
         bool extRest = false;
-        foreach (var rule in options.Filter.filterRules)
+        foreach (var rule in options.Filter.FilterRules)
         {
             if (rule is FilterRule.Mask mask)
             {
@@ -297,44 +301,44 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
         _asyncRx.Clear();
     }
 
-    public int Transmit(IEnumerable<ICanFrame> frames, int timeOut = 0)
+    public int Transmit(IEnumerable<CanFrame> frames, int timeOut = 0)
     {
         ThrowIfDisposed();
         return _transceiver.Transmit(this, frames);
     }
 
-    public int Transmit(ReadOnlySpan<ICanFrame> frames, int timeOut = 0)
+    public int Transmit(ReadOnlySpan<CanFrame> frames, int timeOut = 0)
     {
         ThrowIfDisposed();
         return _transceiver.Transmit(this, frames);
     }
 
-    public int Transmit(ICanFrame[] frames, int timeOut = 0)
+    public int Transmit(CanFrame[] frames, int timeOut = 0)
     {
         ThrowIfDisposed();
         return _transceiver.Transmit(this, frames.AsSpan());
     }
 
-    public int Transmit(ArraySegment<ICanFrame> frames, int timeOut = 0)
+    public int Transmit(ArraySegment<CanFrame> frames, int timeOut = 0)
     {
         ThrowIfDisposed();
         return _transceiver.Transmit(this, frames.AsSpan());
     }
 
 
-    public int Transmit(in ICanFrame frame)
+    public int Transmit(in CanFrame frame)
     {
         ThrowIfDisposed();
         return _transceiver.Transmit(this, frame);
     }
 
-    public Task<int> TransmitAsync(IEnumerable<ICanFrame> frames, int timeOut = 0, CancellationToken cancellationToken = default)
+    public Task<int> TransmitAsync(IEnumerable<CanFrame> frames, int timeOut = 0, CancellationToken cancellationToken = default)
         => Task.FromResult(Transmit(frames, timeOut));
 
-    public Task<int> TransmitAsync(ICanFrame frame, CancellationToken cancellationToken = default)
+    public Task<int> TransmitAsync(CanFrame frame, CancellationToken cancellationToken = default)
         => Task.FromResult(Transmit(in frame));
 
-    public IPeriodicTx TransmitPeriodic(ICanFrame frame, PeriodicTxOptions options)
+    public IPeriodicTx TransmitPeriodic(CanFrame frame, PeriodicTxOptions options)
     {
         ThrowIfDisposed();
         if ((Options.EnabledSoftwareFallback & CanFeature.CyclicTx) != 0)

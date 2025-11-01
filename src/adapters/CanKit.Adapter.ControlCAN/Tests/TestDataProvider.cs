@@ -1,8 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
-using CanKit.Core.Abstractions;
+using CanKit.Abstractions.API.Can;
+using CanKit.Abstractions.API.Can.Definitions;
+using CanKit.Abstractions.API.Common;
+using CanKit.Abstractions.SPI.Tests;
 using CanKit.Core.Definitions;
-using CanKit.Tests;
 
 namespace CanKit.Adapter.ControlCAN.Tests;
 
@@ -18,9 +20,9 @@ public class TestDataProvider : ITestDataProvider
         )> MaskFilterCases
     { get; } = [];
 
-    public IEnumerable<(ICanFrame frame, TimeSpan period, int count)> PeriodicCountCases { get; } = [];
+    public IEnumerable<(CanFrame frame, TimeSpan period, int count)> PeriodicCountCases { get; } = [];
 
-    public IEnumerable<(ICanFrame frame, TimeSpan period, float deviation)> PeriodicPeriodCases { get; } = [];
+    public IEnumerable<(CanFrame frame, TimeSpan period, float deviation)> PeriodicPeriodCases { get; } = [];
     public (int aBit, int dBit)? BaudRate { get; }
     public Action<IBusInitOptionsConfigurator>? TestBusInitFunc { get; }
 }

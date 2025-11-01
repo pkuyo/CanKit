@@ -1,4 +1,6 @@
 ﻿using System.Runtime.CompilerServices;
+using CanKit.Abstractions.API.Common;
+using CanKit.Abstractions.API.Common.Definitions;
 using CanKit.Core.Definitions;
 using CanKit.Core.Exceptions;
 using CanKit.Adapter.Kvaser.Native;

@@ -3,6 +3,10 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using CanKit.Abstractions.API.Can;
+using CanKit.Abstractions.API.Can.Definitions;
+using CanKit.Abstractions.API.Common;
+using CanKit.Abstractions.API.Common.Definitions;
 using CanKit.Core.Definitions;
 
 namespace CanKit.Adapter.Virtual;
@@ -50,7 +54,7 @@ public sealed class VirtualBusHub
         }
     }
 
-    public void Broadcast(VirtualBus sender, ICanFrame frame)
+    public void Broadcast(VirtualBus sender, CanFrame frame)
     {
         var data = new CanReceiveData(frame) { ReceiveTimestamp = TimeSpan.Zero }; // simple timestamp
         List<VirtualBus> targets;

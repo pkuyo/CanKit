@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using CanKit.Abstractions.API.Can;
+using CanKit.Abstractions.API.Can.Definitions;
 using CanKit.Core.Definitions;
 using CanKit.Tests.Utils;
 using FluentAssertions;
@@ -163,17 +165,17 @@ public class ThroughputAndFeaturesTests : IClassFixture<TestCaseProvider>
             using var txClassic = TestHelpers.OpenClassic(epB);
 
             // classic std/ext 0 and 8
-            var classicCases = new List<ICanFrame>
+            var classicCases = new List<CanFrame>
             {
-                new CanClassicFrame(0x120, ReadOnlyMemory<byte>.Empty, false),
-                new CanClassicFrame(0x121, new byte[8], false),
-                new CanClassicFrame(0x18DAF101, ReadOnlyMemory<byte>.Empty, true),
-                new CanClassicFrame(0x18DAF102, new byte[8], true)
+                CanFrame.Classic(0x120, ReadOnlyMemory<byte>.Empty, false),
+                CanFrame.Classic(0x121, new byte[8], false),
+                CanFrame.Classic(0x18DAF101, ReadOnlyMemory<byte>.Empty, true),
+                CanFrame.Classic(0x18DAF102, new byte[8], true)
             };
 
             // classic remote (RTR) 0 and 8
-            classicCases.Add(new CanClassicFrame(0x200, ReadOnlyMemory<byte>.Empty, false, true));
-            classicCases.Add(new CanClassicFrame(0x201, new byte[8], false, true));
+            classicCases.Add(CanFrame.Classic(0x200, ReadOnlyMemory<byte>.Empty, false, true));
+            classicCases.Add(CanFrame.Classic(0x201, new byte[8], false, true));
 
             await TestHelpers.SendBurstAsync(txClassic, classicCases, gapMs: 0);
 
@@ -192,10 +194,10 @@ public class ThroughputAndFeaturesTests : IClassFixture<TestCaseProvider>
             using var rxFd = TestHelpers.OpenFd(epA);
             using var txFd = TestHelpers.OpenFd(epB);
 
-            var fdCases = new List<ICanFrame>
+            var fdCases = new List<CanFrame>
             {
-                new CanFdFrame(0x18DAF110, new byte[48], true, false, true),
-                new CanFdFrame(0x18DAF111, new byte[64], true, false, true)
+                CanFrame.Fd(0x18DAF110, new byte[48], true, false, true),
+                CanFrame.Fd(0x18DAF111, new byte[64], true, false, true)
             };
 
             await TestHelpers.SendBurstAsync(txFd, fdCases, gapMs: 0);

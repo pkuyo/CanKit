@@ -13,6 +13,8 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
+using CanKit.Abstractions.API.Common;
+using CanKit.Abstractions.API.Common.Definitions;
 using CanKit.Adapter.ZLG.Definitions;
 using CanKit.Core.Definitions;
 

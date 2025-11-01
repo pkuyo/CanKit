@@ -1,10 +1,13 @@
 using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using CanKit.Abstractions.API.Can;
+using CanKit.Abstractions.API.Can.Definitions;
+using CanKit.Abstractions.API.Common;
+using CanKit.Abstractions.API.Common.Definitions;
 using CanKit.Adapter.SocketCAN.Diagnostics;
 using CanKit.Adapter.SocketCAN.Native;
 using CanKit.Adapter.SocketCAN.Definitions;
-using CanKit.Core.Abstractions;
 using CanKit.Core.Definitions;
 using CanKit.Core.Diagnostics;
 using CanKit.Core.Exceptions;
@@ -25,13 +28,13 @@ public sealed class BCMPeriodicTx : IPeriodicTx
     private FileDescriptorHandle _epfd = new();
     private Libc.epoll_event[] _events = new Libc.epoll_event[4];
 
-    private ICanFrame _frame;
+    private CanFrame _frame;
     private CancellationTokenSource? _readCts;
     private Task? _readTask;
 
     public BCMPeriodicTx(
         ICanBus bus,
-        ICanFrame frame,
+        CanFrame frame,
         PeriodicTxOptions options,
         SocketCanBusRtConfigurator configurator)
     {
@@ -60,9 +63,9 @@ public sealed class BCMPeriodicTx : IPeriodicTx
         if (_cancelFd.IsInvalid)
             Libc.ThrowErrno("eventfd", "Failed to create cancel eventfd");
 
-        if (frame is CanClassicFrame && configurator.ProtocolMode != CanProtocolMode.Can20)
+        if (frame.FrameKind is CanFrameType.Can20 && configurator.ProtocolMode != CanProtocolMode.Can20)
             throw new CanFeatureNotSupportedException(CanFeature.CanClassic, configurator.Features);
-        if (frame is CanFdFrame && configurator.ProtocolMode != CanProtocolMode.CanFd)
+        if (frame.FrameKind is CanFrameType.CanFd && configurator.ProtocolMode != CanProtocolMode.CanFd)
             throw new CanFeatureNotSupportedException(CanFeature.CanFd, configurator.Features);
 
 
@@ -74,7 +77,7 @@ public sealed class BCMPeriodicTx : IPeriodicTx
         {
             opcode = Libc.TX_SETUP,
             flags = Libc.SETTIMER | Libc.STARTTIMER | Libc.TX_COUNTEVT
-                    | (frame is CanFdFrame ? Libc.CAN_FD_FRAME : 0u),
+                    | (frame.FrameKind is CanFrameType.CanFd ? Libc.CAN_FD_FRAME : 0u),
             count = (options.Repeat < 0) ? 0u : (uint)options.Repeat,
             ival1 = SocketCanUtils.ToTimeval(ival1),
             ival2 = SocketCanUtils.ToTimeval(ival2),
@@ -87,20 +90,20 @@ public sealed class BCMPeriodicTx : IPeriodicTx
         Period = period;
 
         var headSize = Marshal.SizeOf<Libc.bcm_msg_head>();
-        var frameSize = (_frame is CanFdFrame) ? Marshal.SizeOf<Libc.canfd_frame>() : Marshal.SizeOf<Libc.can_frame>();
+        var frameSize = (_frame.FrameKind is CanFrameType.CanFd) ? Marshal.SizeOf<Libc.canfd_frame>() : Marshal.SizeOf<Libc.can_frame>();
 
         unsafe
         {
             var buf = stackalloc byte[headSize + frameSize];
 
-            if (_frame is CanClassicFrame classic)
+            if (_frame.FrameKind is CanFrameType.Can20)
             {
-                var fr = classic.ToCanFrame();
+                var fr = _frame.ToCanFrame();
                 Unsafe.CopyBlockUnaligned(buf + headSize, &fr, (uint)frameSize);
             }
-            else if (_frame is CanFdFrame fd)
+            else if (_frame.FrameKind is CanFrameType.CanFd)
             {
-                var fr = fd.ToCanFrame();
+                var fr = _frame.ToCanFdFrame();
                 Unsafe.CopyBlockUnaligned(buf + headSize, &fr, (uint)frameSize);
             }
             else
@@ -115,7 +118,7 @@ public sealed class BCMPeriodicTx : IPeriodicTx
         }
     }
 
-    public void Update(ICanFrame? frame = null, TimeSpan? period = null, int? repeatCount = null)
+    public void Update(CanFrame? frame = null, TimeSpan? period = null, int? repeatCount = null)
     {
         if (_fd.IsInvalid) throw new CanBusDisposedException();
 
@@ -134,7 +137,7 @@ public sealed class BCMPeriodicTx : IPeriodicTx
         }
         if (frame is not null)
         {
-            _frame = frame;
+            _frame = frame.Value;
         }
 
         var flags = 0u;
@@ -143,7 +146,7 @@ public sealed class BCMPeriodicTx : IPeriodicTx
 
         // only set CAN_FD_FRAME when frame has value
         bool includeFrame = frame is not null;
-        if (includeFrame && _frame is CanFdFrame)
+        if (includeFrame && _frame.FrameKind is CanFrameType.CanFd)
             flags |= Libc.CAN_FD_FRAME;
 
         var head = new Libc.bcm_msg_head
@@ -167,16 +170,16 @@ public sealed class BCMPeriodicTx : IPeriodicTx
 
             if (includeFrame)
             {
-                if (_frame is CanClassicFrame classic)
+                if (_frame.FrameKind is CanFrameType.Can20)
                 {
                     var sz = Marshal.SizeOf<Libc.can_frame>();
-                    var fr = classic.ToCanFrame();
+                    var fr = _frame.ToCanFrame();
                     Unsafe.CopyBlockUnaligned(buf + headSize, &fr, (uint)sz);
                 }
-                else if (_frame is CanFdFrame fd)
+                else if (_frame.FrameKind is CanFrameType.Can20)
                 {
                     var sz = Marshal.SizeOf<Libc.canfd_frame>();
-                    var fr = fd.ToCanFrame();
+                    var fr = _frame.ToCanFdFrame();
                     Unsafe.CopyBlockUnaligned(buf + headSize, &fr, (uint)sz);
                 }
                 else

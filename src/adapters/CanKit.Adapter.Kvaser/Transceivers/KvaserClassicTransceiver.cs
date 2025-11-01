@@ -1,36 +1,39 @@
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using CanKit.Abstractions.API.Can;
+using CanKit.Abstractions.API.Can.Definitions;
+using CanKit.Abstractions.API.Common;
+using CanKit.Abstractions.API.Common.Definitions;
 using CanKit.Adapter.Kvaser.Native;
 using CanKit.Adapter.Kvaser.Utils;
-using CanKit.Core.Abstractions;
 using CanKit.Core.Definitions;
 
 namespace CanKit.Adapter.Kvaser.Transceivers;
 
 public sealed class KvaserClassicTransceiver : ITransceiver
 {
-    public int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, IEnumerable<ICanFrame> frames)
+    public int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, IEnumerable<CanFrame> frames)
     {
         var ch = (KvaserBus)bus;
         int sent = 0;
         foreach (var item in frames)
         {
-            if (item is not CanClassicFrame cf)
+            if (item.FrameKind is not CanFrameType.Can20)
             {
                 throw new InvalidOperationException("Kvaser classic transceiver requires CanClassicFrame.");
             }
 
             var flags = 0u;
             flags |= (bus.Options.TxRetryPolicy == TxRetryPolicy.NoRetry) ? (uint)Canlib.canMSG_SINGLE_SHOT : 0;
-            if (cf.IsExtendedFrame) flags |= Canlib.canMSG_EXT;
-            if (cf.IsRemoteFrame) flags |= Canlib.canMSG_RTR;
+            if (item.IsExtendedFrame) flags |= Canlib.canMSG_EXT;
+            if (item.IsRemoteFrame) flags |= Canlib.canMSG_RTR;
 
             Canlib.canStatus st;
             unsafe
             {
                 fixed (byte* ptr = item.Data.Span)
                 {
-                    st = Canlib.canWrite(ch.Handle, item.ID, ptr, (uint)cf.Data.Length, flags);
+                    st = Canlib.canWrite(ch.Handle, item.ID, ptr, (uint)item.Data.Length, flags);
                 }
             }
 
@@ -54,28 +57,28 @@ public sealed class KvaserClassicTransceiver : ITransceiver
         return sent;
     }
 
-    public int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, ReadOnlySpan<ICanFrame> frames)
+    public int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, ReadOnlySpan<CanFrame> frames)
     {
         var ch = (KvaserBus)bus;
         int sent = 0;
         foreach (var item in frames)
         {
-            if (item is not CanClassicFrame cf)
+            if (item.FrameKind is not CanFrameType.Can20)
             {
                 throw new InvalidOperationException("Kvaser classic transceiver requires CanClassicFrame.");
             }
 
             var flags = 0u;
             flags |= (bus.Options.TxRetryPolicy == TxRetryPolicy.NoRetry) ? (uint)Canlib.canMSG_SINGLE_SHOT : 0;
-            if (cf.IsExtendedFrame) flags |= Canlib.canMSG_EXT;
-            if (cf.IsRemoteFrame) flags |= Canlib.canMSG_RTR;
+            if (item.IsExtendedFrame) flags |= Canlib.canMSG_EXT;
+            if (item.IsRemoteFrame) flags |= Canlib.canMSG_RTR;
 
             Canlib.canStatus st;
             unsafe
             {
                 fixed (byte* ptr = item.Data.Span)
                 {
-                    st = Canlib.canWrite(ch.Handle, item.ID, ptr, (uint)cf.Data.Length, flags);
+                    st = Canlib.canWrite(ch.Handle, item.ID, ptr, (uint)item.Data.Length, flags);
                 }
             }
 
@@ -99,24 +102,24 @@ public sealed class KvaserClassicTransceiver : ITransceiver
         return sent;
     }
 
-    public int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, in ICanFrame frame)
+    public int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, in CanFrame frame)
     {
         var ch = (KvaserBus)bus;
-        if (frame is not CanClassicFrame cf)
+        if (frame.FrameKind is not CanFrameType.Can20)
         {
             throw new InvalidOperationException("Kvaser classic transceiver requires CanClassicFrame.");
         }
         var flags = 0u;
         flags |= (bus.Options.TxRetryPolicy == TxRetryPolicy.NoRetry) ? (uint)Canlib.canMSG_SINGLE_SHOT : 0;
-        if (cf.IsExtendedFrame) flags |= Canlib.canMSG_EXT;
-        if (cf.IsRemoteFrame) flags |= Canlib.canMSG_RTR;
+        if (frame.IsExtendedFrame) flags |= Canlib.canMSG_EXT;
+        if (frame.IsRemoteFrame) flags |= Canlib.canMSG_RTR;
 
         Canlib.canStatus st;
         unsafe
         {
-            fixed (byte* ptr = cf.Data.Span)
+            fixed (byte* ptr = frame.Data.Span)
             {
-                st = Canlib.canWrite(ch.Handle, cf.ID, ptr, (uint)cf.Data.Length, flags);
+                st = Canlib.canWrite(ch.Handle, frame.ID, ptr, (uint)frame.Data.Length, flags);
             }
         }
         if (st == Canlib.canStatus.canOK)
@@ -155,9 +158,8 @@ public sealed class KvaserClassicTransceiver : ITransceiver
                 var isErr = (flags & Canlib.canMSG_ERROR_FRAME) != 0;
                 var payLoad = bus.Options.BufferAllocator.Rent(dlc);
                 data.AsSpan().Slice(0, dlc).CopyTo(payLoad.Memory.Span);
-                var frame = new CanClassicFrame(id, payLoad, isExt, isRtr,
-                        bus.Options.BufferAllocator.FrameNeedDispose)
-                { IsErrorFrame = isErr };
+                var frame = CanFrame.Classic(id, payLoad, isExt, isRtr,
+                        bus.Options.BufferAllocator.FrameNeedDispose, isErr);
                 var kch = (KvaserBus)bus;
                 var ticks = time * kch.Options.TimerScaleMicroseconds * 10L; // us -> ticks
                 yield return new CanReceiveData(frame)
@@ -179,6 +181,5 @@ public sealed class KvaserClassicTransceiver : ITransceiver
                 break;
             }
         }
-        yield break;
     }
 }

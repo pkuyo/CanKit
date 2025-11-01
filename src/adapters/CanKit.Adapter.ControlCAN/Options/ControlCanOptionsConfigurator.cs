@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
-using CanKit.Core.Abstractions;
+using CanKit.Abstractions.API.Common;
+using CanKit.Abstractions.API.Common.Definitions;
 using CanKit.Core.Definitions;
 using CanKit.Core.Diagnostics;
 using CanKit.Core.Exceptions;

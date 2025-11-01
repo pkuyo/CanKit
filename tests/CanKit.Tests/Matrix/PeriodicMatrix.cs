@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using CanKit.Abstractions.API.Can;
+using CanKit.Abstractions.API.Can.Definitions;
 using CanKit.Core.Definitions;
 
 namespace CanKit.Tests.Matrix;
@@ -35,7 +37,7 @@ public partial class TestMatrix
 
         if (!hasData)
         {
-            yield return [new CanClassicFrame(), TimeSpan.Zero, 0];
+            yield return [new CanFrame(), TimeSpan.Zero, 0];
         }
     }
 
@@ -50,7 +52,7 @@ public partial class TestMatrix
 
         if (!hasData)
         {
-            yield return [new CanClassicFrame(), TimeSpan.Zero, 0];
+            yield return [new CanFrame(), TimeSpan.Zero, 0];
         }
     }
 }

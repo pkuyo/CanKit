@@ -2,10 +2,16 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using CanKit.Abstractions.API.Can;
+using CanKit.Abstractions.API.Can.Definitions;
+using CanKit.Abstractions.API.Common;
+using CanKit.Abstractions.API.Common.Definitions;
+using CanKit.Abstractions.SPI;
+using CanKit.Abstractions.SPI.Common;
+using CanKit.Abstractions.SPI.Providers;
 using CanKit.Adapter.ControlCAN.Definitions;
 using CanKit.Adapter.ControlCAN.Options;
 using CcApi = CanKit.Adapter.ControlCAN.Native.ControlCAN;
-using CanKit.Core.Abstractions;
 using CanKit.Core.Definitions;
 using CanKit.Core.Diagnostics;
 using CanKit.Core.Exceptions;
@@ -26,7 +32,7 @@ public sealed class ControlCanBus : ICanBus<ControlCanBusRtConfigurator>, IBusOw
     private CancellationTokenSource? _pollCts;
     private Task? _pollTask;
     private readonly AsyncFramePipe _asyncRx;
-    private Func<ICanFrame, bool>? _softwareFilterPredicate;
+    private Func<CanFrame, bool>? _softwareFilterPredicate;
 
     private readonly HashSet<int> _autoSendIndexes = new();
     private readonly ControlCanDeviceKind _devType;
@@ -67,7 +73,7 @@ public sealed class ControlCanBus : ICanBus<ControlCanBusRtConfigurator>, IBusOw
             Mode = options.WorkMode == ChannelWorkMode.ListenOnly ? (byte)1 : (byte)0,
         };
 
-        var rules = options.Filter.filterRules;
+        var rules = options.Filter.FilterRules;
         if (rules.Count > 0 && rules[0] is FilterRule.Mask mask)
         {
             cfg.AccCode = mask.AccCode;
@@ -154,7 +160,7 @@ public sealed class ControlCanBus : ICanBus<ControlCanBusRtConfigurator>, IBusOw
                 {
                     if (filter is not FilterRule.Range range)
                     {
-                        options.Filter.softwareFilter.Add(filter);
+                        options.Filter.FilterRules.Add(filter);
                     }
                     else
                     {
@@ -178,12 +184,12 @@ public sealed class ControlCanBus : ICanBus<ControlCanBusRtConfigurator>, IBusOw
             {
                 if (filter is not FilterRule.Mask)
                 {
-                    options.Filter.softwareFilter.Add(filter);
+                    options.Filter.SoftwareFilterRules.Add(filter);
                 }
             }
         }
 
-        if (options.Filter.softwareFilter.Count != 0)
+        if (options.Filter.FilterRules.Count != 0)
         {
             _softwareFilterPredicate = FilterRule.Build(Options.Filter.SoftwareFilterRules);
         }
@@ -202,23 +208,23 @@ public sealed class ControlCanBus : ICanBus<ControlCanBusRtConfigurator>, IBusOw
         _asyncRx.Clear();
     }
 
-    public int Transmit(IEnumerable<ICanFrame> frames, int timeOut = 0)
+    public int Transmit(IEnumerable<CanFrame> frames, int timeOut = 0)
     {
         ThrowIfDisposed();
         return _transceiver.Transmit(this, frames);
     }
 
-    public int Transmit(ReadOnlySpan<ICanFrame> frames, int timeOut = 0)
+    public int Transmit(ReadOnlySpan<CanFrame> frames, int timeOut = 0)
     {
         ThrowIfDisposed();
         return _transceiver.Transmit(this, frames);
     }
 
-    public int Transmit(ICanFrame[] frames, int timeOut = 0) => Transmit(frames.AsSpan(), timeOut);
-    public int Transmit(ArraySegment<ICanFrame> frames, int timeOut = 0) => Transmit(frames.AsSpan(), timeOut);
-    public int Transmit(in ICanFrame frame) => _transceiver.Transmit(this, frame);
+    public int Transmit(CanFrame[] frames, int timeOut = 0) => Transmit(frames.AsSpan(), timeOut);
+    public int Transmit(ArraySegment<CanFrame> frames, int timeOut = 0) => Transmit(frames.AsSpan(), timeOut);
+    public int Transmit(in CanFrame frame) => _transceiver.Transmit(this, frame);
 
-    public IPeriodicTx TransmitPeriodic(ICanFrame frame, PeriodicTxOptions options)
+    public IPeriodicTx TransmitPeriodic(CanFrame frame, PeriodicTxOptions options)
     {
         ThrowIfDisposed();
         if ((Options.Features & CanFeature.CyclicTx) != 0)
@@ -238,10 +244,10 @@ public sealed class ControlCanBus : ICanBus<ControlCanBusRtConfigurator>, IBusOw
         throw new CanFeatureNotSupportedException(CanFeature.CyclicTx, Options.Features);
     }
 
-    public Task<int> TransmitAsync(IEnumerable<ICanFrame> frames, int _ = 0, CancellationToken cancellationToken = default)
+    public Task<int> TransmitAsync(IEnumerable<CanFrame> frames, int _ = 0, CancellationToken cancellationToken = default)
         => Task.FromResult(Transmit(frames));
 
-    public Task<int> TransmitAsync(ICanFrame frame, CancellationToken cancellationToken = default)
+    public Task<int> TransmitAsync(CanFrame frame, CancellationToken cancellationToken = default)
         => Task.FromResult(Transmit(frame));
 
     public float BusUsage() => throw new CanFeatureNotSupportedException(CanFeature.BusUsage, Options.Features);

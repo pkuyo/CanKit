@@ -1,4 +1,5 @@
-﻿using CanKit.Protocol.IsoTp.Defines;
+﻿using CanKit.Abstractions.API.Transport;
+using CanKit.Protocol.IsoTp.Defines;
 
 namespace CanKit.Protocol.IsoTp.Diagnostics;
 

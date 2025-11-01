@@ -1,4 +1,8 @@
 using System;
+using CanKit.Abstractions.API.Can;
+using CanKit.Abstractions.API.Can.Definitions;
+using CanKit.Abstractions.API.Common;
+using CanKit.Abstractions.API.Common.Definitions;
 using CanKit.Core.Definitions;
 
 namespace CanKit.Adapter.ZLG.Definitions;
@@ -57,5 +61,5 @@ public record ZlgErrorInfo : ICanErrorInfo
     public byte? ArbitrationLostBit { get; init; }
 
     /// <inheritdoc />
-    public ICanFrame? Frame { get; init; }
+    public CanFrame? Frame { get; init; }
 }

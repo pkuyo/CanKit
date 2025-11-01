@@ -1,6 +1,12 @@
 ﻿using System.Buffers;
 using System.Runtime.CompilerServices;
-using CanKit.Core.Abstractions;
+using CanKit.Abstractions.API.Can;
+using CanKit.Abstractions.API.Can.Definitions;
+using CanKit.Abstractions.API.Common;
+using CanKit.Abstractions.API.Common.Definitions;
+using CanKit.Abstractions.API.Transport;
+using CanKit.Abstractions.SPI;
+using CanKit.Abstractions.SPI.Common;
 using CanKit.Core.Definitions;
 using CanKit.Protocol.IsoTp.Defines;
 
@@ -83,7 +89,7 @@ internal static partial class FrameCodec
         return true;
     }
 
-    internal static unsafe ICanFrame BuildSF(in IsoTpEndpoint ep, IBufferAllocator allocator, ReadOnlySpan<byte> payload, bool padding, bool canfd)
+    internal static unsafe CanFrame BuildSF(in IsoTpEndpoint ep, IBufferAllocator allocator, ReadOnlySpan<byte> payload, bool padding, bool canfd)
     {
         var pciStart = (ep.IsExtendedAddress ? 1 : 0);
         var len = payload.Length + 2 + pciStart;
@@ -117,11 +123,11 @@ internal static partial class FrameCodec
             }
         }
         return canfd
-            ? new CanClassicFrame(ep.TxId, data, ep.IsExtendedId)
-            : new CanFdFrame(ep.TxId, data, ep.IsExtendedId);
+            ? CanFrame.Classic(ep.TxId, data, ep.IsExtendedId)
+            : CanFrame.Fd(ep.TxId, data, ep.IsExtendedId);
     }
 
-    internal static unsafe ICanFrame BuildFF(in IsoTpEndpoint ep,
+    internal static unsafe CanFrame BuildFF(in IsoTpEndpoint ep,
         IBufferAllocator allocator,
         int totalLen,
         ReadOnlySpan<byte> firstChunk,
@@ -164,11 +170,11 @@ internal static partial class FrameCodec
         }
 
         return canfd
-            ? new CanClassicFrame(ep.TxId, data, ep.IsExtendedId)
-            : new CanFdFrame(ep.TxId, data, ep.IsExtendedId);
+            ? CanFrame.Classic(ep.TxId, data, ep.IsExtendedId)
+            : CanFrame.Fd(ep.TxId, data, ep.IsExtendedId);
     }
 
-    internal static unsafe ICanFrame BuildCF(in IsoTpEndpoint ep, IBufferAllocator allocator,
+    internal static unsafe CanFrame BuildCF(in IsoTpEndpoint ep, IBufferAllocator allocator,
         byte sn, ReadOnlySpan<byte> chunk, bool padding, bool canfd)
     {
         var pciStart = (ep.IsExtendedAddress ? 1 : 0);
@@ -195,11 +201,11 @@ internal static partial class FrameCodec
             }
         }
         return canfd
-            ? new CanClassicFrame(ep.TxId, data, ep.IsExtendedId, allocator.FrameNeedDispose)
-            : new CanFdFrame(ep.TxId, data, ep.IsExtendedId, allocator.FrameNeedDispose);
+            ? CanFrame.Classic(ep.TxId, data, ep.IsExtendedId, allocator.FrameNeedDispose)
+            : CanFrame.Fd(ep.TxId, data, ep.IsExtendedId, allocator.FrameNeedDispose);
     }
 
-    internal static unsafe ICanFrame BuildFC(in IsoTpEndpoint ep, IBufferAllocator allocator,
+    internal static unsafe CanFrame BuildFC(in IsoTpEndpoint ep, IBufferAllocator allocator,
         FlowStatus fs, byte bs, byte stmin, bool padding, bool canfd)
     {
         var pciStart = (ep.IsExtendedAddress ? 1 : 0);
@@ -223,8 +229,8 @@ internal static partial class FrameCodec
             }
         }
         return canfd
-            ? new CanClassicFrame(ep.TxId, data, ep.IsExtendedId, allocator.FrameNeedDispose)
-            : new CanFdFrame(ep.TxId, data, ep.IsExtendedId, allocator.FrameNeedDispose);
+            ? CanFrame.Classic(ep.TxId, data, ep.IsExtendedId, allocator.FrameNeedDispose)
+            : CanFrame.Fd(ep.TxId, data, ep.IsExtendedId, allocator.FrameNeedDispose);
     }
 
     internal static byte EncodeStmin(TimeSpan st)

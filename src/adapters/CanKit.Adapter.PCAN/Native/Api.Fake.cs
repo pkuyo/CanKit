@@ -6,6 +6,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using CanKit.Abstractions.API.Can;
+using CanKit.Abstractions.API.Can.Definitions;
 using CanKit.Adapter.PCAN.Native;
 using Microsoft.Win32.SafeHandles;
 
@@ -49,12 +51,9 @@ namespace Peak.Can.Basic.BackwardCompatibility
         public TPCANMsgFD(uint id, TPCANMessageType t, byte dlc, byte[] data)
         {
             ID = id; MSGTYPE = t; DLC = dlc; DATA = new byte[64];
-            if (data != null)
-            {
-                var len = CanKit.Core.Definitions.CanFdFrame.DlcToLen(dlc);
-                var copy = Math.Min(64, Math.Min(len, data.Length));
-                Array.Copy(data, 0, DATA, 0, copy);
-            }
+            var len = CanFrame.DlcToLen(dlc);
+            var copy = Math.Min(64, Math.Min(len, data.Length));
+            Array.Copy(data, 0, DATA, 0, copy);
         }
     }
 
@@ -466,10 +465,8 @@ namespace Peak.Can.Basic
                 byte dlc;
                 if ((f.Type & TPCANMessageType.PCAN_MESSAGE_FD) != 0)
                 {
-                    // FD: map length to dlc by helper (approximate)
                     var l = Math.Min(64, f.Data.Length);
-                    // Use CanKit helper
-                    dlc = (byte)CanKit.Core.Definitions.CanFdFrame.LenToDlc(l);
+                    dlc = CanFrame.LenToDlc(l);
                 }
                 else
                 {
@@ -486,7 +483,7 @@ namespace Peak.Can.Basic
                 fixed (byte* dst = msg.DATA)
                 {
                     Unsafe.CopyBlockUnaligned(dst, src,
-                        (uint)CanKit.Core.Definitions.CanFdFrame.DlcToLen(dlc));
+                        (uint)CanFrame.DlcToLen(dlc));
                 }
                 micros = f.TsUs;
                 return true;

@@ -1,12 +1,13 @@
 using CanKit.Adapter.PCAN.Definitions;
 using CanKit.Core;
-using CanKit.Core.Abstractions;
-using CanKit.Core.Attributes;
 using CanKit.Core.Endpoints;
 using CanKit.Core.Registry;
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using CanKit.Abstractions.API.Can;
+using CanKit.Abstractions.API.Common;
+using CanKit.Abstractions.Attributes;
 using CanKit.Core.Exceptions;
 using Peak.Can.Basic;
 using Peak.Can.Basic.BackwardCompatibility;

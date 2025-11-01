@@ -1,0 +1,21 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <OutputType>Library</OutputType>
+        <Platforms>AnyCPU</Platforms>
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+        <Configurations>Debug;Release;Fake</Configurations>
+        <Version>$(CanKitCoreVersion)</Version>
+        <Description>Core abstractions for CanKit: unified CAN bus API, endpoints, frames, filters, timing, and helpers.</Description>
+        <PackageTags>CAN;can bus;CANFD;Core;CanKit</PackageTags>
+        <AssemblyVersion>1.0.0.0</AssemblyVersion>
+        <FileVersion>$(CanKitCoreFileVersion)</FileVersion>
+        <Authors>Pkuyo</Authors>
+        <RepositoryUrl>https://github.com/pkuyo/CanKit</RepositoryUrl>
+    </PropertyGroup>
+
+    <ItemGroup Condition="'$(TargetFramework)'=='netstandard2.0'">
+        <PackageReference Include="System.Memory" Version="4.5.4" />
+        <PackageReference Include="System.Runtime.CompilerServices.Unsafe" Version="6.1.2" />
+        <PackageReference Include="System.Threading.Channels" Version="9.0.10" />
+    </ItemGroup>
+</Project>

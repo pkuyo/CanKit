@@ -1,11 +1,14 @@
 using System;
 using System.Linq;
+using CanKit.Abstractions.API.Can;
+using CanKit.Abstractions.API.Common;
+using CanKit.Abstractions.API.Common.Definitions;
 using CanKit.Adapter.ZLG.Definitions;
 using CanKit.Adapter.ZLG.Diagnostics;
-using CanKit.Core.Abstractions;
 using CanKit.Core.Definitions;
 using CanKit.Core.Diagnostics;
 using CanKit.Core.Exceptions;
+using CanKit.Core.Utils;
 
 namespace CanKit.Adapter.ZLG.Options;
 
@@ -75,6 +78,10 @@ public sealed class ZlgBusInitConfigurator
             case nameof(MergeReceive):
                 Options.MergeReceive = Convert.ToBoolean(value);
                 break;
+            case nameof(BusUsage):
+                Options.BusUsageEnabled = true;
+                Options.BusUsagePeriodTime = Convert.ToUInt32(value);
+                break;
             default:
                 CanKitLogger.LogWarning($"ZLG: invalid key: {key}");
                 break;
@@ -82,7 +89,7 @@ public sealed class ZlgBusInitConfigurator
         return this;
     }
 
-    public override ZlgBusInitConfigurator SetFilter(CanFilter filter)
+    public override ZlgBusInitConfigurator SetFilter(ICanFilter filter)
     {
         if ((Features & CanFeature.MaskFilter) != 0 && filter.FilterRules.Count(i => i is FilterRule.Mask) > 1)
         {
@@ -91,6 +98,15 @@ public sealed class ZlgBusInitConfigurator
         }
 
         return base.SetFilter(filter);
+    }
+
+    public ZlgBusInitConfigurator BusUsage(int periodMs = 1000)
+    {
+        CanKitErr.ThrowIfNotSupport(_feature, CanFeature.BusUsage);
+        if (periodMs < 0) throw new ArgumentOutOfRangeException(nameof(periodMs));
+        Options.BusUsageEnabled = true;
+        Options.BusUsagePeriodTime = (uint)periodMs;
+        return this;
     }
 
     public ZlgFeature ZlgFeatures => Options.ZlgFeatures;
@@ -115,4 +131,8 @@ public sealed class ZlgBusRtConfigurator
     public bool? MergeReceive => Options.MergeReceive;
 
     public ZlgFeature ZlgFeatures => Options.ZlgFeatures;
+
+    public bool BusUsageEnabled => Options.BusUsageEnabled;
+
+    public uint BusUsagePeriodTime => Options.BusUsagePeriodTime;
 }

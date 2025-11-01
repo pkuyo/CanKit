@@ -1,9 +1,10 @@
 using System;
 using System.Collections.Generic;
+using CanKit.Abstractions.API.Can;
+using CanKit.Abstractions.API.Common;
+using CanKit.Abstractions.Attributes;
 using CanKit.Adapter.Virtual.Definitions;
 using CanKit.Core;
-using CanKit.Core.Abstractions;
-using CanKit.Core.Attributes;
 using CanKit.Core.Definitions;
 using CanKit.Core.Endpoints;
 using CanKit.Core.Exceptions;

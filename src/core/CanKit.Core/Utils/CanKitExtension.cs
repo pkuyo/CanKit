@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using CanKit.Abstractions.API.Can;
+using CanKit.Abstractions.API.Common;
+using CanKit.Abstractions.API.Common.Definitions;
 using CanKit.Core.Definitions;
 
 namespace CanKit.Core.Utils;
@@ -8,7 +11,7 @@ namespace CanKit.Core.Utils;
 public static class CanKitExtension
 {
     /// <summary>
-    /// 获取错误帧原始数据区（来自 ICanFrame.Data），为空则返回 Empty。
+    /// 获取错误帧原始数据区（来自 CanFrame.Data），为空则返回 Empty。
     /// </summary>
     public static ReadOnlySpan<byte> RawData(this ICanErrorInfo e)
         => (e?.Frame) is { } f ? f.Data.Span : ReadOnlySpan<byte>.Empty;

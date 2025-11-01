@@ -1,19 +1,22 @@
 using System.Collections.Generic;
-using CanKit.Core.Abstractions;
+using CanKit.Abstractions.API.Can;
+using CanKit.Abstractions.API.Can.Definitions;
+using CanKit.Abstractions.API.Common;
+using CanKit.Abstractions.API.Common.Definitions;
 using CanKit.Core.Definitions;
 
 namespace CanKit.Adapter.Virtual;
 
 internal sealed class VirtualTransceiver : ITransceiver
 {
-    public int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, IEnumerable<ICanFrame> frames)
+    public int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, IEnumerable<CanFrame> frames)
     {
         if (bus is not VirtualBus vBus) return 0;
         int n = 0;
         foreach (var f in frames)
         {
             // validate frame kind vs protocol mode
-            if (f is CanFdFrame && vBus.Options.ProtocolMode != CanProtocolMode.CanFd)
+            if (f.FrameKind is CanFrameType.CanFd && vBus.Options.ProtocolMode != CanProtocolMode.CanFd)
                 continue;
 
             vBus.Hub.Broadcast(vBus, f);
@@ -21,14 +24,14 @@ internal sealed class VirtualTransceiver : ITransceiver
         }
         return n;
     }
-    public int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, ReadOnlySpan<ICanFrame> frames)
+    public int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, ReadOnlySpan<CanFrame> frames)
     {
         if (bus is not VirtualBus vBus) return 0;
         int n = 0;
         foreach (var f in frames)
         {
             // validate frame kind vs protocol mode
-            if (f is CanFdFrame && vBus.Options.ProtocolMode != CanProtocolMode.CanFd)
+            if (f.FrameKind is CanFrameType.CanFd && vBus.Options.ProtocolMode != CanProtocolMode.CanFd)
                 continue;
 
             vBus.Hub.Broadcast(vBus, f);
@@ -37,11 +40,11 @@ internal sealed class VirtualTransceiver : ITransceiver
         return n;
     }
 
-    public int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, in ICanFrame frame)
+    public int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, in CanFrame frame)
     {
         if (bus is not VirtualBus vBus) return 0;
         // validate frame kind vs protocol mode
-        if (frame is CanFdFrame && vBus.Options.ProtocolMode != CanProtocolMode.CanFd)
+        if (frame.FrameKind is CanFrameType.CanFd && vBus.Options.ProtocolMode != CanProtocolMode.CanFd)
             return 0;
 
         vBus.Hub.Broadcast(vBus, frame);

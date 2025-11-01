@@ -20,9 +20,9 @@ internal sealed class Deadline(TimeSpan timeOut, bool actived = false)
 
     public void SetActive(bool newActive)
     {
-        if(newActive && !_stopwatch.IsRunning)
+        if (newActive && !_stopwatch.IsRunning)
             _stopwatch.Start();
-        else if(!newActive && _stopwatch.IsRunning)
+        else if (!newActive && _stopwatch.IsRunning)
             _stopwatch.Stop();
     }
 }

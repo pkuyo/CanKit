@@ -1,10 +1,13 @@
 using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using CanKit.Abstractions.API.Can;
+using CanKit.Abstractions.API.Can.Definitions;
+using CanKit.Abstractions.API.Common;
+using CanKit.Abstractions.API.Common.Definitions;
 using CanKit.Adapter.SocketCAN.Native;
 using CanKit.Adapter.SocketCAN.Definitions;
 using CanKit.Adapter.SocketCAN.Utils;
-using CanKit.Core.Abstractions;
 using CanKit.Core.Definitions;
 using CanKit.Core.Exceptions;
 
@@ -14,7 +17,7 @@ namespace CanKit.Adapter.SocketCAN.Transceivers;
 
 public sealed class SocketCanFdTransceiver : ITransceiver
 {
-    public int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, IEnumerable<ICanFrame> frames)
+    public int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, IEnumerable<CanFrame> frames)
     {
         var ch = (SocketCanBus)bus;
         var totalSent = 0;
@@ -47,15 +50,15 @@ public sealed class SocketCanFdTransceiver : ITransceiver
                     if (sent != Libc.BATCH_COUNT)
                         break;
                 }
-                if (f is CanFdFrame fdf)
+                if (f.FrameKind is CanFrameType.CanFd)
                 {
-                    fdBuf[index] = fdf.ToCanFrame();
+                    fdBuf[index] = f.ToCanFdFrame();
                     iov[index].iov_base = &fdBuf[index];
                     iov[index].iov_len = (UIntPtr)sizeFd;
                 }
-                else if (f is CanClassicFrame ccf)
+                else if (f.FrameKind is CanFrameType.Can20)
                 {
-                    cfBuf[index] = ccf.ToCanFrame();
+                    cfBuf[index] = f.ToCanFrame();
                     iov[index].iov_base = &cfBuf[index];
                     iov[index].iov_len = (UIntPtr)sizeClassic;
                 }
@@ -95,7 +98,7 @@ public sealed class SocketCanFdTransceiver : ITransceiver
         }
     }
 
-    public int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, ReadOnlySpan<ICanFrame> frames)
+    public int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, ReadOnlySpan<CanFrame> frames)
     {
         var ch = (SocketCanBus)bus;
         var totalSent = 0;
@@ -128,15 +131,15 @@ public sealed class SocketCanFdTransceiver : ITransceiver
                     if (sent != Libc.BATCH_COUNT)
                         break;
                 }
-                if (f is CanFdFrame fdf)
+                if (f.FrameKind is CanFrameType.CanFd)
                 {
-                    fdBuf[index] = fdf.ToCanFrame();
+                    fdBuf[index] = f.ToCanFdFrame();
                     iov[index].iov_base = &fdBuf[index];
                     iov[index].iov_len = (UIntPtr)sizeFd;
                 }
-                else if (f is CanClassicFrame ccf)
+                else if (f.FrameKind is CanFrameType.Can20)
                 {
-                    cfBuf[index] = ccf.ToCanFrame();
+                    cfBuf[index] = f.ToCanFrame();
                     iov[index].iov_base = &cfBuf[index];
                     iov[index].iov_len = (UIntPtr)sizeClassic;
                 }
@@ -176,7 +179,7 @@ public sealed class SocketCanFdTransceiver : ITransceiver
         }
     }
 
-    public unsafe int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, in ICanFrame frame)
+    public unsafe int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, in CanFrame frame)
     {
         var ch = (SocketCanBus)bus;
         Libc.can_frame* cfBuf = stackalloc Libc.can_frame[1];
@@ -185,15 +188,15 @@ public sealed class SocketCanFdTransceiver : ITransceiver
         Libc.mmsghdr* msgs = stackalloc Libc.mmsghdr[1];
         var sizeClassic = Marshal.SizeOf<Libc.can_frame>();
         var sizeFd = Marshal.SizeOf<Libc.canfd_frame>();
-        if (frame is CanFdFrame fdf)
+        if (frame.FrameKind is CanFrameType.CanFd)
         {
-            fdBuf[0] = fdf.ToCanFrame();
+            fdBuf[0] = frame.ToCanFdFrame();
             iov[0].iov_base = &fdBuf[0];
             iov[0].iov_len = (UIntPtr)sizeFd;
         }
-        else if (frame is CanClassicFrame ccf)
+        else if (frame.FrameKind is CanFrameType.Can20)
         {
-            cfBuf[0] = ccf.ToCanFrame();
+            cfBuf[0] = frame.ToCanFrame();
             iov[0].iov_base = &cfBuf[0];
             iov[0].iov_len = (UIntPtr)sizeClassic;
         }
@@ -358,9 +361,8 @@ public sealed class SocketCanFdTransceiver : ITransceiver
             var rawIdFd = (ext)
                 ? (buf->can_id & Libc.CAN_EFF_MASK)
                 : (buf->can_id & Libc.CAN_SFF_MASK);
-            acc.Add(new CanReceiveData(new CanFdFrame((int)rawIdFd, data, brs, esi, ext,
-                    bus.Options.BufferAllocator.FrameNeedDispose)
-            { IsErrorFrame = err })
+            acc.Add(new CanReceiveData(CanFrame.Fd((int)rawIdFd, data, brs, esi, ext,
+                bus.Options.BufferAllocator.FrameNeedDispose, err))
             {
                 ReceiveTimestamp = tsSpan,
                 IsEcho = (flag & Libc.MSG_CONFIRM) != 0
@@ -381,9 +383,8 @@ public sealed class SocketCanFdTransceiver : ITransceiver
             var rawIdC = (ext)
                 ? (cf->can_id & Libc.CAN_EFF_MASK)
                 : (cf->can_id & Libc.CAN_SFF_MASK);
-            acc.Add(new CanReceiveData(new CanClassicFrame((int)rawIdC, data2, ext, rtr,
-                bus.Options.BufferAllocator.FrameNeedDispose)
-            { IsErrorFrame = err })
+            acc.Add(new CanReceiveData(CanFrame.Classic((int)rawIdC, data2, ext, rtr,
+                bus.Options.BufferAllocator.FrameNeedDispose, err))
             {
                 ReceiveTimestamp = tsSpan,
                 IsEcho = (flag & Libc.MSG_CONFIRM) != 0

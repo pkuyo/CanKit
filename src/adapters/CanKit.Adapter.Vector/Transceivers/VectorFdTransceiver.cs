@@ -1,16 +1,19 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using CanKit.Abstractions.API.Can;
+using CanKit.Abstractions.API.Can.Definitions;
+using CanKit.Abstractions.API.Common;
+using CanKit.Abstractions.API.Common.Definitions;
 using CanKit.Adapter.Vector.Native;
 using CanKit.Adapter.Vector.Utils;
-using CanKit.Core.Abstractions;
 using CanKit.Core.Definitions;
 
 namespace CanKit.Adapter.Vector.Transceivers;
 
 public sealed class VectorFdTransceiver : IVectorTransceiver
 {
-    public unsafe int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, IEnumerable<ICanFrame> frames)
+    public unsafe int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, IEnumerable<CanFrame> frames)
     {
         if (bus is not VectorBus vectorBus)
             throw new InvalidOperationException("VectorFdTransceiver requires VectorBus.");
@@ -43,7 +46,7 @@ public sealed class VectorFdTransceiver : IVectorTransceiver
         return sent;
     }
 
-    public unsafe int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, ReadOnlySpan<ICanFrame> frames)
+    public unsafe int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, ReadOnlySpan<CanFrame> frames)
     {
         if (bus is not VectorBus vectorBus)
             throw new InvalidOperationException("VectorFdTransceiver requires VectorBus.");
@@ -76,13 +79,13 @@ public sealed class VectorFdTransceiver : IVectorTransceiver
         return sent;
     }
 
-    public int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, ICanFrame[] frames)
+    public int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, CanFrame[] frames)
         => Transmit(bus, frames.AsSpan());
 
-    public int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, ArraySegment<ICanFrame> frames)
+    public int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, ArraySegment<CanFrame> frames)
         => Transmit(bus, frames.AsSpan());
 
-    public unsafe int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, in ICanFrame frame)
+    public unsafe int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, in CanFrame frame)
     {
         if (bus is not VectorBus vectorBus)
             throw new InvalidOperationException("VectorFdTransceiver requires VectorBus.");
@@ -164,7 +167,7 @@ public sealed class VectorFdTransceiver : IVectorTransceiver
         var flags = msg.MsgFlags;
         var isFd = (flags & VxlApi.XL_CAN_RXMSG_FLAG_EDL) != 0;
 
-        var length = isFd ? CanFdFrame.DlcToLen(msg.Dlc) : Math.Min(msg.Dlc, (byte)8);
+        var length = isFd ? CanFrame.DlcToLen(msg.Dlc) : Math.Min(msg.Dlc, (byte)8);
         var payload = bus.Options.BufferAllocator.Rent(length);
 
         unsafe
@@ -178,12 +181,12 @@ public sealed class VectorFdTransceiver : IVectorTransceiver
 
         if (isFd)
         {
-            var frame = new CanFdFrame((int)(msg.CanId & 0x1FFFFFFF), payload,
+            var frame = CanFrame.Fd((int)(msg.CanId & 0x1FFFFFFF), payload,
                 (flags & VxlApi.XL_CAN_RXMSG_FLAG_BRS) != 0,
                 (flags & VxlApi.XL_CAN_RXMSG_FLAG_ESI) != 0,
                 isExtended,
-                ownMemory: bus.Options.BufferAllocator.FrameNeedDispose)
-            { IsErrorFrame = (flags & VxlApi.XL_CAN_RXMSG_FLAG_EF) != 0 };
+                bus.Options.BufferAllocator.FrameNeedDispose,
+                (flags & VxlApi.XL_CAN_RXMSG_FLAG_EF) != 0);
             return new CanReceiveData(frame)
             {
                 IsEcho = isEcho,
@@ -192,12 +195,10 @@ public sealed class VectorFdTransceiver : IVectorTransceiver
         }
         else
         {
-            var frame = new CanClassicFrame((int)(msg.CanId & 0x1FFFFFFF), payload)
-            {
-                IsExtendedFrame = isExtended,
-                IsRemoteFrame = (flags & VxlApi.XL_CAN_RXMSG_FLAG_RTR) != 0,
-                IsErrorFrame = (flags & VxlApi.XL_CAN_RXMSG_FLAG_EF) != 0
-            };
+            var frame = CanFrame.Classic((int)(msg.CanId & 0x1FFFFFFF), payload, isExtended,
+                (flags & VxlApi.XL_CAN_RXMSG_FLAG_RTR) != 0,
+                bus.Options.BufferAllocator.FrameNeedDispose,
+                (flags & VxlApi.XL_CAN_RXMSG_FLAG_EF) != 0);
             return new CanReceiveData(frame)
             {
                 IsEcho = isEcho,
@@ -231,12 +232,12 @@ public sealed class VectorFdTransceiver : IVectorTransceiver
             controllerStatus,
             CanProtocolViolationType.None,
             FrameErrorLocation.Unspecified,
+            CanTransceiverStatus.Unknown,
             DateTime.UtcNow,
             state.BusStatus,
             null,
             FrameDirection.Unknown,
             null,
-            CanTransceiverStatus.Unspecified,
             counters,
             null);
     }
@@ -258,18 +259,18 @@ public sealed class VectorFdTransceiver : IVectorTransceiver
             CanControllerStatus.Unknown,
             CanProtocolViolationType.Unknown,
             FrameErrorLocation.Unspecified,
+            CanTransceiverStatus.Unknown,
             DateTime.UtcNow,
             errorCode,
             timeSpan,
             isTx ? FrameDirection.Tx : FrameDirection.Rx,
             null,
-            CanTransceiverStatus.Unspecified,
             null,
             null);
     }
 
 
-    private static unsafe void BuildEvent(VectorBus bus, in ICanFrame frame, VxlApi.XLcanTxEvent* ev)
+    private static unsafe void BuildEvent(VectorBus bus, in CanFrame frame, VxlApi.XLcanTxEvent* ev)
     {
         ev->Tag = VxlApi.XL_CAN_EV_TAG_TX_MSG;
         ev->ChanIndex = (byte)bus.Options.ChannelIndex;
@@ -281,23 +282,23 @@ public sealed class VectorFdTransceiver : IVectorTransceiver
             msg.CanId |= VxlApi.XL_CAN_EXT_MSG_ID;
 
         uint flags = 0;
-        if (frame is CanFdFrame fd)
+        if (frame.FrameKind is CanFrameType.CanFd)
         {
             flags |= VxlApi.XL_CAN_TXMSG_FLAG_EDL;
-            if (fd.BitRateSwitch)
+            if (frame.BitRateSwitch)
                 flags |= VxlApi.XL_CAN_TXMSG_FLAG_BRS;
 
-            msg.Dlc = fd.Dlc;
-            CopyData(fd.Data.Span.Slice(0, CanFdFrame.DlcToLen(fd.Dlc)), ref msg, CanFdFrame.DlcToLen(fd.Dlc));
+            msg.Dlc = frame.Dlc;
+            CopyData(frame.Data.Span.Slice(0, frame.Len), ref msg, frame.Len);
         }
-        else if (frame is CanClassicFrame classic)
+        else if (frame.FrameKind is CanFrameType.CanXl)
         {
-            if (classic.IsRemoteFrame)
+            if (frame.IsRemoteFrame)
                 flags |= VxlApi.XL_CAN_TXMSG_FLAG_RTR;
 
-            var length = Math.Min(classic.Data.Length, 8);
+            var length = Math.Min(frame.Data.Length, 8);
             msg.Dlc = (byte)length;
-            CopyData(classic.Data.Span.Slice(0, length), ref msg, length);
+            CopyData(frame.Data.Span.Slice(0, length), ref msg, length);
         }
         else
         {

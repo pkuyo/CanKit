@@ -1,7 +1,10 @@
 using System;
 using System.Linq;
 using System.Threading.Tasks;
-using CanKit.Core.Abstractions;
+using CanKit.Abstractions.API.Can;
+using CanKit.Abstractions.API.Can.Definitions;
+using CanKit.Abstractions.API.Common;
+using CanKit.Abstractions.API.Common.Definitions;
 using CanKit.Core.Definitions;
 using CanKit.Tests.Utils;
 using FluentAssertions;
@@ -14,7 +17,7 @@ public class PeriodicTests : IClassFixture<TestCaseProvider>
     [Theory]
     [MemberData(nameof(Matrix.TestMatrix.CombinedPeriodicCount), MemberType = typeof(Matrix.TestMatrix))]
     public async Task Periodic_Send_Completes_Exact_Count_And_Stops(string epA, string epB, string endpoint, bool hasFd,
-        ICanFrame frame, TimeSpan period, int count)
+        CanFrame frame, TimeSpan period, int count)
     {
         ICanBus? rx = null;
         ICanBus? tx = null;
@@ -25,7 +28,7 @@ public class PeriodicTests : IClassFixture<TestCaseProvider>
 
             _ = hasFd;
             _ = endpoint;
-            if (frame is CanFdFrame)
+            if (frame.FrameKind is CanFrameType.CanFd)
             {
                 rx = TestHelpers.OpenFd(epA);
                 tx = TestHelpers.OpenFd(epB);

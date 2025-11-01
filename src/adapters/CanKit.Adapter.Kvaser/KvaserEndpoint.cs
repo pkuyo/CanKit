@@ -1,10 +1,11 @@
 using CanKit.Adapter.Kvaser.Definitions;
 using CanKit.Core;
-using CanKit.Core.Abstractions;
-using CanKit.Core.Attributes;
 using CanKit.Core.Endpoints;
 using System;
 using System.Collections.Generic;
+using CanKit.Abstractions.API.Can;
+using CanKit.Abstractions.API.Common;
+using CanKit.Abstractions.Attributes;
 using CanKit.Core.Diagnostics;
 using CanKit.Core.Registry;
 using CanKit.Adapter.Kvaser.Native;

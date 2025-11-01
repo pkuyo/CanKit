@@ -1,6 +1,9 @@
 ﻿using System;
+using CanKit.Abstractions.API.Can;
+using CanKit.Abstractions.API.Can.Definitions;
+using CanKit.Abstractions.API.Common;
+using CanKit.Abstractions.API.Common.Definitions;
 using CanKit.Adapter.ControlCAN.Diagnostics;
-using CanKit.Core.Abstractions;
 using CanKit.Core.Definitions;
 using CanKit.Core.Exceptions;
 using CcApi = CanKit.Adapter.ControlCAN.Native.ControlCAN;
@@ -11,13 +14,13 @@ public sealed class ControlCanPeriodicTx : IPeriodicTx
 {
     private ControlCanBus _bus;
     private readonly object _evtGate = new();
-    private CanClassicFrame _frame;
+    private CanFrame _frame;
     private ushort _index;
     private volatile int _remaining;
     private bool _stopped;
     private bool _retry;
 
-    public ControlCanPeriodicTx(ControlCanBus bus, ICanFrame frame, PeriodicTxOptions options)
+    public ControlCanPeriodicTx(ControlCanBus bus, CanFrame frame, PeriodicTxOptions options)
     {
         _bus = bus ?? throw new ArgumentNullException(nameof(bus));
 
@@ -29,10 +32,10 @@ public sealed class ControlCanPeriodicTx : IPeriodicTx
         }
 
         // Validate frame type vs channel
-        if (frame is CanFdFrame)
+        if (frame.FrameKind is not CanFrameType.Can20)
             throw new CanFeatureNotSupportedException(CanFeature.CanFd, bus.Options.Features);
 
-        _frame = (CanClassicFrame)frame;
+        _frame = frame;
         Period = options.Period <= TimeSpan.Zero ? TimeSpan.FromMilliseconds(1) : options.Period;
         RepeatCount = options.Repeat;
         _remaining = options.Repeat;
@@ -45,7 +48,7 @@ public sealed class ControlCanPeriodicTx : IPeriodicTx
         {
             try
             {
-                _ = _bus.Transmit(new[] { frame }.AsSpan(), 0);
+                _ = _bus.Transmit(frame);
             }
             catch
             {
@@ -75,7 +78,7 @@ public sealed class ControlCanPeriodicTx : IPeriodicTx
         {/*ignored*/}
     }
 
-    private unsafe void ApplyHardware(bool enable, CanClassicFrame frame, TimeSpan period)
+    private unsafe void ApplyHardware(bool enable, CanFrame frame, TimeSpan period)
     {
         var pObj = stackalloc CcApi.VCI_AUTO_SEND_OBJ[1];
         pObj->Enable = (byte)(enable ? 1U : 0U);
@@ -93,12 +96,17 @@ public sealed class ControlCanPeriodicTx : IPeriodicTx
         // entries on the channel, then apply the change.
         ApplyHardware(false, _frame, Period);
     }
-    public void Update(ICanFrame? frame = null, TimeSpan? period = null, int? repeatCount = null)
+    public void Update(CanFrame? frame = null, TimeSpan? period = null, int? repeatCount = null)
     {
         if (_stopped) throw new CanBusDisposedException();
-        if (frame is CanFdFrame)
-            throw new CanFeatureNotSupportedException(CanFeature.CanFd, _bus.Options.Features);
-        if (frame is not null) _frame = (CanClassicFrame)frame;
+        if (frame is not null)
+        {
+            if (frame.Value.FrameKind is not CanFrameType.Can20)
+            {
+                throw new CanFeatureNotSupportedException(CanFeature.CanFd, _bus.Options.Features);
+            }
+            _frame = frame.Value;
+        }
         if (period is not null) Period = period.Value <= TimeSpan.Zero ? TimeSpan.FromMilliseconds(1) : period.Value;
         if (repeatCount is not null)
         {

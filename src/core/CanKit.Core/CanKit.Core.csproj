@@ -5,7 +5,7 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <Configurations>Debug;Release;Fake</Configurations>
     <Version>$(CanKitCoreVersion)</Version>
-    <Description>Core abstractions and utilities for CanKit: unified CAN bus API, endpoints, frames, filters, timing, and helpers.</Description>
+    <Description>Core utilities for CanKit: unified CAN bus API, endpoints, frames, filters, timing, and helpers.</Description>
     <PackageTags>CAN;can bus;CANFD;Core;CanKit</PackageTags>
     <AssemblyVersion>1.0.0.0</AssemblyVersion>
     <FileVersion>$(CanKitCoreFileVersion)</FileVersion>
@@ -26,6 +26,14 @@
     <PackageReference Include="System.Threading.Channels" Version="9.0.10" />
   </ItemGroup>
 
+
+    <ItemGroup Condition="'$(UseLocalProjectReferences)'=='true'">
+        <ProjectReference Include="..\CanKit.Abstractions\CanKit.Abstractions.csproj"/>
+    </ItemGroup>
+
+    <ItemGroup Condition="'$(UseLocalProjectReferences)'!='true'">
+        <PackageReference Include="CanKit.Abstractions" Version="$(CanKitCoreVersion)"/>
+    </ItemGroup>
     
   <ItemGroup>
     <None Include="buildTransitive\**\*.*" Pack="true" PackagePath="buildTransitive\" />

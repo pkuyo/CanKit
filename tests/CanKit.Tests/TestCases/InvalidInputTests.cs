@@ -1,4 +1,6 @@
 using System;
+using CanKit.Abstractions.API.Can;
+using CanKit.Abstractions.API.Can.Definitions;
 using CanKit.Core.Definitions;
 using FluentAssertions;
 using Xunit;
@@ -12,7 +14,7 @@ public class InvalidInputTests : IClassFixture<TestCaseProvider>
     {
         Action act = () =>
         {
-            var _ = new CanClassicFrame(0x123, new byte[9]);
+            var _ = CanFrame.Classic(0x123, new byte[9]);
         };
         act.Should().Throw<ArgumentOutOfRangeException>();
     }
@@ -22,7 +24,7 @@ public class InvalidInputTests : IClassFixture<TestCaseProvider>
     {
         Action act = () =>
         {
-            var _ = new CanFdFrame(0x18DAF123, new byte[65], true, false, true);
+            var _ = CanFrame.Fd(0x18DAF123, new byte[65], true, false, true);
         };
         act.Should().Throw<ArgumentOutOfRangeException>();
     }
@@ -32,7 +34,7 @@ public class InvalidInputTests : IClassFixture<TestCaseProvider>
     {
         Action act = () =>
         {
-            var _ = new CanClassicFrame(-1, ReadOnlyMemory<byte>.Empty, false);
+            var _ = CanFrame.Classic(-1, ReadOnlyMemory<byte>.Empty, false);
         };
         act.Should().Throw<ArgumentOutOfRangeException>();
     }

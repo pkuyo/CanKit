@@ -1,5 +1,7 @@
 using System;
 using System.Linq;
+using CanKit.Abstractions.API.Common;
+using CanKit.Abstractions.API.Common.Definitions;
 using CanKit.Core;
 using CanKit.Core.Definitions;
 using CanKit.Core.Endpoints;

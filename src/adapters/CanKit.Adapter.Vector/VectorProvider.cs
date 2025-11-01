@@ -1,9 +1,12 @@
 using CanKit.Adapter.Vector.Definitions;
 using CanKit.Adapter.Vector.Utils;
-using CanKit.Core.Abstractions;
 using CanKit.Core.Definitions;
 using CanKit.Core.Registry;
 using System.Linq;
+using CanKit.Abstractions.API.Common;
+using CanKit.Abstractions.API.Common.Definitions;
+using CanKit.Abstractions.SPI.Factories;
+using CanKit.Abstractions.SPI.Providers;
 using CanKit.Adapter.Vector.Native;
 
 namespace CanKit.Adapter.Vector;

@@ -2,10 +2,13 @@ using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
+using CanKit.Abstractions.API.Can;
+using CanKit.Abstractions.API.Can.Definitions;
+using CanKit.Abstractions.API.Common;
+using CanKit.Abstractions.API.Common.Definitions;
 using CanKit.Adapter.ZLG.Definitions;
 using CanKit.Adapter.ZLG.Native;
 using CanKit.Adapter.ZLG.Utils;
-using CanKit.Core.Abstractions;
 using CanKit.Core.Definitions;
 
 namespace CanKit.Adapter.ZLG.Transceivers
@@ -13,7 +16,7 @@ namespace CanKit.Adapter.ZLG.Transceivers
     public sealed class ZlgCanClassicTransceiver : ITransceiver
     {
         public int Transmit(ICanBus<IBusRTOptionsConfigurator> bus,
-            IEnumerable<ICanFrame> frames)
+            IEnumerable<CanFrame> frames)
         {
             unsafe
             {
@@ -31,11 +34,11 @@ namespace CanKit.Adapter.ZLG.Transceivers
                             return sent;
                         sent += ZLGCAN.BATCH_COUNT;
                     }
-                    if (f is not CanClassicFrame cf)
+                    if (f.FrameKind is not CanFrameType.Can20)
                     {
                         throw new InvalidOperationException("Zlg classic transceiver requires CanClassicFrame.");
                     }
-                    cf.ToTransmitData(echo, transmitData, index);
+                    f.ToTransmitData(echo, transmitData, index);
                     index++;
                 }
                 return (int)(sent + ZLGCAN.ZCAN_Transmit(((ZlgCanBus)bus).Handle, transmitData, (uint)index));
@@ -44,7 +47,7 @@ namespace CanKit.Adapter.ZLG.Transceivers
         }
 
         public int Transmit(ICanBus<IBusRTOptionsConfigurator> bus,
-            ReadOnlySpan<ICanFrame> frames)
+            ReadOnlySpan<CanFrame> frames)
         {
             unsafe
             {
@@ -62,11 +65,11 @@ namespace CanKit.Adapter.ZLG.Transceivers
                             return sent;
                         sent += ZLGCAN.BATCH_COUNT;
                     }
-                    if (f is not CanClassicFrame cf)
+                    if (f.FrameKind is not CanFrameType.Can20)
                     {
                         throw new InvalidOperationException("Zlg classic transceiver requires CanClassicFrame.");
                     }
-                    cf.ToTransmitData(echo, transmitData, index);
+                    f.ToTransmitData(echo, transmitData, index);
                     index++;
                 }
                 return (int)(sent + ZLGCAN.ZCAN_Transmit(((ZlgCanBus)bus).Handle, transmitData, (uint)index));
@@ -75,18 +78,18 @@ namespace CanKit.Adapter.ZLG.Transceivers
         }
 
         public int Transmit(ICanBus<IBusRTOptionsConfigurator> bus,
-            in ICanFrame frame)
+            in CanFrame frame)
         {
             unsafe
             {
                 var transmitData = stackalloc ZLGCAN.ZCAN_Transmit_Data[1];
                 var echo = bus.Options.WorkMode == ChannelWorkMode.Echo;
 
-                if (frame is not CanClassicFrame cf)
+                if (frame.FrameKind is not CanFrameType.Can20)
                 {
                     throw new InvalidOperationException("Zlg classic transceiver requires CanClassicFrame.");
                 }
-                cf.ToTransmitData(echo, transmitData, 0);
+                frame.ToTransmitData(echo, transmitData, 0);
 
                 return (int)ZLGCAN.ZCAN_Transmit(((ZlgCanBus)bus).Handle, transmitData, 1);
             }

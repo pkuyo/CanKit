@@ -5,6 +5,10 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using CanKit.Abstractions.API.Can;
+using CanKit.Abstractions.API.Can.Definitions;
+using CanKit.Abstractions.API.Common;
+using CanKit.Abstractions.API.Common.Definitions;
 using CanKit.Core;
 using CanKit.Core.Definitions;
 
@@ -95,7 +99,7 @@ namespace CanKit.Sample.Benchmark
             var id = 0x100;
             var payload = new byte[Math.Max(0, Math.Min(len, fd ? 64 : 8))];
             for (int i = 0; i < payload.Length; i++) payload[i] = (byte)(i & 0xFF);
-            var frame = fd ? (ICanFrame)new CanFdFrame(id, payload, BRS: brs, ESI: false) : new CanClassicFrame(id, payload);
+            var frame = fd ? CanFrame.Fd(id, payload, BRS: brs, ESI: false) : CanFrame.Classic(id, payload);
 
 
             const int batch = 64;
@@ -111,7 +115,7 @@ namespace CanKit.Sample.Benchmark
                 {
                     Thread.Sleep(1);
                 }
-                var list = new ICanFrame[take];
+                var list = new CanFrame[take];
                 for (int i = 0; i < take; i++) list[i] = frame;
                 take = await tx.TransmitAsync(list, -1);
                 sent += take;

@@ -1,10 +1,14 @@
 using System.Diagnostics;
+using CanKit.Abstractions.API.Can;
+using CanKit.Abstractions.API.Can.Definitions;
+using CanKit.Abstractions.API.Common;
+using CanKit.Abstractions.API.Common.Definitions;
 using CanKit.Core;
-using CanKit.Core.Abstractions;
 using CanKit.Core.Definitions;
 using CanKit.Core.Utils;
 using CanKit.Protocol.IsoTp.Defines;
 using CanKit.Protocol.IsoTp.Diagnostics;
+using CanKit.Protocol.IsoTp.Options;
 using CanKit.Protocol.IsoTp.Utils;
 
 namespace CanKit.Protocol.IsoTp.Core;
@@ -33,7 +37,7 @@ internal sealed class IsoTpScheduler
 
     public IsoTpScheduler(ICanBus bus, IsoTpOptions options)
     {
-        if(options.QueuedCanBusOptions is not null)
+        if (options.QueuedCanBusOptions is not null)
             _bus = bus.WithQueuedTx(options.QueuedCanBusOptions);
         else
             _bus = bus;
@@ -65,6 +69,8 @@ internal sealed class IsoTpScheduler
         TxOperationTransmitted += OnOperationTransmitted;
         TxOperationExceptionOccurred += OnTxExceptionOccurred;
 
+        //TODO:
+        await Task.Delay(1);
 
         while (!ct.IsCancellationRequested)
         {
@@ -88,7 +94,7 @@ internal sealed class IsoTpScheduler
                 if (!ch.IsReadyToSendData(now, _opt.GlobalBusGuard)) continue;
                 if (!ch.TryPeekData(out var f))
                     continue;
-                var score = Score(ch, f!, now);
+                var score = Score(ch, f, now);
                 _candidates.Add((score, ch));
             }
 
@@ -115,7 +121,7 @@ internal sealed class IsoTpScheduler
         return elapsed >= _opt.GlobalBusGuard.Value;
     }
 
-    private static double Score(IsoTpChannelCore ch, ICanFrame f, long nowTicks)
+    private static double Score(IsoTpChannelCore ch, CanFrame f, long nowTicks)
     {
         // TODO:优先级计算
         return nowTicks * 1e-12;

@@ -4,6 +4,8 @@ using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using CanKit.Abstractions.API.Common;
+using CanKit.Abstractions.API.Common.Definitions;
 using CanKit.Core;
 using CanKit.Core.Definitions;
 
@@ -72,7 +74,7 @@ namespace CanKit.Sample.Sniffer
             sb.Append(f.IsExtendedFrame ? "ext" : "std");
             sb.Append(" id=0x").Append(f.ID.ToString("X"));
             sb.Append(" dlc=").Append(f.Dlc);
-            if (f is CanFdFrame fd && fd.BitRateSwitch) sb.Append(" brs");
+            if (f.BitRateSwitch) sb.Append(" brs");
             sb.Append(" data=");
             var span = f.Data.Span;
             for (int i = 0; i < span.Length; i++) sb.Append(span[i].ToString("X2")).Append(' ');

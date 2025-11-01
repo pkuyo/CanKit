@@ -1,7 +1,8 @@
+using CanKit.Abstractions.API.Can;
+using CanKit.Abstractions.API.Common;
 using CanKit.Adapter.ControlCAN.Definitions;
 using CanKit.Adapter.ControlCAN.Native;
 using CanKit.Adapter.ControlCAN.Options;
-using CanKit.Core.Abstractions;
 using CanKit.Core.Exceptions;
 using CcApi = CanKit.Adapter.ControlCAN.Native.ControlCAN;
 

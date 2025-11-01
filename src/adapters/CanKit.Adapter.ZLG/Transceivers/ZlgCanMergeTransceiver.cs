@@ -3,9 +3,12 @@ using System.Buffers;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using CanKit.Abstractions.API.Can;
+using CanKit.Abstractions.API.Can.Definitions;
+using CanKit.Abstractions.API.Common;
+using CanKit.Abstractions.API.Common.Definitions;
 using CanKit.Adapter.ZLG.Native;
 using CanKit.Adapter.ZLG.Utils;
-using CanKit.Core.Abstractions;
 using CanKit.Core.Definitions;
 
 namespace CanKit.Adapter.ZLG.Transceivers;
@@ -13,7 +16,7 @@ namespace CanKit.Adapter.ZLG.Transceivers;
 public class ZlgCanMergeTransceiver : ITransceiver
 {
     public unsafe int Transmit(ICanBus<IBusRTOptionsConfigurator> bus,
-        IEnumerable<ICanFrame> frames)
+        IEnumerable<CanFrame> frames)
     {
         var canBus = (ZlgCanBus)bus;
         var buf = stackalloc ZLGCAN.ZCANDataObj[ZLGCAN.BATCH_COUNT];
@@ -33,7 +36,7 @@ public class ZlgCanMergeTransceiver : ITransceiver
     }
 
     public unsafe int Transmit(ICanBus<IBusRTOptionsConfigurator> bus,
-        ReadOnlySpan<ICanFrame> frames)
+        ReadOnlySpan<CanFrame> frames)
     {
         var canBus = (ZlgCanBus)bus;
         var buf = stackalloc ZLGCAN.ZCANDataObj[ZLGCAN.BATCH_COUNT];
@@ -52,7 +55,7 @@ public class ZlgCanMergeTransceiver : ITransceiver
         return sent + (int)ZLGCAN.ZCAN_TransmitData(canBus.Handle.DeviceHandle, buf, (uint)index);
     }
 
-    public unsafe int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, in ICanFrame frame)
+    public unsafe int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, in CanFrame frame)
     {
         var canBus = (ZlgCanBus)bus;
         var buf = stackalloc ZLGCAN.ZCANDataObj[1];

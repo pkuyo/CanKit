@@ -2,11 +2,18 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
-using CanKit.Core.Abstractions;
+using CanKit.Abstractions.API.Can;
+using CanKit.Abstractions.API.Can.Definitions;
+using CanKit.Abstractions.API.Common;
+using CanKit.Abstractions.API.Common.Definitions;
+using CanKit.Abstractions.API.Transport;
+using CanKit.Abstractions.SPI;
+using CanKit.Abstractions.SPI.Common;
 using CanKit.Core.Definitions;
 using CanKit.Core.Utils;
 using CanKit.Protocol.IsoTp.Defines;
 using CanKit.Protocol.IsoTp.Diagnostics;
+using CanKit.Protocol.IsoTp.Options;
 using CanKit.Protocol.IsoTp.Utils;
 
 namespace CanKit.Protocol.IsoTp.Core;
@@ -44,7 +51,7 @@ internal sealed class IsoTpChannelCore : IDisposable
             ExtendAddress = extendAddress;
         }
 
-        public void Enqueue(ICanFrame canFrame, PciType type)
+        public void Enqueue(CanFrame canFrame, PciType type)
             => _pendingFrames.Enqueue(new TxFrame(canFrame, type));
 
         public TxFrame Dequeue() => _pendingFrames.Dequeue();
@@ -76,7 +83,7 @@ internal sealed class IsoTpChannelCore : IDisposable
 
     }
 
-    internal readonly record struct TxFrame(ICanFrame Frame, PciType Type);
+    internal readonly record struct TxFrame(CanFrame Frame, PciType Type);
 
     private TxState _tx = TxState.Idle;
     private RxState _rx = RxState.Idle;
@@ -130,7 +137,7 @@ internal sealed class IsoTpChannelCore : IDisposable
                tx.ExtendAddress == Endpoint.TxAddress;
     }
 
-    private void UpdateTxDeadline(TxOperation operation, ICanFrame frame, PciType type)
+    private void UpdateTxDeadline(TxOperation operation, in CanFrame frame, PciType type)
     {
         switch (type)
         {
@@ -148,7 +155,7 @@ internal sealed class IsoTpChannelCore : IDisposable
         }
     }
 
-    private void UpdateTxState(TxOperation operation, ICanFrame frame, PciType type)
+    private void UpdateTxState(TxOperation operation, in CanFrame frame, PciType type)
     {
         switch (type)
         {
@@ -164,7 +171,7 @@ internal sealed class IsoTpChannelCore : IDisposable
         }
     }
 
-    private void UpdateRxDeadline(ICanFrame frame, Pci pci)
+    private void UpdateRxDeadline(in CanFrame frame, Pci pci)
     {
         switch (pci.Type)
         {
@@ -205,17 +212,18 @@ internal sealed class IsoTpChannelCore : IDisposable
 
     public void OnTx(TxOperation operation, in TxFrame frame)
     {
-       if(operation.Empty)
-       {
-           operation.Tcs.SetResult(true);
-           operation.Dispose();
-           if (frame.Type is not PciType.FC)
-           {
-               Debug.Assert(TryPeekOperation(out var opera) && opera == operation);
-               _pendingOperations.TryDequeue(out _);
-           }
-       }
-       UpdateTxDeadline(operation, frame.Frame, frame.Type);
+        if (operation.Empty)
+        {
+            operation.Tcs.SetResult(true);
+            operation.Dispose();
+            if (frame.Type is not PciType.FC)
+            {
+                Debug.Assert(TryPeekOperation(out var opera) && opera == operation);
+                _pendingOperations.TryDequeue(out _);
+            }
+        }
+
+        UpdateTxDeadline(operation, frame.Frame, frame.Type);
     }
 
     public void OnTxFailed(TxOperation operation, in TxFrame frame, Exception exception)
@@ -223,7 +231,7 @@ internal sealed class IsoTpChannelCore : IDisposable
         operation.Tcs.SetException(exception);
         operation.Dispose();
 
-        if(TryPeekOperation(out var opera) && opera == operation)
+        if (TryPeekOperation(out var opera) && opera == operation)
         {
             _pendingOperations.TryDequeue(out _);
         }
@@ -337,11 +345,11 @@ internal sealed class IsoTpChannelCore : IDisposable
 
     public bool TryPeekOperation(out TxOperation operation)
     {
-        return _pendingOperations.TryPeek(out operation);
+        return _pendingOperations.TryPeek(out operation!);
     }
-    public bool TryPeekData(out ICanFrame? frame)
+    public bool TryPeekData(out CanFrame frame)
     {
-        frame = null;
+        frame = default;
         var re = false;
         if (TryPeekOperation(out var txOperation))
         {

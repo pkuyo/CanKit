@@ -1,6 +1,7 @@
 using System;
+using CanKit.Abstractions.SPI;
+using CanKit.Abstractions.SPI.Common;
 using CanKit.Adapter.ControlCAN.Options;
-using CanKit.Core.Abstractions;
 using CanKit.Core.Exceptions;
 using CanKit.Core.Registry;
 

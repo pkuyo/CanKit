@@ -1,16 +1,19 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using CanKit.Abstractions.API.Can;
+using CanKit.Abstractions.API.Can.Definitions;
+using CanKit.Abstractions.API.Common;
+using CanKit.Abstractions.API.Common.Definitions;
 using CanKit.Adapter.Vector.Native;
 using CanKit.Adapter.Vector.Utils;
-using CanKit.Core.Abstractions;
 using CanKit.Core.Definitions;
 
 namespace CanKit.Adapter.Vector.Transceivers;
 
 public sealed class VectorClassicTransceiver : IVectorTransceiver
 {
-    public unsafe int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, IEnumerable<ICanFrame> frames)
+    public unsafe int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, IEnumerable<CanFrame> frames)
     {
         if (bus is not VectorBus vectorBus)
             throw new InvalidOperationException("VectorClassicTransceiver requires VectorBus.");
@@ -21,9 +24,9 @@ public sealed class VectorClassicTransceiver : IVectorTransceiver
         int sent = 0;
         foreach (var frame in frames)
         {
-            if (frame is not CanClassicFrame classic)
+            if (frame.FrameKind is not CanFrameType.Can20)
                 throw new InvalidOperationException("Vector classic transceiver requires CanClassicFrame.");
-            BuildEvent(vectorBus, classic, &events[index++]);
+            BuildEvent(vectorBus, frame, &events[index++]);
             if (index == VxlApi.TX_BATCH_COUNT)
             {
                 count = VxlApi.TX_BATCH_COUNT;
@@ -45,7 +48,7 @@ public sealed class VectorClassicTransceiver : IVectorTransceiver
         return sent;
     }
 
-    public unsafe int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, ReadOnlySpan<ICanFrame> frames)
+    public unsafe int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, ReadOnlySpan<CanFrame> frames)
     {
         if (bus is not VectorBus vectorBus)
             throw new InvalidOperationException("VectorClassicTransceiver requires VectorBus.");
@@ -56,9 +59,9 @@ public sealed class VectorClassicTransceiver : IVectorTransceiver
         int sent = 0;
         foreach (var frame in frames)
         {
-            if (frame is not CanClassicFrame classic)
+            if (frame.FrameKind is not CanFrameType.Can20)
                 throw new InvalidOperationException("Vector classic transceiver requires CanClassicFrame.");
-            BuildEvent(vectorBus, classic, &events[index++]);
+            BuildEvent(vectorBus, frame, &events[index++]);
             if (index == VxlApi.TX_BATCH_COUNT)
             {
                 count = VxlApi.TX_BATCH_COUNT;
@@ -80,20 +83,20 @@ public sealed class VectorClassicTransceiver : IVectorTransceiver
         return sent;
     }
 
-    public int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, ICanFrame[] frames)
+    public int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, CanFrame[] frames)
         => Transmit(bus, frames.AsSpan());
 
-    public int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, ArraySegment<ICanFrame> frames)
+    public int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, ArraySegment<CanFrame> frames)
         => Transmit(bus, frames.AsSpan());
 
-    public unsafe int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, in ICanFrame frame)
+    public unsafe int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, in CanFrame frame)
     {
         if (bus is not VectorBus vectorBus)
             throw new InvalidOperationException("VectorClassicTransceiver requires VectorBus.");
-        if (frame is not CanClassicFrame classic)
+        if (frame.FrameKind is not CanFrameType.Can20)
             throw new InvalidOperationException("Vector classic transceiver requires CanClassicFrame.");
         var pEv = stackalloc VxlApi.XLevent[1];
-        BuildEvent(vectorBus, classic, pEv);
+        BuildEvent(vectorBus, frame, pEv);
         uint count = 1;
         VectorErr.ThrowIfError(VxlApi.xlCanTransmit(vectorBus.Handle, vectorBus.AccessMask, ref count, pEv), "xlCanTransmit");
         return (int)count;
@@ -178,12 +181,12 @@ public sealed class VectorClassicTransceiver : IVectorTransceiver
             controllerStatus,
             CanProtocolViolationType.None,
             FrameErrorLocation.Unspecified,
+            CanTransceiverStatus.Unknown,
             DateTime.UtcNow,
             state.BusStatus,
             null,
             FrameDirection.Unknown,
             null,
-            CanTransceiverStatus.Unspecified,
             counters,
             null);
     }
@@ -206,10 +209,9 @@ public sealed class VectorClassicTransceiver : IVectorTransceiver
 
         if (isError)
         {
-            var errFrame = new CanClassicFrame((int)(msg.Id & (~VxlApi.XL_CAN_EXT_MSG_ID)), payload, isExtended,
+            var errFrame = CanFrame.Classic((int)(msg.Id & (~VxlApi.XL_CAN_EXT_MSG_ID)), payload, isExtended,
                 isRtr,
-                bus.Options.BufferAllocator.FrameNeedDispose)
-            { IsErrorFrame = true };
+                bus.Options.BufferAllocator.FrameNeedDispose, true);
             FrameErrorType type = FrameErrorType.BusError;
             if ((msg.Flags & VxlApi.XL_CAN_RXMSG_FLAG_ARB_LOST) != 0)
                 type |= FrameErrorType.ArbitrationLost;
@@ -219,12 +221,12 @@ public sealed class VectorClassicTransceiver : IVectorTransceiver
                 CanControllerStatus.Unknown,
                 CanProtocolViolationType.Unknown,
                 FrameErrorLocation.Unspecified,
+                CanTransceiverStatus.Unknown,
                 DateTime.UtcNow,
                 msg.Flags,
                 timeSpan,
                 isEcho ? FrameDirection.Tx : FrameDirection.Rx,
                 null,
-                CanTransceiverStatus.Unspecified,
                 null,
                 errFrame);
 
@@ -236,7 +238,7 @@ public sealed class VectorClassicTransceiver : IVectorTransceiver
             return (null, null);
         }
 
-        var frame = new CanClassicFrame((int)(msg.Id & 0x1FFFFFFF), payload, isExtended,
+        var frame = CanFrame.Classic((int)(msg.Id & 0x1FFFFFFF), payload, isExtended,
                 isRtr, bus.Options.BufferAllocator.FrameNeedDispose);
         return (new CanReceiveData(frame)
         {
@@ -245,7 +247,7 @@ public sealed class VectorClassicTransceiver : IVectorTransceiver
 
         }, null);
     }
-    private static unsafe void BuildEvent(VectorBus bus, in CanClassicFrame frame, VxlApi.XLevent* ev)
+    private static unsafe void BuildEvent(VectorBus bus, in CanFrame frame, VxlApi.XLevent* ev)
     {
         ev->Tag = VxlApi.XL_EVENT_TAG_TRANSMIT_MSG;
         ev->ChanIndex = (byte)bus.Options.ChannelIndex;

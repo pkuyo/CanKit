@@ -1,4 +1,5 @@
-using CanKit.Core.Abstractions;
+using CanKit.Abstractions.API.Common;
+using CanKit.Abstractions.SPI.Providers;
 
 namespace CanKit.Core.Endpoints;
 

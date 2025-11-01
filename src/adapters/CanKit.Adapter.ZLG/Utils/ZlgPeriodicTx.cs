@@ -1,9 +1,12 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using CanKit.Abstractions.API.Can;
+using CanKit.Abstractions.API.Can.Definitions;
+using CanKit.Abstractions.API.Common;
+using CanKit.Abstractions.API.Common.Definitions;
 using CanKit.Adapter.ZLG.Diagnostics;
 using CanKit.Adapter.ZLG.Native;
-using CanKit.Core.Abstractions;
 using CanKit.Core.Definitions;
 using CanKit.Core.Exceptions;
 
@@ -13,12 +16,12 @@ public sealed class ZlgPeriodicTx : IPeriodicTx
 {
     private readonly ZlgCanBus _bus;
     private readonly object _evtGate = new();
-    private ICanFrame _frame;
+    private CanFrame _frame;
     private ushort _index;
     private volatile int _remaining;
     private bool _stopped;
 
-    public ZlgPeriodicTx(ZlgCanBus bus, ICanFrame frame, PeriodicTxOptions options)
+    public ZlgPeriodicTx(ZlgCanBus bus, CanFrame frame, PeriodicTxOptions options)
     {
         _bus = bus ?? throw new ArgumentNullException(nameof(bus));
 
@@ -30,9 +33,9 @@ public sealed class ZlgPeriodicTx : IPeriodicTx
         }
 
         // Validate frame type vs channel
-        if (frame is CanClassicFrame && bus.Options.ProtocolMode != CanProtocolMode.Can20)
+        if (frame.FrameKind is CanFrameType.Can20 && bus.Options.ProtocolMode is not CanProtocolMode.Can20)
             throw new CanFeatureNotSupportedException(CanFeature.CanClassic, bus.Options.Features);
-        if (frame is CanFdFrame && bus.Options.ProtocolMode != CanProtocolMode.CanFd)
+        if (frame.FrameKind is CanFrameType.CanFd && bus.Options.ProtocolMode is not CanProtocolMode.CanFd)
             throw new CanFeatureNotSupportedException(CanFeature.CanFd, bus.Options.Features);
 
         _frame = frame;
@@ -74,17 +77,17 @@ public sealed class ZlgPeriodicTx : IPeriodicTx
         }
     }
 
-    public void Update(ICanFrame? frame = null, TimeSpan? period = null, int? repeatCount = null)
+    public void Update(CanFrame? frame = null, TimeSpan? period = null, int? repeatCount = null)
     {
         if (_stopped) throw new CanBusDisposedException();
 
         // Validate frame type vs channel
-        if (frame is CanClassicFrame && _bus.Options.ProtocolMode != CanProtocolMode.Can20)
+        if (frame?.FrameKind is CanFrameType.Can20 && _bus.Options.ProtocolMode is not CanProtocolMode.Can20)
             throw new CanFeatureNotSupportedException(CanFeature.CanClassic, _bus.Options.Features);
-        if (frame is CanFdFrame && _bus.Options.ProtocolMode != CanProtocolMode.CanFd)
+        if (frame?.FrameKind is CanFrameType.CanFd && _bus.Options.ProtocolMode is not CanProtocolMode.CanFd)
             throw new CanFeatureNotSupportedException(CanFeature.CanFd, _bus.Options.Features);
 
-        if (frame is not null) _frame = frame;
+        if (frame is not null) _frame = frame.Value;
 
         if (period is not null) Period = period.Value <= TimeSpan.Zero ? TimeSpan.FromMilliseconds(1) : period.Value;
         if (repeatCount is not null)
@@ -125,33 +128,33 @@ public sealed class ZlgPeriodicTx : IPeriodicTx
         ApplyHardware(false, _frame, Period);
     }
 
-    private unsafe void ApplyHardware(bool enable, ICanFrame frame, TimeSpan period)
+    private unsafe void ApplyHardware(bool enable, CanFrame frame, TimeSpan period)
     {
         var interval = (uint)Math.Max(1, (int)Math.Round(period.TotalMilliseconds));
         var chan = _bus.Options.ChannelIndex;
 
-        if (frame is CanClassicFrame classic)
+        if (frame.FrameKind is CanFrameType.Can20)
         {
             var obj = new ZLGCAN.ZCAN_AUTO_TRANSMIT_OBJ
             {
                 enable = (ushort)(enable ? 1 : 0),
                 index = _index,
                 interval = interval,
-                obj = classic.ToTransmitData(_bus.Options.WorkMode == ChannelWorkMode.Echo)
+                obj = frame.ToTransmitData(_bus.Options.WorkMode == ChannelWorkMode.Echo)
             };
 
             var path = $"{chan}/auto_send";
             var ret = ZLGCAN.ZCAN_SetValue(_bus.Handle.DeviceHandle, path, (IntPtr)(&obj));
             ZlgErr.ThrowIfError(ret, "ZCAN_SetValue(auto_send)", _bus.Handle);
         }
-        else if (frame is CanFdFrame fd)
+        else if (frame.FrameKind is CanFrameType.CanFd)
         {
             var obj = new ZLGCAN.ZCANFD_AUTO_TRANSMIT_OBJ
             {
                 enable = (ushort)(enable ? 1 : 0),
                 index = _index,
                 interval = interval,
-                obj = fd.ToTransmitData(_bus.Options.WorkMode == ChannelWorkMode.Echo)
+                obj = frame.ToTransmitFdData(_bus.Options.WorkMode == ChannelWorkMode.Echo)
             };
 
             var path = $"{chan}/auto_send_canfd";

@@ -1,5 +1,10 @@
 using System.Runtime.InteropServices;
-using CanKit.Core.Abstractions;
+using CanKit.Abstractions.API.Can;
+using CanKit.Abstractions.API.Can.Definitions;
+using CanKit.Abstractions.API.Common;
+using CanKit.Abstractions.API.Common.Definitions;
+using CanKit.Abstractions.SPI;
+using CanKit.Abstractions.SPI.Common;
 using CanKit.Core.Definitions;
 using CanKit.Core.Diagnostics;
 using CanKit.Core.Exceptions;
@@ -26,7 +31,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
     private Task? _pollTask;
     private EventWaitHandle _recEvent;
 
-    private Func<ICanFrame, bool>? _softwareFilterPredicate;
+    private Func<CanFrame, bool>? _softwareFilterPredicate;
 
     private bool _useSoftwareFilter;
     private readonly AsyncFramePipe _asyncRx;
@@ -144,7 +149,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
             }
         }
 
-        var rules = pc.Filter.filterRules;
+        var rules = pc.Filter.FilterRules;
         if (rules.Count > 0)
         {
             foreach (var r in rules)
@@ -160,7 +165,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
                 {
                     if (pc.SoftwareFilterEnabled)
                     {
-                        pc.Filter.softwareFilter.Add(r);
+                        pc.Filter.SoftwareFilterRules.Add(r);
                     }
                     else
                     {
@@ -199,7 +204,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
 
     }
 
-    public IPeriodicTx TransmitPeriodic(ICanFrame frame, PeriodicTxOptions options)
+    public IPeriodicTx TransmitPeriodic(CanFrame frame, PeriodicTxOptions options)
     {
         ThrowIfDisposed();
         if ((Options.EnabledSoftwareFallback & CanFeature.CyclicTx) != 0)
@@ -213,32 +218,32 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
         => throw new CanFeatureNotSupportedException(CanFeature.ErrorCounters, Options.Features);
 
     //non-support time out
-    public int Transmit(IEnumerable<ICanFrame> frames, int _ = 0)
+    public int Transmit(IEnumerable<CanFrame> frames, int _ = 0)
     {
         ThrowIfDisposed();
         return _transceiver.Transmit(this, frames);
     }
 
-    public int Transmit(ReadOnlySpan<ICanFrame> frames, int _ = 0)
+    public int Transmit(ReadOnlySpan<CanFrame> frames, int _ = 0)
     {
         ThrowIfDisposed();
         return _transceiver.Transmit(this, frames);
     }
 
-    public int Transmit(ICanFrame[] frames, int _ = 0)
+    public int Transmit(CanFrame[] frames, int _ = 0)
         => Transmit(frames.AsSpan());
 
-    public int Transmit(ArraySegment<ICanFrame> frames, int _ = 0)
+    public int Transmit(ArraySegment<CanFrame> frames, int _ = 0)
         => Transmit(frames.AsSpan());
 
-    public int Transmit(in ICanFrame frame)
+    public int Transmit(in CanFrame frame)
         => _transceiver.Transmit(this, frame);
 
     //non-support time out
-    public Task<int> TransmitAsync(IEnumerable<ICanFrame> frames, int _ = 0, CancellationToken cancellationToken = default)
+    public Task<int> TransmitAsync(IEnumerable<CanFrame> frames, int _ = 0, CancellationToken cancellationToken = default)
         => Task.FromResult(Transmit(frames));
 
-    public Task<int> TransmitAsync(ICanFrame frame, CancellationToken cancellationToken = default)
+    public Task<int> TransmitAsync(CanFrame frame, CancellationToken cancellationToken = default)
         => Task.FromResult(Transmit(frame));
 
     public IEnumerable<CanReceiveData> Receive(int count = 1, int timeOut = 0)
@@ -431,12 +436,12 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
                         CanKitExtension.ToControllerStatus(span[2], span[3]),
                         PcanUtils.ToProtocolViolationType(raw, span),
                         PcanUtils.ToErrorLocation(span),
+                        PcanUtils.ToTransceiverStatus(span),
                         DateTime.Now,
                         (uint)raw,
                         rec.ReceiveTimestamp,
                         PcanUtils.ToDirection(span),
                         null,
-                        PcanUtils.ToTransceiverStatus(span),
                         PcanUtils.ToErrorCounters(span),
                         rec.CanFrame);
                     _errorOccured?.Invoke(this, info);

@@ -1,8 +1,14 @@
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
+using CanKit.Abstractions.API.Can;
+using CanKit.Abstractions.API.Can.Definitions;
+using CanKit.Abstractions.API.Common;
+using CanKit.Abstractions.API.Common.Definitions;
+using CanKit.Abstractions.SPI;
+using CanKit.Abstractions.SPI.Common;
+using CanKit.Abstractions.SPI.Providers;
 using CanKit.Adapter.Kvaser.Utils;
-using CanKit.Core.Abstractions;
 using CanKit.Core.Definitions;
 using CanKit.Core.Diagnostics;
 using CanKit.Core.Exceptions;
@@ -28,7 +34,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
 
     private Canlib.kvCallbackDelegate? _kvCallback;
     private readonly AsyncFramePipe _asyncRx;
-    private readonly Func<ICanFrame, bool> _pred;
+    private readonly Func<CanFrame, bool> _pred;
 
     internal KvaserBus(IBusOptions options, ITransceiver transceiver, ICanModelProvider provider)
     {
@@ -102,7 +108,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
                 "Kvaser bus set echo mode failed");
         }
         // Set filter rules
-        var rules = kc.Filter.filterRules;
+        var rules = kc.Filter.FilterRules;
         if (rules.Count > 0)
         {
             foreach (var r in rules)
@@ -122,7 +128,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
                     // If software filter fallback enabled, push to software list; otherwise throw
                     if ((kc.EnabledSoftwareFallback & CanFeature.RangeFilter) != 0)
                     {
-                        kc.Filter.softwareFilter.Add(r);
+                        kc.Filter.SoftwareFilterRules.Add(r);
                     }
                     else
                     {
@@ -187,28 +193,28 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
             "canIoCtl(FLUSH_TX_BUFFER)", "Failed to flush TX buffer");
     }
 
-    public int Transmit(IEnumerable<ICanFrame> frames, int _ = 0)
+    public int Transmit(IEnumerable<CanFrame> frames, int _ = 0)
     {
         ThrowIfDisposed();
         return _transceiver.Transmit(this, frames);
     }
 
-    public int Transmit(ReadOnlySpan<ICanFrame> frames, int _ = 0)
+    public int Transmit(ReadOnlySpan<CanFrame> frames, int _ = 0)
     {
         ThrowIfDisposed();
         return _transceiver.Transmit(this, frames);
     }
 
-    public int Transmit(ICanFrame[] frames, int _ = 0)
+    public int Transmit(CanFrame[] frames, int _ = 0)
         => Transmit(frames.AsSpan());
 
-    public int Transmit(ArraySegment<ICanFrame> frames, int _ = 0)
+    public int Transmit(ArraySegment<CanFrame> frames, int _ = 0)
         => Transmit(frames.AsSpan());
 
-    public int Transmit(in ICanFrame frame)
+    public int Transmit(in CanFrame frame)
         => _transceiver.Transmit(this, frame);
 
-    public IPeriodicTx TransmitPeriodic(ICanFrame frame, PeriodicTxOptions options)
+    public IPeriodicTx TransmitPeriodic(CanFrame frame, PeriodicTxOptions options)
     {
         ThrowIfDisposed();
         if (KvaserPeriodicTx.TryStart(this, frame, options, out var tx))
@@ -514,12 +520,12 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
                             CanKitExtension.ToControllerStatus(errorCounters!.Value.ReceiveErrorCounter, errorCounters.Value.TransmitErrorCounter) : CanControllerStatus.Unknown,
                         CanProtocolViolationType.Unknown,
                         FrameErrorLocation.Invalid,
+                        CanTransceiverStatus.Unknown,
                         DateTime.Now,
                         0,
                         null,
                         FrameDirection.Unknown,
                         null,
-                        CanTransceiverStatus.Unknown,
                         errorCounters,
                         null
                     ));
@@ -541,10 +547,10 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
         }
     }
 
-    public Task<int> TransmitAsync(IEnumerable<ICanFrame> frames, int _ = 0, CancellationToken cancellationToken = default)
+    public Task<int> TransmitAsync(IEnumerable<CanFrame> frames, int _ = 0, CancellationToken cancellationToken = default)
         => Task.FromResult(Transmit(frames));
 
-    public Task<int> TransmitAsync(ICanFrame frame, CancellationToken cancellationToken = default)
+    public Task<int> TransmitAsync(CanFrame frame, CancellationToken cancellationToken = default)
         => Task.FromResult(Transmit(frame));
     public async Task<IReadOnlyList<CanReceiveData>> ReceiveAsync(int count = 1, int timeOut = 0, CancellationToken cancellationToken = default)
     {

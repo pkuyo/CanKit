@@ -4,8 +4,11 @@ using System.Globalization;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using CanKit.Abstractions.API.Can;
+using CanKit.Abstractions.API.Can.Definitions;
+using CanKit.Abstractions.API.Common;
+using CanKit.Abstractions.API.Common.Definitions;
 using CanKit.Core;
-using CanKit.Core.Abstractions;
 using CanKit.Core.Definitions;
 using CanKit.Core.Endpoints;
 
@@ -71,9 +74,9 @@ namespace CanKit.Sample.QuickStartTxRx
 
             // Compose a demo frame
             var id = extended ? 0x18DAF110 : 0x123;
-            ICanFrame f = useFd
-                ? new CanFdFrame(id, new byte[] { 0x11, 0x22, 0x33, 0x44 }, BRS: brs, ESI: false, isExtendedFrame: extended)
-                : new CanClassicFrame(id, new byte[] { 0x11, 0x22, 0x33, 0x44 }, isExtendedFrame: extended);
+            CanFrame f = useFd
+                ? CanFrame.Fd(id, new byte[] { 0x11, 0x22, 0x33, 0x44 }, brs, false, extended)
+                : CanFrame.Classic(id, new byte[] { 0x11, 0x22, 0x33, 0x44 }, extended);
 
             //Sync transmit
             for (int i = 0; i < count; i++)

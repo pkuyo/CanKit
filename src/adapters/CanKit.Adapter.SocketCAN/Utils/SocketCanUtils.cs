@@ -1,4 +1,8 @@
 using System.Runtime.CompilerServices;
+using CanKit.Abstractions.API.Can;
+using CanKit.Abstractions.API.Can.Definitions;
+using CanKit.Abstractions.API.Common;
+using CanKit.Abstractions.API.Common.Definitions;
 using CanKit.Adapter.SocketCAN.Native;
 using CanKit.Core.Definitions;
 
@@ -30,7 +34,7 @@ internal static class SocketCanUtils
         }
     }
 
-    public static Libc.can_frame ToCanFrame(this in CanClassicFrame cf)
+    public static Libc.can_frame ToCanFrame(this in CanFrame cf)
     {
         var frame = new Libc.can_frame
         {
@@ -53,12 +57,12 @@ internal static class SocketCanUtils
         return frame;
     }
 
-    public static Libc.canfd_frame ToCanFrame(this in CanFdFrame ff)
+    public static Libc.canfd_frame ToCanFdFrame(this in CanFrame ff)
     {
         var frame = new Libc.canfd_frame
         {
             can_id = ff.ToCanID(),
-            len = (byte)CanFdFrame.DlcToLen(ff.Dlc),
+            len = (byte)ff.Len,
             flags = (byte)((ff.BitRateSwitch ? Libc.CANFD_BRS : 0) | (ff.ErrorStateIndicator ? Libc.CANFD_ESI : 0)),
             __res0 = 0,
             __res1 = 0,
@@ -76,21 +80,12 @@ internal static class SocketCanUtils
         return frame;
     }
 
-    public static uint ToCanID(this in CanClassicFrame frame)
+    public static uint ToCanID(this in CanFrame frame)
     {
         var id = (uint)frame.ID;
         var cid = frame.IsExtendedFrame ? ((id & Libc.CAN_EFF_MASK) | Libc.CAN_EFF_FLAG)
             : (id & Libc.CAN_SFF_MASK);
-        if (frame.IsRemoteFrame) cid |= Libc.CAN_RTR_FLAG;
-        if (frame.IsErrorFrame) cid |= Libc.CAN_ERR_FLAG;
-        return cid;
-    }
-
-    public static uint ToCanID(this ICanFrame frame)
-    {
-        var id = (uint)frame.ID;
-        var cid = frame.IsExtendedFrame ? ((id & Libc.CAN_EFF_MASK) | Libc.CAN_EFF_FLAG)
-            : (id & Libc.CAN_SFF_MASK);
+        if (frame.FrameKind is CanFrameType.Can20 && frame.IsRemoteFrame) cid |= Libc.CAN_RTR_FLAG;
         if (frame.IsErrorFrame) cid |= Libc.CAN_ERR_FLAG;
         return cid;
     }

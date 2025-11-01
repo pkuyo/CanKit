@@ -4,7 +4,10 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
-using CanKit.Core.Abstractions;
+using CanKit.Abstractions.API.Can;
+using CanKit.Abstractions.API.Can.Definitions;
+using CanKit.Abstractions.API.Common;
+using CanKit.Abstractions.API.Common.Definitions;
 using CanKit.Core.Definitions;
 
 namespace CanKit.Core.Utils;
@@ -34,7 +37,7 @@ public sealed class QueuedCanBusOptions
 
 /// <summary>
 /// 基于 Channel 的发送队列包装器。
-/// - ICanBus 的所有读取&状态接口透明转发；
+/// - ICanBus 的所有读取状态接口透明转发；
 /// - 所有 Transmit/TransmitAsync 改为“入队 + 后台发送”，返回“已入队数量”（而非驱动已接受数量）；
 /// - 提供 ResetTxRequestCycle() 手动重置回退并立刻唤醒。
 /// </summary>
@@ -43,7 +46,7 @@ public sealed class QueuedCanBus : ICanBus, IAsyncDisposable
     private readonly ICanBus _inner;
     private readonly QueuedCanBusOptions _opts;
 
-    private readonly Channel<ICanFrame> _txChan;
+    private readonly Channel<CanFrame> _txChan;
     private readonly CancellationTokenSource _cts = new();
     private readonly Task _worker;
 
@@ -67,7 +70,7 @@ public sealed class QueuedCanBus : ICanBus, IAsyncDisposable
                 ? BoundedChannelFullMode.DropOldest
                 : BoundedChannelFullMode.DropWrite
         };
-        _txChan = Channel.CreateBounded<ICanFrame>(bco);
+        _txChan = Channel.CreateBounded<CanFrame>(bco);
 
         _backoff = _opts.BackoffInitial;
         _worker = Task.Run(SendLoop, _cts.Token);
@@ -101,7 +104,7 @@ public sealed class QueuedCanBus : ICanBus, IAsyncDisposable
     public IAsyncEnumerable<CanReceiveData> GetFramesAsync(CancellationToken cancellationToken = default)
         => _inner.GetFramesAsync(cancellationToken);
 
-    public IPeriodicTx TransmitPeriodic(ICanFrame frame, PeriodicTxOptions options)
+    public IPeriodicTx TransmitPeriodic(CanFrame frame, PeriodicTxOptions options)
         => _inner.TransmitPeriodic(frame, options);
 
     public event EventHandler<CanReceiveData>? FrameReceived;
@@ -116,29 +119,29 @@ public sealed class QueuedCanBus : ICanBus, IAsyncDisposable
     /// 注意：本包装的 Transmit 返回“成功入队的数量”，并非“驱动立即接受的数量”。
     /// 真正的下发由内部发送线程异步完成。
     /// </summary>
-    public int Transmit(IEnumerable<ICanFrame> frames, int timeOut = 0)
+    public int Transmit(IEnumerable<CanFrame> frames, int timeOut = 0)
         => EnqueueMany(frames);
 
-    public int Transmit(ReadOnlySpan<ICanFrame> frames, int timeOut = 0)
+    public int Transmit(ReadOnlySpan<CanFrame> frames, int timeOut = 0)
         => EnqueueMany(frames);
 
-    public int Transmit(ICanFrame[] frames, int timeOut = 0)
+    public int Transmit(CanFrame[] frames, int timeOut = 0)
         => EnqueueMany(frames.AsSpan());
 
-    public int Transmit(ArraySegment<ICanFrame> frames, int timeOut = 0)
+    public int Transmit(ArraySegment<CanFrame> frames, int timeOut = 0)
         => EnqueueMany(frames.AsSpan());
 
-    public int Transmit(in ICanFrame frame)
+    public int Transmit(in CanFrame frame)
         => EnqueueOne(frame);
 
-    public Task<int> TransmitAsync(IEnumerable<ICanFrame> frames, int timeOut = 0,
+    public Task<int> TransmitAsync(IEnumerable<CanFrame> frames, int timeOut = 0,
         CancellationToken cancellationToken = default)
         => Task.FromResult(EnqueueMany(frames));
 
-    public Task<int> TransmitAsync(ICanFrame frame, CancellationToken cancellationToken = default)
+    public Task<int> TransmitAsync(CanFrame frame, CancellationToken cancellationToken = default)
         => Task.FromResult(EnqueueOne(frame));
 
-    private int EnqueueOne(in ICanFrame frame)
+    private int EnqueueOne(in CanFrame frame)
     {
         var ok = _txChan.Writer.TryWrite(frame);
         if (ok) Interlocked.Increment(ref _enqOk);
@@ -160,7 +163,7 @@ public sealed class QueuedCanBus : ICanBus, IAsyncDisposable
         return ok ? 1 : 0;
     }
 
-    private int EnqueueMany(IEnumerable<ICanFrame> frames)
+    private int EnqueueMany(IEnumerable<CanFrame> frames)
     {
         int accepted = 0;
         foreach (var f in frames)
@@ -168,7 +171,7 @@ public sealed class QueuedCanBus : ICanBus, IAsyncDisposable
         return accepted;
     }
 
-    private int EnqueueMany(ReadOnlySpan<ICanFrame> frames)
+    private int EnqueueMany(ReadOnlySpan<CanFrame> frames)
     {
         int accepted = 0;
         for (int i = 0; i < frames.Length; i++)
@@ -183,7 +186,7 @@ public sealed class QueuedCanBus : ICanBus, IAsyncDisposable
     private async Task SendLoop()
     {
         var token = _cts.Token;
-        var batch = new ICanFrame[_opts.SendBatchSize];
+        var batch = new CanFrame[_opts.SendBatchSize];
         var index = 0;
         while (!token.IsCancellationRequested)
         {
@@ -253,7 +256,7 @@ public sealed class QueuedCanBus : ICanBus, IAsyncDisposable
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(token, _sleepCts.Token);
             try
             {
-                await PreciseDelay.DelayAsync(delay, ct:linked.Token);
+                await PreciseDelay.DelayAsync(delay, ct: linked.Token);
             }
             catch (OperationCanceledException) when (!token.IsCancellationRequested) { }
         }

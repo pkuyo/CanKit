@@ -1,4 +1,8 @@
 using System.Diagnostics;
+using CanKit.Abstractions.API.Can;
+using CanKit.Abstractions.API.Can.Definitions;
+using CanKit.Abstractions.API.Common;
+using CanKit.Abstractions.API.Common.Definitions;
 using CanKit.Core.Definitions;
 
 namespace CanKit.Protocol.IsoTp.Defines;
@@ -42,13 +46,13 @@ public class QueuedDeadline
         _nAs = new SlidingWindowStopwatch(nAs);
     }
 
-    public void Enqueue(ICanFrame frame)
+    public void Enqueue(in CanFrame frame)
     {
         var hash = ComputeFrameHash(frame);
         _hashTimeOutMap.Add(hash, _nAs.AddStart());
     }
 
-    public void Dequeue(ICanFrame frame)
+    public void Dequeue(in CanFrame frame)
     {
         var hash = ComputeFrameHash(frame);
         if (_hashTimeOutMap.TryGetValue(hash, out var timeSpan))
@@ -58,27 +62,25 @@ public class QueuedDeadline
         }
     }
 
-    private static ulong ComputeFrameHash(ICanFrame frame)
+    private static ulong ComputeFrameHash(in CanFrame frame)
     {
         const ulong FNV_OFFSET = 1469598103934665603UL;
         const ulong FNV_PRIME = 1099511628211UL;
         ulong h = FNV_OFFSET;
 
         void MixByte(byte b) { h ^= b; h *= FNV_PRIME; }
-        unchecked {
-            for (int i = 0; i < 4; i++) MixByte((byte)((frame.ID >> (8*i)) & 0xFF));
-        }
+        for (int i = 0; i < 4; i++) MixByte((byte)((frame.ID >> (8*i)) & 0xFF));
 
-        if (frame is CanFdFrame fd)
+        if (frame.FrameKind is CanFrameType.CanFd)
         {
-            MixByte((byte)((1 << 4) | ((fd.BitRateSwitch ? 1 : 0) << 3) |
-                           ((fd.ErrorStateIndicator ? 1 : 0) << 2) |
+            MixByte((byte)((1 << 4) | ((frame.BitRateSwitch ? 1 : 0) << 3) |
+                           ((frame.ErrorStateIndicator ? 1 : 0) << 2) |
                            ((frame.IsErrorFrame ? 1 : 0) << 1) |
                            (frame.IsExtendedFrame ? 1 : 0)));
         }
-        else if (frame is CanClassicFrame classic)
+        else if (frame.FrameKind is CanFrameType.Can20)
         {
-            MixByte((byte)(((classic.IsRemoteFrame ? 1 : 0) << 2) |
+            MixByte((byte)(((frame.IsRemoteFrame ? 1 : 0) << 2) |
                            ((frame.IsErrorFrame ? 1 : 0) << 1) |
                            (frame.IsExtendedFrame ? 1 : 0)));
         }

@@ -1,7 +1,8 @@
 using System;
 using System.Buffers;
 using System.Threading;
-using CanKit.Core.Abstractions;
+using CanKit.Abstractions.SPI;
+using CanKit.Abstractions.SPI.Common;
 
 namespace CanKit.Core.Definitions;
 

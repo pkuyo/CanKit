@@ -1,5 +1,6 @@
-using CanKit.Core.Abstractions;
-using CanKit.Core.Attributes;
+using CanKit.Abstractions.API.Common;
+using CanKit.Abstractions.API.Common.Definitions;
+using CanKit.Abstractions.SPI.Providers;
 using CanKit.Core.Definitions;
 
 namespace CanKit.Adapter.ZLG.Options

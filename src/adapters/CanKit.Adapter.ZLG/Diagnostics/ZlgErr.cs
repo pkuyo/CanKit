@@ -1,5 +1,7 @@
 using System;
 using System.Runtime.InteropServices;
+using CanKit.Abstractions.API.Common;
+using CanKit.Abstractions.API.Common.Definitions;
 using CanKit.Adapter.ZLG.Definitions;
 using CanKit.Adapter.ZLG.Exceptions;
 using CanKit.Adapter.ZLG.Native;

@@ -2,6 +2,11 @@
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using CanKit.Abstractions.API.Can;
+using CanKit.Abstractions.API.Can.Definitions;
+using CanKit.Abstractions.API.Common;
+using CanKit.Abstractions.API.Common.Definitions;
+using CanKit.Abstractions.SPI.Tests;
 using CanKit.Core.Definitions;
 using CanKit.Tests.Matrix;
 using CanKit.Tests.Utils;
@@ -34,10 +39,10 @@ public class FilterTests : IClassFixture<TestCaseProvider>
         });
         using var tx = TestHelpers.OpenClassic(epB);
 
-        var allFrames = new List<ICanFrame>();
+        var allFrames = new List<CanFrame>();
         foreach(var f in frame)
         {
-            allFrames.Add(new CanClassicFrame(f.Id, new[] { (byte)(f.Id & 0xFF) }, f.Ide == 1));
+            allFrames.Add(CanFrame.Classic(f.Id, new[] { (byte)(f.Id & 0xFF) }, f.Ide == 1));
         }
         await TestHelpers.SendBurstAsync(tx, allFrames, 0);
 
@@ -70,10 +75,10 @@ public class FilterTests : IClassFixture<TestCaseProvider>
         });
         using var tx = TestHelpers.OpenClassic(epB);
 
-        var allFrames = new List<ICanFrame>();
+        var allFrames = new List<CanFrame>();
         foreach(var f in frame)
         {
-            allFrames.Add(new CanClassicFrame(f.Id, new[] { (byte)(f.Id & 0xFF) }, f.Ide == 1));
+            allFrames.Add(CanFrame.Classic(f.Id, new[] { (byte)(f.Id & 0xFF) }, f.Ide == 1));
         }
         await TestHelpers.SendBurstAsync(tx, allFrames, 0);
 

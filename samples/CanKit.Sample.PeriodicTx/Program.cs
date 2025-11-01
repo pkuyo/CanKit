@@ -3,8 +3,11 @@ using System.Globalization;
 using System.Linq;
 using System.Text;
 using System.Threading;
+using CanKit.Abstractions.API.Can;
+using CanKit.Abstractions.API.Can.Definitions;
+using CanKit.Abstractions.API.Common;
+using CanKit.Abstractions.API.Common.Definitions;
 using CanKit.Core;
-using CanKit.Core.Abstractions;
 using CanKit.Core.Definitions;
 
 namespace CanKit.Sample.PeriodicTx
@@ -39,9 +42,9 @@ namespace CanKit.Sample.PeriodicTx
                     .SetWorkMode(echo ? ChannelWorkMode.Echo : ChannelWorkMode.Normal);
             });
 
-            ICanFrame frame = fd
-                ? new CanFdFrame(id, payload, BRS: brs, ESI: false) { IsExtendedFrame = ext }
-                : new CanClassicFrame(id, payload, isExtendedFrame: ext);
+            CanFrame frame = fd
+                ? CanFrame.Fd(id, payload, brs, false, ext)
+                : CanFrame.Classic(id, payload, ext);
 
             using var periodic = bus.TransmitPeriodic(frame, new PeriodicTxOptions(TimeSpan.FromMilliseconds(period), repeat));
             Console.WriteLine($"Periodic TX started: ep={endpoint} id=0x{id:X} dlc={frame.Dlc} fd={fd} brs={brs} period={period}ms count={repeat}");

@@ -1,7 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using CanKit.Core.Abstractions;
+using CanKit.Abstractions.API;
+using CanKit.Abstractions.API.Can;
+using CanKit.Abstractions.API.Can.Definitions;
+using CanKit.Abstractions.API.Common;
+using CanKit.Abstractions.API.Common.Definitions;
 
 namespace CanKit.Core.Definitions
 {
@@ -9,19 +13,19 @@ namespace CanKit.Core.Definitions
     /// Represents a CAN filter rule (表示 CAN 过滤规则的抽象)
     /// </summary>
     /// <param name="FilterIdType">Frame ID type used by the rule (使用的帧 ID 类型)</param>
-    public abstract record FilterRule(CanFilterIDType FilterIdType)
+    public abstract record FilterRule(CanFilterIDType FilterIdType) : IFilterRule
     {
         /// <summary>
         /// Build a predicate that checks whether a frame matches this rule.
         /// 构建用于判断帧是否匹配该规则的谓词函数。
         /// </summary>
-        public abstract Func<ICanFrame, bool> Build();
+        public abstract Func<CanFrame, bool> Build();
 
         /// <summary>
         /// Combine multiple rules into a unified predicate (OR semantics).
         /// 将多个规则合成为一个统一的过滤函数（OR 语义）。
         /// </summary>
-        public static Func<ICanFrame, bool> Build(IEnumerable<FilterRule> rules)
+        public static Func<CanFrame, bool> Build(IEnumerable<IFilterRule> rules)
         {
             var list = rules?.ToArray() ?? [];
             if (list.Length == 0)
@@ -60,7 +64,7 @@ namespace CanKit.Core.Definitions
                 FilterIdType = idType;
             }
 
-            public override Func<ICanFrame, bool> Build()
+            public override Func<CanFrame, bool> Build()
             {
                 return frame =>
                 {
@@ -93,7 +97,7 @@ namespace CanKit.Core.Definitions
                 FilterIdType = idType;
             }
 
-            public override Func<ICanFrame, bool> Build()
+            public override Func<CanFrame, bool> Build()
             {
                 return frame =>
                 {
@@ -114,22 +118,22 @@ namespace CanKit.Core.Definitions
         /// <summary>
         /// Internal list storing actual hardware-intended rules (硬件过滤器规则列表)
         /// </summary>
-        public List<FilterRule> filterRules = new();
+        public List<IFilterRule> filterRules = new();
 
         /// <summary>
         /// Software-only filter rules (软过滤规则，用于硬件不支持的类型)
         /// </summary>
-        public List<FilterRule> softwareFilter = new();
+        public List<IFilterRule> softwareFilter = new();
 
         /// <summary>
         /// Get the list of active filter rules (获取活动过滤规则列表)
         /// </summary>
-        public IReadOnlyList<FilterRule> FilterRules => filterRules;
+        public IList<IFilterRule> FilterRules => filterRules;
 
         /// <summary>
         /// Software-only filter rules (软过滤规则，用于硬件不支持的类型)
         /// </summary>
-        public IReadOnlyList<FilterRule> SoftwareFilterRules => softwareFilter;
+        public IList<IFilterRule> SoftwareFilterRules => softwareFilter;
     }
 
 }

@@ -1,5 +1,8 @@
+using CanKit.Abstractions.API.Common;
+using CanKit.Abstractions.API.Common.Definitions;
+using CanKit.Abstractions.SPI.Factories;
+using CanKit.Abstractions.SPI.Providers;
 using CanKit.Adapter.Kvaser.Definitions;
-using CanKit.Core.Abstractions;
 using CanKit.Core.Definitions;
 using CanKit.Core.Registry;
 using CanKit.Adapter.Kvaser.Native;

@@ -1,6 +1,3 @@
 ﻿namespace CanKit.Protocol.IsoTp.Utils;
 
-public class CanTransport
-{
-    
-}
+public class CanTransport;

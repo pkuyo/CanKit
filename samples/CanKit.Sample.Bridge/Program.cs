@@ -4,6 +4,9 @@ using System.Globalization;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using CanKit.Abstractions.API.Can;
+using CanKit.Abstractions.API.Common;
+using CanKit.Abstractions.API.Common.Definitions;
 using CanKit.Core;
 using CanKit.Core.Definitions;
 
@@ -43,7 +46,7 @@ namespace CanKit.Sample.Bridge
             return 0;
         }
 
-        private static async Task Pump(CanKit.Core.Abstractions.ICanBus from, CanKit.Core.Abstractions.ICanBus to, CancellationToken ct, string tag)
+        private static async Task Pump(ICanBus from, ICanBus to, CancellationToken ct, string tag)
         {
 #if NET8_0_OR_GREATER
             await foreach (var e in from.GetFramesAsync(ct))

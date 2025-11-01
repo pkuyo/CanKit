@@ -1,6 +1,8 @@
 ﻿using System.Collections.Generic;
+using CanKit.Abstractions.API.Common;
+using CanKit.Abstractions.API.Common.Definitions;
+using CanKit.Abstractions.SPI.Providers;
 using CanKit.Adapter.ZLG.Definitions;
-using CanKit.Core.Abstractions;
 using CanKit.Core.Definitions;
 
 namespace CanKit.Adapter.ZLG.Providers;

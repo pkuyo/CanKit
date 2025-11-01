@@ -1,16 +1,19 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using CanKit.Abstractions.API.Can;
+using CanKit.Abstractions.API.Can.Definitions;
+using CanKit.Abstractions.API.Common;
+using CanKit.Abstractions.API.Common.Definitions;
 using CanKit.Adapter.ControlCAN.Utils;
 using CcApi = CanKit.Adapter.ControlCAN.Native.ControlCAN;
-using CanKit.Core.Abstractions;
 using CanKit.Core.Definitions;
 
 namespace CanKit.Adapter.ControlCAN;
 
 internal sealed class ControlCanTransceiver : ITransceiver
 {
-    public unsafe int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, IEnumerable<ICanFrame> frames)
+    public unsafe int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, IEnumerable<CanFrame> frames)
     {
         if (bus is not ControlCanBus ctl)
             throw new ArgumentException("bus type mismatch");
@@ -20,9 +23,9 @@ internal sealed class ControlCanTransceiver : ITransceiver
         var written = 0U;
         foreach (var f in frames)
         {
-            if (f is not CanClassicFrame classic)
+            if (f.FrameKind is not CanFrameType.Can20)
                 throw new NotSupportedException("ControlCAN only supports Classical CAN frames.");
-            classic.ToNative(&pObj[index++], retry);
+            f.ToNative(&pObj[index++], retry);
             if (index == CcApi.BATCH_COUNT)
             {
                 written += CcApi.VCI_Transmit(ctl.RawDevType, ctl.DevIndex, ctl.CanIndex, pObj, CcApi.BATCH_COUNT);
@@ -39,7 +42,7 @@ internal sealed class ControlCanTransceiver : ITransceiver
         return (int)written;
     }
 
-    public unsafe int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, ReadOnlySpan<ICanFrame> frames)
+    public unsafe int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, ReadOnlySpan<CanFrame> frames)
     {
         if (bus is not ControlCanBus ctl)
             throw new ArgumentException("bus type mismatch");
@@ -49,9 +52,9 @@ internal sealed class ControlCanTransceiver : ITransceiver
         var written = 0U;
         foreach (var f in frames)
         {
-            if (f is not CanClassicFrame classic)
+            if (f.FrameKind is not CanFrameType.Can20)
                 throw new NotSupportedException("ControlCAN only supports Classical CAN frames.");
-            classic.ToNative(&pObj[index++], retry);
+            f.ToNative(&pObj[index++], retry);
             if (index == CcApi.BATCH_COUNT)
             {
                 written += CcApi.VCI_Transmit(ctl.RawDevType, ctl.DevIndex, ctl.CanIndex, pObj, CcApi.BATCH_COUNT);
@@ -68,15 +71,15 @@ internal sealed class ControlCanTransceiver : ITransceiver
         return (int)written;
     }
 
-    public unsafe int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, in ICanFrame frames)
+    public unsafe int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, in CanFrame frames)
     {
         if (bus is not ControlCanBus ctl)
             throw new ArgumentException("bus type mismatch");
-        if (frames is not CanClassicFrame classic)
+        if (frames.FrameKind is not CanFrameType.Can20)
             throw new NotSupportedException("ControlCAN only supports Classical CAN frames.");
         var pObj = stackalloc CcApi.VCI_CAN_OBJ[1];
         var retry = bus.Options.TxRetryPolicy == TxRetryPolicy.AlwaysRetry;
-        classic.ToNative(&pObj[0], retry);
+        frames.ToNative(&pObj[0], retry);
         return (int)CcApi.VCI_Transmit(ctl.RawDevType, ctl.DevIndex, ctl.CanIndex, pObj, 1);
     }
 

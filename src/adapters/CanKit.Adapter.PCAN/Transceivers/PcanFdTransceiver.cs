@@ -1,8 +1,11 @@
 using System;
 using System.Buffers;
 using System.Runtime.CompilerServices;
+using CanKit.Abstractions.API.Can;
+using CanKit.Abstractions.API.Can.Definitions;
+using CanKit.Abstractions.API.Common;
+using CanKit.Abstractions.API.Common.Definitions;
 using CanKit.Adapter.PCAN.Native;
-using CanKit.Core.Abstractions;
 using CanKit.Core.Definitions;
 using Peak.Can.Basic;
 using Peak.Can.Basic.BackwardCompatibility;
@@ -12,36 +15,34 @@ namespace CanKit.Adapter.PCAN.Transceivers;
 
 public sealed class PcanFdTransceiver : ITransceiver
 {
-    public unsafe int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, IEnumerable<ICanFrame> frames)
+    public unsafe int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, IEnumerable<CanFrame> frames)
     {
         var ch = (PcanBus)bus;
         int sent = 0;
         var pMsg = stackalloc PcanBasicNative.TpcanMsgFd[1];
         foreach (var item in frames)
         {
-            TPCANMessageType type;
-            if (item is CanClassicFrame cf)
+            TPCANMessageType type = TPCANMessageType.PCAN_MESSAGE_STANDARD;
+            if (item.IsExtendedFrame)
             {
-                type = TPCANMessageType.PCAN_MESSAGE_STANDARD;
-                if (cf.IsRemoteFrame)
+                type |= TPCANMessageType.PCAN_MESSAGE_EXTENDED;
+            }
+            if (item.FrameKind is CanFrameType.Can20)
+            {
+                if (item.IsRemoteFrame)
                 {
                     type |= TPCANMessageType.PCAN_MESSAGE_RTR;
                 }
             }
-            else if (item is CanFdFrame fd)
+            else if (item.FrameKind is CanFrameType.CanFd)
             {
-                type = TPCANMessageType.PCAN_MESSAGE_FD;
-                if (fd.IsExtendedFrame)
-                {
-                    type |= TPCANMessageType.PCAN_MESSAGE_EXTENDED;
-                }
-
-                if (fd.BitRateSwitch)
+                type |= TPCANMessageType.PCAN_MESSAGE_FD;
+                if (item.BitRateSwitch)
                 {
                     type |= TPCANMessageType.PCAN_MESSAGE_BRS;
                 }
 
-                if (fd.ErrorStateIndicator)
+                if (item.ErrorStateIndicator)
                 {
                     type |= TPCANMessageType.PCAN_MESSAGE_ESI;
                 }
@@ -54,7 +55,7 @@ public sealed class PcanFdTransceiver : ITransceiver
             PcanStatus st;
             fixed (byte* ptr = item.Data.Span)
             {
-                Unsafe.CopyBlock(pMsg->DATA, ptr, (uint)Math.Min(CanFdFrame.DlcToLen(item.Dlc), 64));
+                Unsafe.CopyBlock(pMsg->DATA, ptr, (uint)item.Len);
                 pMsg->ID = (uint)item.ID;
                 pMsg->MSGTYPE = type;
                 pMsg->DLC = item.Dlc;
@@ -76,36 +77,34 @@ public sealed class PcanFdTransceiver : ITransceiver
         return sent;
     }
 
-    public unsafe int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, ReadOnlySpan<ICanFrame> frames)
+    public unsafe int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, ReadOnlySpan<CanFrame> frames)
     {
         var ch = (PcanBus)bus;
         int sent = 0;
         var pMsg = stackalloc PcanBasicNative.TpcanMsgFd[1];
         foreach (var item in frames)
         {
-            TPCANMessageType type;
-            if (item is CanClassicFrame cf)
+            TPCANMessageType type = TPCANMessageType.PCAN_MESSAGE_STANDARD;
+            if (item.IsExtendedFrame)
             {
-                type = TPCANMessageType.PCAN_MESSAGE_STANDARD;
-                if (cf.IsRemoteFrame)
+                type |= TPCANMessageType.PCAN_MESSAGE_EXTENDED;
+            }
+            if (item.FrameKind is CanFrameType.Can20)
+            {
+                if (item.IsRemoteFrame)
                 {
                     type |= TPCANMessageType.PCAN_MESSAGE_RTR;
                 }
             }
-            else if (item is CanFdFrame fd)
+            else if (item.FrameKind is CanFrameType.CanFd)
             {
-                type = TPCANMessageType.PCAN_MESSAGE_FD;
-                if (fd.IsExtendedFrame)
-                {
-                    type |= TPCANMessageType.PCAN_MESSAGE_EXTENDED;
-                }
-
-                if (fd.BitRateSwitch)
+                type |= TPCANMessageType.PCAN_MESSAGE_FD;
+                if (item.BitRateSwitch)
                 {
                     type |= TPCANMessageType.PCAN_MESSAGE_BRS;
                 }
 
-                if (fd.ErrorStateIndicator)
+                if (item.ErrorStateIndicator)
                 {
                     type |= TPCANMessageType.PCAN_MESSAGE_ESI;
                 }
@@ -119,7 +118,7 @@ public sealed class PcanFdTransceiver : ITransceiver
             PcanStatus st;
             fixed (byte* ptr = item.Data.Span)
             {
-                Unsafe.CopyBlock(pMsg->DATA, ptr, (uint)Math.Min(CanFdFrame.DlcToLen(item.Dlc), 64));
+                Unsafe.CopyBlock(pMsg->DATA, ptr, (uint)item.Len);
                 pMsg->ID = (uint)item.ID;
                 pMsg->MSGTYPE = type;
                 pMsg->DLC = item.Dlc;
@@ -141,33 +140,31 @@ public sealed class PcanFdTransceiver : ITransceiver
         return sent;
     }
 
-    public unsafe int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, in ICanFrame frame)
+    public unsafe int Transmit(ICanBus<IBusRTOptionsConfigurator> bus, in CanFrame frame)
     {
         var ch = (PcanBus)bus;
         var pMsg = stackalloc PcanBasicNative.TpcanMsgFd[1];
-        TPCANMessageType type;
-        if (frame is CanClassicFrame cf)
+        TPCANMessageType type = TPCANMessageType.PCAN_MESSAGE_STANDARD;
+        if (frame.IsExtendedFrame)
         {
-            type = TPCANMessageType.PCAN_MESSAGE_STANDARD;
-            if (cf.IsRemoteFrame)
+            type |= TPCANMessageType.PCAN_MESSAGE_EXTENDED;
+        }
+        if (frame.FrameKind is CanFrameType.Can20)
+        {
+            if (frame.IsRemoteFrame)
             {
                 type |= TPCANMessageType.PCAN_MESSAGE_RTR;
             }
         }
-        else if (frame is CanFdFrame fd)
+        else if (frame.FrameKind is CanFrameType.CanFd)
         {
-            type = TPCANMessageType.PCAN_MESSAGE_FD;
-            if (fd.IsExtendedFrame)
-            {
-                type |= TPCANMessageType.PCAN_MESSAGE_EXTENDED;
-            }
-
-            if (fd.BitRateSwitch)
+            type |= TPCANMessageType.PCAN_MESSAGE_FD;
+            if (frame.BitRateSwitch)
             {
                 type |= TPCANMessageType.PCAN_MESSAGE_BRS;
             }
 
-            if (fd.ErrorStateIndicator)
+            if (frame.ErrorStateIndicator)
             {
                 type |= TPCANMessageType.PCAN_MESSAGE_ESI;
             }
@@ -181,7 +178,7 @@ public sealed class PcanFdTransceiver : ITransceiver
         PcanStatus st;
         fixed (byte* ptr = frame.Data.Span)
         {
-            Unsafe.CopyBlock(pMsg->DATA, ptr, (uint)Math.Min(CanFdFrame.DlcToLen(frame.Dlc), 64));
+            Unsafe.CopyBlock(pMsg->DATA, ptr, (uint)frame.Len);
             pMsg->ID = (uint)frame.ID;
             pMsg->MSGTYPE = type;
             pMsg->DLC = frame.Dlc;
@@ -221,9 +218,8 @@ public sealed class PcanFdTransceiver : ITransceiver
             {
                 var isRtr = (pmsg.MSGTYPE & TPCANMessageType.PCAN_MESSAGE_RTR) != 0;
                 var scf = CopyFd(pmsg, bus);
-                var cf = new CanClassicFrame((int)pmsg.ID, scf, isExt, isRtr,
-                    bus.Options.BufferAllocator.FrameNeedDispose)
-                { IsErrorFrame = isErr };
+                var cf = CanFrame.Classic((int)pmsg.ID, scf, isExt, isRtr,
+                    bus.Options.BufferAllocator.FrameNeedDispose, isErr);
 
                 yield return new CanReceiveData(cf) { ReceiveTimestamp = TimeSpan.FromTicks((long)ticks) };
                 continue;
@@ -233,9 +229,8 @@ public sealed class PcanFdTransceiver : ITransceiver
             var esi = (pmsg.MSGTYPE & TPCANMessageType.PCAN_MESSAGE_ESI) != 0;
 
             var sfd = CopyFd(pmsg, bus);
-            var fd = new CanFdFrame((int)pmsg.ID, sfd, brs, esi, isExt,
-                bus.Options.BufferAllocator.FrameNeedDispose)
-            { IsErrorFrame = isErr };
+            var fd = CanFrame.Fd((int)pmsg.ID, sfd, brs, esi, isExt,
+                bus.Options.BufferAllocator.FrameNeedDispose, isErr);
 
 
             yield return new CanReceiveData(fd) { ReceiveTimestamp = TimeSpan.FromTicks((long)ticks) };
@@ -243,11 +238,11 @@ public sealed class PcanFdTransceiver : ITransceiver
 
         unsafe IMemoryOwner<byte> CopyFd(in PcanBasicNative.TpcanMsgFd msg, ICanBus bus)
         {
-            var data = bus.Options.BufferAllocator.Rent(CanFdFrame.DlcToLen(msg.DLC));
+            var data = bus.Options.BufferAllocator.Rent(CanFrame.DlcToLen(msg.DLC));
             fixed (byte* src = msg.DATA)
             fixed (byte* dst = data.Memory.Span)
             {
-                Unsafe.CopyBlockUnaligned(dst, src, (uint)CanFdFrame.DlcToLen(msg.DLC));
+                Unsafe.CopyBlockUnaligned(dst, src, (uint)CanFrame.DlcToLen(msg.DLC));
             }
             return data;
         }

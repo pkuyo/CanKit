@@ -1,4 +1,6 @@
 using System.Collections.Generic;
+using CanKit.Abstractions.API.Common;
+using CanKit.Abstractions.API.Common.Definitions;
 using CanKit.Core.Definitions;
 
 namespace CanKit.Core.Endpoints;
