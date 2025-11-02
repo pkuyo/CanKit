@@ -8,6 +8,7 @@ using System.Reflection;
 using CanKit.Abstractions.API.Can;
 using CanKit.Abstractions.API.Common;
 using CanKit.Abstractions.Attributes;
+using CanKit.Abstractions.SPI.Registry.Core.Endpoints;
 using CanKit.Core.Exceptions;
 using Peak.Can.Basic;
 using Peak.Can.Basic.BackwardCompatibility;
@@ -20,7 +21,6 @@ namespace CanKit.Adapter.PCAN;
 ///  - pcan://PCAN_USBBUS1
 ///  - pcan://?ch=PCAN_PCIBUS1
 /// </summary>
-[CanEndPoint("pcan", ["pcanbasic", "peak"])]
 internal static class PcanEndpoint
 {
     public static PreparedBusContext Prepare(CanEndpoint ep, Action<IBusInitOptionsConfigurator>? configure)

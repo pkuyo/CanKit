@@ -32,8 +32,7 @@ public sealed class DefaultIsoTpChannel : IIsoTpChannel
     public async Task<IsoTpDatagram> RequestAsync(ReadOnlyMemory<byte> request, CancellationToken ct = default)
     {
         await Core.SendAsync(request.Span, Options.CanPadding, Options.ProtocolMode == CanProtocolMode.CanFd, ct);
-
-        throw new NotImplementedException("Hook Rx completion here.");
+        throw new NotImplementedException();
     }
 
     public void Dispose() => Core.Dispose();

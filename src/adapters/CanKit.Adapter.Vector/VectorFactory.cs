@@ -10,7 +10,6 @@ using CanKit.Core.Exceptions;
 
 namespace CanKit.Adapter.Vector;
 
-[CanFactory("VECTOR")]
 public sealed class VectorFactory : ICanFactory
 {
     public ICanDevice CreateDevice(IDeviceOptions options)

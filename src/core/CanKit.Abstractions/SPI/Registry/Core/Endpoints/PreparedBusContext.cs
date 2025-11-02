@@ -1,7 +1,7 @@
 using CanKit.Abstractions.API.Common;
 using CanKit.Abstractions.SPI.Providers;
 
-namespace CanKit.Core.Endpoints;
+namespace CanKit.Abstractions.SPI.Registry.Core.Endpoints;
 
 /// <summary>
 /// Represents a prepared context for opening or sniffing a bus.

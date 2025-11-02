@@ -1,9 +1,7 @@
 using System.Collections.Generic;
-using CanKit.Abstractions.API.Common;
 using CanKit.Abstractions.API.Common.Definitions;
-using CanKit.Core.Definitions;
 
-namespace CanKit.Core.Endpoints;
+namespace CanKit.Abstractions.SPI.Registry.Core.Endpoints;
 
 /// <summary>
 /// Describes a discoverable CAN endpoint that can be opened. (可被发现并能打开的 CAN 端点信息)

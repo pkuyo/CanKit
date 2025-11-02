@@ -11,7 +11,6 @@ using CanKit.Core.Exceptions;
 
 namespace CanKit.Adapter.PCAN;
 
-[CanFactory("PCAN")]
 public sealed class PcanFactory : ICanFactory
 {
     public ICanDevice CreateDevice(IDeviceOptions options)

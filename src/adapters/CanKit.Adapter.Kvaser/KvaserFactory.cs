@@ -10,7 +10,6 @@ using CanKit.Core.Exceptions;
 
 namespace CanKit.Adapter.Kvaser;
 
-[CanFactory("KVASER")]
 public sealed class KvaserFactory : ICanFactory
 {
     public ICanDevice CreateDevice(IDeviceOptions options)

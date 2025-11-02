@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using CanKit.Abstractions.API.Can;
 using CanKit.Abstractions.API.Common;
 using CanKit.Abstractions.Attributes;
+using CanKit.Abstractions.SPI.Registry.Core.Endpoints;
 using CanKit.Adapter.Vector.Utils;
 using CanKit.Core;
 using CanKit.Core.Endpoints;
@@ -10,7 +11,6 @@ using CanKit.Core.Registry;
 
 namespace CanKit.Adapter.Vector;
 
-[CanEndPoint("vector", ["vxl", "vectorxl"])]
 internal static class VectorEndpoint
 {
     public static PreparedBusContext Prepare(CanEndpoint ep, Action<IBusInitOptionsConfigurator>? configure)

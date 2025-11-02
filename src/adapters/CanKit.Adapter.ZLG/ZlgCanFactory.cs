@@ -14,8 +14,7 @@ using CanKit.Core.Registry;
 
 namespace CanKit.Adapter.ZLG;
 
-[CanFactory("Zlg")]
-public sealed class ZlgCanFactory : ICanFactory
+internal sealed class ZlgCanFactory : ICanFactory
 {
     public ICanDevice CreateDevice(IDeviceOptions options)
     {

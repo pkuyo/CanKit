@@ -7,9 +7,10 @@ using System.Threading;
 using CanKit.Abstractions.API.Can;
 using CanKit.Abstractions.API.Common;
 using CanKit.Abstractions.API.Common.Definitions;
-using CanKit.Abstractions.Attributes;
 using CanKit.Abstractions.SPI.Factories;
 using CanKit.Abstractions.SPI.Providers;
+using CanKit.Abstractions.SPI.Registry.Core;
+using CanKit.Abstractions.SPI.Registry.Core.Endpoints;
 using CanKit.Core.Definitions;
 using CanKit.Core.Diagnostics;
 using CanKit.Core.Endpoints;
@@ -135,23 +136,36 @@ public partial class CanRegistry
     }
 
     /// <summary>
-    /// Register a scheme handler (注册一个 scheme 处理器)。
+    /// Register an endpoint by descriptor (open/prepare/enumerate) without reflection.
     /// </summary>
-    internal void RegisterEndPoint(string scheme, Func<CanEndpoint, Action<IBusInitOptionsConfigurator>?, ICanBus> openHandler)
+    internal void RegisterEndPoint(EndpointRegistration e)
     {
-        if (string.IsNullOrWhiteSpace(scheme)) throw new ArgumentNullException(nameof(scheme));
-        _handlers[scheme] = openHandler ?? throw new ArgumentNullException(nameof(openHandler));
+        if (e is null) throw new ArgumentNullException(nameof(e));
+        if (string.IsNullOrWhiteSpace(e.Scheme)) throw new ArgumentNullException(nameof(e.Scheme));
+
+        _handlers[e.Scheme] = e.Open;
+        _prepareHandlers[e.Scheme] = e.Prepare;
+
+        if (e.Enumerate != null)
+            _enumerators[e.Scheme] = e.Enumerate;
+
+        foreach (var alias in e.Alias.Append(e.Scheme))
+        {
+            if (!_enumeratorAlias.ContainsKey(alias))
+                _enumeratorAlias[alias] = e.Scheme;
+        }
+
+
     }
 }
 
 public partial class CanRegistry
 {
-    private const string DefaultPrefix = "CanKit";
 
     private static readonly Lazy<CanRegistry> _registry =
         new(BuildRegistry, LazyThreadSafetyMode.ExecutionAndPublication);
 
-    private readonly Dictionary<string, Func<IEnumerable<Endpoints.BusEndpointInfo>>> _enumerators =
+    private readonly Dictionary<string, Func<IEnumerable<BusEndpointInfo>>> _enumerators =
         new(StringComparer.OrdinalIgnoreCase);
 
     private readonly Dictionary<string, string> _enumeratorAlias = new(StringComparer.OrdinalIgnoreCase);
@@ -166,18 +180,16 @@ public partial class CanRegistry
 
     private readonly Dictionary<DeviceType, ICanModelProvider> _providers = new();
 
+    internal static CanRegistry? Instance;
+
     internal CanRegistry(params Assembly[] assembliesToScan)
     {
+        Instance = this;
         var assemblies = assembliesToScan.Length == 0 ? [Assembly.GetExecutingAssembly()] : assembliesToScan;
-
-        foreach (var asm in assemblies)
-        {
-            RegisterFactory(asm);
-            RegisterProvider(asm);
-            RegisterEndPoint(asm);
-        }
+        ExecuteRegistrationPipeline(assemblies);
     }
-    public static Assembly Entry()
+
+    private static Assembly Entry()
     {
 
         var entry = Assembly.GetEntryAssembly();
@@ -229,269 +241,6 @@ public partial class CanRegistry
         }
         catch {/* ignore any preload reflection errors */ }
     }
-
-    private void RegisterEndPoint(Assembly asm)
-    {
-        const string expectedSig = "public static ICanBus Open(CanEndpoint, Action<IBusInitOptionsConfigurator>?)";
-
-        var types = asm.GetTypes()
-            .Select(type => (type, type.GetCustomAttribute<CanEndPointAttribute>()))
-            .Where(t => t.Item2 != null);
-
-        foreach (var (type, attr) in types)
-        {
-            if (attr is null)
-            {
-                continue;
-            }
-
-            try
-            {
-                var method = type.GetMethod("Open",
-                    BindingFlags.Public | BindingFlags.Static,
-                    null,
-                    [typeof(CanEndpoint), typeof(Action<IBusInitOptionsConfigurator>)],
-                    null);
-
-                if (method == null)
-                {
-                    CanKitLogger.LogError(
-                        $"RegisterEndpoint skipped: method not found. Type={type.AssemblyQualifiedName}, Scheme={attr.Scheme}, ExpectedSignature={expectedSig}");
-                    continue;
-                }
-
-                if (!typeof(ICanBus).IsAssignableFrom(method.ReturnType))
-                {
-                    CanKitLogger.LogError(
-                        $"RegisterEndpoint skipped: return type mismatch. Type={type.AssemblyQualifiedName}, Scheme={attr.Scheme}, ExpectedReturn={typeof(ICanBus).FullName}, ActualReturn={method.ReturnType.FullName}");
-                    continue;
-                }
-
-                RegisterEndPoint(attr.Scheme,
-                    (Func<CanEndpoint, Action<IBusInitOptionsConfigurator>?, ICanBus>)
-                    method.CreateDelegate(
-                        typeof(Func<CanEndpoint, Action<IBusInitOptionsConfigurator>?, ICanBus>)));
-                CanKitLogger.LogInformation(
-                    $"Registered endpoint. Scheme='{attr.Scheme}', Type='{type.AssemblyQualifiedName}'");
-
-                // Optional: discover enumerator method: public static IEnumerable<BusEndpointInfo> Enumerate()
-                try
-                {
-                    var enumMethod = type.GetMethod(
-                        "Enumerate",
-                        BindingFlags.Public | BindingFlags.Static,
-                        null,
-                        Type.EmptyTypes,
-                        null);
-
-                    if (enumMethod != null && typeof(IEnumerable<BusEndpointInfo>).IsAssignableFrom(enumMethod.ReturnType))
-                    {
-                        var del = (Func<IEnumerable<BusEndpointInfo>>)enumMethod.CreateDelegate(typeof(Func<IEnumerable<BusEndpointInfo>>));
-                        _enumerators[attr.Scheme] = del;
-                        foreach (var alias in attr.Alias.Append(attr.Scheme))
-                        {
-                            if (_enumeratorAlias.TryGetValue(alias, out var enumerator))
-                            {
-                                CanKitLogger.LogError($"RegisterEndpoint skipped: alias already exists, Alias={alias}, Scheme={attr.Scheme}, AlreadyBindScheme={enumerator}");
-                            }
-                            else
-                            {
-                                _enumeratorAlias[alias] = attr.Scheme;
-                            }
-                        }
-                        CanKitLogger.LogInformation($"Registered endpoint enumerator. Scheme='{attr.Scheme}', Type='{type.AssemblyQualifiedName}'");
-                    }
-                }
-                catch (Exception ex)
-                {
-                    CanKitLogger.LogWarning($"Endpoint enumerator registration failed. Scheme='{attr.Scheme}', Type='{type.AssemblyQualifiedName}'", ex);
-                }
-
-                // Optional: discover Prepare method: public static PreparedBusContext Prepare(CanEndpoint, Action<IBusInitOptionsConfigurator>?)
-                try
-                {
-                    var prepareMethod = type.GetMethod(
-                        "Prepare",
-                        BindingFlags.Public | BindingFlags.Static,
-                        null,
-                        new[] { typeof(CanEndpoint), typeof(Action<IBusInitOptionsConfigurator>) },
-                        null);
-                    if (prepareMethod != null && typeof(PreparedBusContext).IsAssignableFrom(prepareMethod.ReturnType))
-                    {
-                        var del = (Func<CanEndpoint, Action<IBusInitOptionsConfigurator>?, PreparedBusContext>)
-                            prepareMethod.CreateDelegate(typeof(Func<CanEndpoint, Action<IBusInitOptionsConfigurator>?, PreparedBusContext>));
-                        _prepareHandlers[attr.Scheme] = del;
-                        CanKitLogger.LogInformation($"Registered endpoint prepare. Scheme='{attr.Scheme}', Type='{type.AssemblyQualifiedName}'");
-                    }
-                }
-                catch (Exception ex)
-                {
-                    CanKitLogger.LogWarning($"Endpoint prepare registration failed. Scheme='{attr.Scheme}', Type='{type.AssemblyQualifiedName}'", ex);
-                }
-            }
-            catch (AmbiguousMatchException ex)
-            {
-                CanKitLogger.LogError(
-                    $"RegisterEndpoint skipped: multiple overloads matched. Type={type.AssemblyQualifiedName}, Scheme={attr.Scheme}",
-                    ex);
-            }
-            catch (ArgumentException ex)
-            {
-                CanKitLogger.LogError(
-                    $"RegisterEndpoint skipped: delegate creation failed due to signature incompatibility. Type={type.AssemblyQualifiedName}, Scheme={attr.Scheme}, ExpectedSignature={expectedSig}",
-                    ex);
-            }
-            catch (Exception ex)
-            {
-                CanKitLogger.LogError(
-                    $"RegisterEndpoint skipped: unexpected error. Type={type.AssemblyQualifiedName}, Scheme={attr.Scheme}",
-                    ex);
-            }
-        }
-
-    }
-
-    private void RegisterProvider(Assembly asm)
-    {
-        var types = asm.GetTypes().Where(t =>
-            typeof(ICanModelProvider).IsAssignableFrom(t) && !t.IsAbstract &&
-            t.GetConstructor(Type.EmptyTypes) != null);
-
-        foreach (var t in types)
-        {
-            try
-            {
-                var provider = (ICanModelProvider)Activator.CreateInstance(t)!;
-
-                if (string.IsNullOrWhiteSpace(provider.DeviceType.Id))
-                {
-                    CanKitLogger.LogError(
-                        $"Provider '{t.AssemblyQualifiedName}' returned an empty DeviceType. Skipped.");
-                    return;
-                }
-
-                if (_providers.TryGetValue(provider.DeviceType, out var existing))
-                {
-                    CanKitLogger.LogError(
-                        $"A provider with DeviceType '{provider.DeviceType}' is already registered. " +
-                        $"Existing={existing.GetType().AssemblyQualifiedName}, Incoming={t.AssemblyQualifiedName}");
-                    return;
-                }
-
-                _providers.Add(provider.DeviceType, provider);
-                CanKitLogger.LogInformation(
-                    $"Registered provider. DeviceType='{provider.DeviceType}', Type='{t.AssemblyQualifiedName}'");
-            }
-            catch (Exception ex)
-            {
-                CanKitLogger.LogError(
-                    $"Failed to register provider. Type={t.AssemblyQualifiedName}",
-                    ex);
-            }
-        }
-
-        // Scan group providers and expand to concrete providers per device type
-        // ZH: 扫描分组 Provider，并按设备类型逐一创建并注册具体 Provider。
-        var groupTypes = asm.GetTypes().Where(t =>
-            typeof(ICanModelProviderGroup).IsAssignableFrom(t) && !t.IsAbstract &&
-            t.GetConstructor(Type.EmptyTypes) != null);
-
-        foreach (var t in groupTypes)
-        {
-            ICanModelProviderGroup group;
-            try
-            {
-                group = (ICanModelProviderGroup)Activator.CreateInstance(t)!;
-            }
-            catch (Exception ex)
-            {
-                CanKitLogger.LogWarning($"Failed to create provider group '{t.FullName}'.", ex);
-                continue;
-            }
-
-            IEnumerable<DeviceType> deviceTypes;
-            try
-            {
-                deviceTypes = group.SupportedDeviceTypes;
-            }
-            catch (Exception ex)
-            {
-                CanKitLogger.LogWarning($"Failed to query SupportedDeviceTypes from group '{t.FullName}'.", ex);
-                continue;
-            }
-
-            foreach (var dt in deviceTypes)
-            {
-                try
-                {
-                    var provider = group.Create(dt);
-
-                    if (_providers.ContainsKey(dt))
-                    {
-                        CanKitLogger.LogError($"A provider with the DeviceType '{dt}' is already registered.");
-                    }
-                    else
-                    {
-                        _providers.Add(dt, provider);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    CanKitLogger.LogWarning($"Failed to create provider for DeviceType '{dt}' from group '{t.FullName}'.", ex);
-                }
-            }
-        }
-    }
-
-    private void RegisterFactory(Assembly asm)
-    {
-        var types = asm.GetTypes().Where(t =>
-            typeof(ICanFactory).IsAssignableFrom(t) && !t.IsAbstract &&
-            t.GetConstructor(Type.EmptyTypes) != null);
-        foreach (var t in types)
-        {
-            var attr = t.GetCustomAttribute<CanFactoryAttribute>();
-            if (attr == null)
-            {
-                continue;
-            }
-
-            try
-            {
-                if (Activator.CreateInstance(t) is not ICanFactory factory)
-                {
-                    CanKitLogger.LogError(
-                        $"CanFactory create instance failed. Type='{t.AssemblyQualifiedName}'");
-                    continue;
-                }
-
-                if (string.IsNullOrWhiteSpace(attr.FactoryId))
-                {
-                    CanKitLogger.LogError(
-                        $"CanFactoryAttribute.FactoryId is null/empty. Type='{t.AssemblyQualifiedName}'");
-                    continue;
-                }
-
-                if (_factories.TryGetValue(attr.FactoryId, out var existing))
-                {
-                    CanKitLogger.LogError(
-                        $"A factory with the ID '{attr.FactoryId}' is already registered. Existing='{existing.GetType().AssemblyQualifiedName}', Incoming='{t.AssemblyQualifiedName}'");
-                    continue;
-                }
-
-                _factories.Add(attr.FactoryId, factory);
-
-                CanKitLogger.LogInformation(
-                    $"Registered factory. FactoryId='{attr.FactoryId}', Type='{t.AssemblyQualifiedName}'");
-            }
-            catch (Exception ex)
-            {
-                CanKitLogger.LogError(
-                    $"Failed to register factory. Type='{t.AssemblyQualifiedName}', FactoryId='{attr.FactoryId}'",
-                    ex);
-            }
-        }
-    }
 }
 
 public partial class CanRegistry
@@ -506,7 +255,7 @@ public partial class CanRegistry
         {
             foreach (var e in _enumerators.Values)
             {
-                IEnumerable<Endpoints.BusEndpointInfo> items;
+                IEnumerable<BusEndpointInfo> items;
                 try { items = e() ?? []; }
                 catch { items = []; }
                 foreach (var it in items) yield return it;

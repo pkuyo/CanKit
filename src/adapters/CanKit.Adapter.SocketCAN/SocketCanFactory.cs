@@ -11,7 +11,6 @@ using CanKit.Core.Exceptions;
 
 namespace CanKit.Adapter.SocketCAN;
 
-[CanFactory("SocketCAN")]
 public sealed class SocketCanFactory : ICanFactory
 {
     public ICanDevice CreateDevice(IDeviceOptions options)

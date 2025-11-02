@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using CanKit.Abstractions.API.Can;
 using CanKit.Abstractions.API.Common;
+using CanKit.Abstractions.SPI.Registry.Core.Endpoints;
 using CanKit.Core.Definitions;
 using CanKit.Core.Registry;
 

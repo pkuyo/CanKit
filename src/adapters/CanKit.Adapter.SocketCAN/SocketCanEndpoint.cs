@@ -6,6 +6,7 @@ using System.Runtime.InteropServices;
 using CanKit.Abstractions.API.Can;
 using CanKit.Abstractions.API.Common;
 using CanKit.Abstractions.Attributes;
+using CanKit.Abstractions.SPI.Registry.Core.Endpoints;
 using CanKit.Core;
 using CanKit.Core.Diagnostics;
 using CanKit.Core.Endpoints;
@@ -17,8 +18,6 @@ namespace CanKit.Adapter.SocketCAN;
 /// <summary>
 /// Registers endpoint handler for scheme "socketcan" (为 "socketcan" scheme 注册 Endpoint 处理器)。
 /// </summary>
-
-[CanEndPoint("socketcan", ["linux", "libsocketcan"])]
 internal static class SocketCanEndpoint
 {
     public static PreparedBusContext Prepare(CanEndpoint ep, Action<IBusInitOptionsConfigurator>? configure)

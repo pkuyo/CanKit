@@ -8,6 +8,7 @@ using CanKit.Abstractions.API.Common.Definitions;
 using CanKit.Abstractions.Attributes;
 using CanKit.Abstractions.SPI;
 using CanKit.Abstractions.SPI.Common;
+using CanKit.Abstractions.SPI.Registry.Core.Endpoints;
 using CanKit.Adapter.ControlCAN.Options;
 using CanKit.Adapter.ControlCAN.Definitions;
 using CanKit.Core.Definitions;
@@ -23,7 +24,6 @@ namespace CanKit.Adapter.ControlCAN;
 ///  - controlcan://VCI_USBCAN2?index=0#ch1
 ///  - controlcan://USBCAN2?index=0#ch1
 /// </summary>
-[CanEndPoint("controlcan", [])]
 public static class ControlCanEndpoint
 {
     public static PreparedBusContext Prepare(CanEndpoint ep, Action<IBusInitOptionsConfigurator>? configure)

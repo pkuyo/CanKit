@@ -8,7 +8,6 @@ using CanKit.Core.Definitions;
 
 namespace CanKit.Adapter.Virtual;
 
-[CanFactory("Virtual")]
 public sealed class VirtualFactory : ICanFactory
 {
     public ICanDevice CreateDevice(IDeviceOptions options)

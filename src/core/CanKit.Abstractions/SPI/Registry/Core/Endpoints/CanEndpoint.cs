@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace CanKit.Core.Endpoints;
+namespace CanKit.Abstractions.SPI.Registry.Core.Endpoints;
 
 /// <summary>
 /// Parsed CAN endpoint (解析后的 CAN Endpoint)。

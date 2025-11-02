@@ -10,7 +10,6 @@ using CanKit.Core.Exceptions;
 
 namespace CanKit.Adapter.ControlCAN;
 
-[CanFactory("ControlCAN")]
 public sealed class ControlCanFactory : ICanFactory
 {
     public ICanDevice CreateDevice(IDeviceOptions options) => new ControlCanDevice(options);

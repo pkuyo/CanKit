@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using CanKit.Abstractions.API.Can;
 using CanKit.Abstractions.API.Common;
 using CanKit.Abstractions.Attributes;
+using CanKit.Abstractions.SPI.Registry.Core.Endpoints;
 using CanKit.Adapter.Virtual.Definitions;
 using CanKit.Core;
 using CanKit.Core.Definitions;
@@ -18,7 +19,6 @@ namespace CanKit.Adapter.Virtual;
 /// - sessionId: any string (grouped into same bus hub)
 /// - channelId: integer (>= 0)
 /// </summary>
-[CanEndPoint("virtual", [])]
 internal static class VirtualEndpoint
 {
 
