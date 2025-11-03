@@ -1,13 +1,16 @@
 ﻿using System;
 using System.Threading;
 using System.Threading.Tasks;
+using CanKit.Abstractions.API.Common.Definitions;
 using CanKit.Abstractions.API.Transport.Definitions;
 
 namespace CanKit.Abstractions.API.Transport;
 
 public interface IIsoTpChannel : IDisposable
 {
-    IsoTpEndpoint Endpoint { get; }
+    IIsoTpRTConfigurator Options { get; }
+
+    BusNativeHandle NativeHandle { get; }
 
     event EventHandler<IsoTpDatagram>? DatagramReceived;
 

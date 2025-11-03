@@ -35,6 +35,6 @@
         <None Include="README.md" Pack="true" PackagePath="" />
     </ItemGroup>
     <ItemGroup>
-      <Folder Include="Abstractions\" />
+      <Folder Include="Diagnostics\" />
     </ItemGroup>
 </Project>

@@ -29,7 +29,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
     private IDisposable? _owner;
     private CancellationTokenSource? _pollCts;
     private Task? _pollTask;
-    private EventWaitHandle _recEvent;
+    private readonly EventWaitHandle _recEvent;
 
     private Func<CanFrame, bool>? _softwareFilterPredicate;
 
@@ -76,7 +76,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
 
             CanKitErr.ThrowIfNotSupport(Options.Features, CanFeature.CanFd);
 
-            var fd = MapFdBitrate(options.BitTiming);
+            var fd = PcanUtils.MapFdBitrate(options.BitTiming);
             var st = Api.Initialize(_handle, fd);
             if (st != PcanStatus.OK)
             {
@@ -86,7 +86,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
         }
         else if (options.ProtocolMode == CanProtocolMode.Can20)
         {
-            var baud = MapClassicBaud(options.BitTiming);
+            var baud = PcanUtils.MapClassicBaud(options.BitTiming);
             var st = Api.Initialize(_handle, baud);
             if (st != PcanStatus.OK)
             {
@@ -469,92 +469,5 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
         try { CanKitLogger.LogError("PCAN bus occured background exception.", ex); } catch { }
         try { _asyncRx.ExceptionOccured(ex); } catch { }
         try { var snap = Volatile.Read(ref BackgroundExceptionOccurred); snap?.Invoke(this, ex); } catch { }
-    }
-
-    private static Bitrate MapClassicBaud(CanBusTiming timing)
-    {
-        if (!timing.Classic!.Value.Nominal.IsTarget)
-        {
-            throw new CanBusConfigurationException(
-                "Classic timing must specify a target nominal bitrate.");
-        }
-
-        var b = timing.Classic.Value.Nominal.Bitrate!.Value;
-        return b switch
-        {
-            1_000_000 => Bitrate.Pcan1000,
-            800_000 => Bitrate.Pcan800,
-            500_000 => Bitrate.Pcan500,
-            250_000 => Bitrate.Pcan250,
-            125_000 => Bitrate.Pcan125,
-            100_000 => Bitrate.Pcan100,
-            83_000 => Bitrate.Pcan83,
-            95_000 => Bitrate.Pcan95,
-            50_000 => Bitrate.Pcan50,
-            47_000 => Bitrate.Pcan47,
-            33_000 => Bitrate.Pcan33,
-            20_000 => Bitrate.Pcan20,
-            10_000 => Bitrate.Pcan10,
-            5_000 => Bitrate.Pcan5,
-            _ => throw new CanBusConfigurationException($"Unsupported PCAN classic bitrate: {b}")
-        };
-    }
-
-    private static BitrateFD MapFdBitrate(CanBusTiming timing)
-    {
-
-        var (nomial, data, clockTmp) = timing.Fd!.Value;
-        var clock = clockTmp ?? 80;
-        // If advanced override is provided, build a custom FD string using same segments for both phases.
-        BitrateFD.BitrateSegment nominalSeg = new BitrateFD.BitrateSegment();
-        BitrateFD.BitrateSegment dataSeg = new BitrateFD.BitrateSegment();
-
-        if (!Enum.IsDefined(typeof(BitrateFD.ClockFrequency), clock * 1_000_000))
-        {
-            throw new CanBusConfigurationException(
-                $"Unsupported PCAN FD clock frequency: {clock} MHz.");
-        }
-
-        if (nomial.Segments is { } seg)
-        {
-            nominalSeg.Tseg1 = seg.Tseg1;
-            nominalSeg.Tseg2 = seg.Tseg2;
-            nominalSeg.Brp = seg.Brp;
-            nominalSeg.Mode = BitrateFD.BitrateType.ArbitrationPhase;
-            nominalSeg.Sjw = seg.Sjw;
-
-        }
-        else
-        {
-            var bit = timing.Fd.Value.Nominal.Bitrate!.Value;
-            var samplePoint = timing.Fd.Value.Nominal.SamplePointPermille ?? 800;
-            var segment = BitTimingSolver.FromSamplePoint(clock, bit, samplePoint/1000.0);
-            nominalSeg.Tseg1 = segment.Tseg1;
-            nominalSeg.Tseg2 = segment.Tseg2;
-            nominalSeg.Brp = segment.Brp;
-            nominalSeg.Mode = BitrateFD.BitrateType.ArbitrationPhase;
-            nominalSeg.Sjw = segment.Sjw;
-        }
-
-        if (data.Segments is { } seg1)
-        {
-            dataSeg.Tseg1 = seg1.Tseg1;
-            dataSeg.Tseg2 = seg1.Tseg2;
-            dataSeg.Brp = seg1.Brp;
-            dataSeg.Mode = BitrateFD.BitrateType.DataPhase;
-            dataSeg.Sjw = seg1.Sjw;
-        }
-        else
-        {
-            var bit = timing.Fd.Value.Nominal.Bitrate!.Value;
-            var samplePoint = timing.Fd.Value.Nominal.SamplePointPermille ?? 800;
-            var segment = BitTimingSolver.FromSamplePoint(clock, bit, samplePoint/1000.0);
-            dataSeg.Tseg1 = segment.Tseg1;
-            dataSeg.Tseg2 = segment.Tseg2;
-            dataSeg.Brp = segment.Brp;
-            dataSeg.Mode = BitrateFD.BitrateType.ArbitrationPhase;
-            dataSeg.Sjw = segment.Sjw;
-        }
-        return new BitrateFD((BitrateFD.ClockFrequency)(clock * 1_000_000), nominalSeg, dataSeg);
     }
 }

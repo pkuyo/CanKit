@@ -16,6 +16,10 @@ public interface ICanOptionsConfigurator
     /// Features supported by current options (当前设备/通道选项支持的功能)。
     /// </summary>
     CanFeature Features { get; }
+
+    /// Capability report combining built-in CanFeature and optional custom feature bag.
+    /// (能力报告，包含内置的 CanFeature 与可选的自定义能力键值对。)
+    Capability Capabilities { get; }
 }
 
 /// <summary>

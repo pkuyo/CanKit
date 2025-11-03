@@ -1,5 +1,6 @@
 using CanKit.Adapter.PCAN.Definitions;
 using CanKit.Core;
+using Peak.Can.Basic;
 
 namespace CanKit.Adapter.PCAN;
 

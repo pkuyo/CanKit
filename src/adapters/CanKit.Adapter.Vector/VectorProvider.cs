@@ -43,7 +43,7 @@ public sealed class VectorProvider : ICanModelProvider, ICanCapabilityProvider
 
     internal VectorChannelInfo? QueryChannelInfo(IBusOptions busOptions)
     {
-        var globalIndex = GlobalIndexAndAccessMask(busOptions.ChannelName, busOptions.ChannelIndex, out var mask);
+        var globalIndex = GlobalIndex(busOptions.ChannelName, busOptions.ChannelIndex);
         if (VectorDriver.TryGetChannelInfo(globalIndex, out var info))
         {
             info = info with
@@ -61,9 +61,8 @@ public sealed class VectorProvider : ICanModelProvider, ICanCapabilityProvider
         return QueryChannelInfo(busOptions)?.Capability ?? new Capability(busOptions.Features);
     }
 
-    private static int GlobalIndexAndAccessMask(string? appName, int appChannelIndex, out uint accessMask)
+    private static int GlobalIndex(string? appName, int appChannelIndex)
     {
-        accessMask = 0;
         if (appChannelIndex < 0) appChannelIndex = 0;
         if (string.IsNullOrWhiteSpace(appName)) return appChannelIndex;
 
@@ -72,7 +71,7 @@ public sealed class VectorProvider : ICanModelProvider, ICanCapabilityProvider
             using (VectorDriver.Acquire())
             {
                 uint hwType = 0, hwIndex = 0, hwChannel = 0;
-                var st = VxlApi.xlGetApplConfig(appName!, (uint)appChannelIndex, ref accessMask, ref hwIndex, ref hwChannel, VxlApi.XL_BUS_TYPE_CAN);
+                var st = VxlApi.xlGetApplConfig(appName!, (uint)appChannelIndex, ref hwType, ref hwIndex, ref hwChannel, VxlApi.XL_BUS_TYPE_CAN);
                 if (st == VxlApi.XL_SUCCESS)
                 {
                     var globalIndex = VxlApi.xlGetChannelIndex((int)hwType, (int)hwIndex, (int)hwChannel);

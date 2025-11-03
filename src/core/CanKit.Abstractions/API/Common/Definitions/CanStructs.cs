@@ -280,4 +280,6 @@ public readonly struct BusNativeHandle(nint value)
     public readonly nint HandleValue = value;
 
     public override string ToString() => $"0x{HandleValue:x}";
+
+    public static readonly BusNativeHandle Zero = new(0);
 }

@@ -4,7 +4,7 @@ using CanKit.Abstractions.API.Transport;
 using CanKit.Abstractions.API.Transport.Definitions;
 using CanKit.Core.Definitions;
 using CanKit.Protocol.IsoTp.Defines;
-using CanKit.Protocol.IsoTp.Options;
+using CanKit.Transport.IsoTp.Options;
 
 namespace CanKit.Protocol.IsoTp.Core;
 
@@ -12,7 +12,8 @@ public sealed class DefaultIsoTpChannel : IIsoTpChannel
 {
     internal IsoTpChannelCore Core { get; }
     internal IsoTpScheduler Scheduler { get; }
-    internal IsoTpOptions Options { get; }
+    public IIsoTpRTConfigurator Options { get; }
+    public BusNativeHandle NativeHandle { get; } = BusNativeHandle.Zero;
 
     public IsoTpEndpoint Endpoint => Core.Endpoint;
 
@@ -20,7 +21,11 @@ public sealed class DefaultIsoTpChannel : IIsoTpChannel
     public event EventHandler<IsoTpDatagram>? DatagramReceived;
 
     internal DefaultIsoTpChannel(IsoTpChannelCore core, IsoTpScheduler sch, IsoTpOptions opt)
-    { Core = core; Scheduler = sch; Options = opt; }
+    {
+        Core = core;
+        Scheduler = sch;
+        Options = new IsoTpRtConfigurator().Init(opt);
+    }
 
 
     public Task<bool> SendAsync(ReadOnlyMemory<byte> pdu, CancellationToken ct = default)

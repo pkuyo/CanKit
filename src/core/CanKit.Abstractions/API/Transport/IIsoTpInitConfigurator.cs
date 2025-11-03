@@ -1,6 +1,7 @@
 using System;
 using CanKit.Abstractions.API.Common;
 using CanKit.Abstractions.API.Common.Definitions;
+using CanKit.Abstractions.API.Transport.Definitions;
 using CanKit.Abstractions.SPI.Common;
 
 namespace CanKit.Abstractions.API.Transport;
@@ -42,6 +43,8 @@ public interface IIsoTpInitConfigurator
         uint? clockMHz = null,
         ushort? nominalSamplePointPermille = null,
         ushort? dataSamplePointPermille = null);
+
+    IIsoTpInitConfigurator Endpoint(IsoTpEndpoint endpoint);
 
     IIsoTpInitConfigurator TimingClassic(CanClassicTiming timing);
     IIsoTpInitConfigurator TimingFd(CanFdTiming timing);

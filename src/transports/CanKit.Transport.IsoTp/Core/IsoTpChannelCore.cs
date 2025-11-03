@@ -8,14 +8,14 @@ using CanKit.Abstractions.API.Common;
 using CanKit.Abstractions.API.Common.Definitions;
 using CanKit.Abstractions.API.Transport;
 using CanKit.Abstractions.API.Transport.Definitions;
+using CanKit.Abstractions.API.Transport.Excpetions;
 using CanKit.Abstractions.SPI;
 using CanKit.Abstractions.SPI.Common;
 using CanKit.Core.Definitions;
 using CanKit.Core.Utils;
 using CanKit.Protocol.IsoTp.Defines;
-using CanKit.Protocol.IsoTp.Diagnostics;
-using CanKit.Protocol.IsoTp.Options;
 using CanKit.Protocol.IsoTp.Utils;
+using CanKit.Transport.IsoTp.Options;
 
 namespace CanKit.Protocol.IsoTp.Core;
 

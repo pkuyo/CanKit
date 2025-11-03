@@ -2,10 +2,10 @@ using CanKit.Abstractions.API.Can;
 using CanKit.Abstractions.API.Common;
 using CanKit.Abstractions.API.Common.Definitions;
 using CanKit.Abstractions.API.Transport;
+using CanKit.Abstractions.API.Transport.Definitions;
 using CanKit.Abstractions.SPI.Common;
 using CanKit.Core.Definitions;
 using CanKit.Core.Utils;
-using CanKit.Protocol.IsoTp.Options;
 
 namespace CanKit.Transport.IsoTp.Options;
 
@@ -22,55 +22,58 @@ public class IsoTpInitConfigurator
 
     public int AsyncBufferCapacity => Options.AsyncBufferCapacity;
 
-    public virtual IsoTpInitConfigurator CanPadding(bool padding)
+    public CanFeature Features => Options.Features;
+    public Capability Capabilities => Options.Capabilities;
+
+    public IIsoTpInitConfigurator CanPadding(bool padding)
     {
         Options.CanPadding = padding;
         return this;
     }
 
-    public virtual IsoTpInitConfigurator GlobalBusGuard(TimeSpan globalBusGuard)
+    public virtual IIsoTpInitConfigurator GlobalBusGuard(TimeSpan globalBusGuard)
     {
         Options.GlobalBusGuard = globalBusGuard;
         return this;
     }
 
-    public virtual IsoTpInitConfigurator MaxFrameLength(int maxFrameLength)
+    public virtual IIsoTpInitConfigurator MaxFrameLength(int maxFrameLength)
     {
         Options.MaxFrameLength = maxFrameLength;
         return this;
     }
 
-    public virtual IsoTpInitConfigurator N_As(TimeSpan n_As)
+    public virtual IIsoTpInitConfigurator N_As(TimeSpan n_As)
     {
         Options.N_As = n_As;
         return this;
     }
 
-    public virtual IsoTpInitConfigurator N_Ar(TimeSpan n_Ar)
+    public virtual IIsoTpInitConfigurator N_Ar(TimeSpan n_Ar)
     {
         Options.N_Ar = n_Ar;
         return this;
     }
 
-    public virtual IsoTpInitConfigurator N_Bs(TimeSpan n_Bs)
+    public virtual IIsoTpInitConfigurator N_Bs(TimeSpan n_Bs)
     {
         Options.N_Bs = n_Bs;
         return this;
     }
 
-    public virtual IsoTpInitConfigurator N_Br(TimeSpan n_Br)
+    public virtual IIsoTpInitConfigurator N_Br(TimeSpan n_Br)
     {
         Options.N_Br = n_Br;
         return this;
     }
 
-    public virtual IsoTpInitConfigurator N_Cs(TimeSpan n_Cs)
+    public virtual IIsoTpInitConfigurator N_Cs(TimeSpan n_Cs)
     {
         Options.N_Cs = n_Cs;
         return this;
     }
 
-    public virtual IsoTpInitConfigurator N_Cr(TimeSpan n_Cr)
+    public virtual IIsoTpInitConfigurator N_Cr(TimeSpan n_Cr)
     {
         Options.N_Cr = n_Cr;
         return this;
@@ -112,6 +115,12 @@ public class IsoTpInitConfigurator
         Options.BitTiming = new CanBusTiming(
             new CanFdTiming(CanPhaseTiming.Target((uint)abit, nominalSamplePointPermille),
                 CanPhaseTiming.Target((uint)dbit, dataSamplePointPermille), clockMHz));
+        return this;
+    }
+
+    public IIsoTpInitConfigurator Endpoint(IsoTpEndpoint endpoint)
+    {
+        Options.Endpoint = endpoint;
         return this;
     }
 
@@ -171,17 +180,10 @@ public class IsoTpInitConfigurator
         Options.BufferAllocator = bufferAllocator;
         return this;
     }
-    #region IIsoTpInitConfigurator
-    IIsoTpInitConfigurator IIsoTpInitConfigurator.CanPadding(bool padding) => CanPadding(padding);
-    IIsoTpInitConfigurator IIsoTpInitConfigurator.GlobalBusGuard(TimeSpan globalBusGuard) => GlobalBusGuard(globalBusGuard);
-    IIsoTpInitConfigurator IIsoTpInitConfigurator.MaxFrameLength(int maxFrameLength) => MaxFrameLength(maxFrameLength);
 
-    IIsoTpInitConfigurator IIsoTpInitConfigurator.N_As(TimeSpan n_As) => N_As(n_As);
-    IIsoTpInitConfigurator IIsoTpInitConfigurator.N_Ar(TimeSpan n_Ar) => N_Ar(n_Ar);
-    IIsoTpInitConfigurator IIsoTpInitConfigurator.N_Bs(TimeSpan n_Bs) => N_Bs(n_Bs);
-    IIsoTpInitConfigurator IIsoTpInitConfigurator.N_Br(TimeSpan n_Br) => N_Br(n_Br);
-    IIsoTpInitConfigurator IIsoTpInitConfigurator.N_Cs(TimeSpan n_Cs) => N_Cs(n_Cs);
-    IIsoTpInitConfigurator IIsoTpInitConfigurator.N_Cr(TimeSpan n_Cr) => N_Cr(n_Cr);
+
+
+    #region IIsoTpInitConfigurator
 
     IIsoTpInitConfigurator IIsoTpInitConfigurator.UseChannelIndex(int index) => UseChannelIndex(index);
     IIsoTpInitConfigurator IIsoTpInitConfigurator.UseChannelName(string name) => UseChannelName(name);
@@ -204,7 +206,8 @@ public class IsoTpInitConfigurator
         return this;
     }
     #endregion
-    #region Ignored
+
+    #region IBusInitOptionsConfigurator
 
     TxRetryPolicy IBusInitOptionsConfigurator.TxRetryPolicy => Options.TxRetryPolicy;
 
@@ -215,7 +218,6 @@ public class IsoTpInitConfigurator
     CanFeature IBusInitOptionsConfigurator.EnabledSoftwareFallback => Options.EnabledSoftwareFallback;
 
     bool IBusInitOptionsConfigurator.AllowErrorInfo => Options.AllowErrorInfo;
-    CanFeature ICanOptionsConfigurator.Features => Options.Features;
 
     IBusInitOptionsConfigurator IBusInitOptionsConfigurator.Baud(int baud, uint? clockMHz, ushort? samplePointPermille)
         => Baud(baud, samplePointPermille);
@@ -354,8 +356,9 @@ public class IsoTpInitConfigurator
 
 }
 
-public class IsoTpRtConfigurator : CallOptionsConfigurator<IsoTpOptions, IsoTpRtConfigurator>, IBusRTOptionsConfigurator
+public class IsoTpRtConfigurator : CallOptionsConfigurator<IsoTpOptions, IsoTpRtConfigurator>, IBusRTOptionsConfigurator, IIsoTpRTConfigurator
 {
+    public IsoTpEndpoint Endpoint => Options.Endpoint;
     public bool CanPadding => Options.CanPadding;
     public TimeSpan? GlobalBusGuard => Options.GlobalBusGuard;
     public bool N_AxCheck => Options.N_AxCheck;
@@ -372,13 +375,15 @@ public class IsoTpRtConfigurator : CallOptionsConfigurator<IsoTpOptions, IsoTpRt
     public int ChannelIndex => Options.ChannelIndex;
     public string? ChannelName => Options.ChannelName;
     public CanBusTiming BitTiming => Options.BitTiming;
-
+    public CanFeature Features => Options.Features;
+    public Capability Capabilities => Options.Capabilities;
 
 
     public bool InternalResistance => Options.InternalResistance;
     public CanProtocolMode ProtocolMode => Options.ProtocolMode;
     public int AsyncBufferCapacity => Options.AsyncBufferCapacity;
     public IBufferAllocator BufferAllocator => Options.BufferAllocator;
+
     #region Ignored
 
     TxRetryPolicy IBusRTOptionsConfigurator.TxRetryPolicy => Options.TxRetryPolicy;

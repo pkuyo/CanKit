@@ -16,7 +16,8 @@ namespace CanKit.Core.Definitions
             IDeviceRTOptionsConfigurator
         where TDeviceOptions : class, IDeviceOptions
     {
-        public CanFeature Features => _feature;
+        public CanFeature Features => Options.Features;
+        public Capability Capabilities => new(_feature);
         public DeviceType DeviceType => Options.DeviceType;
     }
 
@@ -28,7 +29,8 @@ namespace CanKit.Core.Definitions
       where TChannelOptions : class, IBusOptions
       where TSelf : BusRtOptionsConfigurator<TChannelOptions, TSelf>
     {
-        public CanFeature Features => _feature;
+        public CanFeature Features => Options.Features;
+        public Capability Capabilities => Options.Capabilities;
         public int ChannelIndex => Options.ChannelIndex;
         public string? ChannelName => Options.ChannelName;
         public CanBusTiming BitTiming => Options.BitTiming;
@@ -52,7 +54,8 @@ namespace CanKit.Core.Definitions
         where TDeviceOptions : class, IDeviceOptions
         where TSelf : DeviceInitOptionsConfigurator<TDeviceOptions, TSelf>
     {
-        public CanFeature Features => _feature;
+        public CanFeature Features => Options.Features;
+        public Capability Capabilities => new(Options.Features);
         public DeviceType DeviceType => Options.DeviceType;
         public virtual IDeviceInitOptionsConfigurator Custom(string key, object value) => this;
 
@@ -64,7 +67,8 @@ namespace CanKit.Core.Definitions
       where TChannelOptions : class, IBusOptions
       where TSelf : BusInitOptionsConfigurator<TChannelOptions, TSelf>
     {
-        public CanFeature Features => _feature;
+        public CanFeature Features => Options.Features;
+        public Capability Capabilities => Options.Capabilities;
         public int ChannelIndex => Options.ChannelIndex;
         public string? ChannelName => Options.ChannelName;
         public CanBusTiming BitTiming => Options.BitTiming;

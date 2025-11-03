@@ -1,8 +1,7 @@
 using System;
 using CanKit.Abstractions.API.Common;
 using CanKit.Abstractions.API.Common.Definitions;
-using CanKit.Core.Definitions;
-using CanKit.Core.Diagnostics;
+
 
 namespace CanKit.Core.Exceptions
 {
@@ -74,6 +73,11 @@ namespace CanKit.Core.Exceptions
         FeatureNotSupported = 5001,
 
         /// <summary>
+        /// Transport operation failed (e.g., ISO-TP)
+        /// </summary>
+        TransportOperationFailed = 6001,
+
+        /// <summary>
         /// Native call failed with vendor status (原生调用失败，带返回状态)。
         /// </summary>
         NativeCallFailed = 9000,
@@ -92,7 +96,6 @@ namespace CanKit.Core.Exceptions
         {
             ErrorCode = errorCode;
             NativeErrorCode = nativeErrorCode;
-            CanKitLogger.LogException(this);
         }
 
         /// <summary>
@@ -380,4 +383,3 @@ namespace CanKit.Core.Exceptions
         public string Operation { get; }
     }
 }
-

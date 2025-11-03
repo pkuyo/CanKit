@@ -4,6 +4,7 @@ using CanKit.Abstractions.API.Can;
 using CanKit.Abstractions.API.Common;
 using CanKit.Abstractions.Attributes;
 using CanKit.Abstractions.SPI.Registry.Core.Endpoints;
+using CanKit.Adapter.Vector.Native;
 using CanKit.Adapter.Vector.Utils;
 using CanKit.Core;
 using CanKit.Core.Endpoints;
@@ -55,6 +56,54 @@ internal static class VectorEndpoint
 
     public static IEnumerable<BusEndpointInfo> Enumerate()
     {
-        yield break;
+        try
+        {
+            VxlApi.GetErrorString(0);
+        }
+        catch
+        {
+            /*Ignored*/
+            yield break;
+        }
+        using (VectorDriver.Acquire())
+        {
+            for (int i = 0; ; i++)
+            {
+                uint hwIndex = 0;
+                uint hwChannel = 0;
+                uint hwType = 0;
+                var st = VxlApi.xlGetApplConfig("CANoe", (uint)i, ref hwType, ref hwIndex,
+                    ref hwChannel, VxlApi.XL_BUS_TYPE_CAN);
+                if (st == VxlApi.XL_SUCCESS)
+                {
+                    var globalIndex = VxlApi.xlGetChannelIndex((int)hwType, (int)hwIndex, (int)hwChannel);
+                    if (globalIndex >= 0 && VectorDriver.TryGetChannelInfo(globalIndex, out var info))
+                    {
+                        yield return new BusEndpointInfo()
+                        {
+                            Scheme = "vector",
+                            DeviceType = VectorDeviceType.VectorXL,
+                            Endpoint = $"vector://CANoe/{i}",
+                            Title = info.Name + " (Vector)",
+                            Meta = new Dictionary<string, string>
+                            {
+                                {"transceiver_name", info.TransceiverName ?? string.Empty},
+                                {"channel_capabilities", info.ChannelCapabilities.ToString()},
+                                {"channel_mask", info.ChannelMask.ToString()},
+                                {"bus_type", info.ConnectedBusType.ToString()},
+                                {"hardware_type", info.HardwareType.ToString()},
+                                {"hardware_index", info.HardwareIndex.ToString()},
+                                {"hardware_channel", info.HardwareChannel.ToString()},
+                                {"gloabl_index", globalIndex.ToString()}
+                            }
+                        };
+                    }
+                }
+                else
+                {
+                    yield break;
+                }
+            }
+        }
     }
 }

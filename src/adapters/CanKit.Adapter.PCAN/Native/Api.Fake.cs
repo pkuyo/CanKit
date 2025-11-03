@@ -66,8 +66,20 @@ namespace Peak.Can.Basic.BackwardCompatibility
 
 namespace Peak.Can.Basic
 {
-    using Peak.Can.Basic.BackwardCompatibility;
+    using BackwardCompatibility;
 
+    public enum MessageType : byte
+    {
+        Standard = 0,
+        RemoteRequest = 1,
+        Extended = 2,
+        FlexibleDataRate = 4,
+        BitRateSwitch = 8,
+        ErrorStateIndicator = 16,
+        Echo = 32,
+        Error = 64,
+        Status = 128
+    }
     [Flags]
     public enum PcanStatus : uint
     {
@@ -188,7 +200,21 @@ namespace Peak.Can.Basic
         public BitrateSegment Data;
 
         public BitrateFD(ClockFrequency clock, BitrateSegment nominal, BitrateSegment data)
-        { Clock = clock; Nominal = nominal; Data = data; }
+        {
+            Clock = clock; Nominal = nominal; Data = data;
+        }
+
+        public override string ToString()
+        {
+            // "f_clock=80000000,nom_brp=2,nom_tseg1=63,nom_tseg2=16,nom_sjw=16,
+            //  data_brp=2,data_tseg1=15,data_tseg2=4,data_sjw=4"
+            var fclk = ((uint)Clock).ToString(System.Globalization.CultureInfo.InvariantCulture);
+            return $"f_clock={fclk}," +
+                   $"nom_brp={Nominal.Brp},nom_tseg1={Nominal.Tseg1},nom_tseg2={Nominal.Tseg2},nom_sjw={Nominal.Sjw}," +
+                   $"data_brp={Data.Brp},data_tseg1={Data.Tseg1},data_tseg2={Data.Tseg2},data_sjw={Data.Sjw}";
+        }
+
+        public static implicit operator string(BitrateFD fd) => fd.ToString();
     }
 
     public static class Api

@@ -1,15 +1,17 @@
 ﻿using CanKit.Abstractions.API.Can;
 using CanKit.Abstractions.API.Common;
 using CanKit.Abstractions.API.Common.Definitions;
-using CanKit.Abstractions.SPI;
+using CanKit.Abstractions.API.Transport;
+using CanKit.Abstractions.API.Transport.Definitions;
 using CanKit.Abstractions.SPI.Common;
 using CanKit.Core.Definitions;
 using CanKit.Core.Utils;
 
-namespace CanKit.Protocol.IsoTp.Options;
+namespace CanKit.Transport.IsoTp.Options;
 
-public class IsoTpOptions : IBusOptions
+public class IsoTpOptions : IBusOptions, IIsoTpOptions
 {
+    public IsoTpEndpoint Endpoint { get; set; } = new();
     public CanFeature Features { get; set; }
     public int ChannelIndex { get; set; }
     public string? ChannelName { get; set; }
@@ -23,7 +25,7 @@ public class IsoTpOptions : IBusOptions
     /* ----IsoTpSettings----- */
 
     public bool CanPadding { get; set; } = true;
-    public TimeSpan? GlobalBusGuard { get; set; } = null;   // 数据帧最小全局间隔（FC不受限）
+    public TimeSpan? GlobalBusGuard { get; set; } = null;
     public bool N_AxCheck { get; set; } = false;
     public QueuedCanBusOptions? QueuedCanBusOptions { get; set; } = null;
 
