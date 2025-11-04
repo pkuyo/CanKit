@@ -43,7 +43,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
     // Cached software filter predicate to avoid rebuilding per-iteration
     private Func<CanFrame, bool>? _softwareFilterPredicate;
     private bool _useSoftwareFilter;
-    private readonly AsyncFramePipe _asyncRx;
+    private readonly AsyncFramePipe<CanReceiveData> _asyncRx;
     internal SocketCanBus(IBusOptions options, ITransceiver transceiver, ICanModelProvider provider)
     {
         Options = new SocketCanBusRtConfigurator();
@@ -55,7 +55,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwne
         _ifName = string.Empty;
         // init async pipe with configured capacity
         var cap = Options.AsyncBufferCapacity > 0 ? Options.AsyncBufferCapacity : (int?)null;
-        _asyncRx = new AsyncFramePipe(cap);
+        _asyncRx = new AsyncFramePipe<CanReceiveData>(cap);
 
         // Apply device configs
         CanKitLogger.LogInformation($"SocketCAN: Initializing interface '{Options.ChannelName?? Options.ChannelIndex.ToString()}', Mode={Options.ProtocolMode}...");

@@ -11,9 +11,9 @@ using CanKit.Abstractions.API.Common.Definitions;
 
 namespace CanKit.Core.Utils;
 
-public sealed class AsyncFramePipe
+public sealed class AsyncFramePipe<T>
 {
-    private readonly Channel<CanReceiveData> _channel;
+    private readonly Channel<T> _channel;
 
     private volatile TaskCompletionSource<Exception?> _exceptionPulse =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -28,7 +28,7 @@ public sealed class AsyncFramePipe
                 SingleWriter = false,
                 FullMode = BoundedChannelFullMode.DropOldest
             };
-            _channel = Channel.CreateBounded<CanReceiveData>(opt);
+            _channel = Channel.CreateBounded<T>(opt);
         }
         else
         {
@@ -37,11 +37,11 @@ public sealed class AsyncFramePipe
                 SingleReader = false,
                 SingleWriter = false
             };
-            _channel = Channel.CreateUnbounded<CanReceiveData>(opt);
+            _channel = Channel.CreateUnbounded<T>(opt);
         }
     }
 
-    public void Publish(CanReceiveData frame)
+    public void Publish(T frame)
     {
         _ = _channel.Writer.TryWrite(frame);
     }
@@ -53,11 +53,11 @@ public sealed class AsyncFramePipe
         }
     }
 
-    public async Task<IReadOnlyList<CanReceiveData>> ReceiveBatchAsync(
+    public async Task<IReadOnlyList<T>> ReceiveBatchAsync(
         int count, int timeoutMs, CancellationToken cancellationToken)
     {
         if (count < 0) throw new ArgumentOutOfRangeException(nameof(count));
-        var list = new List<CanReceiveData>((int)Math.Max(1, Math.Min(count, 256)));
+        var list = new List<T>((int)Math.Max(1, Math.Min(count, 256)));
 
         if (timeoutMs == 0)
         {
@@ -119,7 +119,7 @@ public sealed class AsyncFramePipe
         return list;
     }
 
-    public async IAsyncEnumerable<CanReceiveData> ReadAllAsync(
+    public async IAsyncEnumerable<T> ReadAllAsync(
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken)
     {
         while (true)

@@ -50,7 +50,7 @@ namespace CanKit.Adapter.ZLG
         private Task? _pollTask;
         private Func<CanFrame, bool>? _softwareFilterPredicate;
         private bool _useSoftwareFilter;
-        private readonly AsyncFramePipe _asyncRx;
+        private readonly AsyncFramePipe<CanReceiveData> _asyncRx;
         private readonly ZlgDeviceKind _deviceType;
         internal ZlgCanBus(ZlgCanDevice device, IBusOptions options, ITransceiver transceiver, ICanModelProvider provider)
         {
@@ -59,7 +59,7 @@ namespace CanKit.Adapter.ZLG
 
             Options = new ZlgBusRtConfigurator();
             Options.Init((ZlgBusOptions)options);
-            _asyncRx = new AsyncFramePipe(Options.AsyncBufferCapacity > 0 ? Options.AsyncBufferCapacity : null);
+            _asyncRx = new AsyncFramePipe<CanReceiveData>(Options.AsyncBufferCapacity > 0 ? Options.AsyncBufferCapacity : null);
             CanKitLogger.LogInformation($"ZLG: Initializing channel '{Options.ChannelName?? Options.ChannelIndex.ToString()}', Mode={Options.ProtocolMode}...");
             ApplyConfig(options);
             ZLGCAN.ZCAN_SetValue(_devicePtr, options.ChannelIndex+"clear_auto_send", "0");

@@ -21,7 +21,7 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
 {
     private readonly object _evtGate = new();
     private readonly IVectorTransceiver _transceiver;
-    private readonly AsyncFramePipe _asyncRx;
+    private readonly AsyncFramePipe<CanReceiveData> _asyncRx;
     private readonly IDisposable _driverScope;
     private CancellationTokenSource _pollCts;
 
@@ -60,7 +60,7 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
         Options = new VectorBusRtConfigurator();
         Options.Init((VectorBusOptions)options);
         _transceiver = (IVectorTransceiver)transceiver;
-        _asyncRx = new AsyncFramePipe(Options.AsyncBufferCapacity > 0 ? Options.AsyncBufferCapacity : null);
+        _asyncRx = new AsyncFramePipe<CanReceiveData>(Options.AsyncBufferCapacity > 0 ? Options.AsyncBufferCapacity : null);
 
         var vectorOptions = (VectorBusOptions)options;
         var info = ((VectorProvider)provider).QueryChannelInfo(vectorOptions)

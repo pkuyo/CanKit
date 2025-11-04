@@ -33,7 +33,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
     private bool _isDisposed;
 
     private Canlib.kvCallbackDelegate? _kvCallback;
-    private readonly AsyncFramePipe _asyncRx;
+    private readonly AsyncFramePipe<CanReceiveData> _asyncRx;
     private readonly Func<CanFrame, bool> _pred;
 
     internal KvaserBus(IBusOptions options, ITransceiver transceiver, ICanModelProvider provider)
@@ -41,7 +41,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
         Options = new KvaserBusRtConfigurator();
         Options.Init((KvaserBusOptions)options);
         _transceiver = transceiver;
-        _asyncRx = new AsyncFramePipe(Options.AsyncBufferCapacity > 0 ? Options.AsyncBufferCapacity : null);
+        _asyncRx = new AsyncFramePipe<CanReceiveData>(Options.AsyncBufferCapacity > 0 ? Options.AsyncBufferCapacity : null);
 
         EnsureLibInitialized();
 

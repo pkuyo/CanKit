@@ -409,10 +409,9 @@ public class PcanIsoTp
     [StructLayout(LayoutKind.Explicit, Pack = 8)]
     public struct PCanTpMsgDataUnion
     {
-        [FieldOffset(0)] public IntPtr Any;
-        [FieldOffset(0)] public IntPtr Can;
-        [FieldOffset(0)] public IntPtr CanFd;
-        [FieldOffset(0)] public IntPtr IsoTp;
+        [FieldOffset(0)] public PCanTpMsgDataCan Can;
+        [FieldOffset(0)] public PCanTpMsgDataCanFd CanFd;
+        [FieldOffset(0)] public PCanTpMsgDataIsoTp IsoTp;
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 8)]

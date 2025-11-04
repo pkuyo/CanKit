@@ -31,7 +31,7 @@ public sealed class ControlCanBus : ICanBus<ControlCanBusRtConfigurator>, IBusOw
     private IDisposable? _owner;
     private CancellationTokenSource? _pollCts;
     private Task? _pollTask;
-    private readonly AsyncFramePipe _asyncRx;
+    private readonly AsyncFramePipe<CanReceiveData> _asyncRx;
     private Func<CanFrame, bool>? _softwareFilterPredicate;
 
     private readonly HashSet<int> _autoSendIndexes = new();
@@ -44,7 +44,7 @@ public sealed class ControlCanBus : ICanBus<ControlCanBusRtConfigurator>, IBusOw
         Options = new ControlCanBusRtConfigurator();
         Options.Init((ControlCanBusOptions)options);
         _transceiver = transceiver;
-        _asyncRx = new AsyncFramePipe(Options.AsyncBufferCapacity > 0 ? Options.AsyncBufferCapacity : null);
+        _asyncRx = new AsyncFramePipe<CanReceiveData>(Options.AsyncBufferCapacity > 0 ? Options.AsyncBufferCapacity : null);
 
         var dt = (ControlCanDeviceType)device.Options.DeviceType;
         _rawDevType = (uint)dt.Code;

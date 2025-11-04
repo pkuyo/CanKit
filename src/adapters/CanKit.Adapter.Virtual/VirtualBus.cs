@@ -25,7 +25,7 @@ public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, IBusOwnershi
 
     private readonly VirtualBusHub _hub;
 
-    private readonly AsyncFramePipe _asyncRx;
+    private readonly AsyncFramePipe<CanReceiveData> _asyncRx;
     private readonly ConcurrentQueue<CanReceiveData> _rxQueue = new();
 
     private Func<CanFrame, bool>? _softwareFilterPredicate;
@@ -49,7 +49,7 @@ public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, IBusOwnershi
         _hub.Attach(this);
 
         var cap = Options.AsyncBufferCapacity > 0 ? Options.AsyncBufferCapacity : (int?)null;
-        _asyncRx = new AsyncFramePipe(cap);
+        _asyncRx = new AsyncFramePipe<CanReceiveData>(cap);
 
         // apply initial options (software filter, etc.)
         ApplyConfig(_options);

@@ -34,14 +34,14 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
     private Func<CanFrame, bool>? _softwareFilterPredicate;
 
     private bool _useSoftwareFilter;
-    private readonly AsyncFramePipe _asyncRx;
+    private readonly AsyncFramePipe<CanReceiveData> _asyncRx;
 
     internal PcanBus(IBusOptions options, ITransceiver transceiver)
     {
         Options = new PcanBusRtConfigurator();
         Options.Init((PcanBusOptions)options);
         _transceiver = transceiver;
-        _asyncRx = new AsyncFramePipe(Options.AsyncBufferCapacity > 0 ? Options.AsyncBufferCapacity : null);
+        _asyncRx = new AsyncFramePipe<CanReceiveData>(Options.AsyncBufferCapacity > 0 ? Options.AsyncBufferCapacity : null);
 
         _handle = PcanProvider.ParseHandle(Options.ChannelName!);
         options.Capabilities = PcanProvider.QueryCapabilities(_handle, Options.Features);
