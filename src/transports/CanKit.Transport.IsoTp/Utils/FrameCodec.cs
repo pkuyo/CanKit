@@ -20,7 +20,7 @@ internal static partial class FrameCodec
     {
 
         var data = rx.CanFrame.Data.Span;
-        var pciStart = (ep.IsExtendedAddress ? 1 : 0);
+        var pciStart = (ep.UsePayload ? 1 : 0);
         var typeNum = data[pciStart] >> 4;
         var fd = rx.CanFrame.FrameKind == CanFrameType.CanFd;
         if (typeNum >= 4)
@@ -92,16 +92,17 @@ internal static partial class FrameCodec
 
     internal static unsafe CanFrame BuildSF(in IsoTpEndpoint ep, IBufferAllocator allocator, ReadOnlySpan<byte> payload, bool padding, bool canfd)
     {
-        var pciStart = (ep.IsExtendedAddress ? 1 : 0);
+        var pciStart = (ep.UsePayload ? 1 : 0);
         var len = payload.Length + 2 + pciStart;
+        var (id, exId) = ep.GetTxId();
         if (padding)
         {
             len = canfd ? 64 : 8;
         }
         var data = ArrayPool<byte>.Shared.Rent(len);
-        if (ep.IsExtendedAddress)
+        if (ep.UsePayload)
         {
-            data[0] = ep.RxAddress!.Value;
+            data[0] = exId!.Value;
         }
 
         if (canfd && payload.Length + pciStart > 7)
@@ -124,8 +125,8 @@ internal static partial class FrameCodec
             }
         }
         return canfd
-            ? CanFrame.Classic(ep.TxId, data, ep.IsExtendedId)
-            : CanFrame.Fd(ep.TxId, data, ep.IsExtendedId);
+            ? CanFrame.Classic(id, data, ep.IsExtendedId)
+            : CanFrame.Fd(id, data, ep.IsExtendedId);
     }
 
     internal static unsafe CanFrame BuildFF(in IsoTpEndpoint ep,
@@ -135,12 +136,13 @@ internal static partial class FrameCodec
         bool canfd)
     {
         var len = canfd ? 64 : 8;
-        var pciStart = (ep.IsExtendedAddress ? 1 : 0);
+        var pciStart = (ep.UsePayload ? 1 : 0);
         var data = allocator.Rent(len);
         var span = data.Memory.Span;
-        if (ep.IsExtendedAddress)
+        var (id, exId) = ep.GetTxId();
+        if (ep.UsePayload)
         {
-            span[0] = ep.RxAddress!.Value;
+            span[0] = exId!.Value;
         }
 
         if (firstChunk.Length > 4095)
@@ -171,24 +173,25 @@ internal static partial class FrameCodec
         }
 
         return canfd
-            ? CanFrame.Classic(ep.TxId, data, ep.IsExtendedId)
-            : CanFrame.Fd(ep.TxId, data, ep.IsExtendedId);
+            ? CanFrame.Classic(id, data, ep.IsExtendedId)
+            : CanFrame.Fd(id, data, ep.IsExtendedId);
     }
 
     internal static unsafe CanFrame BuildCF(in IsoTpEndpoint ep, IBufferAllocator allocator,
         byte sn, ReadOnlySpan<byte> chunk, bool padding, bool canfd)
     {
-        var pciStart = (ep.IsExtendedAddress ? 1 : 0);
+        var pciStart = (ep.UsePayload ? 1 : 0);
         var len = chunk.Length + 2 + pciStart;
+        var (id, exId) = ep.GetTxId();
         if (padding)
         {
             len = canfd ? NextFdLen(len) : 8;
         }
         var data = allocator.Rent(len);
         var span = data.Memory.Span;
-        if (ep.IsExtendedAddress)
+        if (ep.UsePayload)
         {
-            span[0] = ep.RxAddress!.Value;
+            span[0] = exId!.Value;
         }
         span[pciStart] = (byte)(((byte)PciType.CF << 4) | (sn & 0xF));
         fixed (byte* src = chunk)
@@ -202,20 +205,21 @@ internal static partial class FrameCodec
             }
         }
         return canfd
-            ? CanFrame.Classic(ep.TxId, data, ep.IsExtendedId, allocator.FrameNeedDispose)
-            : CanFrame.Fd(ep.TxId, data, ep.IsExtendedId, allocator.FrameNeedDispose);
+            ? CanFrame.Classic(id, data, ep.IsExtendedId, allocator.FrameNeedDispose)
+            : CanFrame.Fd(id, data, ep.IsExtendedId, allocator.FrameNeedDispose);
     }
 
     internal static unsafe CanFrame BuildFC(in IsoTpEndpoint ep, IBufferAllocator allocator,
         FlowStatus fs, byte bs, byte stmin, bool padding, bool canfd)
     {
-        var pciStart = (ep.IsExtendedAddress ? 1 : 0);
+        var pciStart = (ep.UsePayload ? 1 : 0);
         var len = padding ? 8 : pciStart + 2;
         var data = allocator.Rent(len);
         var span = data.Memory.Span;
-        if (ep.IsExtendedAddress)
+        var (id, exId) = ep.GetTxId();
+        if (ep.UsePayload)
         {
-            span[0] = ep.RxAddress!.Value;
+            span[0] = exId!.Value;
         }
         span[pciStart] = (byte)(((byte)PciType.FF << 4) | ((byte)fs & 0xF));
         span[pciStart + 1] = bs;
@@ -230,8 +234,8 @@ internal static partial class FrameCodec
             }
         }
         return canfd
-            ? CanFrame.Classic(ep.TxId, data, ep.IsExtendedId, allocator.FrameNeedDispose)
-            : CanFrame.Fd(ep.TxId, data, ep.IsExtendedId, allocator.FrameNeedDispose);
+            ? CanFrame.Classic(id, data, ep.IsExtendedId, allocator.FrameNeedDispose)
+            : CanFrame.Fd(id, data, ep.IsExtendedId, allocator.FrameNeedDispose);
     }
 
     internal static byte EncodeStmin(TimeSpan st)

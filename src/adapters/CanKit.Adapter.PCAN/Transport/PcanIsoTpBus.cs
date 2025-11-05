@@ -12,7 +12,7 @@ using Peak.Can.Basic;
 
 namespace CanKit.Adapter.PCAN.Transport;
 
-public class PcanIsoTpBus : IDisposable
+internal class PcanIsoTpBus : IDisposable
 {
     public PcanIsoTpBus(IBusInitOptionsConfigurator cfg, IIsoTpOptions options)
     {
@@ -91,6 +91,12 @@ public class PcanIsoTpBus : IDisposable
     private bool _isDisposed;
 
     public event EventHandler<Exception>? BackgroundExceptionOccurred;
+
+
+    public void RegisterMapping(in PcanIsoTp.PCanTpMapping mapping)
+    {
+
+    }
 
     public void Dispose()
     {

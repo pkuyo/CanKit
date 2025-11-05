@@ -128,14 +128,15 @@ internal sealed class IsoTpChannelCore : IDisposable
     public bool Match(in CanReceiveData rx)
     {
         return rx.CanFrame.IsExtendedFrame == Endpoint.IsExtendedId &&
-               rx.CanFrame.ID == Endpoint.RxId &&
-               (!Endpoint.IsExtendedAddress || (Endpoint.RxAddress == rx.CanFrame.Data.Span[0]));
+               rx.CanFrame.ID == Endpoint.RxId
+               //&& (!Endpoint.IsExtendedAddress || (Endpoint.SourceAddress == rx.CanFrame.Data.Span[0]))
+               ;
     }
 
     public bool Match(in TxOperation tx)
     {
         return tx.TxAddress ==  Endpoint.TxId &&
-               tx.ExtendAddress == Endpoint.TxAddress;
+               tx.ExtendAddress == Endpoint.TargetAddress;
     }
 
     private void UpdateTxDeadline(TxOperation operation, in CanFrame frame, PciType type)
@@ -285,12 +286,12 @@ internal sealed class IsoTpChannelCore : IDisposable
             return Task.FromException<bool>(new IsoTpException(IsoTpErrorCode.Busy, "Channel busy", Endpoint));
         }
 
-        var operation = new TxOperation(Endpoint.TxId, Endpoint.TxAddress);
+        var operation = new TxOperation(Endpoint.TxId, Endpoint.TargetAddress);
         operation.Ctr = ct.Register(() => OnTxFailed(operation, default, new OperationCanceledException("User canceled send")),
             false);
         _pendingOperations.Enqueue(operation);
 
-        var sfMax = CalcSfMax(canFd, Endpoint.IsExtendedAddress);
+        var sfMax = CalcSfMax(canFd, Endpoint.UsePayload);
         if (data.Length <= sfMax)
         {
             operation.Enqueue(FrameCodec.BuildSF(Endpoint, _allocator, data, padding, canFd), PciType.SF);
@@ -300,7 +301,7 @@ internal sealed class IsoTpChannelCore : IDisposable
             operation.Enqueue(FrameCodec.BuildFF(Endpoint, _allocator, data.Length, data, canFd), PciType.FF);
             _tx = TxState.WaitFc;
             int index = sfMax;
-            int cfLen = CalcCfMax(canFd, Endpoint.IsExtendedAddress);
+            int cfLen = CalcCfMax(canFd, Endpoint.UsePayload);
             byte sn = 0;
             while (index < data.Length)
             {
@@ -328,7 +329,7 @@ internal sealed class IsoTpChannelCore : IDisposable
     {
         var bs = (byte)FcPolicy.BS;
         var st = FrameCodec.EncodeStmin(FcPolicy.STmin);
-        var txOperation = new TxOperation(Endpoint.TxId, Endpoint.TxAddress);
+        var txOperation = new TxOperation(Endpoint.TxId, Endpoint.TargetAddress);
         txOperation.Enqueue(
             FrameCodec.BuildFC(Endpoint, _allocator, fs, bs, st, /*padding*/true,
                 /*canfd*/false), PciType.FC);
