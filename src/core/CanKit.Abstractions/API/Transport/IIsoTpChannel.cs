@@ -8,9 +8,7 @@ namespace CanKit.Abstractions.API.Transport;
 
 public interface IIsoTpChannel : IDisposable
 {
-    IIsoTpRTConfigurator Options { get; }
-
-    BusNativeHandle NativeHandle { get; }
+    IsoTpOptions Options { get; }
 
     event EventHandler<IsoTpDatagram>? DatagramReceived;
 

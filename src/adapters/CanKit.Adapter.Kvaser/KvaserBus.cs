@@ -17,7 +17,7 @@ using CanKit.Core.Utils;
 
 namespace CanKit.Adapter.Kvaser;
 
-public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IBusOwnership
+public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IOwnership
 {
     private readonly object _evtGate = new();
 

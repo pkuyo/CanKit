@@ -4,7 +4,7 @@ using Peak.Can.Basic;
 
 namespace CanKit.Adapter.PCAN.Native;
 
-public class PcanIsoTp
+public static class PcanIsoTp
 {
     private const string DllName = "PCAN-ISO-TP.dll";
 

@@ -16,7 +16,7 @@ using CanKit.Core.Utils;
 
 namespace CanKit.Adapter.Virtual;
 
-public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, IBusOwnership
+public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, IOwnership
 {
     private readonly object _evtGate = new();
 

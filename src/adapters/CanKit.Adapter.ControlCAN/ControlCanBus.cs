@@ -21,7 +21,7 @@ using CanKit.Adapter.ControlCAN.Utils;
 
 namespace CanKit.Adapter.ControlCAN;
 
-public sealed class ControlCanBus : ICanBus<ControlCanBusRtConfigurator>, IBusOwnership
+public sealed class ControlCanBus : ICanBus<ControlCanBusRtConfigurator>, IOwnership
 {
     private readonly object _evtGate = new();
     private readonly ITransceiver _transceiver;

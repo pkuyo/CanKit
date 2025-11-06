@@ -1,9 +1,11 @@
+using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using CanKit.Abstractions.API.Common;
 using CanKit.Abstractions.API.Common.Definitions;
 using CanKit.Abstractions.API.Transport;
+using CanKit.Abstractions.API.Transport.Definitions;
 using CanKit.Adapter.PCAN.Native;
 using CanKit.Core.Diagnostics;
 using CanKit.Core.Exceptions;
@@ -12,16 +14,39 @@ using Peak.Can.Basic;
 
 namespace CanKit.Adapter.PCAN.Transport;
 
-internal class PcanIsoTpBus : IDisposable
+internal class PcanIsoTpScheduler : IIsoTpScheduler
 {
-    public PcanIsoTpBus(IBusInitOptionsConfigurator cfg, IIsoTpOptions options)
+    internal delegate bool MsgReceivedHandler(in PcanIsoTp.PCanTpMsg msg);
+
+    public IBusRTOptionsConfigurator Options { get; }
+    public BusNativeHandle NativeHandle { get; }
+
+    private readonly PcanChannel _handle;
+    private readonly EventWaitHandle _recEvent;
+
+    private CancellationTokenSource? _pollCts;
+    private Task? _pollTask;
+
+    private bool _isDisposed;
+
+    private readonly ConcurrentDictionary<int, IIsoTpChannel> _channels = new();
+
+    internal event EventHandler<Exception>? BackgroundExceptionOccurred;
+
+    internal event MsgReceivedHandler? MsgReceived;
+
+    internal int? AsyncBufferCapacity { get; }
+
+  public PcanIsoTpScheduler(IBusOptions options)
     {
+        var cfg = new PcanBusRtConfigurator();
+        cfg.Init((PcanBusOptions)options);
         Options = cfg;
         _handle = PcanProvider.ParseHandle(Options.ChannelName!);
         NativeHandle = new BusNativeHandle((int)_handle);
         options.Capabilities = PcanProvider.QueryCapabilities(_handle, Options.Features);
         options.Features = options.Capabilities.Features;
-        _asyncBufferCapacity = Options.AsyncBufferCapacity > 0 ? Options.AsyncBufferCapacity : (int?)null;
+        AsyncBufferCapacity = Options.AsyncBufferCapacity > 0 ? Options.AsyncBufferCapacity : null;
         try
         {
             if (Api.GetValue(_handle, PcanParameter.ChannelCondition, out uint raw) == PcanStatus.OK)
@@ -79,22 +104,58 @@ internal class PcanIsoTpBus : IDisposable
 
         StartReceiveLoop();
     }
-
-    public IBusInitOptionsConfigurator Options { get; }
-    public BusNativeHandle NativeHandle { get; }
-
-    private PcanChannel _handle;
-    private readonly int? _asyncBufferCapacity;
-    private CancellationTokenSource? _pollCts;
-    private Task? _pollTask;
-    private readonly EventWaitHandle _recEvent;
-    private bool _isDisposed;
-
-    public event EventHandler<Exception>? BackgroundExceptionOccurred;
-
-
-    public void RegisterMapping(in PcanIsoTp.PCanTpMapping mapping)
+    public void AddChannel(IIsoTpChannel channel)
     {
+        var endpoint = channel.Options.Endpoint;
+        if (!_channels.TryAdd(endpoint.TxId, channel))
+        {
+            throw new Exception(); //TODO:异常处理
+        }
+        var mapping = new PcanIsoTp.PCanTpMapping
+        {
+            CanId = (uint)endpoint.TxId,
+            CanIdFlowCtrl = (uint)endpoint.RxId
+        };
+        mapping.NetAddrInfo.SourceAddr = endpoint.SourceAddress ?? 0;
+        mapping.NetAddrInfo.TargetAddr = endpoint.TargetAddress ?? 0;
+        mapping.NetAddrInfo.Format = endpoint.AddressingFormat switch
+        {
+            AddressingFormat.Extended => PcanIsoTp.PCanTpIsotpFormat.Extended,
+            AddressingFormat.Mixed => PcanIsoTp.PCanTpIsotpFormat.Mixed,
+            AddressingFormat.NormalFixed => PcanIsoTp.PCanTpIsotpFormat.FixedNormal,
+            AddressingFormat.Normal => PcanIsoTp.PCanTpIsotpFormat.Normal,
+            _ => PcanIsoTp.PCanTpIsotpFormat.Unknown
+        };
+        mapping.NetAddrInfo.MsgType = PcanIsoTp.PCanTpIsotpMsgType.Diagnostic;
+        mapping.NetAddrInfo.TargetType = endpoint.TargetType switch
+        {
+            TargetType.Functional => PcanIsoTp.PCanTpIsotpAddressing.Functional,
+            TargetType.Physical => PcanIsoTp.PCanTpIsotpAddressing.Physical,
+            _ => PcanIsoTp.PCanTpIsotpAddressing.Unknown
+        };
+        PcanIsoTp.AddMapping(_handle, ref mapping);
+
+        if (endpoint.TargetType is not TargetType.Functional)
+        {
+            mapping.NetAddrInfo.TargetAddr = endpoint.SourceAddress ?? 0;
+            mapping.NetAddrInfo.SourceAddr = endpoint.TargetAddress ?? 0;
+            mapping.CanId = (uint)endpoint.RxId;
+            mapping.CanIdFlowCtrl = (uint)endpoint.TxId;
+            PcanIsoTp.AddMapping(_handle, ref mapping);
+        }
+    }
+
+
+    public void RemoveChannel(IIsoTpChannel channel)
+    {
+        var endpoint = channel.Options.Endpoint;
+        if (!_channels.TryRemove(endpoint.TxId, out _))
+            return;
+        PcanIsoTp.RemoveMappings(_handle, (uint)endpoint.TxId);
+        if (endpoint.TargetType is not TargetType.Functional)
+        {
+            PcanIsoTp.RemoveMappings(_handle, (uint)endpoint.RxId);
+        }
 
     }
 
@@ -195,6 +256,17 @@ internal class PcanIsoTpBus : IDisposable
                         break;
                     throw new InvalidOperationException($"PCAN-ISO-TP Read failed: {st}");
                 }
+                var snap = Volatile.Read(ref MsgReceived);
+                if (msg.Type == PcanIsoTp.PCanTpMsgType.IsoTp && snap != null)
+                {
+
+                    foreach (var del in snap.GetInvocationList())
+                    {
+                        var f = (MsgReceivedHandler)del;
+                        if (f(msg))
+                            break;
+                    }
+                }
             }
             finally
             {
@@ -206,7 +278,6 @@ internal class PcanIsoTpBus : IDisposable
         }
 
     }
-
     private void HandleBackgroundException(Exception ex)
     {
         try { CanKitLogger.LogError("PCAN-ISO-TP bus occured background exception.", ex); } catch { }

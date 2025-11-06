@@ -20,7 +20,7 @@ using CanKit.Core.Utils;
 
 namespace CanKit.Adapter.SocketCAN;
 
-public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IBusOwnership
+public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IOwnership
 {
     private readonly object _evtGate = new();
 

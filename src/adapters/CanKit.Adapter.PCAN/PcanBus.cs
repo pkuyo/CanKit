@@ -14,7 +14,7 @@ using Peak.Can.Basic;
 
 namespace CanKit.Adapter.PCAN;
 
-public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IBusOwnership
+public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IOwnership
 {
     private readonly object _evtGate = new();
 

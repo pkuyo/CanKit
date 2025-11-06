@@ -25,7 +25,7 @@ using CanKit.Core.Utils;
 namespace CanKit.Adapter.ZLG
 {
 
-    public sealed class ZlgCanBus : ICanBus<ZlgBusRtConfigurator>, IBusOwnership
+    public sealed class ZlgCanBus : ICanBus<ZlgBusRtConfigurator>, IOwnership
     {
         private readonly HashSet<int> _autoSendIndexes = new();
 

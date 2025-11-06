@@ -3,22 +3,19 @@ using CanKit.Abstractions.API.Can;
 using CanKit.Abstractions.API.Can.Definitions;
 using CanKit.Abstractions.API.Common;
 using CanKit.Abstractions.API.Common.Definitions;
+using CanKit.Abstractions.API.Transport;
 using CanKit.Abstractions.API.Transport.Excpetions;
-using CanKit.Core;
-using CanKit.Core.Definitions;
-using CanKit.Core.Utils;
-using CanKit.Protocol.IsoTp.Defines;
 using CanKit.Protocol.IsoTp.Utils;
-using CanKit.Transport.IsoTp.Options;
 
-namespace CanKit.Protocol.IsoTp.Core;
+namespace CanKit.Transport.IsoTp.Core;
 
 
-internal sealed class IsoTpScheduler
+internal sealed class IsoTpScheduler : IIsoTpScheduler
 {
     private readonly ICanBus _bus;
     private readonly bool _canEcho;
-    private readonly IsoTpOptions _opt;
+    private readonly IBusOptions _opt;
+    private TimeSpan? _globalBusGuard;
     private readonly Router _router = new();
     private readonly List<IsoTpChannelCore> _channels = new();
     private readonly List<(double score, IsoTpChannelCore ch)> _candidates = new();
@@ -35,12 +32,9 @@ internal sealed class IsoTpScheduler
 
     internal event TxOperationExceptionOccurredHandle? TxOperationExceptionOccurred;
 
-    public IsoTpScheduler(ICanBus bus, IsoTpOptions options)
+    public IsoTpScheduler(ICanBus bus, IBusOptions options)
     {
-        if (options.QueuedCanBusOptions is not null)
-            _bus = bus.WithQueuedTx(options.QueuedCanBusOptions);
-        else
-            _bus = bus;
+        _bus = bus;
         _opt = options;
         _canEcho = (_bus.Options.Features & CanFeature.Echo) != 0;
     }
@@ -91,7 +85,7 @@ internal sealed class IsoTpScheduler
             var now = Stopwatch.GetTimestamp();
             foreach (var ch in _channels)
             {
-                if (!ch.IsReadyToSendData(now, _opt.GlobalBusGuard)) continue;
+                if (!ch.IsReadyToSendData(now, _globalBusGuard)) continue;
                 if (!ch.TryPeekData(out var f))
                     continue;
                 var score = Score(ch, f, now);
@@ -116,9 +110,9 @@ internal sealed class IsoTpScheduler
 
     private bool RespectBusGuard(long nowTicks)
     {
-        if (_opt.GlobalBusGuard is null) return true;
+        if (_globalBusGuard is null) return true;
         var elapsed = TimeSpan.FromSeconds((nowTicks - _lastDataTxTicks) / (double)Stopwatch.Frequency);
-        return elapsed >= _opt.GlobalBusGuard.Value;
+        return elapsed >= _globalBusGuard.Value;
     }
 
     private static double Score(IsoTpChannelCore ch, CanFrame f, long nowTicks)
@@ -147,4 +141,11 @@ internal sealed class IsoTpScheduler
     {
         throw new IsoTpException(IsoTpErrorCode.BackgroundException, e.Message, null, e);
     }
+
+    public void Dispose() => _bus.Dispose();
+    public IBusRTOptionsConfigurator Options => _bus.Options;
+    public BusNativeHandle NativeHandle => _bus.NativeHandle;
+    public void AddChannel(IIsoTpChannel channel) => throw new NotImplementedException();
+
+    public void RemoveChannel(IIsoTpChannel channel) => throw new NotImplementedException();
 }

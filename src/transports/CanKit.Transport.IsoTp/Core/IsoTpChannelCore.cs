@@ -1,23 +1,14 @@
-﻿using System.Buffers;
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Diagnostics;
-using System.Runtime.CompilerServices;
-using CanKit.Abstractions.API.Can;
 using CanKit.Abstractions.API.Can.Definitions;
-using CanKit.Abstractions.API.Common;
 using CanKit.Abstractions.API.Common.Definitions;
-using CanKit.Abstractions.API.Transport;
 using CanKit.Abstractions.API.Transport.Definitions;
 using CanKit.Abstractions.API.Transport.Excpetions;
-using CanKit.Abstractions.SPI;
 using CanKit.Abstractions.SPI.Common;
-using CanKit.Core.Definitions;
-using CanKit.Core.Utils;
 using CanKit.Protocol.IsoTp.Defines;
 using CanKit.Protocol.IsoTp.Utils;
-using CanKit.Transport.IsoTp.Options;
 
-namespace CanKit.Protocol.IsoTp.Core;
+namespace CanKit.Transport.IsoTp.Core;
 
 internal enum TxState { Idle, WaitFc, SendCf, WaitFcAfterBlock, Failed }
 internal enum RxState { Idle, RecvCf }
@@ -113,11 +104,9 @@ internal sealed class IsoTpChannelCore : IDisposable
         FcPolicy = policy;
         _allocator = allocator;
 
-        if (options.N_AxCheck)
-        {
-            _nAs = new QueuedDeadline(Options.N_As);
-            _nAr = new QueuedDeadline(Options.N_Ar);
-        }
+        _nAs = new QueuedDeadline(Options.N_As);
+        _nAr = new QueuedDeadline(Options.N_Ar);
+
         _nBs = new Deadline(Options.N_Bs);
         _nBr = new Deadline(Options.N_Br);
 
@@ -190,8 +179,6 @@ internal sealed class IsoTpChannelCore : IDisposable
     {
         if (rx.IsEcho)
         {
-            if (!Options.N_AxCheck)
-                return;
             _nAs?.Dequeue(rx.CanFrame);
             _nAr?.Dequeue(rx.CanFrame);
         }

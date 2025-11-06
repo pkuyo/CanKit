@@ -1,18 +1,14 @@
-﻿using CanKit.Abstractions.API.Common;
-using CanKit.Abstractions.API.Common.Definitions;
+﻿using CanKit.Abstractions.API.Common.Definitions;
 using CanKit.Abstractions.API.Transport;
 using CanKit.Abstractions.API.Transport.Definitions;
-using CanKit.Core.Definitions;
-using CanKit.Protocol.IsoTp.Defines;
-using CanKit.Transport.IsoTp.Options;
 
-namespace CanKit.Protocol.IsoTp.Core;
+namespace CanKit.Transport.IsoTp.Core;
 
 public sealed class DefaultIsoTpChannel : IIsoTpChannel
 {
     internal IsoTpChannelCore Core { get; }
     internal IsoTpScheduler Scheduler { get; }
-    public IIsoTpRTConfigurator Options { get; }
+    public IsoTpOptions Options { get; }
     public BusNativeHandle NativeHandle { get; } = BusNativeHandle.Zero;
 
     public IsoTpEndpoint Endpoint => Core.Endpoint;
@@ -24,19 +20,19 @@ public sealed class DefaultIsoTpChannel : IIsoTpChannel
     {
         Core = core;
         Scheduler = sch;
-        Options = new IsoTpRtConfigurator().Init(opt);
+        Options = opt;
     }
 
 
     public Task<bool> SendAsync(ReadOnlyMemory<byte> pdu, CancellationToken ct = default)
     {
-        return Core.SendAsync(pdu.Span, Options.CanPadding, Options.ProtocolMode == CanProtocolMode.CanFd, ct);
+        return Core.SendAsync(pdu.Span, Options.CanPadding, Options.Protocol == CanProtocolMode.CanFd, ct);
     }
 
 
     public async Task<IsoTpDatagram> RequestAsync(ReadOnlyMemory<byte> request, CancellationToken ct = default)
     {
-        await Core.SendAsync(request.Span, Options.CanPadding, Options.ProtocolMode == CanProtocolMode.CanFd, ct);
+        await Core.SendAsync(request.Span, Options.CanPadding, Options.Protocol == CanProtocolMode.CanFd, ct);
         throw new NotImplementedException();
     }
 

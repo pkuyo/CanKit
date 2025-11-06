@@ -101,7 +101,7 @@ public static class CanBus
         }
 
         // Attach lifetime so disposing bus also disposes device
-        if (typedBus is IBusOwnership own)
+        if (typedBus is IOwnership own)
         {
             own.AttachOwner(new DeviceOwner(device));
         }

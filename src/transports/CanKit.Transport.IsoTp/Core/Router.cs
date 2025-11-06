@@ -1,8 +1,6 @@
-using CanKit.Abstractions.API.Common;
 using CanKit.Abstractions.API.Common.Definitions;
-using CanKit.Core.Definitions;
 
-namespace CanKit.Protocol.IsoTp.Core;
+namespace CanKit.Transport.IsoTp.Core;
 
 internal sealed class Router
 {

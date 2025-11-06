@@ -2,78 +2,75 @@ using CanKit.Abstractions.API.Common;
 using CanKit.Abstractions.API.Common.Definitions;
 using CanKit.Abstractions.API.Transport;
 using CanKit.Abstractions.API.Transport.Definitions;
+using CanKit.Abstractions.SPI.Common;
 using CanKit.Adapter.PCAN.Native;
-using CanKit.Core.Diagnostics;
-using CanKit.Core.Exceptions;
-using CanKit.Core.Utils;
-using Peak.Can.Basic;
 
 namespace CanKit.Adapter.PCAN.Transport;
 
-public class PcanIsoTpChannel : IIsoTpChannel
+public class PcanIsoTpChannel : IIsoTpChannel, IOwnership
 {
-    public PcanIsoTpChannel(IIsoTpOptions options, IIsoTpRTConfigurator cfg)
+    private readonly PcanIsoTpScheduler _scheduler;
+
+    private TaskCompletionSource<PcanIsoTp.PCanTpMsg>? _receiveTcs;
+    private TaskCompletionSource<bool>? _sendTcs;
+    private IDisposable? _owner;
+
+    public IsoTpOptions Options { get; }
+    public event EventHandler<IsoTpDatagram>? DatagramReceived;
+
+    internal PcanIsoTpChannel(PcanIsoTpScheduler scheduler, IsoTpOptions options)
     {
-        Options = cfg;
-        _busOptions = (IBusRTOptionsConfigurator)cfg;
-        _handle = PcanProvider.ParseHandle(Options.ChannelName!);
-        NativeHandle = new BusNativeHandle((int)_handle);
-        options.Capabilities = PcanProvider.QueryCapabilities(_handle, Options.Features);
-        options.Features = options.Capabilities.Features;
-        try
-        {
-            if (Api.GetValue(_handle, PcanParameter.ChannelCondition, out uint raw) == PcanStatus.OK)
-            {
-                var cond = (ChannelCondition)raw;
-                if ((cond & ChannelCondition.ChannelAvailable) != ChannelCondition.ChannelAvailable)
-                    throw new CanBusCreationException("PCAN handle is not available");
-            }
-            else
-            {
-                CanKitLogger.LogWarning("PCAN can't get channel condition for handle");
-            }
-        }
-        catch (PcanBasicException)
-        {
-            throw new CanBusCreationException("PCAN handle is invalid");
-        }
-
-        if (Options.ProtocolMode == CanProtocolMode.CanFd)
-        {
-
-            //CanKitErr.ThrowIfNotSupport(Options.Features, CanFeature.CanFd);
-
-            var fd = PcanUtils.MapFdBitrate(Options.BitTiming);
-            var st = PcanIsoTp.InitializeFd(_handle, fd);
-            if (st != PcanIsoTp.PCanTpStatus.Ok)
-            {
-                throw new CanBusCreationException($"PCAN InitializeFD failed: {st}");
-            }
-            CanKitLogger.LogInformation("PCAN: InitializeFD succeeded.");
-        }
-        else if (Options.ProtocolMode == CanProtocolMode.Can20)
-        {
-            var baud = PcanUtils.MapClassicBaud(Options.BitTiming);
-            var st = PcanIsoTp.Initialize(_handle, baud);
-            if (st != PcanIsoTp.PCanTpStatus.Ok)
-            {
-                throw new CanBusCreationException($"PCAN Initialize failed: {st}");
-            }
-            CanKitLogger.LogInformation("PCAN: Initialize (classic) succeeded.");
-        }
+        _scheduler = scheduler;
+        Options = options;
+        _scheduler.AddChannel(this);
+        _scheduler.MsgReceived += OnMsgReceived;
+        _scheduler.BackgroundExceptionOccurred += OnBackgroundExceptionOccurred;
     }
 
-    private readonly IBusRTOptionsConfigurator _busOptions;
-    private readonly PcanChannel _handle;
-    public IIsoTpRTConfigurator Options { get; }
-    public BusNativeHandle NativeHandle { get; }
-    public event EventHandler<IsoTpDatagram>? DatagramReceived;
-    public Task<bool> SendAsync(ReadOnlyMemory<byte> pdu, CancellationToken ct = default) => throw new NotImplementedException();
+    private void OnBackgroundExceptionOccurred(object sender, Exception e)
+    {
+        _receiveTcs?.SetException(e);
+        _sendTcs?.SetException(e);
+    }
 
-    public Task<IsoTpDatagram> RequestAsync(ReadOnlyMemory<byte> request, CancellationToken ct = default) => throw new NotImplementedException();
+    private bool OnMsgReceived(in PcanIsoTp.PCanTpMsg msg)
+    {
+        var (id, addr) = Options.Endpoint.GetRxId();
+        var result = id == msg.CanInfo.CanId && (addr is null || addr.Value == msg.MsgData.IsoTp.NetAddrInfo.SourceAddr);
+        if (result)
+        {
+            if (msg.MsgData.IsoTp.NetStatus != PcanIsoTp.PCanTpNetStatus.Ok)
+            {
+                _receiveTcs?.SetException(new Exception()); //TODO: 异常处理
+            }
+            _receiveTcs?.SetResult(msg);
+        }
+
+        return result;
+    }
+
+    public Task<bool> SendAsync(ReadOnlyMemory<byte> pdu, CancellationToken ct = default)
+    {
+        _sendTcs = new TaskCompletionSource<bool>();
+        ct.Register(() => _sendTcs.SetCanceled());
+        throw new NotImplementedException();
+    }
+
+    public Task<IsoTpDatagram> RequestAsync(ReadOnlyMemory<byte> request, CancellationToken ct = default)
+    {
+        _receiveTcs = new TaskCompletionSource<PcanIsoTp.PCanTpMsg>();
+        ct.Register(() => _receiveTcs.SetCanceled());
+        throw new NotImplementedException();
+    }
 
     public void Dispose()
     {
-        throw new NotImplementedException();
+        _scheduler.RemoveChannel(this);
+        _owner?.Dispose();
+    }
+
+    public void AttachOwner(IDisposable owner)
+    {
+        _owner = owner;
     }
 }

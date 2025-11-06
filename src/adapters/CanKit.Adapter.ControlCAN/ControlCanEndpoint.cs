@@ -75,7 +75,7 @@ public static class ControlCanEndpoint
         if (channel == null)
             throw new CanBusCreationException($"Factory '{provider.Factory.GetType().FullName}' returned null channel.");
 
-        if (channel is IBusOwnership own)
+        if (channel is IOwnership own)
             own.AttachOwner(lease);
         return channel;
     }
