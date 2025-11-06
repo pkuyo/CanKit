@@ -367,18 +367,22 @@ public static class PcanIsoTp
     [StructLayout(LayoutKind.Sequential, Pack = 8)]
     public struct PCanTpMsgData
     {
+        [MarshalAs(UnmanagedType.U4)]
         public PCanTpMsgFlag Flags;
         public uint Length;
         public IntPtr Data;
+        [MarshalAs(UnmanagedType.U4)]
         public PCanTpNetStatus NetStatus;
         public IntPtr Options;
     }
 
     public unsafe struct PCanTpMsgDataCan
     {
+        [MarshalAs(UnmanagedType.U4)]
         public PCanTpMsgFlag Flags;
         public uint Length;
         public byte* Data;
+        [MarshalAs(UnmanagedType.U4)]
         public PCanTpNetStatus NetStatus;
         public IntPtr Options;
         public fixed byte DataMax[MaxLengthCanStandard];
@@ -386,20 +390,24 @@ public static class PcanIsoTp
 
     public unsafe struct PCanTpMsgDataCanFd
     {
+        [MarshalAs(UnmanagedType.U4)]
         public PCanTpMsgFlag Flags;
         public uint Length;
         public byte* Data;
+        [MarshalAs(UnmanagedType.U4)]
         public PCanTpNetStatus NetStatus;
         public IntPtr Options;
         public fixed byte DataMax[MaxLengthCanFd];
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 8)]
-    public struct PCanTpMsgDataIsoTp
+    public unsafe struct PCanTpMsgDataIsoTp
     {
+        [MarshalAs(UnmanagedType.U4)]
         public PCanTpMsgFlag Flags;
         public uint Length;
-        public IntPtr Data;
+        public byte* Data;
+        [MarshalAs(UnmanagedType.U4)]
         public PCanTpNetStatus NetStatus;
         public IntPtr Options;
         public PCanTpNetAddrInfo NetAddrInfo;

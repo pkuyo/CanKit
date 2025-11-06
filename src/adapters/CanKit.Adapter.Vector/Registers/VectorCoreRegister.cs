@@ -8,7 +8,7 @@ using CanKit.Core.Registry;
 namespace CanKit.Adapter.Vector.Registers;
 
 [CanRegistryEntry(CanRegistryEntryKind.Adapter, "VECTOR")]
-internal sealed class VectorCoreRegister : ICanRegisterFactory, ICanRegisterProviders, ICanRegisterEndpoint
+internal sealed class VectorCoreRegister : ICanRegisterFactory, ICanRegisterProviders, IRawRegisterEndpoint
 {
     public (string FactoryId, ICanFactory Factory) Factory
         => ("VECTOR", new VectorFactory());
@@ -16,7 +16,7 @@ internal sealed class VectorCoreRegister : ICanRegisterFactory, ICanRegisterProv
     public IEnumerable<ICanModelProvider> Providers
         => [new VectorProvider()];
 
-    public EndpointRegistration Endpoint
+    public RawEndpointRegistration Endpoint
         => new("vector", VectorEndpoint.Open, VectorEndpoint.Prepare)
         {
             Alias = ["vxl", "vectorxl"],

@@ -8,7 +8,7 @@ using CanKit.Core.Registry;
 namespace CanKit.Adapter.Kvaser.Registers;
 
 [CanRegistryEntry(CanRegistryEntryKind.Adapter, "KVASER")]
-internal sealed class KvaserCoreRegister : ICanRegisterFactory, ICanRegisterProviders, ICanRegisterEndpoint
+internal sealed class KvaserCoreRegister : ICanRegisterFactory, ICanRegisterProviders, IRawRegisterEndpoint
 {
     public (string FactoryId, ICanFactory Factory) Factory
         => ("KVASER", new KvaserFactory());
@@ -16,7 +16,7 @@ internal sealed class KvaserCoreRegister : ICanRegisterFactory, ICanRegisterProv
     public IEnumerable<ICanModelProvider> Providers
         => [new KvaserProvider()];
 
-    public EndpointRegistration Endpoint
+    public RawEndpointRegistration Endpoint
         => new("kvaser", KvaserEndpoint.Open, KvaserEndpoint.Prepare)
         {
             Alias = ["canlib"],

@@ -36,5 +36,9 @@ public sealed class DefaultIsoTpChannel : IIsoTpChannel
         throw new NotImplementedException();
     }
 
+    public Task<IReadOnlyList<IsoTpDatagram>> ReceiveAsync(int count, int timeOutMs = 0, CancellationToken ct = default) => throw new NotImplementedException();
+
+    public IAsyncEnumerable<IsoTpDatagram> GetFramesAsync(CancellationToken cancellationToken = default) => throw new NotImplementedException();
+
     public void Dispose() => Core.Dispose();
 }

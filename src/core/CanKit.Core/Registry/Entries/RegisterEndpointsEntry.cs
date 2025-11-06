@@ -9,7 +9,7 @@ internal sealed class RegisterEndpointsEntry : ICanRegistryEntry
 {
     public void Register(string name, ICanRegister register)
     {
-        if (register is not ICanRegisterEndpoint er) return;
+        if (register is not IRawRegisterEndpoint er) return;
         var endpoint = er.Endpoint;
         try
         {

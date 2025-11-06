@@ -1,4 +1,6 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using CanKit.Abstractions.API.Common.Definitions;
@@ -15,4 +17,8 @@ public interface IIsoTpChannel : IDisposable
     Task<bool> SendAsync(ReadOnlyMemory<byte> pdu, CancellationToken ct = default);
 
     Task<IsoTpDatagram> RequestAsync(ReadOnlyMemory<byte> request, CancellationToken ct = default);
+
+    Task<IReadOnlyList<IsoTpDatagram>> ReceiveAsync(int count, int timeOutMs = 0, CancellationToken ct = default);
+
+    IAsyncEnumerable<IsoTpDatagram> GetFramesAsync([EnumeratorCancellation] CancellationToken cancellationToken = default);
 }

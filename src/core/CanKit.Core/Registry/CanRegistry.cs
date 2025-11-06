@@ -138,7 +138,7 @@ public partial class CanRegistry
     /// <summary>
     /// Register an endpoint by descriptor (open/prepare/enumerate) without reflection.
     /// </summary>
-    internal void RegisterEndPoint(EndpointRegistration e)
+    internal void RegisterEndPoint(RawEndpointRegistration e)
     {
         if (e is null) throw new ArgumentNullException(nameof(e));
         if (string.IsNullOrWhiteSpace(e.Scheme)) throw new ArgumentNullException(nameof(e.Scheme));
@@ -165,12 +165,14 @@ public partial class CanRegistry
     private static readonly Lazy<CanRegistry> _registry =
         new(BuildRegistry, LazyThreadSafetyMode.ExecutionAndPublication);
 
+    // factory
+    private readonly Dictionary<string, ICanFactory> _factories = new();
+
+    // endpoint
     private readonly Dictionary<string, Func<IEnumerable<BusEndpointInfo>>> _enumerators =
         new(StringComparer.OrdinalIgnoreCase);
 
     private readonly Dictionary<string, string> _enumeratorAlias = new(StringComparer.OrdinalIgnoreCase);
-
-    private readonly Dictionary<string, ICanFactory> _factories = new();
 
     private readonly Dictionary<string, Func<CanEndpoint, Action<IBusInitOptionsConfigurator>?, ICanBus>> _handlers =
         new(StringComparer.OrdinalIgnoreCase);
@@ -178,6 +180,7 @@ public partial class CanRegistry
     private readonly Dictionary<string, Func<CanEndpoint, Action<IBusInitOptionsConfigurator>?, PreparedBusContext>> _prepareHandlers =
         new(StringComparer.OrdinalIgnoreCase);
 
+    // provider
     private readonly Dictionary<DeviceType, ICanModelProvider> _providers = new();
 
     internal static CanRegistry? Instance;

@@ -11,7 +11,7 @@ using CanKit.Core.Registry;
 namespace CanKit.Adapter.ZLG.Registers;
 
 [CanRegistryEntry(CanRegistryEntryKind.Adapter, "Zlg")]
-internal sealed class ZlgCoreRegister : ICanRegisterFactory, ICanRegisterProviders, ICanRegisterEndpoint
+internal sealed class ZlgCoreRegister : ICanRegisterFactory, ICanRegisterProviders, IRawRegisterEndpoint
 {
 
     /* -----------factory------------ */
@@ -42,6 +42,6 @@ internal sealed class ZlgCoreRegister : ICanRegisterFactory, ICanRegisterProvide
 
     /* -----------endpoint------------ */
 
-    public EndpointRegistration Endpoint => new("zlg", ZlgEndpoint.Open, ZlgEndpoint.Prepare);
+    public RawEndpointRegistration Endpoint => new("zlg", ZlgEndpoint.Open, ZlgEndpoint.Prepare);
 
 }

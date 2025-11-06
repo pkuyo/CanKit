@@ -3,8 +3,8 @@ using CanKit.Core.Registry;
 
 namespace CanKit.Abstractions.SPI.Registry.Core;
 
-public interface ICanRegisterEndpoint : ICanRegister
+public interface IRawRegisterEndpoint : ICanRegister
 {
-    public EndpointRegistration Endpoint { get; }
+    public RawEndpointRegistration Endpoint { get; }
 }
 

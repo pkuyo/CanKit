@@ -8,7 +8,7 @@ using CanKit.Core.Registry;
 namespace CanKit.Adapter.Virtual.Registers;
 
 [CanRegistryEntry(CanRegistryEntryKind.Adapter, "Virtual")]
-internal sealed class VirtualRegister : ICanRegisterFactory, ICanRegisterProviders, ICanRegisterEndpoint
+internal sealed class VirtualRegister : ICanRegisterFactory, ICanRegisterProviders, IRawRegisterEndpoint
 {
     public (string FactoryId, ICanFactory Factory) Factory
         => ("Virtual", new VirtualFactory());
@@ -16,7 +16,7 @@ internal sealed class VirtualRegister : ICanRegisterFactory, ICanRegisterProvide
     public IEnumerable<ICanModelProvider> Providers
         => [new VirtualProvider()];
 
-    public EndpointRegistration Endpoint
+    public RawEndpointRegistration Endpoint
         => new("virtual", VirtualEndpoint.Open, VirtualEndpoint.Prepare)
         {
             Enumerate = VirtualEndpoint.Enumerate

@@ -8,7 +8,7 @@ using CanKit.Core.Registry;
 namespace CanKit.Adapter.SocketCAN.Registers;
 
 [CanRegistryEntry(CanRegistryEntryKind.Adapter, "SocketCAN")]
-internal sealed class SocketCanCoreRegister : ICanRegisterFactory, ICanRegisterProviders, ICanRegisterEndpoint
+internal sealed class SocketCanCoreRegister : ICanRegisterFactory, ICanRegisterProviders, IRawRegisterEndpoint
 {
 
     public (string FactoryId, ICanFactory Factory) Factory
@@ -17,7 +17,7 @@ internal sealed class SocketCanCoreRegister : ICanRegisterFactory, ICanRegisterP
     public IEnumerable<ICanModelProvider> Providers
         => [new SocketCanProvider()];
 
-    public EndpointRegistration Endpoint
+    public RawEndpointRegistration Endpoint
         => new("socketcan", SocketCanEndpoint.Open, SocketCanEndpoint.Prepare)
         {
             Alias = ["linux", "libsocketcan"],

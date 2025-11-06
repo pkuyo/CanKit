@@ -1,7 +1,6 @@
 using System.Collections.Concurrent;
+using System.Net;
 using System.Runtime.InteropServices;
-using System.Threading;
-using System.Threading.Tasks;
 using CanKit.Abstractions.API.Common;
 using CanKit.Abstractions.API.Common.Definitions;
 using CanKit.Abstractions.API.Transport;
@@ -30,6 +29,7 @@ internal class PcanIsoTpScheduler : IIsoTpScheduler
     private bool _isDisposed;
 
     private readonly ConcurrentDictionary<int, IIsoTpChannel> _channels = new();
+    private readonly ConcurrentDictionary<int, ConcurrentQueue<PendingTx>> _pendingTx = new();
 
     internal event EventHandler<Exception>? BackgroundExceptionOccurred;
 
@@ -37,7 +37,7 @@ internal class PcanIsoTpScheduler : IIsoTpScheduler
 
     internal int? AsyncBufferCapacity { get; }
 
-  public PcanIsoTpScheduler(IBusOptions options)
+    public PcanIsoTpScheduler(IBusOptions options)
     {
         var cfg = new PcanBusRtConfigurator();
         cfg.Init((PcanBusOptions)options);
@@ -73,6 +73,7 @@ internal class PcanIsoTpScheduler : IIsoTpScheduler
             {
                 throw new CanBusCreationException($"PCAN InitializeFD failed: {st}");
             }
+
             CanKitLogger.LogInformation("PCAN: InitializeFD succeeded.");
         }
         else if (Options.ProtocolMode == CanProtocolMode.Can20)
@@ -83,6 +84,7 @@ internal class PcanIsoTpScheduler : IIsoTpScheduler
             {
                 throw new CanBusCreationException($"PCAN Initialize failed: {st}");
             }
+
             CanKitLogger.LogInformation("PCAN: Initialize (classic) succeeded.");
         }
 
@@ -104,6 +106,7 @@ internal class PcanIsoTpScheduler : IIsoTpScheduler
 
         StartReceiveLoop();
     }
+
     public void AddChannel(IIsoTpChannel channel)
     {
         var endpoint = channel.Options.Endpoint;
@@ -111,6 +114,7 @@ internal class PcanIsoTpScheduler : IIsoTpScheduler
         {
             throw new Exception(); //TODO:异常处理
         }
+
         var mapping = new PcanIsoTp.PCanTpMapping
         {
             CanId = (uint)endpoint.TxId,
@@ -156,7 +160,6 @@ internal class PcanIsoTpScheduler : IIsoTpScheduler
         {
             PcanIsoTp.RemoveMappings(_handle, (uint)endpoint.RxId);
         }
-
     }
 
     public void Dispose()
@@ -203,7 +206,9 @@ internal class PcanIsoTpScheduler : IIsoTpScheduler
             cts?.Cancel();
             _pollTask?.Wait(500);
         }
-        catch { }
+        catch
+        {
+        }
         finally
         {
             cts?.Dispose();
@@ -246,25 +251,58 @@ internal class PcanIsoTpScheduler : IIsoTpScheduler
                     CanKitLogger.LogWarning($"PCAN-ISO-TP: MsgDataAlloc failed: {stAlloc}");
                     return;
                 }
+
                 var st = PcanIsoTp.Read(_handle, &msg, &ts, PcanIsoTp.PCanTpMsgType.IsoTp);
                 if (st == PcanIsoTp.PCanTpStatus.NoMessage)
                     break;
                 if (st != PcanIsoTp.PCanTpStatus.Ok)
                 {
                     // Treat transient bus states as non-fatal; break out of drain
-                    if ((uint)st >= (uint)PcanIsoTp.PCanTpStatus.BusLight && (uint)st <= (uint)PcanIsoTp.PCanTpStatus.BusOff)
+                    if ((uint)st >= (uint)PcanIsoTp.PCanTpStatus.BusLight &&
+                        (uint)st <= (uint)PcanIsoTp.PCanTpStatus.BusOff)
                         break;
                     throw new InvalidOperationException($"PCAN-ISO-TP Read failed: {st}");
                 }
-                var snap = Volatile.Read(ref MsgReceived);
-                if (msg.Type == PcanIsoTp.PCanTpMsgType.IsoTp && snap != null)
-                {
 
-                    foreach (var del in snap.GetInvocationList())
+                var snap = Volatile.Read(ref MsgReceived);
+                if (msg.Type == PcanIsoTp.PCanTpMsgType.IsoTp)
+                {
+                    // TX confirmation (loopback)
+                    if ((msg.MsgData.IsoTp.Flags & PcanIsoTp.PCanTpMsgFlag.Loopback) == PcanIsoTp.PCanTpMsgFlag.Loopback)
                     {
-                        var f = (MsgReceivedHandler)del;
-                        if (f(msg))
-                            break;
+                        if (_pendingTx.TryGetValue((int)msg.CanInfo.CanId, out var q))
+                        {
+                            while (q.TryPeek(out var head))
+                            {
+                                bool equal = PcanIsoTp.MsgEqual(ref head.Compare, ref msg, true);
+                                if (!equal) break;
+
+                                q.TryDequeue(out _);
+                                try
+                                {
+                                    if (msg.MsgData.IsoTp.NetStatus == PcanIsoTp.PCanTpNetStatus.Ok)
+                                        head.Tcs.TrySetResult(true);
+                                    else
+                                        head.Tcs.TrySetException(new Exception()); //TODO：异常处理
+                                }
+                                finally
+                                {
+                                    _ = PcanIsoTp.MsgDataFree(ref head.Compare);
+                                }
+                                break;
+                            }
+                        }
+                        continue; // don't route loopback to channels
+                    }
+
+                    if (snap != null)
+                    {
+                        foreach (var del in snap.GetInvocationList())
+                        {
+                            var f = (MsgReceivedHandler)del;
+                            if (f(msg))
+                                break;
+                        }
                     }
                 }
             }
@@ -272,15 +310,112 @@ internal class PcanIsoTpScheduler : IIsoTpScheduler
             {
                 _ = PcanIsoTp.MsgDataFree(ref msg);
             }
-
-
-
         }
-
     }
+
+    internal async Task<bool> TransmitAsync(IIsoTpChannel channel, ReadOnlyMemory<byte> data, CancellationToken ct)
+    {
+        var ep = channel.Options.Endpoint;
+        var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var reg = ct.Register(() => tcs.TrySetCanceled(ct));
+
+        var q = _pendingTx.GetOrAdd(ep.TxId, _ => new ConcurrentQueue<PendingTx>());
+
+        var task = tcs.Task;
+        unsafe
+        {
+            PcanIsoTp.PCanTpMsg msg = new PcanIsoTp.PCanTpMsg();
+            PcanIsoTp.PCanTpMsg cmp = new PcanIsoTp.PCanTpMsg();
+            try
+            {
+                var st = PcanIsoTp.MsgDataAlloc(ref msg, PcanIsoTp.PCanTpMsgType.IsoTp);
+                if (st != PcanIsoTp.PCanTpStatus.Ok)
+                    throw new InvalidOperationException($"MsgDataAlloc failed: {st}");
+
+                st = PcanIsoTp.MsgDataAlloc(ref cmp, PcanIsoTp.PCanTpMsgType.IsoTp);
+                if (st != PcanIsoTp.PCanTpStatus.Ok)
+                    throw new InvalidOperationException($"MsgDataAlloc(compare) failed: {st}");
+
+                var nai = new PcanIsoTp.PCanTpNetAddrInfo
+                {
+                    MsgType = PcanIsoTp.PCanTpIsotpMsgType.Diagnostic,
+                    Format = ep.AddressingFormat switch
+                    {
+                        AddressingFormat.Extended => PcanIsoTp.PCanTpIsotpFormat.Extended,
+                        AddressingFormat.Mixed => PcanIsoTp.PCanTpIsotpFormat.Mixed,
+                        AddressingFormat.NormalFixed => PcanIsoTp.PCanTpIsotpFormat.FixedNormal,
+                        _ => PcanIsoTp.PCanTpIsotpFormat.Normal
+                    },
+                    TargetType = ep.TargetType == TargetType.Functional ? PcanIsoTp.PCanTpIsotpAddressing.Functional : PcanIsoTp.PCanTpIsotpAddressing.Physical,
+                    SourceAddr = (ushort)(ep.SourceAddress ?? 0),
+                    TargetAddr = (ushort)(ep.TargetAddress ?? 0),
+                    ExtensionAddr = ep.ExtendedAddress ?? (byte)0
+                };
+
+                MessageType canType = ep.IsExtendedId ? MessageType.Extended : MessageType.Standard;
+                if (Options.ProtocolMode == CanProtocolMode.CanFd)
+                    canType |= MessageType.FlexibleDataRate;
+
+                fixed (byte* p = data.Span)
+                {
+                    st = PcanIsoTp.MsgDataInit(ref msg, 0xFFFFFFFFu, canType, (uint)data.Length, (IntPtr)p, new IntPtr(&nai));
+                    if (st != PcanIsoTp.PCanTpStatus.Ok)
+                        throw new InvalidOperationException($"MsgDataInit failed: {st}");
+                }
+
+                var cst = PcanIsoTp.MsgCopy(ref cmp, ref msg);
+                if (cst != PcanIsoTp.PCanTpStatus.Ok)
+                    throw new InvalidOperationException($"MsgCopy failed: {cst}");
+
+                q.Enqueue(new PendingTx(cmp, tcs));
+
+                var wst = PcanIsoTp.Write(_handle, &msg);
+                if (wst != PcanIsoTp.PCanTpStatus.Ok)
+                {
+                    if (q.TryDequeue(out var head))
+                    {
+                        _ = PcanIsoTp.MsgDataFree(ref head.Compare);
+                    }
+                    throw new InvalidOperationException($"PCAN-ISO-TP Write failed: {wst}");
+                }
+
+                // fallthrough to await outside unsafe block
+            }
+            finally
+            {
+                _ = PcanIsoTp.MsgDataFree(ref msg);
+            }
+        }
+        return await task.ConfigureAwait(false);
+    }
+
     private void HandleBackgroundException(Exception ex)
     {
-        try { CanKitLogger.LogError("PCAN-ISO-TP bus occured background exception.", ex); } catch { }
-        try { var snap = Volatile.Read(ref BackgroundExceptionOccurred); snap?.Invoke(this, ex); } catch { }
+        try
+        {
+            CanKitLogger.LogError("PCAN-ISO-TP bus occured background exception.", ex);
+        }
+        catch
+        {
+        }
+
+        try
+        {
+            var snap = Volatile.Read(ref BackgroundExceptionOccurred);
+            snap?.Invoke(this, ex);
+        }
+        catch
+        {
+        }
+    }
+}
+
+internal sealed class PendingTx
+{
+    public PcanIsoTp.PCanTpMsg Compare;
+    public TaskCompletionSource<bool> Tcs;
+    public PendingTx(PcanIsoTp.PCanTpMsg compare, TaskCompletionSource<bool> tcs)
+    {
+        Compare = compare; Tcs = tcs;
     }
 }

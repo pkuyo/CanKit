@@ -8,7 +8,7 @@ using CanKit.Core.Registry;
 namespace CanKit.Adapter.PCAN.Registers;
 
 [CanRegistryEntry(CanRegistryEntryKind.Adapter, "PCAN")]
-internal sealed class PcanCoreRegister : ICanRegisterFactory, ICanRegisterProviders, ICanRegisterEndpoint
+internal sealed class PcanCoreRegister : ICanRegisterFactory, ICanRegisterProviders, IRawRegisterEndpoint
 {
 
     public (string FactoryId, ICanFactory Factory) Factory
@@ -17,7 +17,7 @@ internal sealed class PcanCoreRegister : ICanRegisterFactory, ICanRegisterProvid
     public IEnumerable<ICanModelProvider> Providers
         => [new PcanProvider()];
 
-    public EndpointRegistration Endpoint
+    public RawEndpointRegistration Endpoint
         => new("pcan", PcanEndpoint.Open, PcanEndpoint.Prepare)
         {
             Alias = ["pcanbasic", "peak"],

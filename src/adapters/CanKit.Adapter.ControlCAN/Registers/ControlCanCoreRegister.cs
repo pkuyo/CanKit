@@ -11,7 +11,7 @@ using CanKit.Core.Registry;
 namespace CanKit.Adapter.ControlCAN.Registers;
 
 [CanRegistryEntry(CanRegistryEntryKind.Adapter, "ControlCAN")]
-internal sealed class ControlCanCoreRegister : ICanRegisterFactory, ICanRegisterProviders, ICanRegisterEndpoint
+internal sealed class ControlCanCoreRegister : ICanRegisterFactory, ICanRegisterProviders, IRawRegisterEndpoint
 {
 
     public (string FactoryId, ICanFactory Factory) Factory
@@ -30,7 +30,7 @@ internal sealed class ControlCanCoreRegister : ICanRegisterFactory, ICanRegister
         }
     }
 
-    public EndpointRegistration Endpoint =>
+    public RawEndpointRegistration Endpoint =>
         new("controlcan", ControlCanEndpoint.Open, ControlCanEndpoint.Prepare);
 
 }
