@@ -32,7 +32,7 @@ public class PcanIsoTpChannel : IIsoTpChannel, IOwnership
         _scheduler.BackgroundExceptionOccurred += OnBackgroundExceptionOccurred;
     }
 
-    private void OnBackgroundExceptionOccurred(object sender, Exception e)
+    private void OnBackgroundExceptionOccurred(object? sender, Exception e)
     {
         _receiveTcs?.SetException(e);
         // no per-send field; send completions are handled by scheduler

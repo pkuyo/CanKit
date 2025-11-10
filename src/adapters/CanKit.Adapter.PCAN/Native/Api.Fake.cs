@@ -68,6 +68,7 @@ namespace Peak.Can.Basic
 {
     using BackwardCompatibility;
 
+    [Flags]
     public enum MessageType : byte
     {
         Standard = 0,

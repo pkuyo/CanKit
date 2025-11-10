@@ -12,7 +12,7 @@ public class PcanIsoTpRegister : IIsoTpRegister
 {
     public IsoTpEndpointRegistration Endpoint
         => new("pcan", PcanEndpoint.Open, PcanEndpoint.Prepare)
-    {
-        Alias = ["pcanbasic", "peak"],
-    };
+        {
+            Alias = ["pcanbasic", "peak"],
+        };
 }

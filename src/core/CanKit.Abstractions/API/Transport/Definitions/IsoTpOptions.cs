@@ -16,5 +16,5 @@ public class IsoTpOptions
     public TimeSpan N_Cs { get; set; }
     public TimeSpan N_Cr { get; set; }
 
-    public IsoTpEndpoint Endpoint { get; set; }
+    public IsoTpEndpoint Endpoint { get; set; } = new();
 }

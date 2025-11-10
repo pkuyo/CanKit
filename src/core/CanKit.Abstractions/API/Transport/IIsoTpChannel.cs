@@ -20,5 +20,5 @@ public interface IIsoTpChannel : IDisposable
 
     Task<IReadOnlyList<IsoTpDatagram>> ReceiveAsync(int count, int timeOutMs = 0, CancellationToken ct = default);
 
-    IAsyncEnumerable<IsoTpDatagram> GetFramesAsync([EnumeratorCancellation] CancellationToken cancellationToken = default);
+    IAsyncEnumerable<IsoTpDatagram> GetFramesAsync(CancellationToken cancellationToken = default);
 }

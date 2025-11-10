@@ -63,7 +63,7 @@ internal static class PcanEndpoint
         var (channel, lease) = PcanIsoTpBusMultiplexer.Acquire(handle,
             () => new PcanIsoTpScheduler(ctx.BusOptions),
             (bus) => new PcanIsoTpChannel((PcanIsoTpScheduler)bus, options));
-        if(channel is IOwnership ownership)
+        if (channel is IOwnership ownership)
             ownership.AttachOwner(lease);
         return channel;
     }

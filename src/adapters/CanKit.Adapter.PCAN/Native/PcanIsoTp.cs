@@ -473,7 +473,7 @@ public static class PcanIsoTp
     public static unsafe extern PCanTpStatus Read(PcanChannel channel, PCanTpMsg* msgBuffer, ulong* timestamp, PCanTpMsgType msgType);
 
     [DllImport(DllName, EntryPoint = "CANTP_Write_2016", CallingConvention = CallingConvention.StdCall, ExactSpelling = true)]
-    public static unsafe extern PCanTpStatus Write(PcanChannel channel, PCanTpMsg* msgBuffer);
+    public static unsafe extern PCanTpStatus Write(PcanChannel channel, ref PCanTpMsg msgBuffer);
 
     [DllImport(DllName, EntryPoint = "CANTP_GetMsgProgress_2016", CallingConvention = CallingConvention.StdCall, ExactSpelling = true)]
     public static unsafe extern PCanTpStatus GetMsgProgress(PcanChannel channel, PCanTpMsg* msgBuffer, PCanTpMsgDirection direction, PCanTpMsgProgress* progressBuffer);

@@ -336,21 +336,21 @@ internal class PcanIsoTpScheduler : IIsoTpScheduler
                 if (st != PcanIsoTp.PCanTpStatus.Ok)
                     throw new InvalidOperationException($"MsgDataAlloc(compare) failed: {st}");
 
-                var nai = new PcanIsoTp.PCanTpNetAddrInfo
+                var nai = stackalloc PcanIsoTp.PCanTpNetAddrInfo[1];
+                nai->MsgType = PcanIsoTp.PCanTpIsotpMsgType.Diagnostic;
+                nai->Format = ep.AddressingFormat switch
                 {
-                    MsgType = PcanIsoTp.PCanTpIsotpMsgType.Diagnostic,
-                    Format = ep.AddressingFormat switch
-                    {
-                        AddressingFormat.Extended => PcanIsoTp.PCanTpIsotpFormat.Extended,
-                        AddressingFormat.Mixed => PcanIsoTp.PCanTpIsotpFormat.Mixed,
-                        AddressingFormat.NormalFixed => PcanIsoTp.PCanTpIsotpFormat.FixedNormal,
-                        _ => PcanIsoTp.PCanTpIsotpFormat.Normal
-                    },
-                    TargetType = ep.TargetType == TargetType.Functional ? PcanIsoTp.PCanTpIsotpAddressing.Functional : PcanIsoTp.PCanTpIsotpAddressing.Physical,
-                    SourceAddr = (ushort)(ep.SourceAddress ?? 0),
-                    TargetAddr = (ushort)(ep.TargetAddress ?? 0),
-                    ExtensionAddr = ep.ExtendedAddress ?? (byte)0
+                    AddressingFormat.Extended => PcanIsoTp.PCanTpIsotpFormat.Extended,
+                    AddressingFormat.Mixed => PcanIsoTp.PCanTpIsotpFormat.Mixed,
+                    AddressingFormat.NormalFixed => PcanIsoTp.PCanTpIsotpFormat.FixedNormal,
+                    _ => PcanIsoTp.PCanTpIsotpFormat.Normal
                 };
+                nai->TargetType = ep.TargetType == TargetType.Functional
+                    ? PcanIsoTp.PCanTpIsotpAddressing.Functional
+                    : PcanIsoTp.PCanTpIsotpAddressing.Physical;
+                nai->SourceAddr = (ushort)(ep.SourceAddress ?? 0);
+                nai->TargetAddr = (ushort)(ep.TargetAddress ?? 0);
+                nai->ExtensionAddr = ep.ExtendedAddress ?? (byte)0;
 
                 MessageType canType = ep.IsExtendedId ? MessageType.Extended : MessageType.Standard;
                 if (Options.ProtocolMode == CanProtocolMode.CanFd)
@@ -358,7 +358,7 @@ internal class PcanIsoTpScheduler : IIsoTpScheduler
 
                 fixed (byte* p = data.Span)
                 {
-                    st = PcanIsoTp.MsgDataInit(ref msg, 0xFFFFFFFFu, canType, (uint)data.Length, (IntPtr)p, new IntPtr(&nai));
+                    st = PcanIsoTp.MsgDataInit(ref msg, 0xFFFFFFFFu, canType, (uint)data.Length, (IntPtr)p, new IntPtr(nai));
                     if (st != PcanIsoTp.PCanTpStatus.Ok)
                         throw new InvalidOperationException($"MsgDataInit failed: {st}");
                 }
@@ -369,7 +369,7 @@ internal class PcanIsoTpScheduler : IIsoTpScheduler
 
                 q.Enqueue(new PendingTx(cmp, tcs));
 
-                var wst = PcanIsoTp.Write(_handle, &msg);
+                var wst = PcanIsoTp.Write(_handle, ref msg);
                 if (wst != PcanIsoTp.PCanTpStatus.Ok)
                 {
                     if (q.TryDequeue(out var head))

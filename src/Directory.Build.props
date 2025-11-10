@@ -14,14 +14,14 @@
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
 
     <UseLocalProjectReferences Condition="'$(UseLocalProjectReferences)'==''">true</UseLocalProjectReferences>
-    <CanKitCoreVersion>0.5.0</CanKitCoreVersion>
-    <CanKitCoreFileVersion>0.5.0.0</CanKitCoreFileVersion>
+    <CanKitCoreVersion>0.5.1</CanKitCoreVersion>
+    <CanKitCoreFileVersion>0.5.1.0</CanKitCoreFileVersion>
     <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
 
-    <ReleaseNotesFile>$(MSBuildThisFileDirectory)notes/0.5.0.md</ReleaseNotesFile>
+    <ReleaseNotesFile>$(MSBuildThisFileDirectory)notes/0.5.1.md</ReleaseNotesFile>
     <PackageReleaseNotes>$([System.IO.File]::ReadAllText('$(ReleaseNotesFile)'))</PackageReleaseNotes>
 
     <PackageOutputPath>$(MSBuildThisFileDirectory).artifacts\nuget</PackageOutputPath>
