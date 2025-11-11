@@ -39,8 +39,19 @@ internal sealed class IsoTpScheduler : IIsoTpScheduler
         _canEcho = (_bus.Options.Features & CanFeature.Echo) != 0;
     }
 
-    public void Register(IsoTpChannelCore ch) { _channels.Add(ch); _router.Register(ch); }
-    public void Unregister(IsoTpChannelCore ch) { _channels.Remove(ch); _router.Unregister(ch); }
+    public void Register(IsoTpChannelCore ch)
+    {
+        _channels.Add(ch);
+        _router.Register(ch);
+        UpdateGlobalBusGuard(ch.Options.GlobalBusGuard);
+    }
+
+    public void Unregister(IsoTpChannelCore ch)
+    {
+        _channels.Remove(ch);
+        _router.Unregister(ch);
+        RecalculateGlobalBusGuard();
+    }
 
     public void TransmitTxOperation(in IsoTpChannelCore.TxOperation operation)
     {
@@ -140,6 +151,30 @@ internal sealed class IsoTpScheduler : IIsoTpScheduler
     private void OnBackgroundExceptionOccurred(object? _, Exception e)
     {
         throw new IsoTpException(IsoTpErrorCode.BackgroundException, e.Message, null, e);
+    }
+
+    private void UpdateGlobalBusGuard(TimeSpan? requested)
+    {
+        if (requested is null || requested.Value <= TimeSpan.Zero) return;
+        if (_globalBusGuard is null || requested > _globalBusGuard)
+        {
+            _globalBusGuard = requested;
+        }
+    }
+
+    private void RecalculateGlobalBusGuard()
+    {
+        TimeSpan? guard = null;
+        foreach (var channel in _channels)
+        {
+            var requested = channel.Options.GlobalBusGuard;
+            if (requested is null || requested.Value <= TimeSpan.Zero) continue;
+            if (guard is null || requested > guard)
+            {
+                guard = requested;
+            }
+        }
+        _globalBusGuard = guard;
     }
 
     public void Dispose() => _bus.Dispose();

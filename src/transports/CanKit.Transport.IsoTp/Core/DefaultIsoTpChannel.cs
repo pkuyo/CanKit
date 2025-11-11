@@ -21,6 +21,7 @@ public sealed class DefaultIsoTpChannel : IIsoTpChannel
         Core = core;
         Scheduler = sch;
         Options = opt;
+        Core.DatagramReceived += OnCoreDatagramReceived;
     }
 
 
@@ -40,5 +41,12 @@ public sealed class DefaultIsoTpChannel : IIsoTpChannel
 
     public IAsyncEnumerable<IsoTpDatagram> GetFramesAsync(CancellationToken cancellationToken = default) => throw new NotImplementedException();
 
-    public void Dispose() => Core.Dispose();
+    public void Dispose()
+    {
+        Core.DatagramReceived -= OnCoreDatagramReceived;
+        Core.Dispose();
+    }
+
+    private void OnCoreDatagramReceived(object? sender, IsoTpDatagram datagram)
+        => DatagramReceived?.Invoke(this, datagram);
 }
