@@ -116,7 +116,7 @@ namespace CanKit.Abstractions.API.Can.Definitions
             if (id < 0) throw new ArgumentOutOfRangeException(nameof(id));
             return new CanFrame(CanFrameType.Can20, id, dataInit)
             {
-                Flags = isRemoteFrame ? FrameFlags.Rtr : 0 | (isExtendedFrame ? FrameFlags.Ext : 0) |
+                Flags = (isRemoteFrame ? FrameFlags.Rtr : 0) | (isExtendedFrame ? FrameFlags.Ext : 0) |
                                                          (isErrorFrame ? FrameFlags.Error : 0)
             };
         }

@@ -62,25 +62,25 @@ namespace CanKit.Adapter.ZLG
             _asyncRx = new AsyncFramePipe<CanReceiveData>(Options.AsyncBufferCapacity > 0 ? Options.AsyncBufferCapacity : null);
             CanKitLogger.LogInformation($"ZLG: Initializing channel '{Options.ChannelName?? Options.ChannelIndex.ToString()}', Mode={Options.ProtocolMode}...");
             ApplyConfig(options);
-            ZLGCAN.ZCAN_SetValue(_devicePtr, options.ChannelIndex+"clear_auto_send", "0");
+
+            ZLGCAN.ZCAN_SetValue(_devicePtr, options.ChannelIndex+"/clear_auto_send", "0");
 
             ZLGCAN.ZCAN_CHANNEL_INIT_CONFIG config = new ZLGCAN.ZCAN_CHANNEL_INIT_CONFIG
             {
                 can_type = options.ProtocolMode == CanProtocolMode.Can20 ? 0U : 1U,
             };
+            if (device.Options.DeviceType == ZlgDeviceType.ZCAN_USBCANFD_100U ||
+                device.Options.DeviceType == ZlgDeviceType.ZCAN_USBCANFD_200U ||
+                device.Options.DeviceType == ZlgDeviceType.ZCAN_USBCANFD_400U ||
+                device.Options.DeviceType == ZlgDeviceType.ZCAN_USBCANFD_800U ||
+                device.Options.DeviceType == ZlgDeviceType.ZCAN_USBCANFD_MINI)
+            {
+                config.can_type = 1U;
+            }
             config.config.can.mode = (byte)options.WorkMode;
             CanKitLogger.LogInformation($"ZLG: Initializing on '{options.ChannelIndex}', Mode={options.ProtocolMode}, Features={Options.Features}");
-
-            if (options.ProtocolMode == CanProtocolMode.CanFd)
-            {
-                var arbitrationRate = options.BitTiming.Fd?.Nominal.Bitrate
-                                      ?? throw new CanBusConfigurationException("Arbitration bitrate must be specified when configuring CAN FD timing.");
-                var dataRate = options.BitTiming.Fd?.Data.Bitrate
-                               ?? throw new CanBusConfigurationException("Data bitrate must be specified when configuring CAN FD timing.");
-                config.config.canfd.abit_timing = arbitrationRate;
-                config.config.canfd.dbit_timing = dataRate;
-            }
-
+            config.config.can.acc_code = 0;
+            config.config.can.acc_mask = 0xffffffff;
             if (options.Filter.FilterRules.Count > 0)
             {
                 if (options.Filter.FilterRules[0] is FilterRule.Mask mask)
@@ -91,8 +91,7 @@ namespace CanKit.Adapter.ZLG
 
                 }
             }
-            config.config.can.acc_code = 0;
-            config.config.can.acc_mask = 0xffffffff;
+
 
             var handle = ZLGCAN.ZCAN_InitCAN(device.NativeHandler, (uint)Options.ChannelIndex, ref config);
             CanKitLogger.LogInformation("ZLG: Initialize succeeded.");
@@ -423,6 +422,10 @@ namespace CanKit.Adapter.ZLG
         public void ApplyConfigAfterInit(ICanOptions options)
         {
             var zlgOption = (ZlgBusOptions)options;
+            ZLGCAN.ZCAN_SetValue(
+                _devicePtr,
+                Options.ChannelIndex + "/initenal_resistance",
+                Options.InternalResistance ? "1" : "0");
             if (zlgOption.Filter.FilterRules.Count > 0)
             {
                 if (zlgOption.Filter.FilterRules[0] is FilterRule.Mask mask

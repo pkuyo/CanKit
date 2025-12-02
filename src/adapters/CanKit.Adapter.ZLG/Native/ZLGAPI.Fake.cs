@@ -340,15 +340,6 @@ public static class ZLGCAN
 
         // Apply initial config
         ch.FdEnabled = pInitConfig.can_type != 0; // 0=Classic, 1=FD (adapter convention)
-        if (ch.FdEnabled)
-        {
-            ch.ArbBaud = pInitConfig.config.canfd.abit_timing;
-            ch.DataBaud = pInitConfig.config.canfd.dbit_timing;
-        }
-        else
-        {
-            // classic timing not parsed; use SetValue to set baud later
-        }
 
         // possible initial mask filter
         if (pInitConfig.config.can.acc_mask != 0xffffffff || pInitConfig.config.can.acc_code != 0)
