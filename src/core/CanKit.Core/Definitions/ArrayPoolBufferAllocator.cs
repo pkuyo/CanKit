@@ -26,12 +26,12 @@ public sealed class ArrayPoolBufferAllocator : IBufferAllocator
     {
         if (length == 0)
         {
-            return new Owner(_pool, Array.Empty<byte>(), false);
+            return new Owner(_pool, Array.Empty<byte>(), 0, false);
         }
         var buffer = _pool.Rent(length);
         if (zeroFill)
             Array.Clear(buffer, 0, length);
-        return new Owner(_pool, buffer, _clearOnReturn);
+        return new Owner(_pool, buffer, length, _clearOnReturn);
     }
 
     public bool FrameNeedDispose => true;
@@ -41,15 +41,17 @@ public sealed class ArrayPoolBufferAllocator : IBufferAllocator
         private ArrayPool<byte>? _pool;
         private byte[]? _buffer;
         private readonly bool _clearOnReturn;
+        private ArraySegment<byte> _segment;
 
-        public Owner(ArrayPool<byte> pool, byte[] buffer, bool clearOnReturn)
+        public Owner(ArrayPool<byte> pool, byte[] buffer, int length, bool clearOnReturn)
         {
             _pool = pool;
             _buffer = buffer;
             _clearOnReturn = clearOnReturn;
+            _segment = new ArraySegment<byte>(_buffer, 0, length);
         }
 
-        public Memory<byte> Memory => _buffer!;
+        public Memory<byte> Memory => _segment!;
 
         public void Dispose()
         {
