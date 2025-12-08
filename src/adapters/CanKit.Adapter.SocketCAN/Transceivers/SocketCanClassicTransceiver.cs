@@ -308,7 +308,7 @@ public sealed class SocketCanClassicTransceiver : ITransceiver
         var data = bus.Options.BufferAllocator.Rent(dataLen);
         fixed (byte* pData = data.Memory.Span)
         {
-            Unsafe.CopyBlockUnaligned(pData, fr->data, (uint)Math.Min(dataLen, 64));
+            Unsafe.CopyBlockUnaligned(pData, fr->data, (uint)Math.Min(dataLen, 8));
         }
         bool ext = (fr->can_id & Libc.CAN_EFF_FLAG) != 0;
         bool rtr = (fr->can_id & Libc.CAN_RTR_FLAG) != 0;

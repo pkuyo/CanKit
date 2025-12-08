@@ -238,11 +238,11 @@ public sealed class PcanFdTransceiver : ITransceiver
 
         unsafe IMemoryOwner<byte> CopyFd(in PcanBasicNative.TpcanMsgFd msg, ICanBus bus)
         {
-            var data = bus.Options.BufferAllocator.Rent(CanFrame.DlcToLen(msg.DLC));
+            var data = bus.Options.BufferAllocator.Rent(CanFrame.DlcToLen(Math.Min(msg.DLC, (byte)15)));
             fixed (byte* src = msg.DATA)
             fixed (byte* dst = data.Memory.Span)
             {
-                Unsafe.CopyBlockUnaligned(dst, src, (uint)CanFrame.DlcToLen(msg.DLC));
+                Unsafe.CopyBlockUnaligned(dst, src, (uint)data.Memory.Length);
             }
             return data;
         }

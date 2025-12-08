@@ -184,11 +184,11 @@ public sealed class PcanClassicTransceiver : ITransceiver
 
             unsafe IMemoryOwner<byte> Copy(in PcanBasicNative.TpcanMsg msg, ICanBus bus)
             {
-                var data = bus.Options.BufferAllocator.Rent(msg.LEN);
+                var data = bus.Options.BufferAllocator.Rent(Math.Min(msg.LEN, (byte)8));
                 fixed (byte* src = msg.DATA)
                 fixed (byte* dst = data.Memory.Span)
                 {
-                    Unsafe.CopyBlockUnaligned(dst, src, msg.LEN);
+                    Unsafe.CopyBlockUnaligned(dst, src, (uint)data.Memory.Length);
                 }
 
                 return data;

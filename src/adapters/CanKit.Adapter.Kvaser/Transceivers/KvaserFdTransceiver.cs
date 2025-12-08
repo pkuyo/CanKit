@@ -150,6 +150,7 @@ public sealed class KvaserFdTransceiver : ITransceiver
             var st = Canlib.canRead(ch.Handle, out id, data, out dlc, out flags, out time);
             if (st == Canlib.canStatus.canOK)
             {
+                dlc = Math.Min(dlc, 64);
                 var isFd = (flags & Canlib.canFDMSG_FDF) != 0;
                 var isExt = (flags & Canlib.canMSG_EXT) != 0;
                 var brs = (flags & Canlib.canFDMSG_BRS) != 0;

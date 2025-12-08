@@ -153,6 +153,7 @@ public sealed class KvaserClassicTransceiver : ITransceiver
 
             if (st == Canlib.canStatus.canOK)
             {
+                dlc = Math.Min(dlc, 8);
                 var isExt = (flags & Canlib.canMSG_EXT) != 0;
                 var isRtr = (flags & Canlib.canMSG_RTR) != 0;
                 var isErr = (flags & Canlib.canMSG_ERROR_FRAME) != 0;

@@ -167,7 +167,7 @@ public sealed class VectorFdTransceiver : IVectorTransceiver
         var flags = msg.MsgFlags;
         var isFd = (flags & VxlApi.XL_CAN_RXMSG_FLAG_EDL) != 0;
 
-        var length = isFd ? CanFrame.DlcToLen(msg.Dlc) : Math.Min(msg.Dlc, (byte)8);
+        var length = isFd ? CanFrame.DlcToLen(Math.Min(msg.Dlc, (byte)15)) : Math.Min(msg.Dlc, (byte)8);
         var payload = bus.Options.BufferAllocator.Rent(length);
 
         unsafe

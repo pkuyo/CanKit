@@ -53,8 +53,9 @@ namespace CanKit.Adapter.ZLG.Utils
             var id = ext
                 ? (frame.can_id & CAN_EFF_MASK)
                 : (frame.can_id & CAN_SFF_MASK);
-            var result = CanFrame.Classic((int)id, bufferAllocator.Rent(frame.can_dlc),
-                ext, rtr, bufferAllocator.FrameNeedDispose);
+
+            var result = CanFrame.Classic((int)id, bufferAllocator.Rent((int)Math.Min(frame.can_dlc, 8U)),
+                ext, rtr, bufferAllocator.FrameNeedDispose, frame.can_dlc > 8);
             fixed (byte* dst = result.Data.Span)
             fixed (byte* src = frame.data)
             {
@@ -69,16 +70,19 @@ namespace CanKit.Adapter.ZLG.Utils
             var id = ext
                 ? (frame.can_id & CAN_EFF_MASK)
                 : (frame.can_id & CAN_SFF_MASK);
-            var result = CanFrame.Fd((int)id, bufferAllocator.Rent(frame.len),
+
+            var result = CanFrame.Fd((int)id, bufferAllocator.Rent((int)Math.Min(frame.len, 64U)),
                 (frame.flags & CANFD_BRS) != 0,
                 (frame.flags & CANFD_ESI) != 0,
                 ext,
-                bufferAllocator.FrameNeedDispose);
+                bufferAllocator.FrameNeedDispose,
+                frame.len > 64);
             fixed (byte* dst = result.Data.Span)
             fixed (byte* src = frame.data)
             {
                 Unsafe.CopyBlockUnaligned(dst, src, (uint)result.Data.Length);
             }
+
             return result;
         }
 

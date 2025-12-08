@@ -23,21 +23,20 @@ internal static class ControlCanUtils
 
     public static CanFrame FromNative(this in CcApi.VCI_CAN_OBJ obj, IBufferAllocator bufferAllocator)
     {
-        var data = bufferAllocator.Rent(obj.DataLen);
-
+        var data = bufferAllocator.Rent(Math.Min((int)obj.DataLen, 8));
         unsafe
         {
             fixed (byte* dst = data.Memory.Span)
             fixed (byte* src = obj.Data)
             {
-                Unsafe.CopyBlockUnaligned(dst, src, obj.DataLen);
+                Unsafe.CopyBlockUnaligned(dst, src, (uint)data.Memory.Length);
             }
         }
 
         return CanFrame.Classic((int)(obj.ExternFlag == 1
                 ? obj.ID & CcApi.CAN_EFF_MASK : obj.ID & CcApi.CAN_SFF_MASK),
             data, obj.ExternFlag == 1, obj.RemoteFlag == 1,
-            bufferAllocator.FrameNeedDispose);
+            bufferAllocator.FrameNeedDispose, obj.DataLen > 8);
     }
 
     public static unsafe void ToNative(this in CanFrame f, CcApi.VCI_CAN_OBJ* pObj, bool retry)

@@ -265,7 +265,7 @@ namespace CanKit.Abstractions.API.Can.Definitions
         private ReadOnlyMemory<byte> Validate(ReadOnlyMemory<byte> src)
         {
             if (FrameKind == CanFrameType.Can20 && src.Length > 8)
-                throw new ArgumentOutOfRangeException("payload");
+                throw new ArgumentOutOfRangeException($"payload:{src.Length}");
 
             _ = LenToDlc(src.Length); // trigger range check (触发范围检查)
             return src;
