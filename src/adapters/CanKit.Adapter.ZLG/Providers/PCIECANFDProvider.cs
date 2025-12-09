@@ -43,7 +43,6 @@ public sealed class PCIECANFDProviderGroup : ICanModelProviderGroup
         ZlgDeviceType.ZCAN_PCIE_CANFD_400U,
         ZlgDeviceType.ZCAN_PCIE_CANFD_100U_EX,
         ZlgDeviceType.ZCAN_PCIE_CANFD_200U_EX,
-        ZlgDeviceType.ZCAN_PCIE_CANFD_200U,
         ZlgDeviceType.ZCAN_MINI_PCIE_CANFD,
     ];
 
