@@ -193,6 +193,20 @@ namespace CanKit.Abstractions.API.Can
         /// and ensure pending async operations observe this exception (最终通过该事件传播异常)。
         /// </summary>
         event EventHandler<Exception> BackgroundExceptionOccurred;
+
+        /// <summary>
+        /// Raised when a fault occurs on the bus/channel (发生总线/通道故障时触发)。
+        /// The provided <see cref="Exception"/> describes the fault details (参数为故障异常信息)。
+        /// </summary>
+        /// <remarks>
+        /// EN: This event represents a fault state detected by the implementation (e.g., driver failure,
+        /// device disconnected, unrecoverable internal error). Implementations may raise it from a
+        /// background thread; handlers should be fast and must not throw.
+        /// ZH: 表示实现检测到进入故障状态（例如驱动异常、设备断开、不可恢复的内部错误等）。
+        /// 事件可能在后台线程触发；处理器应尽量轻量且不要抛异常。
+        /// </remarks>
+        event EventHandler<Exception> FaultOccurred;
+
     }
 
 

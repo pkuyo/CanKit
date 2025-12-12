@@ -28,6 +28,7 @@ namespace CanKit.Adapter.ZLG
     public sealed class ZlgCanBus : ICanBus<ZlgBusRtConfigurator>, IOwnership
     {
         private readonly HashSet<int> _autoSendIndexes = new();
+        private readonly object _autoSendGate = new();
 
         private readonly IntPtr _devicePtr;
 
@@ -226,7 +227,7 @@ namespace CanKit.Adapter.ZLG
             }
             try
             {
-
+                _isDisposed = true;
                 try
                 {
                     StopReceiveLoop();
@@ -239,7 +240,6 @@ namespace CanKit.Adapter.ZLG
             }
             finally
             {
-                _isDisposed = true;
                 try { _owner?.Dispose(); } catch { /*Ignored*/ }
                 _owner = null;
             }
@@ -269,6 +269,7 @@ namespace CanKit.Adapter.ZLG
         }
 
         public event EventHandler<Exception>? BackgroundExceptionOccurred;
+        public event EventHandler<Exception>? FaultOccurred;
 
 
         public event EventHandler<ICanErrorInfo> ErrorFrameReceived
@@ -449,7 +450,7 @@ namespace CanKit.Adapter.ZLG
                     {
                         if (zlgOption.EnabledSoftwareFallback.HasFlag(CanFeature.RangeFilter))
                         {
-                            zlgOption.Filter.FilterRules.Add(rule);
+                            zlgOption.Filter.SoftwareFilterRules.Add(rule);
                         }
                     }
                 }
@@ -554,8 +555,8 @@ namespace CanKit.Adapter.ZLG
             catch { /* ignore on shutdown */ }
             finally
             {
-                Interlocked.CompareExchange(ref _pollTask, task, null);
-                Interlocked.CompareExchange(ref _pollCts, cts, null);
+                Interlocked.CompareExchange(ref _pollTask, null, task);
+                Interlocked.CompareExchange(ref _pollCts, null, cts);
                 cts?.Dispose();
                 CanKitLogger.LogDebug("ZLG: Poll loop stopped.");
             }
@@ -581,8 +582,16 @@ namespace CanKit.Adapter.ZLG
                                 {
                                     continue;
                                 }
-                                var evSnap = Volatile.Read(ref _frameReceived);
-                                evSnap?.Invoke(this, frame);
+
+                                try
+                                {
+                                    var evSnap = Volatile.Read(ref _frameReceived);
+                                    evSnap?.Invoke(this, frame);
+                                }
+                                catch (Exception e)
+                                {
+                                    HandleBackgroundException(e, false);
+                                }
                                 _asyncRx.Publish(frame);
                             }
                             catch (Exception ex)
@@ -598,7 +607,14 @@ namespace CanKit.Adapter.ZLG
                     var errSnap = Volatile.Read(ref _errorOccurred);
                     if (errSnap != null && ReadErrorInfo(out var errInfo))
                     {
-                        errSnap.Invoke(this, errInfo!);
+                        try
+                        {
+                            errSnap.Invoke(this, errInfo!);
+                        }
+                        catch (Exception e)
+                        {
+                            HandleBackgroundException(e, false);
+                        }
                     }
                 }
                 catch (CanBusDisposedException)
@@ -609,27 +625,18 @@ namespace CanKit.Adapter.ZLG
                 catch (Exception ex)
                 {
                     // 非预期异常：记录日志，通知故障并退出循环
-                    HandleBackgroundException(ex);
+                    HandleBackgroundException(ex, true);
                     break;
                 }
             }
         }
 
-        public Task<int> TransmitAsync(IEnumerable<CanFrame> frames, int timeOut = 0, CancellationToken cancellationToken = default)
-            => Task.Run(() =>
-            {
-                try { return Transmit(frames, timeOut); }
-                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
-                catch (Exception ex) { HandleBackgroundException(ex); throw; }
-            }, cancellationToken);
+        public Task<int> TransmitAsync(IEnumerable<CanFrame> frames, int timeOut = 0,
+            CancellationToken cancellationToken = default)
+            => Task.FromResult(Transmit(frames, timeOut));
 
         public Task<int> TransmitAsync(CanFrame frame, CancellationToken cancellationToken = default)
-            => Task.Run(() =>
-            {
-                try { return Transmit(frame); }
-                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
-                catch (Exception ex) { HandleBackgroundException(ex); throw; }
-            }, cancellationToken);
+            => Task.FromResult(Transmit(frame));
 
         public async Task<IReadOnlyList<CanReceiveData>> ReceiveAsync(int count = 1, int timeOut = 0, CancellationToken cancellationToken = default)
         {
@@ -652,27 +659,47 @@ namespace CanKit.Adapter.ZLG
         {
             ThrowIfDisposed();
             int x = 0;
-            while (true)
+            lock (_autoSendGate)
             {
-                if (!_autoSendIndexes.Contains(x))
-                    break;
-                x++;
+                while (true)
+                {
+                    if (!_autoSendIndexes.Contains(x))
+                        break;
+                    x++;
+                }
+
+                if (add)
+                    _autoSendIndexes.Add(x);
             }
-            if (add)
-                _autoSendIndexes.Add(x);
             return x;
         }
 
         internal bool FreeAutoSendIndex(int index)
         {
             ThrowIfDisposed();
-            return _autoSendIndexes.Remove(index);
+            lock (_autoSendGate)
+            {
+                return _autoSendIndexes.Remove(index);
+            }
+
         }
 
-        private void HandleBackgroundException(Exception ex)
+        private void HandleBackgroundException(Exception ex, bool fault)
         {
             try { CanKitLogger.LogError("ZLG bus occured background exception.", ex); } catch { }
-            try { _asyncRx.ExceptionOccured(ex); } catch { }
+
+            if (fault)
+            {
+                try { _asyncRx.ExceptionOccured(ex); } catch { }
+                try
+                {
+                    var faultSpan = Volatile.Read(ref FaultOccurred);
+                    faultSpan?.Invoke(this, ex);
+                }
+                catch { }
+                _pollCts?.Cancel();
+            }
+
             try { var snap = Volatile.Read(ref BackgroundExceptionOccurred); snap?.Invoke(this, ex); } catch { }
         }
 

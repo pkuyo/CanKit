@@ -283,12 +283,13 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IOwnership
 
         try
         {
+            _isDisposed = true;
             StopReceiveLoop();
+            try { _recEvent?.Dispose(); } catch { }
             _ = Api.Uninitialize(_handle);
         }
         finally
         {
-            _isDisposed = true;
             _owner?.Dispose();
         }
     }
@@ -388,6 +389,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IOwnership
         finally
         {
             cts?.Dispose();
+            Interlocked.CompareExchange(ref _pollCts, null, cts);
             CanKitLogger.LogDebug("PCAN: Poll loop stopped.");
         }
     }
@@ -414,7 +416,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IOwnership
         }
         catch (Exception ex)
         {
-            HandleBackgroundException(ex);
+            HandleBackgroundException(ex, true);
         }
     }
 
@@ -444,7 +446,15 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IOwnership
                         null,
                         PcanUtils.ToErrorCounters(span),
                         rec.CanFrame);
-                    _errorOccured?.Invoke(this, info);
+                    try
+                    {
+                        var errSnap = Volatile.Read(ref _errorOccured);
+                        errSnap?.Invoke(this, info);
+                    }
+                    catch (Exception e)
+                    {
+                        HandleBackgroundException(e, false);
+                    }
                     continue;
                 }
 
@@ -454,7 +464,16 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IOwnership
                     continue;
                 }
 
-                _frameReceived?.Invoke(this, rec);
+                try
+                {
+                    var evSnap = Volatile.Read(ref _frameReceived);
+                    evSnap?.Invoke(this, rec);
+                }
+                catch (Exception e)
+                {
+                    HandleBackgroundException(e, false);
+                }
+
                 _asyncRx.Publish(rec);
             }
 
@@ -463,11 +482,34 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IOwnership
     }
 
     public event EventHandler<Exception>? BackgroundExceptionOccurred;
+    public event EventHandler<Exception>? FaultOccurred;
 
-    private void HandleBackgroundException(Exception ex)
+    private void HandleBackgroundException(Exception ex, bool fault)
     {
         try { CanKitLogger.LogError("PCAN bus occured background exception.", ex); } catch { }
-        try { _asyncRx.ExceptionOccured(ex); } catch { }
-        try { var snap = Volatile.Read(ref BackgroundExceptionOccurred); snap?.Invoke(this, ex); } catch { }
+
+        if (fault)
+        {
+            try { _asyncRx.ExceptionOccured(ex); } catch { }
+
+            try
+            {
+                var faultSpan = Volatile.Read(ref FaultOccurred);
+                faultSpan?.Invoke(this, ex);
+            }
+            catch
+            {
+            }
+            StopReceiveLoop();
+        }
+
+        try
+        {
+            var snap = Volatile.Read(ref BackgroundExceptionOccurred);
+            snap?.Invoke(this, ex);
+        }
+        catch
+        {
+        }
     }
 }

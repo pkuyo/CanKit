@@ -310,7 +310,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IOwnersh
         {
             try { return Transmit(frames, timeOut); }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
-            catch (Exception ex) { HandleBackgroundException(ex); throw; }
+            catch (Exception ex) { HandleBackgroundException(ex, false); throw; }
         }, cancellationToken);
 
     public Task<int> TransmitAsync(CanFrame frame, CancellationToken cancellationToken = default)
@@ -366,12 +366,12 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IOwnersh
         if (_isDisposed) return;
         try
         {
+            _isDisposed = true;
             StopReceiveLoop();
             _fd.Dispose();
         }
         finally
         {
-            _isDisposed = true;
             try { _owner?.Dispose(); } catch { /*ignore for dispose*/ }
             _owner = null;
         }
@@ -757,8 +757,8 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IOwnersh
         {
             epFd.Dispose();
             cancelFd.Dispose();
-            Interlocked.CompareExchange(ref _epollTask, task, null);
-            Interlocked.CompareExchange(ref _epollCts, cts, null);
+            Interlocked.CompareExchange(ref _epollTask, null, task);
+            Interlocked.CompareExchange(ref _epollCts, null, cts);
             cts?.Dispose();
             CanKitLogger.LogDebug("SocketCAN: epoll loop stopped.");
         }
@@ -815,7 +815,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IOwnersh
         }
         catch (Exception ex)
         {
-            HandleBackgroundException(ex);
+            HandleBackgroundException(ex, true);
         }
     }
 
@@ -853,15 +853,29 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IOwnersh
                         SocketCanErr.ToArbitrationLostBit(err, span),
                         SocketCanErr.ToErrorCounters(err, span),
                         frame);
-                    var errSnap = Volatile.Read(ref _errorOccurred);
-                    errSnap?.Invoke(this, info);
+                    try
+                    {
+                        var errSnap = Volatile.Read(ref _errorOccurred);
+                        errSnap?.Invoke(this, info);
+                    }
+                    catch (Exception e)
+                    {
+                        HandleBackgroundException(e, false);
+                    }
                 }
                 else
                 {
                     if (useSw && pred is not null && !pred(frame))
                         continue;
-                    var evSnap = Volatile.Read(ref _frameReceived);
-                    evSnap?.Invoke(this, rec);
+                    try
+                    {
+                        var evSnap = Volatile.Read(ref _frameReceived);
+                        evSnap?.Invoke(this, rec);
+                    }
+                    catch (Exception e)
+                    {
+                        HandleBackgroundException(e, false);
+                    }
                     _asyncRx.Publish(rec);
                 }
             }
@@ -870,8 +884,9 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IOwnersh
     }
 
     public event EventHandler<Exception>? BackgroundExceptionOccurred;
+    public event EventHandler<Exception>? FaultOccurred;
 
-    private void HandleBackgroundException(Exception ex)
+    private void HandleBackgroundException(Exception ex, bool fault)
     {
         try
         {
@@ -879,7 +894,17 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IOwnersh
         }
         catch { }
 
-        try { _asyncRx.ExceptionOccured(ex); } catch { }
+        if (fault)
+        {
+            try { _asyncRx.ExceptionOccured(ex); } catch { }
+            try
+            {
+                var faultSpan = Volatile.Read(ref FaultOccurred);
+                faultSpan?.Invoke(this, ex);
+            }
+            catch { }
+            StopReceiveLoop();
+        }
 
         try
         {

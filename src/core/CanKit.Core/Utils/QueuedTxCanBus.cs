@@ -79,6 +79,7 @@ public sealed class QueuedCanBus : ICanBus, IAsyncDisposable
         _inner.FrameReceived += (s, e) => FrameReceived?.Invoke(this, e);
         _inner.ErrorFrameReceived += (s, e) => ErrorFrameReceived?.Invoke(this, e);
         _inner.BackgroundExceptionOccurred += (s, e) => BackgroundExceptionOccurred?.Invoke(this, e);
+        _inner.FaultOccurred += (s, e) => FaultOccurred?.Invoke(this, e);
     }
 
     #region ICanBus
@@ -110,6 +111,7 @@ public sealed class QueuedCanBus : ICanBus, IAsyncDisposable
     public event EventHandler<CanReceiveData>? FrameReceived;
     public event EventHandler<ICanErrorInfo>? ErrorFrameReceived;
     public event EventHandler<Exception>? BackgroundExceptionOccurred;
+    public event EventHandler<Exception>? FaultOccurred;
 
     #endregion
 

@@ -245,11 +245,22 @@ public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, IOwnership
     }
 
     public event EventHandler<Exception>? BackgroundExceptionOccurred;
+    public event EventHandler<Exception>? FaultOccurred;
 
-    private void HandleBackgroundException(Exception ex)
+    private void HandleBackgroundException(Exception ex, bool fault)
     {
         try { CanKitLogger.LogError("Virtual bus occured background exception.", ex); } catch { }
-        try { _asyncRx.ExceptionOccured(ex); } catch { }
+        if (fault)
+        {
+            try { _asyncRx.ExceptionOccured(ex); } catch { }
+            try
+            {
+                var faultSpan = Volatile.Read(ref FaultOccurred);
+                faultSpan?.Invoke(this, ex);
+            }
+            catch { }
+
+        }
         try { var snap = Volatile.Read(ref BackgroundExceptionOccurred); snap?.Invoke(this, ex); } catch { }
     }
 }

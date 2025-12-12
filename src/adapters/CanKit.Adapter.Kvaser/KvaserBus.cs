@@ -486,7 +486,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IOwnership
                 }
                 catch (Exception ex)
                 {
-                    HandleBackgroundException(ex); //will not throw in poll loop
+                    HandleBackgroundException(ex, true); //will not throw in poll loop
                 }
                 finally
                 {
@@ -514,21 +514,29 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IOwnership
                 {
                     var enableErrorCounter = (Options.Features & CanFeature.ErrorCounters) != 0;
                     CanErrorCounters? errorCounters = enableErrorCounter ? ErrorCounters() : null;
-                    _errorOccured?.Invoke(this, new DefaultCanErrorInfo(
-                        FrameErrorType.Unknown,
-                        enableErrorCounter ?
-                            CanKitExtension.ToControllerStatus(errorCounters!.Value.ReceiveErrorCounter, errorCounters.Value.TransmitErrorCounter) : CanControllerStatus.Unknown,
-                        CanProtocolViolationType.Unknown,
-                        FrameErrorLocation.Invalid,
-                        CanTransceiverStatus.Unknown,
-                        DateTime.Now,
-                        0,
-                        null,
-                        FrameDirection.Unknown,
-                        null,
-                        errorCounters,
-                        null
-                    ));
+                    try
+                    {
+                        var errSnap = Volatile.Read(ref _errorOccured);
+                        errSnap?.Invoke(this, new DefaultCanErrorInfo(
+                            FrameErrorType.Unknown,
+                            enableErrorCounter ?
+                                CanKitExtension.ToControllerStatus(errorCounters!.Value.ReceiveErrorCounter, errorCounters.Value.TransmitErrorCounter) : CanControllerStatus.Unknown,
+                            CanProtocolViolationType.Unknown,
+                            FrameErrorLocation.Invalid,
+                            CanTransceiverStatus.Unknown,
+                            DateTime.Now,
+                            0,
+                            null,
+                            FrameDirection.Unknown,
+                            null,
+                            errorCounters,
+                            null
+                        ));
+                    }
+                    catch (Exception e)
+                    {
+                        HandleBackgroundException(e, false);
+                    }
                     continue;
                 }
 
@@ -540,7 +548,15 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IOwnership
                         continue;
                     }
                 }
-                _frameReceived?.Invoke(this, rec);
+                try
+                {
+                    var evSnap = Volatile.Read(ref _frameReceived);
+                    evSnap?.Invoke(this, rec);
+                }
+                catch (Exception e)
+                {
+                    HandleBackgroundException(e, false);
+                }
                 _asyncRx.Publish(rec);
             }
             if (!any) break;
@@ -561,11 +577,24 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IOwnership
     }
 
     public event EventHandler<Exception>? BackgroundExceptionOccurred;
+    public event EventHandler<Exception>? FaultOccurred;
 
-    private void HandleBackgroundException(Exception ex)
+    private void HandleBackgroundException(Exception ex, bool fault)
     {
         try { CanKitLogger.LogError("Kvaser bus occured background exception.", ex); } catch { /*ignored*/ }
-        try { _asyncRx.ExceptionOccured(ex); } catch { /*ignored*/ }
+        if (fault)
+        {
+            try { _asyncRx.ExceptionOccured(ex); } catch { /*ignored*/ }
+            try
+            {
+                var faultSpan = Volatile.Read(ref FaultOccurred);
+                faultSpan?.Invoke(this, ex);
+            }
+            catch { }
+            StopReceiveLoop();
+
+        }
+
         try { var snap = Volatile.Read(ref BackgroundExceptionOccurred); snap?.Invoke(this, ex); } catch { /*ignored*/ }
     }
 

@@ -27,7 +27,6 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
 
     private EventHandler<CanReceiveData>? _frameReceived;
     private EventHandler<ICanErrorInfo>? _errorFrameReceived;
-    private EventHandler<Exception>? _backgroundException;
 
     private Func<CanFrame, bool>? _softwareFilterPredicate;
 
@@ -411,24 +410,8 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
         }
     }
 
-    public event EventHandler<Exception> BackgroundExceptionOccurred
-    {
-        add
-        {
-            ThrowIfDisposed();
-            lock (_evtGate)
-            {
-                _backgroundException += value;
-            }
-        }
-        remove
-        {
-            lock (_evtGate)
-            {
-                _backgroundException -= value;
-            }
-        }
-    }
+    public event EventHandler<Exception>? BackgroundExceptionOccurred;
+    public event EventHandler<Exception>? FaultOccurred;
 
     public CanErrorCounters ErrorCounters()
     {
@@ -436,6 +419,20 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
         return _errorCounters;
     }
 
+    private void StopReceiveLoop()
+    {
+        var cts = Volatile.Read(ref _pollCts);
+        try
+        {
+            try { cts?.Cancel(); } catch {}
+        }
+        finally
+        {
+            cts?.Dispose();
+            Interlocked.CompareExchange(ref _pollCts, null, cts);
+        }
+
+    }
 
     public void RequestBusState()
     {
@@ -449,6 +446,7 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
 
         try
         {
+            StopReceiveLoop();
             if (_isActivated)
                 VectorErr.ThrowIfError(VxlApi.xlDeactivateChannel(_portHandle, _accessMask), "xlDeactivateChannel");
         }
@@ -468,6 +466,7 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
         finally
         {
             _rxEvent?.Dispose();
+            _pollCts?.Dispose();
             _driverScope.Dispose();
         }
     }
@@ -500,6 +499,15 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
                         {
                             if (_softwareFilterPredicate is null || !data.CanFrame.IsExtendedFrame || _softwareFilterPredicate(data.CanFrame))
                             {
+                                try
+                                {
+                                    var evSnap = Volatile.Read(ref _frameReceived);
+                                    evSnap?.Invoke(this, data);
+                                }
+                                catch (Exception e)
+                                {
+                                    HandleBackgroundException(e, false);
+                                }
                                 _frameReceived?.Invoke(this, data);
                                 _asyncRx.Publish(data);
                             }
@@ -541,7 +549,7 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
         }
         catch (Exception ex)
         {
-            _backgroundException?.Invoke(this, ex);
+            HandleBackgroundException(ex, true);
         }
     }
 
@@ -555,5 +563,33 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
     {
         var clamped = Math.Min(Math.Max(value, min), max);
         return (byte)clamped;
+    }
+
+    private void HandleBackgroundException(Exception ex, bool fault)
+    {
+        try
+        {
+            CanKitLogger.LogError($"Vector occured background exception.", ex);
+        }
+        catch { }
+
+        if (fault)
+        {
+            try { _asyncRx.ExceptionOccured(ex); } catch { }
+            try
+            {
+                var faultSpan = Volatile.Read(ref FaultOccurred);
+                faultSpan?.Invoke(this, ex);
+            }
+            catch { }
+            StopReceiveLoop();
+        }
+
+        try
+        {
+            var snap = Volatile.Read(ref BackgroundExceptionOccurred);
+            snap?.Invoke(this, ex);
+        }
+        catch { }
     }
 }

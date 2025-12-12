@@ -5,6 +5,7 @@ using Peak.Can.Basic.BackwardCompatibility;
 
 
 namespace CanKit.Adapter.PCAN.Native;
+
 using TPCANHandle = UInt16;
 using TPCANTimestampFD = UInt64;
 internal static class PcanBasicNative

@@ -35,6 +35,8 @@ public sealed class ControlCanBus : ICanBus<ControlCanBusRtConfigurator>, IOwner
     private Func<CanFrame, bool>? _softwareFilterPredicate;
 
     private readonly HashSet<int> _autoSendIndexes = new();
+    private readonly object _autoSendGate = new();
+
     private readonly ControlCanDeviceKind _devType;
     private readonly uint _rawDevType;
     private readonly uint _devIndex;
@@ -326,17 +328,18 @@ public sealed class ControlCanBus : ICanBus<ControlCanBusRtConfigurator>, IOwner
     }
 
     public event EventHandler<Exception>? BackgroundExceptionOccurred;
+    public event EventHandler<Exception>? FaultOccurred;
 
     public void Dispose()
     {
         if (_isDisposed) return;
         try
         {
+            _isDisposed = true;
             StopReceiveLoop();
         }
         finally
         {
-            _isDisposed = true;
             _owner?.Dispose();
         }
     }
@@ -368,8 +371,8 @@ public sealed class ControlCanBus : ICanBus<ControlCanBusRtConfigurator>, IOwner
         catch { /* ignore on shutdown */ }
         finally
         {
-            Interlocked.CompareExchange(ref _pollTask, task, null);
-            Interlocked.CompareExchange(ref _pollCts, cts, null);
+            Interlocked.CompareExchange(ref _pollTask, null, task);
+            Interlocked.CompareExchange(ref _pollCts, null, cts);
             cts?.Dispose();
             CanKitLogger.LogDebug("ControlCAN: Poll loop stopped.");
         }
@@ -386,14 +389,21 @@ public sealed class ControlCanBus : ICanBus<ControlCanBusRtConfigurator>, IOwner
                 var errSnap = Volatile.Read(ref _errorOccurred);
                 if (errSnap != null && Options.AllowErrorInfo && ReadErrorInfo(out var info) && info is not null)
                 {
-                    try { errSnap.Invoke(this, info); } catch { }
+                    try
+                    {
+                        errSnap.Invoke(this, info);
+                    }
+                    catch (Exception e)
+                    {
+                        HandleBackgroundException(e, false);
+                    }
                 }
                 PreciseDelay.Delay(TimeSpan.FromMilliseconds(Math.Max(1, Options.PollingInterval)), ct: token);
             }
         }
         catch (Exception ex)
         {
-            HandleBackgroundException(ex);
+            HandleBackgroundException(ex, true);
         }
     }
 
@@ -406,7 +416,15 @@ public sealed class ControlCanBus : ICanBus<ControlCanBusRtConfigurator>, IOwner
             {
                 if (_softwareFilterPredicate != null && !_softwareFilterPredicate(frame.CanFrame))
                     continue;
-                _frameReceived?.Invoke(this, frame);
+                try
+                {
+                    var evSnap = Volatile.Read(ref _frameReceived);
+                    evSnap?.Invoke(this, frame);
+                }
+                catch (Exception e)
+                {
+                    HandleBackgroundException(e, false);
+                }
                 _asyncRx.Publish(frame);
                 any = true;
             }
@@ -414,10 +432,23 @@ public sealed class ControlCanBus : ICanBus<ControlCanBusRtConfigurator>, IOwner
         }
     }
 
-    private void HandleBackgroundException(Exception ex)
+    private void HandleBackgroundException(Exception ex, bool fault)
     {
         try { CanKitLogger.LogError("ControlCAN bus occurred background exception.", ex); } catch { }
-        try { _asyncRx.ExceptionOccured(ex); } catch { }
+
+        if (fault)
+        {
+            try { _asyncRx.ExceptionOccured(ex); } catch { }
+
+            try
+            {
+                var faultSpan = Volatile.Read(ref FaultOccurred);
+                faultSpan?.Invoke(this, ex);
+            }
+            catch { }
+            StopReceiveLoop();
+        }
+
         try { var snap = Volatile.Read(ref BackgroundExceptionOccurred); snap?.Invoke(this, ex); } catch { }
     }
 
@@ -452,21 +483,28 @@ public sealed class ControlCanBus : ICanBus<ControlCanBusRtConfigurator>, IOwner
     {
         ThrowIfDisposed();
         int x = 0;
-        while (true)
+        lock (_autoSendGate)
         {
-            if (!_autoSendIndexes.Contains(x))
-                break;
-            x++;
+            while (true)
+            {
+                if (!_autoSendIndexes.Contains(x))
+                    break;
+                x++;
+            }
+            if (add)
+                _autoSendIndexes.Add(x);
         }
-        if (add)
-            _autoSendIndexes.Add(x);
+
         return x;
     }
 
     internal bool FreeAutoSendIndex(int index)
     {
         ThrowIfDisposed();
-        return _autoSendIndexes.Remove(index);
+        lock (_autoSendGate)
+        {
+            return _autoSendIndexes.Remove(index);
+        }
     }
 
     private bool ReadErrorInfo(out ICanErrorInfo? info)
