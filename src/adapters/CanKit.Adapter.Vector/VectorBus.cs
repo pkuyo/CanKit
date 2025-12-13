@@ -39,6 +39,8 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
 
     private BusState _busState;
     private CanErrorCounters _errorCounters;
+    private CanExceptionPolicy _exceptionPolicy;
+    private CanBusExceptionDispatcher _exceptions;
 
     public bool IsDispose => _isDisposed;
 
@@ -68,6 +70,27 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
         _accessMask = info.ChannelMask;
         _pollCts = new CancellationTokenSource();
         UpdateCapabilities(options, info);
+
+        _exceptionPolicy = options.ExceptionPolicy ?? CanExceptionPolicy.Default;
+        _exceptions = new CanBusExceptionDispatcher(
+            "Vector CAN bus",
+            _exceptionPolicy,
+            raiseBackground: ex =>
+            {
+                try { var snap = Volatile.Read(ref BackgroundExceptionOccurred); snap?.Invoke(this, ex); } catch { /*ignore*/ }
+            },
+            raiseFault: ex =>
+            {
+                try { var snap = Volatile.Read(ref FaultOccurred); snap?.Invoke(this, ex); } catch { /*ignore*/  }
+            },
+            stopBackground: () =>
+            {
+                try { StopReceiveLoop(); } catch { /*ignore*/  }
+            },
+            failAsyncReceivers: ex =>
+            {
+                try { _asyncRx.ExceptionOccured(ex); } catch { /*ignore*/ }
+            });
 
         ulong permissionMask = _accessMask;
         int handle = 0;
@@ -506,7 +529,11 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
                                 }
                                 catch (Exception e)
                                 {
-                                    HandleBackgroundException(e, false);
+                                    _exceptions.Report(
+                                        e,
+                                        CanExceptionSource.SubscriberCallback,
+                                        severity: _exceptionPolicy.SubscriberCallbackSeverity,
+                                        message: "ZLG FrameReceived handler threw an exception.");
                                 }
                                 _frameReceived?.Invoke(this, data);
                                 _asyncRx.Publish(data);
@@ -529,7 +556,18 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
                             }
                             else
                             {
-                                _errorFrameReceived?.Invoke(this, errInfo);
+                                try
+                                {
+                                    _errorFrameReceived?.Invoke(this, errInfo);
+                                }
+                                catch (Exception e)
+                                {
+                                    _exceptions.Report(
+                                        e,
+                                        CanExceptionSource.SubscriberCallback,
+                                        severity: _exceptionPolicy.SubscriberCallbackSeverity,
+                                        message: "Vector ErrorFrameReceived handler threw an exception.");
+                                }
                             }
 
                         }
@@ -549,7 +587,12 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
         }
         catch (Exception ex)
         {
-            HandleBackgroundException(ex, true);
+            // 非预期异常：记录日志，通知故障并退出循环
+            _exceptions.Report(
+                ex,
+                CanExceptionSource.BackgroundLoop,
+                severity: CanExceptionSeverity.Fault,
+                message: "Vector poll loop faulted.");
         }
     }
 
@@ -563,33 +606,5 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
     {
         var clamped = Math.Min(Math.Max(value, min), max);
         return (byte)clamped;
-    }
-
-    private void HandleBackgroundException(Exception ex, bool fault)
-    {
-        try
-        {
-            CanKitLogger.LogError($"Vector occured background exception.", ex);
-        }
-        catch { }
-
-        if (fault)
-        {
-            try { _asyncRx.ExceptionOccured(ex); } catch { }
-            try
-            {
-                var faultSpan = Volatile.Read(ref FaultOccurred);
-                faultSpan?.Invoke(this, ex);
-            }
-            catch { }
-            StopReceiveLoop();
-        }
-
-        try
-        {
-            var snap = Volatile.Read(ref BackgroundExceptionOccurred);
-            snap?.Invoke(this, ex);
-        }
-        catch { }
     }
 }

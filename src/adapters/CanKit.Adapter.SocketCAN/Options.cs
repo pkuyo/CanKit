@@ -28,6 +28,7 @@ public sealed class SocketCanBusOptions(ICanModelProvider provider) : IBusOption
     public int AsyncBufferCapacity { get; set; } = 0;
     public CanFeature Features { get; set; } = provider.StaticFeatures;
     public IBufferAllocator BufferAllocator { get; set; } = new DefaultBufferAllocator();
+    public CanExceptionPolicy? ExceptionPolicy { get; set; }
 
     /// <summary>
     /// Prefer kernel-provided timestamps (hardware if available, fallback to software)

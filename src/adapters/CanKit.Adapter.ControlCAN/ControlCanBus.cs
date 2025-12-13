@@ -40,6 +40,8 @@ public sealed class ControlCanBus : ICanBus<ControlCanBusRtConfigurator>, IOwner
     private readonly ControlCanDeviceKind _devType;
     private readonly uint _rawDevType;
     private readonly uint _devIndex;
+    private readonly CanExceptionPolicy _exceptionPolicy;
+    private readonly CanBusExceptionDispatcher _exceptions;
 
     internal ControlCanBus(ControlCanDevice device, IBusOptions options, ITransceiver transceiver, ICanModelProvider provider)
     {
@@ -59,6 +61,27 @@ public sealed class ControlCanBus : ICanBus<ControlCanBusRtConfigurator>, IOwner
         else
             options.Capabilities = new Capability(provider.StaticFeatures);
         options.Features = options.Capabilities.Features;
+
+        _exceptionPolicy = options.ExceptionPolicy ?? CanExceptionPolicy.Default;
+        _exceptions = new CanBusExceptionDispatcher(
+            "Control CAN bus",
+            _exceptionPolicy,
+            raiseBackground: ex =>
+            {
+                try { var snap = Volatile.Read(ref BackgroundExceptionOccurred); snap?.Invoke(this, ex); } catch { /*ignore*/ }
+            },
+            raiseFault: ex =>
+            {
+                try { var snap = Volatile.Read(ref FaultOccurred); snap?.Invoke(this, ex); } catch { /*ignore*/  }
+            },
+            stopBackground: () =>
+            {
+                try { StopReceiveLoop(); } catch { /*ignore*/  }
+            },
+            failAsyncReceivers: ex =>
+            {
+                try { _asyncRx.ExceptionOccured(ex); } catch { /*ignore*/ }
+            });
 
         // Build and apply initial configuration
         if (options.ProtocolMode != CanProtocolMode.Can20)
@@ -395,7 +418,11 @@ public sealed class ControlCanBus : ICanBus<ControlCanBusRtConfigurator>, IOwner
                     }
                     catch (Exception e)
                     {
-                        HandleBackgroundException(e, false);
+                        _exceptions.Report(
+                            e,
+                            CanExceptionSource.SubscriberCallback,
+                            severity: _exceptionPolicy.SubscriberCallbackSeverity,
+                            message: "ControlCAN ErrorFrameReceived handler threw an exception.");
                     }
                 }
                 PreciseDelay.Delay(TimeSpan.FromMilliseconds(Math.Max(1, Options.PollingInterval)), ct: token);
@@ -403,7 +430,12 @@ public sealed class ControlCanBus : ICanBus<ControlCanBusRtConfigurator>, IOwner
         }
         catch (Exception ex)
         {
-            HandleBackgroundException(ex, true);
+            // 非预期异常：记录日志，通知故障并退出循环
+            _exceptions.Report(
+                ex,
+                CanExceptionSource.BackgroundLoop,
+                severity: CanExceptionSeverity.Fault,
+                message: "ControlCAN poll loop faulted.");
         }
     }
 
@@ -423,33 +455,17 @@ public sealed class ControlCanBus : ICanBus<ControlCanBusRtConfigurator>, IOwner
                 }
                 catch (Exception e)
                 {
-                    HandleBackgroundException(e, false);
+                    _exceptions.Report(
+                        e,
+                        CanExceptionSource.SubscriberCallback,
+                        severity: _exceptionPolicy.SubscriberCallbackSeverity,
+                        message: "ControlCAN FrameReceived handler threw an exception.");
                 }
                 _asyncRx.Publish(frame);
                 any = true;
             }
             if (!any) break;
         }
-    }
-
-    private void HandleBackgroundException(Exception ex, bool fault)
-    {
-        try { CanKitLogger.LogError("ControlCAN bus occurred background exception.", ex); } catch { }
-
-        if (fault)
-        {
-            try { _asyncRx.ExceptionOccured(ex); } catch { }
-
-            try
-            {
-                var faultSpan = Volatile.Read(ref FaultOccurred);
-                faultSpan?.Invoke(this, ex);
-            }
-            catch { }
-            StopReceiveLoop();
-        }
-
-        try { var snap = Volatile.Read(ref BackgroundExceptionOccurred); snap?.Invoke(this, ex); } catch { }
     }
 
     private static (byte t0, byte t1) MapBaudRate(CanBusTiming timing)

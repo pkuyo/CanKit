@@ -5,6 +5,7 @@ using CanKit.Abstractions.SPI;
 using CanKit.Abstractions.SPI.Common;
 using CanKit.Abstractions.SPI.Providers;
 using CanKit.Core.Definitions;
+using CanKit.Core.Diagnostics;
 
 namespace CanKit.Adapter.Virtual;
 
@@ -24,6 +25,7 @@ public sealed class VirtualBusOptions(ICanModelProvider provider) : IBusOptions
     public bool AllowErrorInfo { get; set; }
     public int AsyncBufferCapacity { get; set; } = 0;
     public IBufferAllocator BufferAllocator { get; set; } = new DefaultBufferAllocator();
+    public CanExceptionPolicy? ExceptionPolicy { get; set; }
 
     // Virtual specific: session id to join a hub
     public string SessionId { get; set; } = "default";

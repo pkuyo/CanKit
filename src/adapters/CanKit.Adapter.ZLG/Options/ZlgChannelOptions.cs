@@ -7,6 +7,7 @@ using CanKit.Abstractions.SPI.Common;
 using CanKit.Abstractions.SPI.Providers;
 using CanKit.Adapter.ZLG.Definitions;
 using CanKit.Core.Definitions;
+using CanKit.Core.Diagnostics;
 
 namespace CanKit.Adapter.ZLG.Options
 {
@@ -45,5 +46,6 @@ namespace CanKit.Adapter.ZLG.Options
         public uint BusUsagePeriodTime { get; set; } = 200;
         public TxRetryPolicy TxRetryPolicy { get; set; } = TxRetryPolicy.AlwaysRetry;
         public ZlgFeature ZlgFeatures { get; } = ((ZlgCanProvider)provider).ZlgFeature;
+        public CanExceptionPolicy? ExceptionPolicy { get; set; }
     }
 }

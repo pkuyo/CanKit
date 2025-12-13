@@ -5,6 +5,7 @@ using CanKit.Abstractions.API.Common;
 using CanKit.Abstractions.API.Common.Definitions;
 using CanKit.Abstractions.SPI;
 using CanKit.Abstractions.SPI.Common;
+using CanKit.Core.Diagnostics;
 using CanKit.Core.Utils;
 
 namespace CanKit.Core.Definitions
@@ -46,6 +47,11 @@ namespace CanKit.Core.Definitions
 
         public IBufferAllocator BufferAllocator => Options.BufferAllocator;
 
+        public CanExceptionPolicy? ExceptionPolicy
+        {
+            get => Options.ExceptionPolicy;
+            set => Options.ExceptionPolicy = value;
+        }
     }
 
     public class DeviceInitOptionsConfigurator<TDeviceOptions, TSelf>
@@ -139,6 +145,9 @@ namespace CanKit.Core.Definitions
 
         IBusInitOptionsConfigurator IBusInitOptionsConfigurator.BufferAllocator(IBufferAllocator bufferAllocator)
             => BufferAllocator(bufferAllocator);
+
+        IBusInitOptionsConfigurator IBusInitOptionsConfigurator.ExceptionPolicy(CanExceptionPolicy exceptionPolicy)
+            => ExceptionPolicy(exceptionPolicy);
 
         public virtual IBusInitOptionsConfigurator Custom(string key, object value) => this;
 
@@ -301,6 +310,12 @@ namespace CanKit.Core.Definitions
         public virtual TSelf BufferAllocator(IBufferAllocator bufferAllocator)
         {
             Options.BufferAllocator = bufferAllocator;
+            return (TSelf)this;
+        }
+
+        public virtual TSelf ExceptionPolicy(CanExceptionPolicy exceptionPolicy)
+        {
+            Options.ExceptionPolicy = exceptionPolicy;
             return (TSelf)this;
         }
     }

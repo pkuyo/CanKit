@@ -169,25 +169,11 @@ namespace CanKit.Adapter.ZLG.Native
         [DllImport(DllName, CallingConvention = CallingConvention.StdCall, CharSet = CharSet.Ansi)]
         public static extern IntPtr ZCAN_GetValue(ZlgDeviceHandle device_handle, string path);
 
-        // LIN
-        [DllImport(DllName, CallingConvention = CallingConvention.StdCall, CharSet = CharSet.Ansi)]
-        public static extern IntPtr ZCAN_InitLIN(ZlgDeviceHandle device_handle, uint lin_index, IntPtr pLINInitConfig);
-        [DllImport(DllName, CallingConvention = CallingConvention.StdCall, CharSet = CharSet.Ansi)]
-        public static extern uint ZCAN_StartLIN(ZlgChannelHandle channel_handle);
-        [DllImport(DllName, CallingConvention = CallingConvention.StdCall, CharSet = CharSet.Ansi)]
-        public static extern uint ZCAN_ResetLIN(ZlgChannelHandle channel_handle);
-        [DllImport(DllName, CallingConvention = CallingConvention.StdCall, CharSet = CharSet.Ansi)]
-        public static extern uint ZCAN_TransmitLIN(ZlgChannelHandle channel_handle, IntPtr pSend, uint Len);
-        [DllImport(DllName, CallingConvention = CallingConvention.StdCall, CharSet = CharSet.Ansi)]
-        public static extern uint ZCAN_GetLINReceiveNum(ZlgChannelHandle channel_handle);
-        [DllImport(DllName, CallingConvention = CallingConvention.StdCall, CharSet = CharSet.Ansi)]
-        public static extern uint ZCAN_ReceiveLIN(ZlgChannelHandle channel_handle, IntPtr pReceive, uint Len, int WaitTime);
-        [DllImport(DllName, CallingConvention = CallingConvention.StdCall, CharSet = CharSet.Ansi)]
-        public static extern uint ZCAN_SetLINPublish(ZlgChannelHandle channel_handle, IntPtr pSend, uint nPublishCount);
-        [DllImport(DllName, CallingConvention = CallingConvention.StdCall, CharSet = CharSet.Ansi)]
-        public static extern uint ZCAN_SetLINSubscribe(ZlgChannelHandle channel_handle, IntPtr pSend, uint nSubscribeCount);
-        [DllImport(DllName, CallingConvention = CallingConvention.StdCall, CharSet = CharSet.Ansi)]
-        public static extern uint ZCAN_WakeUpLIN(ZlgChannelHandle channel_handle);
+        [DllImport(DllName, CallingConvention = CallingConvention.StdCall)]
+        public static extern uint ZCAN_GetDeviceInf(ZlgDeviceHandle device_handle, out ZCAN_DEVICE_INFO info);
+
+            [DllImport(DllName, CallingConvention = CallingConvention.StdCall)]
+        public static extern uint ZCAN_GetDeviceInf(IntPtr device_handle, out ZCAN_DEVICE_INFO info);
 
         // UDS
         [DllImport(DllName, CallingConvention = CallingConvention.StdCall, CharSet = CharSet.Ansi)]
@@ -205,8 +191,6 @@ namespace CanKit.Adapter.ZLG.Native
         [DllImport(DllName, CallingConvention = CallingConvention.StdCall, CharSet = CharSet.Ansi)]
         public static extern uint ZCAN_ReadChannelErrInfo(ZlgChannelHandle channel_handle, out ZCAN_CHANNEL_ERROR_INFO pErrInfo);
 
-           [DllImport(DllName, CallingConvention = CallingConvention.StdCall, CharSet = CharSet.Ansi)]
-        public static extern uint ZCAN_ReadChannelStatus(ZlgChannelHandle channel_handle, out ZCAN_CHANNEL_STATUS  pCANStatus);
         #endregion
 
         #region 结构体
@@ -382,7 +366,6 @@ namespace CanKit.Adapter.ZLG.Native
                 set => flag = value ? (flag |  (1u << 9))
                                     : (flag & ~(1u << 9));
             }
-
         }
 
         public unsafe struct ZCANErrorData
@@ -437,6 +420,26 @@ namespace CanKit.Adapter.ZLG.Native
             public byte   nReserved;
             public ushort nBusUsage;   // *100 展示
             public uint   nFrameCount;
+        }
+
+        [StructLayout(LayoutKind.Sequential, Pack = 1)]
+        public struct ZCAN_DEVICE_INFO
+        {
+            public ushort hw_Version;
+            public ushort fw_Version;
+            public ushort dr_Version;
+            public ushort in_Version;
+            public ushort irq_Num;
+            public byte can_Num;
+
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 20)]
+            public char[] str_Serial_Num;
+
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 40)]
+            public char[] str_hw_Type;
+
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 4)]
+            public byte[] reserved;
         }
     }
 }

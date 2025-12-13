@@ -35,6 +35,8 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IOwnership
     private Canlib.kvCallbackDelegate? _kvCallback;
     private readonly AsyncFramePipe<CanReceiveData> _asyncRx;
     private readonly Func<CanFrame, bool> _pred;
+    private readonly CanExceptionPolicy _exceptionPolicy;
+    private readonly CanBusExceptionDispatcher _exceptions;
 
     internal KvaserBus(IBusOptions options, ITransceiver transceiver, ICanModelProvider provider)
     {
@@ -47,6 +49,27 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IOwnership
 
         options.Capabilities = ((KvaserProvider)provider).QueryCapabilities(options);
         options.Features = options.Capabilities.Features;
+
+        _exceptionPolicy = options.ExceptionPolicy ?? CanExceptionPolicy.Default;
+        _exceptions = new CanBusExceptionDispatcher(
+            "Kvaser CAN bus",
+            _exceptionPolicy,
+            raiseBackground: ex =>
+            {
+                try { var snap = Volatile.Read(ref BackgroundExceptionOccurred); snap?.Invoke(this, ex); } catch { /*ignore*/ }
+            },
+            raiseFault: ex =>
+            {
+                try { var snap = Volatile.Read(ref FaultOccurred); snap?.Invoke(this, ex); } catch { /*ignore*/  }
+            },
+            stopBackground: () =>
+            {
+                try { StopReceiveLoop(); } catch { /*ignore*/  }
+            },
+            failAsyncReceivers: ex =>
+            {
+                try { _asyncRx.ExceptionOccured(ex); } catch { /*ignore*/ }
+            });
 
         // Open channel
         _handle = OpenChannel((KvaserBusOptions)options);
@@ -486,7 +509,12 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IOwnership
                 }
                 catch (Exception ex)
                 {
-                    HandleBackgroundException(ex, true); //will not throw in poll loop
+                    // 非预期异常：记录日志，通知故障并退出循环
+                    _exceptions.Report(
+                        ex,
+                        CanExceptionSource.BackgroundLoop,
+                        severity: CanExceptionSeverity.Fault,
+                        message: "Kvaser poll loop faulted.");
                 }
                 finally
                 {
@@ -535,7 +563,11 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IOwnership
                     }
                     catch (Exception e)
                     {
-                        HandleBackgroundException(e, false);
+                        _exceptions.Report(
+                            e,
+                            CanExceptionSource.SubscriberCallback,
+                            severity: _exceptionPolicy.SubscriberCallbackSeverity,
+                            message: "Kvaser ErrorFrameReceived handler threw an exception.");
                     }
                     continue;
                 }
@@ -555,7 +587,11 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IOwnership
                 }
                 catch (Exception e)
                 {
-                    HandleBackgroundException(e, false);
+                    _exceptions.Report(
+                        e,
+                        CanExceptionSource.SubscriberCallback,
+                        severity: _exceptionPolicy.SubscriberCallbackSeverity,
+                        message: "Kvaser FrameReceived handler threw an exception.");
                 }
                 _asyncRx.Publish(rec);
             }
@@ -578,25 +614,6 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IOwnership
 
     public event EventHandler<Exception>? BackgroundExceptionOccurred;
     public event EventHandler<Exception>? FaultOccurred;
-
-    private void HandleBackgroundException(Exception ex, bool fault)
-    {
-        try { CanKitLogger.LogError("Kvaser bus occured background exception.", ex); } catch { /*ignored*/ }
-        if (fault)
-        {
-            try { _asyncRx.ExceptionOccured(ex); } catch { /*ignored*/ }
-            try
-            {
-                var faultSpan = Volatile.Read(ref FaultOccurred);
-                faultSpan?.Invoke(this, ex);
-            }
-            catch { }
-            StopReceiveLoop();
-
-        }
-
-        try { var snap = Volatile.Read(ref BackgroundExceptionOccurred); snap?.Invoke(this, ex); } catch { /*ignored*/ }
-    }
 
     public async IAsyncEnumerable<CanReceiveData> GetFramesAsync([System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {

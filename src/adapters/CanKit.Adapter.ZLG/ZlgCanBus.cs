@@ -53,6 +53,8 @@ namespace CanKit.Adapter.ZLG
         private bool _useSoftwareFilter;
         private readonly AsyncFramePipe<CanReceiveData> _asyncRx;
         private readonly ZlgDeviceKind _deviceType;
+        private readonly CanExceptionPolicy _exceptionPolicy;
+        private readonly CanBusExceptionDispatcher _exceptions;
         internal ZlgCanBus(ZlgCanDevice device, IBusOptions options, ITransceiver transceiver, ICanModelProvider provider)
         {
             _devicePtr = device.NativeHandler.DangerousGetHandle();
@@ -61,11 +63,38 @@ namespace CanKit.Adapter.ZLG
             Options = new ZlgBusRtConfigurator();
             Options.Init((ZlgBusOptions)options);
             _asyncRx = new AsyncFramePipe<CanReceiveData>(Options.AsyncBufferCapacity > 0 ? Options.AsyncBufferCapacity : null);
+            _exceptionPolicy = options.ExceptionPolicy ?? CanExceptionPolicy.Default;
+            _exceptions = new CanBusExceptionDispatcher(
+                "ZLG CAN bus",
+                _exceptionPolicy,
+                raiseBackground: ex =>
+                {
+                    try { var snap = Volatile.Read(ref BackgroundExceptionOccurred); snap?.Invoke(this, ex); } catch { /*ignore*/ }
+                },
+                raiseFault: ex =>
+                {
+                    try { var snap = Volatile.Read(ref FaultOccurred); snap?.Invoke(this, ex); } catch { /*ignore*/ }
+                },
+                stopBackground: () =>
+                {
+                    try { StopReceiveLoop(); } catch { /*ignore*/ }
+                },
+                failAsyncReceivers: ex =>
+                {
+                    try { _asyncRx.ExceptionOccured(ex); } catch { /*ignore*/ }
+                });
             CanKitLogger.LogInformation($"ZLG: Initializing channel '{Options.ChannelName?? Options.ChannelIndex.ToString()}', Mode={Options.ProtocolMode}...");
             ApplyConfig(options);
 
             ZLGCAN.ZCAN_SetValue(_devicePtr, options.ChannelIndex+"/clear_auto_send", "0");
-
+            /*
+            if (ZLGCAN.ZCAN_GetDeviceInf(_devicePtr, out var deviceInfo) == ZlgErr.StatusOk)
+            {
+                if (deviceInfo.can_Num >= options.ChannelIndex)
+                {
+                }
+            }
+            */
             ZLGCAN.ZCAN_CHANNEL_INIT_CONFIG config = new ZLGCAN.ZCAN_CHANNEL_INIT_CONFIG
             {
                 can_type = options.ProtocolMode == CanProtocolMode.Can20 ? 0U : 1U,
@@ -564,9 +593,9 @@ namespace CanKit.Adapter.ZLG
 
         private void PollLoop(CancellationToken token)
         {
-            while (!token.IsCancellationRequested)
+            try
             {
-                try
+                while (!token.IsCancellationRequested)
                 {
                     const int batch = 64;
                     var count = GetReceiveCount();
@@ -576,28 +605,25 @@ namespace CanKit.Adapter.ZLG
                         var pred = _useSoftwareFilter ? _softwareFilterPredicate : null;
                         foreach (var frame in frames)
                         {
+                            if (_useSoftwareFilter && pred is not null && !pred(frame.CanFrame))
+                            {
+                                continue;
+                            }
+
                             try
                             {
-                                if (_useSoftwareFilter && pred is not null && !pred(frame.CanFrame))
-                                {
-                                    continue;
-                                }
-
-                                try
-                                {
-                                    var evSnap = Volatile.Read(ref _frameReceived);
-                                    evSnap?.Invoke(this, frame);
-                                }
-                                catch (Exception e)
-                                {
-                                    HandleBackgroundException(e, false);
-                                }
-                                _asyncRx.Publish(frame);
+                                var evSnap = Volatile.Read(ref _frameReceived);
+                                evSnap?.Invoke(this, frame);
                             }
-                            catch (Exception ex)
+                            catch (Exception e)
                             {
-                                CanKitLogger.LogWarning("FrameReceived handler threw an exception.", ex);
+                                _exceptions.Report(
+                                    e,
+                                    CanExceptionSource.SubscriberCallback,
+                                    severity: _exceptionPolicy.SubscriberCallbackSeverity,
+                                    message: "ZLG FrameReceived handler threw an exception.");
                             }
+                            _asyncRx.Publish(frame);
                         }
                     }
                     else
@@ -613,21 +639,23 @@ namespace CanKit.Adapter.ZLG
                         }
                         catch (Exception e)
                         {
-                            HandleBackgroundException(e, false);
+                            _exceptions.Report(
+                                e,
+                                CanExceptionSource.SubscriberCallback,
+                                severity: _exceptionPolicy.SubscriberCallbackSeverity,
+                                message: "ZLG ErrorFrameReceived handler threw an exception.");
                         }
                     }
                 }
-                catch (CanBusDisposedException)
-                {
-                    // 通道或底层已释放，退出
-                    break;
-                }
-                catch (Exception ex)
-                {
-                    // 非预期异常：记录日志，通知故障并退出循环
-                    HandleBackgroundException(ex, true);
-                    break;
-                }
+            }
+            catch (Exception ex)
+            {
+                // 非预期异常：记录日志，通知故障并退出循环
+                _exceptions.Report(
+                    ex,
+                    CanExceptionSource.BackgroundLoop,
+                    severity: CanExceptionSeverity.Fault,
+                    message: "ZLG poll loop faulted.");
             }
         }
 
@@ -682,25 +710,6 @@ namespace CanKit.Adapter.ZLG
                 return _autoSendIndexes.Remove(index);
             }
 
-        }
-
-        private void HandleBackgroundException(Exception ex, bool fault)
-        {
-            try { CanKitLogger.LogError("ZLG bus occured background exception.", ex); } catch { }
-
-            if (fault)
-            {
-                try { _asyncRx.ExceptionOccured(ex); } catch { }
-                try
-                {
-                    var faultSpan = Volatile.Read(ref FaultOccurred);
-                    faultSpan?.Invoke(this, ex);
-                }
-                catch { }
-                _pollCts?.Cancel();
-            }
-
-            try { var snap = Volatile.Read(ref BackgroundExceptionOccurred); snap?.Invoke(this, ex); } catch { }
         }
 
         private int MaxFilterCount

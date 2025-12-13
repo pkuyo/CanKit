@@ -3,6 +3,7 @@ using CanKit.Abstractions.API.Can;
 using CanKit.Abstractions.API.Common.Definitions;
 using CanKit.Abstractions.SPI;
 using CanKit.Abstractions.SPI.Common;
+using CanKit.Core.Diagnostics;
 
 namespace CanKit.Abstractions.API.Common;
 
@@ -99,6 +100,12 @@ public interface IBusRTOptionsConfigurator : ICanOptionsConfigurator
     /// 运行时用于帧数据缓冲区的分配器。
     /// </summary>
     IBufferAllocator BufferAllocator { get; }
+
+    /// <summary>
+    /// Optional exception handling policy for this bus instance. （CAN总线异常处理策略）
+    /// When null, <see cref="CanExceptionPolicy.Default"/> is used. （null时使用CanExceptionPolicy.Default）
+    /// </summary>
+    CanExceptionPolicy? ExceptionPolicy { get; set; }
 }
 
 /// <summary>
@@ -306,12 +313,15 @@ public interface IBusInitOptionsConfigurator : ICanOptionsConfigurator
     IBusInitOptionsConfigurator SetAsyncBufferCapacity(int capacity);
 
     /// <summary>
-    /// Set the buffer allocator for frame payloads.
-    /// ZH: 设置用于帧负载的数据缓冲区分配器。
+    /// Set the buffer allocator for frame payloads.(设置用于帧负载的数据缓冲区分配器。)
     /// </summary>
-    /// <param name="bufferAllocator">Allocator instance. ZH: 分配器实例。</param>
-    /// <returns>The configurator for chaining. ZH: 返回配置器以便链式调用。</returns>
+    /// <param name="bufferAllocator">Allocator instance. (分配器实例)。</param>
     IBusInitOptionsConfigurator BufferAllocator(IBufferAllocator bufferAllocator);
+
+    /// <summary>
+    /// Optional exception handling policy for this bus instance. （CAN总线异常处理策略）
+    /// </summary>
+    IBusInitOptionsConfigurator ExceptionPolicy(CanExceptionPolicy exceptionPolicy);
 
 
     /// <summary>

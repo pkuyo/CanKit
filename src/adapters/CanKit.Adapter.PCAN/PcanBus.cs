@@ -35,6 +35,8 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IOwnership
 
     private bool _useSoftwareFilter;
     private readonly AsyncFramePipe<CanReceiveData> _asyncRx;
+    private readonly CanExceptionPolicy _exceptionPolicy;
+    private readonly CanBusExceptionDispatcher _exceptions;
 
     internal PcanBus(IBusOptions options, ITransceiver transceiver)
     {
@@ -46,6 +48,27 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IOwnership
         _handle = PcanProvider.ParseHandle(Options.ChannelName!);
         options.Capabilities = PcanProvider.QueryCapabilities(_handle, Options.Features);
         options.Features = options.Capabilities.Features;
+
+        _exceptionPolicy = options.ExceptionPolicy ?? CanExceptionPolicy.Default;
+        _exceptions = new CanBusExceptionDispatcher(
+            "PCAN bus",
+            _exceptionPolicy,
+            raiseBackground: ex =>
+            {
+                try { var snap = Volatile.Read(ref BackgroundExceptionOccurred); snap?.Invoke(this, ex); } catch { /*ignore*/ }
+            },
+            raiseFault: ex =>
+            {
+                try { var snap = Volatile.Read(ref FaultOccurred); snap?.Invoke(this, ex); } catch { /*ignore*/  }
+            },
+            stopBackground: () =>
+            {
+                try { StopReceiveLoop(); } catch { /*ignore*/  }
+            },
+            failAsyncReceivers: ex =>
+            {
+                try { _asyncRx.ExceptionOccured(ex); } catch { /*ignore*/ }
+            });
 
         NativeHandle = new BusNativeHandle((int)_handle);
         try
@@ -416,7 +439,12 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IOwnership
         }
         catch (Exception ex)
         {
-            HandleBackgroundException(ex, true);
+            // 非预期异常：记录日志，通知故障并退出循环
+            _exceptions.Report(
+                ex,
+                CanExceptionSource.BackgroundLoop,
+                severity: CanExceptionSeverity.Fault,
+                message: "PCAN poll loop faulted.");
         }
     }
 
@@ -453,7 +481,11 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IOwnership
                     }
                     catch (Exception e)
                     {
-                        HandleBackgroundException(e, false);
+                        _exceptions.Report(
+                            e,
+                            CanExceptionSource.SubscriberCallback,
+                            severity: _exceptionPolicy.SubscriberCallbackSeverity,
+                            message: "PCAN ErrorFrameReceived handler threw an exception.");
                     }
                     continue;
                 }
@@ -471,7 +503,11 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IOwnership
                 }
                 catch (Exception e)
                 {
-                    HandleBackgroundException(e, false);
+                    _exceptions.Report(
+                        e,
+                        CanExceptionSource.SubscriberCallback,
+                        severity: _exceptionPolicy.SubscriberCallbackSeverity,
+                        message: "PCAN FrameReceived handler threw an exception.");
                 }
 
                 _asyncRx.Publish(rec);
@@ -483,33 +519,4 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IOwnership
 
     public event EventHandler<Exception>? BackgroundExceptionOccurred;
     public event EventHandler<Exception>? FaultOccurred;
-
-    private void HandleBackgroundException(Exception ex, bool fault)
-    {
-        try { CanKitLogger.LogError("PCAN bus occured background exception.", ex); } catch { }
-
-        if (fault)
-        {
-            try { _asyncRx.ExceptionOccured(ex); } catch { }
-
-            try
-            {
-                var faultSpan = Volatile.Read(ref FaultOccurred);
-                faultSpan?.Invoke(this, ex);
-            }
-            catch
-            {
-            }
-            StopReceiveLoop();
-        }
-
-        try
-        {
-            var snap = Volatile.Read(ref BackgroundExceptionOccurred);
-            snap?.Invoke(this, ex);
-        }
-        catch
-        {
-        }
-    }
 }

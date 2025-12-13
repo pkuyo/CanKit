@@ -5,6 +5,7 @@ using CanKit.Abstractions.SPI;
 using CanKit.Abstractions.SPI.Common;
 using CanKit.Abstractions.SPI.Providers;
 using CanKit.Core.Definitions;
+using CanKit.Core.Diagnostics;
 
 namespace CanKit.Adapter.PCAN;
 
@@ -26,6 +27,7 @@ public sealed class PcanBusOptions(ICanModelProvider provider) : IBusOptions
     public bool AllowErrorInfo { get; set; }
     public int AsyncBufferCapacity { get; set; } = 0;
     public IBufferAllocator BufferAllocator { get; set; } = new DefaultBufferAllocator();
+    public CanExceptionPolicy? ExceptionPolicy { get; set; }
     public CanFeature Features { get; set; } = provider.StaticFeatures;
 }
 

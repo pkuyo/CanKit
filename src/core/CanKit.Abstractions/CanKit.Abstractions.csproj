@@ -13,6 +13,12 @@
         <RepositoryUrl>https://github.com/pkuyo/CanKit</RepositoryUrl>
     </PropertyGroup>
 
+    <ItemGroup>
+        <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+            <_Parameter1>CankIT.Core</_Parameter1>
+        </AssemblyAttribute>
+    </ItemGroup>
+
     <ItemGroup Condition="'$(TargetFramework)'=='netstandard2.0'">
         <PackageReference Include="System.Memory" Version="4.5.4" />
         <PackageReference Include="System.Runtime.CompilerServices.Unsafe" Version="6.1.2" />

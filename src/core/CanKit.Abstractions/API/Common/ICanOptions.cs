@@ -2,6 +2,7 @@ using CanKit.Abstractions.API.Can;
 using CanKit.Abstractions.API.Common.Definitions;
 using CanKit.Abstractions.SPI;
 using CanKit.Abstractions.SPI.Common;
+using CanKit.Core.Diagnostics;
 
 namespace CanKit.Abstractions.API.Common
 {
@@ -94,5 +95,11 @@ namespace CanKit.Abstractions.API.Common
         /// Buffer allocator used to create frame payloads. （用于创建帧数据缓冲区的分配器。）
         /// </summary>
         IBufferAllocator BufferAllocator { get; set; }
+
+        /// <summary>
+        /// Optional exception handling policy for this bus instance. （CAN总线异常处理策略）
+        /// When null, <see cref="CanExceptionPolicy.Default"/> is used. （null时使用CanExceptionPolicy.Default）
+        /// </summary>
+        public CanExceptionPolicy? ExceptionPolicy { get; set; }
     }
 }

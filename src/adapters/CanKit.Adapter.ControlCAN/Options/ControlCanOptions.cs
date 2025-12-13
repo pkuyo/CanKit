@@ -6,6 +6,7 @@ using CanKit.Abstractions.SPI;
 using CanKit.Abstractions.SPI.Common;
 using CanKit.Abstractions.SPI.Providers;
 using CanKit.Core.Definitions;
+using CanKit.Core.Diagnostics;
 
 namespace CanKit.Adapter.ControlCAN.Options;
 
@@ -32,5 +33,6 @@ public sealed class ControlCanBusOptions(ICanModelProvider provider) : IBusOptio
     public TxRetryPolicy TxRetryPolicy { get; set; } = TxRetryPolicy.AlwaysRetry;
     public int AsyncBufferCapacity { get; set; } = 0;
     public IBufferAllocator BufferAllocator { get; set; } = new DefaultBufferAllocator();
+    public CanExceptionPolicy? ExceptionPolicy { get; set; }
     public int PollingInterval { get; set; } = 10;
 }

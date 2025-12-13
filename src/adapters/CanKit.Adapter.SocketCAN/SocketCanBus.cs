@@ -44,6 +44,9 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IOwnersh
     private Func<CanFrame, bool>? _softwareFilterPredicate;
     private bool _useSoftwareFilter;
     private readonly AsyncFramePipe<CanReceiveData> _asyncRx;
+    private readonly CanExceptionPolicy _exceptionPolicy;
+    private readonly CanBusExceptionDispatcher _exceptions;
+
     internal SocketCanBus(IBusOptions options, ITransceiver transceiver, ICanModelProvider provider)
     {
         Options = new SocketCanBusRtConfigurator();
@@ -56,6 +59,27 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IOwnersh
         // init async pipe with configured capacity
         var cap = Options.AsyncBufferCapacity > 0 ? Options.AsyncBufferCapacity : (int?)null;
         _asyncRx = new AsyncFramePipe<CanReceiveData>(cap);
+
+        _exceptionPolicy = options.ExceptionPolicy ?? CanExceptionPolicy.Default;
+        _exceptions = new CanBusExceptionDispatcher(
+            "SocketCAN bus",
+            _exceptionPolicy,
+            raiseBackground: ex =>
+            {
+                try { var snap = Volatile.Read(ref BackgroundExceptionOccurred); snap?.Invoke(this, ex); } catch { /*ignore*/ }
+            },
+            raiseFault: ex =>
+            {
+                try { var snap = Volatile.Read(ref FaultOccurred); snap?.Invoke(this, ex); } catch { /*ignore*/  }
+            },
+            stopBackground: () =>
+            {
+                try { StopReceiveLoop(); } catch { /*ignore*/ }
+            },
+            failAsyncReceivers: ex =>
+            {
+                try { _asyncRx.ExceptionOccured(ex); } catch { /*ignore*/ }
+            });
 
         // Apply device configs
         CanKitLogger.LogInformation($"SocketCAN: Initializing interface '{Options.ChannelName?? Options.ChannelIndex.ToString()}', Mode={Options.ProtocolMode}...");
@@ -306,12 +330,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IOwnersh
     }
 
     public Task<int> TransmitAsync(IEnumerable<CanFrame> frames, int timeOut = 0, CancellationToken cancellationToken = default)
-        => Task.Run(() =>
-        {
-            try { return Transmit(frames, timeOut); }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
-            catch (Exception ex) { HandleBackgroundException(ex, false); throw; }
-        }, cancellationToken);
+        => Task.Run(() => Transmit(frames, timeOut), cancellationToken);
 
     public Task<int> TransmitAsync(CanFrame frame, CancellationToken cancellationToken = default)
         => Task.FromResult(Transmit(frame));
@@ -785,15 +804,11 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IOwnersh
                     var fd = (int)_events[i].data;
                     if (fd == _cancelFd.DangerousGetHandle().ToInt32())
                     {
-                        try
+                        unsafe
                         {
-                            unsafe
-                            {
-                                ulong tmp;
-                                _ = Libc.read(_cancelFd, &tmp, sizeof(ulong));
-                            }
+                            ulong tmp;
+                            _ = Libc.read(_cancelFd, &tmp, sizeof(ulong));
                         }
-                        catch { /* ignore */ }
                         continue;
                     }
 
@@ -809,13 +824,14 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IOwnersh
                 }
             }
         }
-        catch (OperationCanceledException)
-        {
-            // ignore
-        }
         catch (Exception ex)
         {
-            HandleBackgroundException(ex, true);
+            // 非预期异常：记录日志，通知故障并退出循环
+            _exceptions.Report(
+                ex,
+                CanExceptionSource.BackgroundLoop,
+                severity: CanExceptionSeverity.Fault,
+                message: "SocketCAN poll loop faulted.");
         }
     }
 
@@ -860,7 +876,11 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IOwnersh
                     }
                     catch (Exception e)
                     {
-                        HandleBackgroundException(e, false);
+                        _exceptions.Report(
+                            e,
+                            CanExceptionSource.SubscriberCallback,
+                            severity: _exceptionPolicy.SubscriberCallbackSeverity,
+                            message: "SocketCAN ErrorFrameReceived handler threw an exception.");
                     }
                 }
                 else
@@ -874,7 +894,11 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IOwnersh
                     }
                     catch (Exception e)
                     {
-                        HandleBackgroundException(e, false);
+                        _exceptions.Report(
+                            e,
+                            CanExceptionSource.SubscriberCallback,
+                            severity: _exceptionPolicy.SubscriberCallbackSeverity,
+                            message: "SocketCAN FrameReceived handler threw an exception.");
                     }
                     _asyncRx.Publish(rec);
                 }
@@ -885,32 +909,4 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IOwnersh
 
     public event EventHandler<Exception>? BackgroundExceptionOccurred;
     public event EventHandler<Exception>? FaultOccurred;
-
-    private void HandleBackgroundException(Exception ex, bool fault)
-    {
-        try
-        {
-            CanKitLogger.LogError($"SocketCAN occured background exception on '{_ifName}'.", ex);
-        }
-        catch { }
-
-        if (fault)
-        {
-            try { _asyncRx.ExceptionOccured(ex); } catch { }
-            try
-            {
-                var faultSpan = Volatile.Read(ref FaultOccurred);
-                faultSpan?.Invoke(this, ex);
-            }
-            catch { }
-            StopReceiveLoop();
-        }
-
-        try
-        {
-            var snap = Volatile.Read(ref BackgroundExceptionOccurred);
-            snap?.Invoke(this, ex);
-        }
-        catch { }
-    }
 }
