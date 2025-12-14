@@ -45,7 +45,7 @@ public partial class TestMatrix
     }
 
 
-    private static IEnumerable<object[]> FDFrameSettings()
+    public static IEnumerable<object[]> FDFrameSettings()
     {
         // dataLen, BRS, IDE
         int[] len = [0, 64];
@@ -58,7 +58,7 @@ public partial class TestMatrix
         }
     }
 
-    private static IEnumerable<object[]> ClassicFrameSettings()
+    public static IEnumerable<object[]> ClassicFrameSettings()
     {
         // dataLen, RTR, IDE
         int[] len = [0, 8];

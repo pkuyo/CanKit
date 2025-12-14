@@ -35,6 +35,8 @@ public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, IOwnership
     private EventHandler<ICanErrorInfo>? _errorOccurred;
     private IDisposable? _owner;
     private bool _disposed;
+    private readonly CanExceptionPolicy _exceptionPolicy;
+    private readonly CanBusExceptionDispatcher _exceptions;
 
 
     internal VirtualBus(IBusOptions options, ITransceiver transceiver)
@@ -43,13 +45,30 @@ public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, IOwnership
         Options.Init((VirtualBusOptions)options);
         _options = options;
         _transceiver = transceiver;
+        var cap = Options.AsyncBufferCapacity > 0 ? Options.AsyncBufferCapacity : (int?)null;
+        _asyncRx = new AsyncFramePipe<CanReceiveData>(cap);
+
+        _exceptionPolicy = options.ExceptionPolicy ?? CanExceptionPolicy.Default;
+        _exceptions = new CanBusExceptionDispatcher(
+            "Vector CAN bus",
+            _exceptionPolicy,
+            raiseBackground: ex =>
+            {
+                try { var snap = Volatile.Read(ref BackgroundExceptionOccurred); snap?.Invoke(this, ex); } catch { /*ignore*/ }
+            },
+            raiseFault: ex =>
+            {
+                try { var snap = Volatile.Read(ref FaultOccurred); snap?.Invoke(this, ex); } catch { /*ignore*/  }
+            },
+            stopBackground: () => { },
+            failAsyncReceivers: ex =>
+            {
+                try { _asyncRx.ExceptionOccured(ex); } catch { /*ignore*/ }
+            });
 
         // join hub
         _hub = VirtualBusHub.Get(Options.SessionId);
         _hub.Attach(this);
-
-        var cap = Options.AsyncBufferCapacity > 0 ? Options.AsyncBufferCapacity : (int?)null;
-        _asyncRx = new AsyncFramePipe<CanReceiveData>(cap);
 
         // apply initial options (software filter, etc.)
         ApplyConfig(_options);
@@ -227,14 +246,38 @@ public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, IOwnership
             return;
         }
 
-        _frameReceived?.Invoke(this, data);
+        try
+        {
+            var span = Volatile.Read(ref _frameReceived);
+            span?.Invoke(this, data);
+        }
+        catch (Exception e)
+        {
+            _exceptions.Report(
+                e,
+                CanExceptionSource.SubscriberCallback,
+                severity: _exceptionPolicy.SubscriberCallbackSeverity,
+                message: "Virtual FrameReceived handler threw an exception.");
+        }
         _asyncRx.Publish(data);
 
     }
 
     internal void InternalInjectError(ICanErrorInfo info)
     {
-        _errorOccurred?.Invoke(this, info);
+        try
+        {
+            var span = Volatile.Read(ref _errorOccurred);
+            span?.Invoke(this, info);
+        }
+        catch (Exception e)
+        {
+            _exceptions.Report(
+                e,
+                CanExceptionSource.SubscriberCallback,
+                severity: _exceptionPolicy.SubscriberCallbackSeverity,
+                message: "Virtual ErrorFrameReceived handler threw an exception.");
+        }
     }
 
 

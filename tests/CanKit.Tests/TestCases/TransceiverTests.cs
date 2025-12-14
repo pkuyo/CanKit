@@ -175,7 +175,7 @@ public class ThroughputAndFeaturesTests : IClassFixture<TestCaseProvider>
 
             // classic remote (RTR) 0 and 8
             classicCases.Add(CanFrame.Classic(0x200, ReadOnlyMemory<byte>.Empty, false, true));
-            classicCases.Add(CanFrame.Classic(0x201, new byte[8], false, true));
+            classicCases.Add(CanFrame.Classic(0x201, ReadOnlyMemory<byte>.Empty, false, true));
 
             await TestHelpers.SendBurstAsync(txClassic, classicCases, gapMs: 0);
 
@@ -212,4 +212,3 @@ public class ThroughputAndFeaturesTests : IClassFixture<TestCaseProvider>
         }
     }
 }
-

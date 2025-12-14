@@ -43,6 +43,8 @@ public class TestCaseProvider : IDisposable
 
     public static ITestDataProvider Provider { get; }
 
+    public static Random Rand { get; } = new Random();
+
     private static bool SafeLoad(AssemblyName path)
     {
         try

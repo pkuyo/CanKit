@@ -533,7 +533,7 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
                                         e,
                                         CanExceptionSource.SubscriberCallback,
                                         severity: _exceptionPolicy.SubscriberCallbackSeverity,
-                                        message: "ZLG FrameReceived handler threw an exception.");
+                                        message: "Vector FrameReceived handler threw an exception.");
                                 }
                                 _frameReceived?.Invoke(this, data);
                                 _asyncRx.Publish(data);
