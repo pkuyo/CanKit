@@ -114,7 +114,7 @@ namespace CanKit.Abstractions.API.Can.Definitions
             bool isErrorFrame = false)
         {
             if (id < 0) throw new ArgumentOutOfRangeException(nameof(id));
-            if(!dataInit.IsEmpty && isRemoteFrame) throw new ArgumentOutOfRangeException(nameof(dataInit));
+            if (!dataInit.IsEmpty && isRemoteFrame) throw new ArgumentOutOfRangeException(nameof(dataInit));
 
             return new CanFrame(CanFrameType.Can20, id, dataInit)
             {

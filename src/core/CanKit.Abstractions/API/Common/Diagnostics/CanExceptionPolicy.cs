@@ -1,4 +1,4 @@
- using System;
+using System;
 using CanKit.Core.Exceptions;
 
 namespace CanKit.Core.Diagnostics;
@@ -42,7 +42,7 @@ public sealed class CanExceptionPolicy
         if (exception is OperationCanceledException)
             return CanExceptionSeverity.Info;
 
-        if(exception is CanBusDisposedException && source == CanExceptionSource.BackgroundLoop)
+        if (exception is CanBusDisposedException && source == CanExceptionSource.BackgroundLoop)
             return CanExceptionSeverity.Info;
 
         if (exception is CanKitException)

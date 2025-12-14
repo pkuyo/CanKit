@@ -15,8 +15,10 @@ public class CanBusBackgroundExceptionOccurredTests : IClassFixture<TestCaseProv
 {
     [Theory]
     [MemberData(nameof(Matrix.TestMatrix.Pairs), MemberType = typeof(Matrix.TestMatrix))]
-    public async Task BackgroundExceptionOccurred_Is_Raised_When_ReceiveThread_Hits_Exception(string epA, string epB, string _, bool hasFd)
+    public async Task BackgroundExceptionOccurred_Is_Raised_When_ReceiveThread_Hits_Exception(string epA, string epB, string __, bool hasFd)
     {
+        _ = hasFd;
+        _ = __;
         using var rxClassic = TestHelpers.OpenClassic(epA);
         using var txClassic = TestHelpers.OpenClassic(epB);
         using AutoResetEvent ev = new AutoResetEvent(false);

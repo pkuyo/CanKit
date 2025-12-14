@@ -447,7 +447,7 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
         var cts = Volatile.Read(ref _pollCts);
         try
         {
-            try { cts?.Cancel(); } catch {}
+            try { cts?.Cancel(); } catch { }
         }
         finally
         {
