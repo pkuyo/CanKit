@@ -71,9 +71,12 @@ Open a bus using an endpoint string, then send/receive frames. Examples:
 
 - PCAN: `pcan://PCAN_USBBUS1`
 - Kvaser: `kvaser://0` or `kvaser://?ch=0`
-- SocketCAN (Linux): `socketcan://can0#netlink`
+- SocketCAN (Linux): `socketcan://can0`
 - ZLG: `zlg://USBCANFD-200U?index=0#ch1`
 - Virtual: `virtual://alpha/0`
+- Vector: `vector://YourAppName/0`
+- ControlCAN: `controlcan://USBCAN2index=0#ch0`
+
 
 ### Send & Receive
 ```csharp
@@ -161,6 +164,23 @@ using CanKit.Core;
 
 var capability = CanBus.QueryCapabilities("kvaser://0");
 Console.WriteLine($"support: {capability.Features}")
+```
+
+## Error Handling & Monitoring
+
+CanKit exposes events to handle critical failures, background loop exceptions, and CAN bus error frames.
+
+```csharp
+
+// Triggered when the connection is broken or a fatal driver error occurs.
+bus.FaultOccurred += (sender, exception) => {};
+
+// Triggered when a non-fatal exception occurs in the receive/transmit loops. 
+bus.BackgroundExceptionOccurred += (sender, exception) => {};
+
+// Triggered when the CAN controller detects physical bus errors (Bit, Stuff, CRC, etc.).
+bus.ErrorFrameReceived += (sender, errorInfo) => {};
+
 ```
 
 ## Getting Started

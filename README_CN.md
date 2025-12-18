@@ -75,13 +75,13 @@ dotnet add package CanKit.Adapter.Virtual
 ## 快速开始
 
 通过 Endpoint 打开，然后发送/接收（示例Endpoint）：
-- Vector: `vector://AppName/0`
 - PCAN: `pcan://PCAN_USBBUS1`
 - Kvaser: `kvaser://0` or `kvaser://?ch=0`
-- SocketCAN (Linux): `socketcan://can0#netlink`
+- SocketCAN (Linux): `socketcan://can0`
 - ZLG: `zlg://USBCANFD-200U?index=0#ch1`
-- ControlCAN: `controlcan://USBCAN2?index=0#ch1`
 - Virtual: `virtual://alpha/0`
+- Vector: `vector://YourAppName/0`
+- ControlCAN: `controlcan://USBCAN2index=0#ch0`
 
 ### 发送 & 接收
 ```csharp
@@ -163,6 +163,24 @@ using CanKit.Core;
 
 var capability = CanBus.QueryCapabilities("kvaser://0");
 Console.WriteLine($"support: {capability.Features}")
+```
+
+## 错误处理与监控
+
+CanKit 提供了相应的事件，用于处理严重故障、后台循环异常以及 CAN 总线错误帧。
+
+```csharp
+
+// 当连接中断或发生致命驱动错误时触发。
+bus.FaultOccurred += (sender, exception) => {};
+
+// 当接收/发送循环中发生非致命异常时触发。
+bus.BackgroundExceptionOccurred += (sender, exception) => {};
+
+// 当 CAN 控制器检测到物理总线错误（如位错误、填充错误、CRC 错误等）时触发。
+bus.ErrorFrameReceived += (sender, errorInfo) => {};
+
+
 ```
 
 ## 适配器说明
