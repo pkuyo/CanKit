@@ -1,4 +1,4 @@
-using System.Diagnostics;
+ using System.Diagnostics;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -788,8 +788,10 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IOwnersh
     {
         try
         {
-            while (!token.IsCancellationRequested)
+            while (true)
             {
+                token.ThrowIfCancellationRequested();
+
                 int n = Libc.epoll_wait(_epfd, _events, _events.Length, -1);
                 if (n < 0)
                 {
@@ -823,6 +825,13 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IOwnersh
                     }
                 }
             }
+        }
+        catch (OperationCanceledException ex)
+        {
+            _exceptions.Report(
+                ex,
+                CanExceptionSource.BackgroundLoop,
+                message: "ControlCAN poll loop canceled.");
         }
         catch (Exception ex)
         {

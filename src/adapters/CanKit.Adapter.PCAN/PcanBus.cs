@@ -422,8 +422,9 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IOwnership
         var handles = new[] { _recEvent, token.WaitHandle };
         try
         {
-            while (!token.IsCancellationRequested)
+            while (true)
             {
+                token.ThrowIfCancellationRequested();
                 var signaled = WaitHandle.WaitAny(handles);
                 if (signaled == 1)
                 {
@@ -436,6 +437,13 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IOwnership
 
                 DrainReceive();
             }
+        }
+        catch (OperationCanceledException ex)
+        {
+            _exceptions.Report(
+                ex,
+                CanExceptionSource.BackgroundLoop,
+                message: "PCAN poll loop canceled.");
         }
         catch (Exception ex)
         {

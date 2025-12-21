@@ -405,9 +405,9 @@ public sealed class ControlCanBus : ICanBus<ControlCanBusRtConfigurator>, IOwner
     {
         try
         {
-            while (!token.IsCancellationRequested)
+            while (true)
             {
-
+                token.ThrowIfCancellationRequested();
                 DrainReceive();
                 var errSnap = Volatile.Read(ref _errorOccurred);
                 if (errSnap != null && Options.AllowErrorInfo && ReadErrorInfo(out var info) && info is not null)
@@ -427,6 +427,13 @@ public sealed class ControlCanBus : ICanBus<ControlCanBusRtConfigurator>, IOwner
                 }
                 PreciseDelay.Delay(TimeSpan.FromMilliseconds(Math.Max(1, Options.PollingInterval)), ct: token);
             }
+        }
+        catch (OperationCanceledException ex)
+        {
+            _exceptions.Report(
+                ex,
+                CanExceptionSource.BackgroundLoop,
+                message: "ControlCAN poll loop canceled.");
         }
         catch (Exception ex)
         {

@@ -511,8 +511,7 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
                     WaitHandle.WaitAny(handles);
                 }
 
-                if (token.IsCancellationRequested)
-                    break;
+                token.ThrowIfCancellationRequested();
 
                 while (true)
                 {
@@ -584,6 +583,13 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
                     }
                 }
             }
+        }
+        catch (OperationCanceledException ex)
+        {
+            _exceptions.Report(
+                ex,
+                CanExceptionSource.BackgroundLoop,
+                message: "Vector poll loop canceled.");
         }
         catch (Exception ex)
         {

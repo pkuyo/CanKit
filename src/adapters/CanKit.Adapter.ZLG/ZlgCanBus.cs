@@ -595,8 +595,10 @@ namespace CanKit.Adapter.ZLG
         {
             try
             {
-                while (!token.IsCancellationRequested)
+                while (true)
                 {
+                    token.ThrowIfCancellationRequested();
+
                     const int batch = 64;
                     var count = GetReceiveCount();
                     if (count > 0)
@@ -647,6 +649,13 @@ namespace CanKit.Adapter.ZLG
                         }
                     }
                 }
+            }
+            catch (OperationCanceledException ex)
+            {
+                _exceptions.Report(
+                    ex,
+                    CanExceptionSource.BackgroundLoop,
+                    message: "ZlgCAN poll loop canceled.");
             }
             catch (Exception ex)
             {

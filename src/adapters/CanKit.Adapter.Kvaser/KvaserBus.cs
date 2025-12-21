@@ -29,6 +29,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IOwnership
     private int _drainRunning;
     private EventHandler<CanReceiveData>? _frameReceived;
     private EventHandler<ICanErrorInfo>? _errorOccured;
+    private CancellationTokenSource? _cts;
 
     private bool _isDisposed;
 
@@ -376,12 +377,15 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IOwnership
     {
         try
         {
+            var cts = Volatile.Read(ref _cts);
             _asyncRx.Clear();
+            cts?.Cancel();
             _ = Canlib.kvSetNotifyCallback(_handle, _kvCallback!, IntPtr.Zero, 0);
         }
         catch { /* ignore */ }
         finally
         {
+            _cts = null;
             CanKitLogger.LogDebug("Kvaser: Notify callback unregistered.");
         }
     }
@@ -507,6 +511,13 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IOwnership
                             break;
                     }
                 }
+                catch (OperationCanceledException ex)
+                {
+                    _exceptions.Report(
+                        ex,
+                        CanExceptionSource.BackgroundLoop,
+                        message: "Kvaser poll loop canceled.");
+                }
                 catch (Exception ex)
                 {
                     // 非预期异常：记录日志，通知故障并退出循环
@@ -518,12 +529,16 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IOwnership
                 }
                 finally
                 {
-                    Volatile.Write(ref _drainRunning, 0);
-                    if ((Volatile.Read(ref _pending) > 0 &&
-                         Volatile.Read(ref _drainRunning) == 0))
+                    try
                     {
-                        Task.Run(() => KvNotifyCallback(_handle, IntPtr.Zero, 0));
+                        Volatile.Write(ref _drainRunning, 0);
+                        if ((Volatile.Read(ref _pending) > 0 &&
+                             Volatile.Read(ref _drainRunning) == 0))
+                        {
+                            Task.Run(() => KvNotifyCallback(_handle, IntPtr.Zero, 0));
+                        }
                     }
+                    catch { }
                 }
             });
         }
@@ -531,9 +546,12 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IOwnership
 
     private void DrainReceive()
     {
+        var token = _cts?.Token ?? throw new OperationCanceledException();
+ 
         while (true)
         {
             var any = false;
+            token.ThrowIfCancellationRequested();
             foreach (var rec in _transceiver.Receive(this, 64))
             {
                 any = true;
