@@ -29,7 +29,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IOwnership
     private int _drainRunning;
     private EventHandler<CanReceiveData>? _frameReceived;
     private EventHandler<ICanErrorInfo>? _errorOccured;
-    private CancellationTokenSource? _cts;
+    private CancellationTokenSource? _cts = new CancellationTokenSource();
 
     private bool _isDisposed;
 
@@ -547,7 +547,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IOwnership
     private void DrainReceive()
     {
         var token = _cts?.Token ?? throw new OperationCanceledException();
- 
+
         while (true)
         {
             var any = false;
