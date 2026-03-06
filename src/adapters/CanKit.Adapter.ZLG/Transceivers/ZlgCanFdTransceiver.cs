@@ -37,7 +37,7 @@ namespace CanKit.Adapter.ZLG.Transceivers
                     }
                     if (f.FrameKind is not CanFrameType.CanFd)
                         continue;
-                    f.ToTransmitFdData(echo, transmitData, index);
+                    f.ToTransmitFdData(bus.Options.TxRetryPolicy, echo, transmitData, index);
                     index++;
                 }
                 return (int)(sent + ZLGCAN.ZCAN_TransmitFD(((ZlgCanBus)bus).Handle, transmitData, (uint)index));
@@ -65,7 +65,7 @@ namespace CanKit.Adapter.ZLG.Transceivers
                     }
                     if (f.FrameKind is not CanFrameType.CanFd)
                         continue;
-                    f.ToTransmitFdData(echo, transmitData, index);
+                    f.ToTransmitFdData(bus.Options.TxRetryPolicy, echo, transmitData, index);
                     index++;
                 }
                 return (int)(sent + ZLGCAN.ZCAN_TransmitFD(((ZlgCanBus)bus).Handle, transmitData, (uint)index));
@@ -84,7 +84,7 @@ namespace CanKit.Adapter.ZLG.Transceivers
                     throw new InvalidOperationException("Zlg Fd transceiver requires CanFdFrame.");
                 }
 
-                frame.ToTransmitFdData(echo, transmitData, 0);
+                frame.ToTransmitFdData(bus.Options.TxRetryPolicy, echo, transmitData, 0);
                 return (int)ZLGCAN.ZCAN_TransmitFD(((ZlgCanBus)bus).Handle, transmitData, 1);
             }
         }

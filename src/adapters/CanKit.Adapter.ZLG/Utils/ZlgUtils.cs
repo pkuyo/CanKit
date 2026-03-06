@@ -86,22 +86,23 @@ namespace CanKit.Adapter.ZLG.Utils
             return result;
         }
 
-        internal static unsafe ZCAN_Transmit_Data ToTransmitData(this in CanFrame frame, bool echo)
+        internal static unsafe ZCAN_Transmit_Data ToTransmitData(this in CanFrame frame, TxRetryPolicy txRetryPolicy,
+            bool echo)
         {
             var re = new ZCAN_Transmit_Data();
             fixed (byte* ptr = frame.Data.Span)
             {
                 re.frame.can_dlc = frame.Dlc;
                 re.frame.can_id = frame.ToCanID();
-                re.frame.__pad |= (byte)(echo ? TX_ECHO_FLAG : 0);
                 Unsafe.CopyBlockUnaligned(re.frame.data, ptr, frame.Dlc);
-                re.transmit_type = 0;
+                re.transmit_type = (byte)((echo ? 2 : 0) + (txRetryPolicy == TxRetryPolicy.AlwaysRetry ? 0 : 1));
             }
 
             return re;
         }
 
-        internal static unsafe ZCAN_TransmitFD_Data ToTransmitFdData(this in CanFrame frame, bool echo)
+        internal static unsafe ZCAN_TransmitFD_Data ToTransmitFdData(this in CanFrame frame, TxRetryPolicy txRetryPolicy,
+            bool echo)
         {
             var re = new ZCAN_TransmitFD_Data();
             fixed (byte* ptr = frame.Data.Span)
@@ -112,25 +113,26 @@ namespace CanKit.Adapter.ZLG.Utils
                 re.frame.flags |= (byte)(frame.BitRateSwitch ? CANFD_BRS : 0);
                 re.frame.flags |= (byte)(frame.ErrorStateIndicator ? CANFD_ESI : 0);
                 Unsafe.CopyBlockUnaligned(re.frame.data, ptr, (uint)frame.Len);
-                re.transmit_type = 0;
+                re.transmit_type = (byte)((echo ? 2 : 0) + (txRetryPolicy == TxRetryPolicy.AlwaysRetry ? 0 : 1));
             }
             return re;
         }
 
-        internal static unsafe void ToTransmitData(this in CanFrame frame, bool echo, ZCAN_Transmit_Data* header, int offset)
+        internal static unsafe void ToTransmitData(this in CanFrame frame, TxRetryPolicy txRetryPolicy,
+            bool echo, ZCAN_Transmit_Data* header, int offset)
         {
             var data = header + offset;
             fixed (byte* ptr = frame.Data.Span)
             {
                 data->frame.can_dlc = frame.Dlc;
                 data->frame.can_id = frame.ToCanID();
-                data->frame.__pad |= (byte)(echo ? TX_ECHO_FLAG : 0);
                 Unsafe.CopyBlockUnaligned(data->frame.data, ptr, frame.Dlc);
-                data->transmit_type = 0;
+                data->transmit_type = (byte)((echo ? 2 : 0) + (txRetryPolicy == TxRetryPolicy.AlwaysRetry ? 0 : 1));
             }
         }
 
-        internal static unsafe void ToTransmitFdData(this in CanFrame frame, bool echo, ZCAN_TransmitFD_Data* header, int offset)
+        internal static unsafe void ToTransmitFdData(this in CanFrame frame, TxRetryPolicy txRetryPolicy,
+            bool echo, ZCAN_TransmitFD_Data* header, int offset)
         {
             var data = header + offset;
             fixed (byte* ptr = frame.Data.Span)
@@ -141,7 +143,7 @@ namespace CanKit.Adapter.ZLG.Utils
                 data->frame.flags |= (byte)(frame.BitRateSwitch ? CANFD_BRS : 0);
                 data->frame.flags |= (byte)(frame.ErrorStateIndicator ? CANFD_ESI : 0);
                 Unsafe.CopyBlockUnaligned(data->frame.data, ptr, (uint)frame.Len);
-                data->transmit_type = 0;
+                data->transmit_type = (byte)((echo ? 2 : 0) + (txRetryPolicy == TxRetryPolicy.AlwaysRetry ? 0 : 1));
             }
 
         }

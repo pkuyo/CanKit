@@ -39,7 +39,7 @@ namespace CanKit.Adapter.ZLG.Transceivers
                     {
                         throw new InvalidOperationException("Zlg classic transceiver requires CanClassicFrame.");
                     }
-                    f.ToTransmitData(echo, transmitData, index);
+                    f.ToTransmitData(bus.Options.TxRetryPolicy, echo, transmitData, index);
                     index++;
                 }
                 return (int)(sent + ZLGCAN.ZCAN_Transmit(((ZlgCanBus)bus).Handle, transmitData, (uint)index));
@@ -70,7 +70,7 @@ namespace CanKit.Adapter.ZLG.Transceivers
                     {
                         throw new InvalidOperationException("Zlg classic transceiver requires CanClassicFrame.");
                     }
-                    f.ToTransmitData(echo, transmitData, index);
+                    f.ToTransmitData(bus.Options.TxRetryPolicy, echo, transmitData, index);
                     index++;
                 }
                 return (int)(sent + ZLGCAN.ZCAN_Transmit(((ZlgCanBus)bus).Handle, transmitData, (uint)index));
@@ -90,7 +90,7 @@ namespace CanKit.Adapter.ZLG.Transceivers
                 {
                     throw new InvalidOperationException("Zlg classic transceiver requires CanClassicFrame.");
                 }
-                frame.ToTransmitData(echo, transmitData, 0);
+                frame.ToTransmitData(bus.Options.TxRetryPolicy, echo, transmitData, 0);
 
                 return (int)ZLGCAN.ZCAN_Transmit(((ZlgCanBus)bus).Handle, transmitData, 1);
             }
