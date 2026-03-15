@@ -28,7 +28,7 @@ public sealed class IsoTpEndpoint
 
     public byte? ExtendedAddress { get; init; }
 
-    public bool UsePayload => AddressingFormat is AddressingFormat.Extended or AddressingFormat.Mixed;
+    public bool AddrUsePayload => AddressingFormat is AddressingFormat.Extended or AddressingFormat.Mixed;
 
     private const int CAN_SFF_MASK = 0x7FF;
     private const int CAN_EFF_MASK = 0x1FFFFFFF;

@@ -20,22 +20,27 @@ internal static partial class FrameCodec
     {
 
         var data = rx.CanFrame.Data.Span;
-        var pciStart = (ep.UsePayload ? 1 : 0);
+        var pciStart = (ep.AddrUsePayload ? 1 : 0);
         var typeNum = data[pciStart] >> 4;
         var fd = rx.CanFrame.FrameKind == CanFrameType.CanFd;
         if (typeNum >= 4)
         {
-            pci = default;
+            pci = default; //解析协议格式错误
             return false;
         }
         var type = (PciType)typeNum;
         switch (type)
         {
             case PciType.SF:
-                if ((data[pciStart] & 0xF) == 0)
+                if ((data[pciStart] & 0xF) == 0) //数据长度>8时为0 仅can-fd有效
                 {
                     if (fd)
                     {
+                        if (data[pciStart + 1] <= 8)
+                        {
+                            //TODO:异常处理 长度小于预期
+                            throw new NotImplementedException();
+                        }
                         pci = new Pci(type, data[pciStart + 1], 0, default, 0, TimeSpan.Zero);
                     }
                     else
@@ -47,17 +52,27 @@ internal static partial class FrameCodec
                 }
                 else
                 {
+                    if ((data[pciStart] & 0xF) > 8 - pciStart)
+                    {
+                        //TODO:异常处理 长度大于预期
+                        throw new NotImplementedException();
+                    }
                     pci = new Pci(type, data[pciStart] & 0xF, 0, default, 0, TimeSpan.Zero);
                 }
                 break;
             case PciType.FF:
-                if ((data[pciStart] & 0xF) == 0 && data[pciStart + 1] == 0)
+                if ((data[pciStart] & 0xF) == 0 && data[pciStart + 1] == 0)//数据长度>4095时为0 00 仅can-fd有效
                 {
-                    if (fd)
+                    if (fd) // data[2-5]
                     {
-                        pci = new Pci(type,
-                            (data[pciStart + 2] << 24) | (data[pciStart + 3] << 16) | (data[pciStart + 4] << 8) | data[pciStart + 5],
-                            0, default, 0, TimeSpan.Zero);
+                        var requestPayload = (data[pciStart + 2] << 24) | (data[pciStart + 3] << 16) |
+                            (data[pciStart + 4] << 8) | data[pciStart + 5];
+                        if (requestPayload < 4096)
+                        {
+                            //TODO:异常处理 长度小于预期
+                            throw new NotImplementedException();
+                        }
+                        pci = new Pci(type, requestPayload, 0, default, 0, TimeSpan.Zero);
                     }
                     else
                     {
@@ -68,8 +83,17 @@ internal static partial class FrameCodec
                 }
                 else
                 {
+                    var requestPayload = (data[pciStart] & 0xF << 8) | data[pciStart + 1];
+                    if (requestPayload <= 8 - pciStart)
+                    {
+                        //TODO:异常处理 长度小于预期
+                        throw new NotImplementedException();
+                    }
                     pci = new Pci(type, (data[pciStart] & 0xF << 8) | data[pciStart + 1], 0, default, 0, TimeSpan.Zero);
                 }
+                break;
+            case PciType.CF:
+                pci = new Pci(type, 0, (byte)(data[pciStart] & 0xF), default, 0, TimeSpan.Zero);
                 break;
             case PciType.FC:
                 var fs = data[pciStart] & 0xF;
@@ -77,13 +101,13 @@ internal static partial class FrameCodec
                 {
                     pci = default;
                     return false;
-                    //TODO:错误数据处理
+                    //TODO:无效FS处理
                 }
                 pci = new Pci(type, 0, 0, (FlowStatus)fs, data[pciStart + 1], DecodeStmin(data[pciStart + 2]));
                 break;
-            case PciType.CF:
             default:
-                pci = new Pci(type, 0, (byte)(data[pciStart] & 0xF), default, 0, TimeSpan.Zero);
+                //TODO:错误数据处理
+                throw new NotImplementedException();
                 break;
 
         }
@@ -92,7 +116,7 @@ internal static partial class FrameCodec
 
     internal static unsafe CanFrame BuildSF(in IsoTpEndpoint ep, IBufferAllocator allocator, ReadOnlySpan<byte> payload, bool padding, bool canfd)
     {
-        var pciStart = (ep.UsePayload ? 1 : 0);
+        var pciStart = (ep.AddrUsePayload ? 1 : 0);
         var len = payload.Length + 2 + pciStart;
         var (id, exId) = ep.GetTxId();
         if (padding)
@@ -100,7 +124,7 @@ internal static partial class FrameCodec
             len = canfd ? 64 : 8;
         }
         var data = ArrayPool<byte>.Shared.Rent(len);
-        if (ep.UsePayload)
+        if (ep.AddrUsePayload)
         {
             data[0] = exId!.Value;
         }
@@ -136,11 +160,11 @@ internal static partial class FrameCodec
         bool canfd)
     {
         var len = canfd ? 64 : 8;
-        var pciStart = (ep.UsePayload ? 1 : 0);
+        var pciStart = (ep.AddrUsePayload ? 1 : 0);
         var data = allocator.Rent(len);
         var span = data.Memory.Span;
         var (id, exId) = ep.GetTxId();
-        if (ep.UsePayload)
+        if (ep.AddrUsePayload)
         {
             span[0] = exId!.Value;
         }
@@ -180,7 +204,7 @@ internal static partial class FrameCodec
     internal static unsafe CanFrame BuildCF(in IsoTpEndpoint ep, IBufferAllocator allocator,
         byte sn, ReadOnlySpan<byte> chunk, bool padding, bool canfd)
     {
-        var pciStart = (ep.UsePayload ? 1 : 0);
+        var pciStart = (ep.AddrUsePayload ? 1 : 0);
         var len = chunk.Length + 2 + pciStart;
         var (id, exId) = ep.GetTxId();
         if (padding)
@@ -189,7 +213,7 @@ internal static partial class FrameCodec
         }
         var data = allocator.Rent(len);
         var span = data.Memory.Span;
-        if (ep.UsePayload)
+        if (ep.AddrUsePayload)
         {
             span[0] = exId!.Value;
         }
@@ -212,12 +236,12 @@ internal static partial class FrameCodec
     internal static unsafe CanFrame BuildFC(in IsoTpEndpoint ep, IBufferAllocator allocator,
         FlowStatus fs, byte bs, byte stmin, bool padding, bool canfd)
     {
-        var pciStart = (ep.UsePayload ? 1 : 0);
+        var pciStart = (ep.AddrUsePayload ? 1 : 0);
         var len = padding ? 8 : pciStart + 2;
         var data = allocator.Rent(len);
         var span = data.Memory.Span;
         var (id, exId) = ep.GetTxId();
-        if (ep.UsePayload)
+        if (ep.AddrUsePayload)
         {
             span[0] = exId!.Value;
         }

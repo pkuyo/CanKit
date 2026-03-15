@@ -9,7 +9,17 @@ public sealed class AsyncAutoResetEvent
 
     public void Set()
     {
-        try { _sem.Release(); }
-        catch (SemaphoreFullException) { /* already signaled; ignore */ }
+        if (_sem.CurrentCount == 0)
+        {
+            _sem.Release();
+        }
+    }
+
+    public void Reset()
+    {
+        if (_sem.CurrentCount == 1)
+        {
+            _sem.Wait();
+        }
     }
 }

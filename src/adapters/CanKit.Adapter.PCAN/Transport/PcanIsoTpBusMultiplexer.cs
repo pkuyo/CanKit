@@ -4,12 +4,12 @@ using Peak.Can.Basic;
 
 namespace CanKit.Adapter.PCAN.Transport;
 
-public class PcanIsoTpBusMultiplexer
+internal class PcanIsoTpBusMultiplexer
 {
     private static readonly ConcurrentDictionary<PcanChannel, Entry> _map = new();
 
-    public static (IIsoTpChannel channel, IDisposable lease) Acquire(PcanChannel handle, Func<IIsoTpScheduler> createBus,
-        Func<IIsoTpScheduler, IIsoTpChannel> createChannel)
+    public static (IIsoTpChannel channel, IDisposable lease) Acquire(PcanChannel handle, Func<PcanIsoTpScheduler> createBus,
+        Func<PcanIsoTpScheduler, PcanIsoTpChannel> createChannel)
     {
         while (true)
         {
@@ -41,13 +41,13 @@ public class PcanIsoTpBusMultiplexer
     {
         public int RefCount;
 
-        public Entry(IIsoTpScheduler scheduler)
+        public Entry(PcanIsoTpScheduler scheduler)
         {
             Scheduler = scheduler;
             RefCount = 1;
         }
 
-        public IIsoTpScheduler Scheduler { get; }
+        public PcanIsoTpScheduler Scheduler { get; }
     }
 
     private sealed class BusLease : IDisposable

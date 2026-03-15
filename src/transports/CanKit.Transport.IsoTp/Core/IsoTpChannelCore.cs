@@ -1,5 +1,4 @@
 ﻿using System.Buffers;
-using System.Collections.Concurrent;
 using System.Diagnostics;
 using CanKit.Abstractions.API.Can.Definitions;
 using CanKit.Abstractions.API.Common.Definitions;
@@ -11,261 +10,567 @@ using CanKit.Protocol.IsoTp.Utils;
 
 namespace CanKit.Transport.IsoTp.Core;
 
-internal enum TxState { Idle, WaitFc, SendCf, WaitFcAfterBlock, Failed }
-internal enum RxState { Idle, RecvCf }
+#region State
+
+internal enum TxState
+{
+    Idle,
+    SendingSF,      // 当前有一个 SF 要发 / 已发待 echo
+    SendingFF,       // 当前有一个 FF 要发 / 已发待 echo
+    WaitingFC,      // FF 已完成，等待对端 FC
+    SendingCF,// 正在发送 CF 序列
+    Failed
+}
+
+internal enum RxState
+{
+    Idle,
+    Receiving,
+    Failed
+}
+
+internal enum TimerKind
+{
+    N_As,
+    N_Bs,
+    N_Cs,
+    N_Ar,
+    N_Cr,
+}
+
+#endregion
+
+#region Event
+
+internal abstract record IsoTpEvent
+{
+    public sealed record SendRequested(TxOperation Operation) : IsoTpEvent;
+
+    public sealed record RemoteSingleFrame(CanReceiveData Rx, Pci Pci) : IsoTpEvent;
+
+    public sealed record RemoteFirstFrame(CanReceiveData Rx, Pci Pci) : IsoTpEvent;
+
+    public sealed record RemoteConsecutiveFrame(CanReceiveData Rx, Pci Pci) : IsoTpEvent;
+
+    public sealed record RemoteFlowControl(Pci Pci) : IsoTpEvent;
+
+    public sealed record EchoReceived(PciType Type) : IsoTpEvent;
+
+    public sealed record OutboundSendFailed(OutboundItem Item, Exception Error) : IsoTpEvent;
+
+    public sealed record TimerExpired(TimerKind Kind) : IsoTpEvent;
+}
+
+#endregion
+
+#region Action
+
+internal abstract record IsoTpAction
+{
+
+    public sealed record NotifyWorkAvailable : IsoTpAction;
+
+    public sealed record QueueOutbound(OutboundItem Item) : IsoTpAction;
+
+    public sealed record CompleteSend(TxOperation Operation) : IsoTpAction;
+
+    public sealed record FailSend(TxOperation? Operation, Exception Error) : IsoTpAction;
+
+    public sealed record EmitDatagram(IMemoryOwner<byte> Owner) : IsoTpAction;
+
+    public sealed record AbortReceive : IsoTpAction;
+}
+
+#endregion
+
+#region Context
+
+internal sealed class TxContext
+{
+    public TxState State { get; set; } = TxState.Idle;
+
+    public TxOperation? Current { get; set; }
+
+    /// <summary>当前是否已经把一帧交给下层发送，正在等 echo</summary>
+    public bool AwaitingEcho { get; set; }
+
+    /// <summary>原始 payload 已经推进到的位置（按业务 payload 计，不含 PCI）</summary>
+    public int Offset { get; set; }
+
+    /// <summary>下一帧 CF 的 SN</summary>
+    public byte NextSn { get; set; } = 1;
+
+    /// <summary>当前 block 还允许发送多少个 CF。int.MaxValue 表示无限。</summary>
+    public int BlockRemaining { get; set; }
+
+    public TimeSpan Stmin { get; set; } = TimeSpan.Zero;
+
+    /// <summary>最近一次成功送出 CF 的时间戳，用于 STmin</summary>
+    public long LastCfTicks { get; set; }
+
+    public void Reset()
+    {
+        State = TxState.Idle;
+        Current = null;
+        AwaitingEcho = false;
+        Offset = 0;
+        NextSn = 1;
+        BlockRemaining = 0;
+        Stmin = TimeSpan.Zero;
+        LastCfTicks = 0;
+    }
+}
+
+internal sealed class RxContext
+{
+    public RxState State { get; set; } = RxState.Idle;
+
+    public IMemoryOwner<byte>? Owner { get; set; }
+
+    public int ExpectedLength { get; set; }
+
+    public int ReceivedBytes { get; set; }
+
+    public byte NextSn { get; set; }
+
+    /// <summary>当前 block 还可接收多少个 CF。int.MaxValue 表示无限。</summary>
+    public int BlockRemaining { get; set; }
+
+    /// <summary>是否需要给对端发 FC(CTS)</summary>
+    public bool FcPending { get; set; }
+
+    /// <summary>FC 已经准备发出/已交给下层，正在等 echo</summary>
+    public bool FcAwaitingEcho { get; set; }
+
+    public void Reset()
+    {
+        Owner?.Dispose();
+        Owner = null;
+        State = RxState.Idle;
+        ExpectedLength = 0;
+        ReceivedBytes = 0;
+        NextSn = 0;
+        BlockRemaining = 0;
+        FcPending = false;
+        FcAwaitingEcho = false;
+    }
+}
+
+#endregion
+
+#region Operation / Outbound
+
+internal sealed class TxOperation : IDisposable
+{
+    private readonly IMemoryOwner<byte> _payloadOwner;
+    private int _disposed;
+
+    public int TxAddress { get; }
+    public int? ExtendAddress { get; }
+
+    public int Length { get; }
+
+    public bool Padding { get; }
+
+    public bool CanFd { get; }
+
+    public ReadOnlyMemory<byte> Payload => _payloadOwner.Memory;
+
+    public TaskCompletionSource<bool> Tcs { get; } =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    public CancellationTokenRegistration CancellationRegistration { get; private set; }
+
+    public DateTime StartedAt { get; } = DateTime.Now;
+
+    public bool IsCanceled { get; private set; }
+
+    private TxOperation(
+        int txAddress,
+        int? extendAddress,
+        IMemoryOwner<byte> payloadOwner,
+        int length,
+        bool padding,
+        bool canFd)
+    {
+        TxAddress = txAddress;
+        ExtendAddress = extendAddress;
+        _payloadOwner = payloadOwner;
+        Length = length;
+        Padding = padding;
+        CanFd = canFd;
+    }
+
+    public static TxOperation Create(
+        IsoTpEndpoint endpoint,
+        IBufferAllocator allocator,
+        ReadOnlySpan<byte> payload,
+        bool padding,
+        bool canFd)
+    {
+        var owner = allocator.Rent(payload.Length);
+        payload.CopyTo(owner.Memory.Span);
+        return new TxOperation(endpoint.TxId, endpoint.TargetAddress, owner, payload.Length, padding, canFd);
+    }
+
+    public void BindCancellation(Action callback, CancellationToken token)
+    {
+        if (!token.CanBeCanceled) return;
+        CancellationRegistration = token.Register(callback, useSynchronizationContext: false);
+    }
+
+    public void MarkCanceled()
+    {
+        IsCanceled = true;
+        Tcs.TrySetCanceled();
+    }
+
+    public void Dispose()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        CancellationRegistration.Dispose();
+        _payloadOwner.Dispose();
+    }
+}
+
+internal readonly record struct OutboundItem(
+    TxOperation? Operation,
+    IsoTpEndpoint Endpoint,
+    CanFrame Frame,
+    PciType Type,
+    bool IsControlFrame);
+
+#endregion
 
 internal sealed class IsoTpChannelCore : IDisposable
 {
-    internal event EventHandler<IsoTpDatagram>? DatagramReceived;
+    private readonly object _gate = new();
 
-    internal sealed class TxOperation : IDisposable
-    {
+    private readonly Queue<TxOperation> _txPending = new();
+    private readonly Queue<OutboundItem> _readyControlFrames = new();
+    private readonly Queue<OutboundItem> _readyDataFrames = new();
 
-        private readonly Queue<TxFrame> _pendingFrames = new();
+    private readonly TxContext _tx = new();
+    private readonly RxContext _rx = new();
 
-        public CancellationTokenRegistration Ctr { get; set; }
-
-        public bool Empty => _pendingFrames.Count == 0;
-
-        public int TxAddress { get; }
-        public int? ExtendAddress { get; }
-
-        public TaskCompletionSource<bool> Tcs { get; } =
-            new(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        public DateTime StartedAt { get; } = DateTime.Now;
-
-        public int BS { get; set; } = 0;
-
-        public int TxCount { get; set; }
-
-        public TxOperation(int txAddress, int? extendAddress)
-        {
-            TxAddress = txAddress;
-            ExtendAddress = extendAddress;
-        }
-
-        public void Enqueue(CanFrame canFrame, PciType type)
-            => _pendingFrames.Enqueue(new TxFrame(canFrame, type));
-
-        public TxFrame Dequeue() => _pendingFrames.Dequeue();
-
-        public bool TryPeek(out TxFrame canFrame)
-        {
-#if NET5_0_OR_GREATER
-            return _pendingFrames.TryPeek(out canFrame);
-#else
-            if (_pendingFrames.Count == 0)
-            {
-                canFrame = _pendingFrames.Peek();
-                return true;
-            }
-
-            canFrame = default;
-            return false;
-#endif
-        }
-
-        public void Dispose()
-        {
-            while (_pendingFrames.Count != 0)
-            {
-                _pendingFrames.Dequeue().Frame.Dispose();
-            }
-            Ctr.Dispose();
-        }
-
-    }
-
-    internal readonly record struct TxFrame(CanFrame Frame, PciType Type);
-
-    private TxState _tx = TxState.Idle;
-    private RxState _rx = RxState.Idle;
-
-    private readonly QueuedDeadline? _nAs;
+    private readonly Deadline _nAs;
     private readonly Deadline _nBs;
     private readonly Deadline _nCs;
-
-    private readonly QueuedDeadline? _nAr;
-    private readonly Deadline _nBr;
+    private readonly Deadline _nAr;
     private readonly Deadline _nCr;
-
-
-    private readonly ConcurrentQueue<TxOperation> _pendingFc = new();
-    private readonly ConcurrentQueue<TxOperation> _pendingOperations = new();
 
     private readonly IBufferAllocator _allocator;
 
-    private long _lastCfTicks;
-    private TimeSpan _currentStmin;
+    internal event EventHandler<IsoTpDatagram>? DatagramReceived;
 
-    private IMemoryOwner<byte>? _rxOwner;
-    private int _rxExpectedLength;
-    private int _rxReceivedBytes;
-    private byte _rxNextSn;
-    private int _rxBlockRemaining;
+    /// <summary>
+    /// 存在可发送帧。
+    /// </summary>
+    internal event Action? OnWorkAvailable;
 
     public IsoTpEndpoint Endpoint { get; }
     public IsoTpOptions Options { get; }
     public RxFcPolicy FcPolicy { get; }
-    public IsoTpChannelCore(IsoTpEndpoint ep, IsoTpOptions options, RxFcPolicy policy, IBufferAllocator allocator)
+
+    public IsoTpChannelCore(
+        IsoTpEndpoint endpoint,
+        IsoTpOptions options,
+        RxFcPolicy fcPolicy,
+        IBufferAllocator allocator)
     {
-        Endpoint = ep;
+        Endpoint = endpoint;
         Options = options;
-        FcPolicy = policy;
+        FcPolicy = fcPolicy;
         _allocator = allocator;
 
-        _nAs = new QueuedDeadline(Options.N_As);
-        _nAr = new QueuedDeadline(Options.N_Ar);
-
-        _nBs = new Deadline(Options.N_Bs);
-        _nBr = new Deadline(Options.N_Br);
-
-        _nCs = new Deadline(Options.N_Cs);
-        _nCr = new Deadline(Options.N_Cr);
-        _currentStmin = FcPolicy.STmin;
+        _nAs = new Deadline(options.N_As);
+        _nBs = new Deadline(options.N_Bs);
+        _nCs = new Deadline(options.N_Cs);
+        _nAr = new Deadline(options.N_Ar);
+        _nCr = new Deadline(options.N_Cr);
     }
+
+    #region Public API
 
     public bool Match(in CanReceiveData rx)
     {
-        // TODO: add payload-based filtering when extended addressing is enabled.
         return rx.CanFrame.IsExtendedFrame == Endpoint.IsExtendedId &&
                rx.CanFrame.ID == Endpoint.RxId;
     }
 
-    public bool Match(in TxOperation tx)
+    public bool Match(in IsoTpEndpoint tx)
     {
-        return tx.TxAddress == Endpoint.TxId &&
-               tx.ExtendAddress == Endpoint.TargetAddress;
+        return tx.TxId == Endpoint.TxId &&
+               tx.TargetAddress == Endpoint.TargetAddress;
     }
 
-    private void UpdateTxDeadline(TxOperation operation, in CanFrame frame, PciType type)
+    public Task<bool> SendAsync(ReadOnlySpan<byte> payload, bool padding, bool canFd, CancellationToken ct)
     {
-        switch (type)
+        lock (_gate)
         {
-            case PciType.FF:
-                _nAs?.Enqueue(frame);
-                _nBs.Restart();
-                break;
-            case PciType.CF:
-                _nAs?.Enqueue(frame);
-                _nCs.Restart();
-                break;
-            case PciType.FC:
-                _nAr?.Enqueue(frame);
-                break;
-        }
-    }
+            var op = TxOperation.Create(Endpoint, _allocator, payload, padding, canFd);
+            op.BindCancellation(() => CancelOperation(op), ct);
 
-    private void UpdateTxState(TxOperation operation, in CanFrame frame, PciType type)
-    {
-        switch (type)
-        {
-            case PciType.FF:
-                _tx = TxState.WaitFc;
-                break;
-            case PciType.CF when (operation.TxCount == operation.BS && operation.BS != 0):
-                _tx = TxState.WaitFcAfterBlock;
-                break;
-            case PciType.FC:
-                _rx = RxState.RecvCf;
-                break;
-        }
-    }
+            _txPending.Enqueue(op);
 
-    private void UpdateRxDeadline(in CanFrame frame, Pci pci)
-    {
-        switch (pci.Type)
-        {
-            case PciType.FF:
-                _nBr.Restart();
-                break;
-            case PciType.FC when pci.FS == FlowStatus.CTS:
-                _nCs.Restart();
-                break;
+            Execute([new IsoTpAction.NotifyWorkAvailable()]);
+
+            return op.Tcs.Task;
         }
     }
 
     public void OnRx(in CanReceiveData rx)
     {
-        if (rx.IsEcho)
+        lock (_gate)
         {
-            _nAs?.Dequeue(rx.CanFrame);
-            _nAr?.Dequeue(rx.CanFrame);
-        }
-        else
-        {
-            if (!FrameCodec.TryParsePci(rx, Endpoint, out var pci)) return;
-
-            UpdateRxDeadline(rx.CanFrame, pci);
-
-            switch (pci.Type)
+            if (!FrameCodec.TryParsePci(rx, Endpoint, out var pci))
             {
-                case PciType.SF: OnRxSF(rx, pci); break;
-                case PciType.FF: OnRxFF(rx, pci); break;
-                case PciType.CF: OnRxCF(rx, pci); break;
-                case PciType.FC: OnRxFC(pci); break;
+                //TODO:解析失败
+                return;
             }
-        }
 
-    }
+            List<IsoTpAction> actions = new(4);
 
-    public void OnTx(TxOperation operation, in TxFrame frame)
-    {
-        if (frame.Type is PciType.CF)
-        {
-            operation.TxCount++;
-            _lastCfTicks = Stopwatch.GetTimestamp();
-        }
-
-        UpdateTxState(operation, frame.Frame, frame.Type);
-
-        if (operation.Empty)
-        {
-            operation.Tcs.SetResult(true);
-            operation.Dispose();
-            if (frame.Type is not PciType.FC)
+            if (rx.IsEcho)
             {
-                Debug.Assert(TryPeekOperation(out var opera) && opera == operation);
-                _pendingOperations.TryDequeue(out _);
-                _tx = TxState.Idle;
+                Reduce(new IsoTpEvent.EchoReceived(pci.Type), actions);
             }
-        }
+            else
+            {
+                switch (pci.Type)
+                {
+                    case PciType.SF:
+                        Reduce(new IsoTpEvent.RemoteSingleFrame(rx, pci), actions);
+                        break;
 
-        UpdateTxDeadline(operation, frame.Frame, frame.Type);
+                    case PciType.FF:
+                        Reduce(new IsoTpEvent.RemoteFirstFrame(rx, pci), actions);
+                        break;
+
+                    case PciType.CF:
+                        Reduce(new IsoTpEvent.RemoteConsecutiveFrame(rx, pci), actions);
+                        break;
+
+                    case PciType.FC:
+                        Reduce(new IsoTpEvent.RemoteFlowControl(pci), actions);
+                        break;
+                }
+            }
+
+            Execute(actions);
+        }
     }
 
-    public void OnTxFailed(TxOperation operation, in TxFrame frame, Exception exception)
+    /// <summary>
+    /// 外层发送器调用：取帧
+    /// </summary>
+    public bool TryDequeueReadyFrame(long nowTicks, TimeSpan? globalGuard, out OutboundItem item, out TimeSpan waitTime)
     {
-        operation.Tcs.SetException(exception);
-        operation.Dispose();
-
-        if (TryPeekOperation(out var opera) && opera == operation)
+        lock (_gate)
         {
-            _pendingOperations.TryDequeue(out _);
+            List<IsoTpAction> actions = new(2);
+            PlanOutbound(nowTicks, globalGuard ?? TimeSpan.Zero, actions);
+            Execute(actions);
+
+            if (_readyControlFrames.Count > 0)
+            {
+                item = _readyControlFrames.Dequeue();
+                waitTime = TimeSpan.Zero;
+                return true;
+            }
+
+            if (_readyDataFrames.Count > 0)
+            {
+                item = _readyDataFrames.Dequeue();
+                waitTime = TimeSpan.Zero;
+                return true;
+            }
+
+            item = default;
+            waitTime = ComputeWaitTime(nowTicks, globalGuard ?? TimeSpan.Zero);
+            return false;
         }
-        _tx = TxState.Idle;
     }
 
-    private void OnRxSF(in CanReceiveData rx, Pci pci)
+
+    public void OnFrameAccepted(in OutboundItem item)
     {
-        ResetReception();
+        lock (_gate)
+        {
+            if (item.Type == PciType.CF && item.Operation is not null && _tx.Current == item.Operation)
+            {
+                _tx.LastCfTicks = Stopwatch.GetTimestamp();
+            }
+
+            item.Frame.Dispose();
+        }
+    }
+
+    public void OnFrameSendFailed(in OutboundItem item, Exception error)
+    {
+        lock (_gate)
+        {
+            // 发送失败时，frame 内存应释放
+            item.Frame.Dispose();
+
+            List<IsoTpAction> actions = new(2);
+            Reduce(new IsoTpEvent.OutboundSendFailed(item, error), actions);
+            Execute(actions);
+        }
+    }
+
+    public TimeSpan GetNextExpiryTime(long nowTicks, TimeSpan? globalGuard)
+    {
+        lock (_gate)
+        {
+            var min = TimeSpan.MaxValue;
+
+            // TX 相关
+            switch (_tx.State)
+            {
+                case TxState.SendingSF:
+                case TxState.SendingFF:
+                    min = Min(min, _nAs.Remaining);
+                    break;
+
+                case TxState.WaitingFC:
+                    min = Min(min, _nBs.Remaining);
+                    break;
+
+                case TxState.SendingCF:
+                    min = Min(min, _tx.AwaitingEcho ? _nAs.Remaining : _nCs.Remaining);
+                    break;
+            }
+
+            // RX 相关
+            switch (_rx.State)
+            {
+                case RxState.Receiving:
+                    if (_rx.FcPending || _rx.FcAwaitingEcho)
+                        min = Min(min, _nAr.Remaining);
+                    else
+                        min = Min(min, _nCr.Remaining);
+                    break;
+            }
+
+            // STmin / 全局 guard
+            var sendWait = ComputeWaitTime(nowTicks, globalGuard ?? TimeSpan.Zero);
+            min = Min(min, sendWait);
+
+            return min;
+        }
+
+        static TimeSpan Min(TimeSpan a, TimeSpan b) => a <= b ? a : b;
+    }
+
+    /// <summary>
+    /// 由外层定时器驱动，检查哪个 deadline 到期了。
+    /// </summary>
+    public void CheckTimeouts()
+    {
+        lock (_gate)
+        {
+            List<IsoTpAction> actions = new(2);
+
+            if (_tx.State == TxState.SendingSF && _nAs.Remaining <= TimeSpan.Zero)
+                Reduce(new IsoTpEvent.TimerExpired(TimerKind.N_As), actions);
+
+            if (_tx.State == TxState.SendingFF && _nAs.Remaining <= TimeSpan.Zero)
+                Reduce(new IsoTpEvent.TimerExpired(TimerKind.N_As), actions);
+
+            if (_tx.State == TxState.WaitingFC && _nBs.Remaining <= TimeSpan.Zero)
+                Reduce(new IsoTpEvent.TimerExpired(TimerKind.N_Bs), actions);
+
+            if (_tx.State == TxState.SendingCF)
+            {
+                if (_tx.AwaitingEcho && _nAs.Remaining <= TimeSpan.Zero)
+                    Reduce(new IsoTpEvent.TimerExpired(TimerKind.N_As), actions);
+                else if (!_tx.AwaitingEcho && _nCs.Remaining <= TimeSpan.Zero)
+                    Reduce(new IsoTpEvent.TimerExpired(TimerKind.N_Cs), actions);
+            }
+
+            if (_rx.State == RxState.Receiving)
+            {
+                if ((_rx.FcPending || _rx.FcAwaitingEcho) && _nAr.Remaining <= TimeSpan.Zero)
+                    Reduce(new IsoTpEvent.TimerExpired(TimerKind.N_Ar), actions);
+                else if (!_rx.FcPending && !_rx.FcAwaitingEcho && _nCr.Remaining <= TimeSpan.Zero)
+                    Reduce(new IsoTpEvent.TimerExpired(TimerKind.N_Cr), actions);
+            }
+
+            Execute(actions);
+        }
+    }
+
+    #endregion
+
+    #region Reducer
+
+    private void Reduce(IsoTpEvent ev, List<IsoTpAction> actions)
+    {
+        switch (ev)
+        {
+            case IsoTpEvent.SendRequested e:
+                OnSendRequested(e.Operation, actions);
+                break;
+
+            case IsoTpEvent.RemoteSingleFrame e:
+                OnRemoteSingleFrame(e.Rx, e.Pci, actions);
+                break;
+
+            case IsoTpEvent.RemoteFirstFrame e:
+                OnRemoteFirstFrame(e.Rx, e.Pci, actions);
+                break;
+
+            case IsoTpEvent.RemoteConsecutiveFrame e:
+                OnRemoteConsecutiveFrame(e.Rx, e.Pci, actions);
+                break;
+
+            case IsoTpEvent.RemoteFlowControl e:
+                OnRemoteFlowControl(e.Pci, actions);
+                break;
+
+            case IsoTpEvent.EchoReceived e:
+                OnEchoReceived(e.Type, actions);
+                break;
+
+            case IsoTpEvent.OutboundSendFailed e:
+                OnOutboundSendFailed(e.Item, e.Error, actions);
+                break;
+
+            case IsoTpEvent.TimerExpired e:
+                OnTimerExpired(e.Kind, actions);
+                break;
+        }
+    }
+
+    private void OnSendRequested(TxOperation operation, List<IsoTpAction> actions)
+    {
+        _txPending.Enqueue(operation);
+        actions.Add(new IsoTpAction.NotifyWorkAvailable());
+    }
+
+    private void OnRemoteSingleFrame(in CanReceiveData rx, Pci pci, List<IsoTpAction> actions)
+    {
+        AbortReceiveCore();
+
         var payload = GetFramePayload(rx.CanFrame, Endpoint, pci);
         var length = Math.Min(payload.Length, pci.Len);
         if (length <= 0) return;
 
         var owner = _allocator.Rent(length);
         payload.Slice(0, length).CopyTo(owner.Memory.Span);
-        EmitDatagram(owner);
+        actions.Add(new IsoTpAction.EmitDatagram(owner));
     }
 
-    private void OnRxFF(in CanReceiveData rx, Pci pci)
+    private void OnRemoteFirstFrame(in CanReceiveData rx, Pci pci, List<IsoTpAction> actions)
     {
-        ResetReception();
-        if (pci.Len <= 0) return;
+        AbortReceiveCore();
+
+        var total = pci.Len;
+        if (total <= 0)
+            return;
 
         var payload = GetFramePayload(rx.CanFrame, Endpoint, pci);
-        var total = pci.Len;
         var copied = Math.Min(payload.Length, total);
 
         var owner = _allocator.Rent(total);
@@ -274,134 +579,515 @@ internal sealed class IsoTpChannelCore : IDisposable
             payload.Slice(0, copied).CopyTo(owner.Memory.Span);
         }
 
-        _rxOwner = owner;
-        _rxExpectedLength = total;
-        _rxReceivedBytes = copied;
-        _rxNextSn = 1;
-        _rx = RxState.RecvCf;
-        _nCr.Reset();
-
-        if (_rxReceivedBytes >= _rxExpectedLength)
-        {
-            CompleteReception();
-            return;
-        }
+        _rx.Owner = owner;
+        _rx.State = RxState.Receiving;
+        _rx.ExpectedLength = total;
+        _rx.ReceivedBytes = copied;
+        _rx.NextSn = 1;
 
         QueueFlowControlCts();
+        _nAr.Restart();
+
+        actions.Add(new IsoTpAction.NotifyWorkAvailable());
+
+        if (_rx.ReceivedBytes >= _rx.ExpectedLength)
+        {
+            CompleteReceive(actions);
+        }
     }
 
-    private void OnRxCF(in CanReceiveData rx, Pci pci)
+    private void OnRemoteConsecutiveFrame(in CanReceiveData rx, Pci pci, List<IsoTpAction> actions)
     {
-        if (_rx != RxState.RecvCf || _rxOwner is null) return;
-        if (_rxExpectedLength <= 0)
+        if (_rx.State != RxState.Receiving || _rx.Owner is null)
         {
-            ResetReception();
+            AbortReceiveCore();
             return;
         }
 
-        if (pci.SN != _rxNextSn)
+        // 如果此时本端正准备发 FC 或 FC 还没 echo，
+        // 对端继续发 CF，视为时序错误，直接中止本次接收
+        if (_rx.FcPending || _rx.FcAwaitingEcho)
         {
-            ResetReception();
+            AbortReceiveCore();
+            return;
+        }
+
+        if (pci.SN != _rx.NextSn)
+        {
+            AbortReceiveCore();
             return;
         }
 
         var payload = GetFramePayload(rx.CanFrame, Endpoint, pci);
-        var remaining = _rxExpectedLength - _rxReceivedBytes;
-        if (remaining <= 0)
+        var remaining = _rx.ExpectedLength - _rx.ReceivedBytes;
+        var take = Math.Min(payload.Length, remaining);
+
+        if (!Options.RxPadding && payload.Length > take)
         {
-            CompleteReception();
+            //TODO:异常处理
+            AbortReceiveCore();
             return;
         }
 
-        var take = Math.Min(payload.Length, remaining);
         if (take > 0)
         {
-            payload.Slice(0, take).CopyTo(_rxOwner.Memory.Span.Slice(_rxReceivedBytes));
-            _rxReceivedBytes += take;
+            payload.Slice(0, take).CopyTo(_rx.Owner.Memory.Span.Slice(_rx.ReceivedBytes));
+            _rx.ReceivedBytes += take;
         }
 
-        _rxNextSn = (byte)((pci.SN + 1) % IsoTpConst.SN_Mod);
-        _nCr.Reset();
-
-        if (_rxBlockRemaining != int.MaxValue)
+        if (_rx.ReceivedBytes >= _rx.ExpectedLength)
         {
-            if (_rxBlockRemaining > 0)
-            {
-                _rxBlockRemaining--;
-            }
+            CompleteReceive(actions);
+            return;
+        }
 
-            if (_rxBlockRemaining <= 0 && _rxReceivedBytes < _rxExpectedLength)
+        _rx.NextSn = (byte)((_rx.NextSn + 1) % IsoTpConst.SN_Mod);
+
+        if (_rx.BlockRemaining != int.MaxValue)
+        {
+            _rx.BlockRemaining--;
+            if (_rx.BlockRemaining <= 0)
             {
                 QueueFlowControlCts();
+                _nAr.Restart();
+                actions.Add(new IsoTpAction.NotifyWorkAvailable());
+                return;
             }
         }
 
-        if (_rxReceivedBytes >= _rxExpectedLength)
-        {
-            CompleteReception();
-        }
+        _nCr.Restart();
     }
 
-    private void OnRxFC(Pci pci)
+    private void OnRemoteFlowControl(Pci pci, List<IsoTpAction> actions)
     {
-        if (_tx is not (TxState.WaitFc or TxState.WaitFcAfterBlock)) return;
+        if (_tx.State != TxState.WaitingFC || _tx.Current is null)
+        {
+            // TODO:非法时机收到 FC
+            return;
+        }
+
         switch (pci.FS)
         {
             case FlowStatus.CTS:
-                _nBs.Reset();
-                _currentStmin = pci.STmin;
-                if (TryPeekOperation(out var operation))
-                {
-                    operation.BS = pci.BS;
-                    operation.TxCount = 0;
-                    _tx = TxState.SendCf;
-                }
+                _tx.Stmin = pci.STmin;
+                _tx.BlockRemaining = pci.BS <= 0 ? int.MaxValue : pci.BS;
+                _tx.State = TxState.SendingCF;
+                _tx.AwaitingEcho = false;
+                _nCs.Restart();
+                actions.Add(new IsoTpAction.NotifyWorkAvailable());
                 break;
+
             case FlowStatus.WT:
                 _nBs.Restart();
                 break;
+
             case FlowStatus.OVFLW:
-                _tx = TxState.Failed; /* TODO: 报错 */ break;
+                FailCurrentSend(actions, new IsoTpException(
+                    IsoTpErrorCode.Remote_Overflow,
+                    "Peer reported FC.OVFLW",
+                    Endpoint));
+                break;
         }
     }
 
-    private void ResetReception()
+    private void OnEchoReceived(PciType type, List<IsoTpAction> actions)
     {
-        if (_rxOwner is not null)
+        switch (type)
         {
-            _rxOwner.Dispose();
-            _rxOwner = null;
+            case PciType.SF:
+                if (_tx.State == TxState.SendingSF && _tx.Current is not null && _tx.AwaitingEcho)
+                {
+                    var op = _tx.Current;
+                    _tx.Reset();
+                    actions.Add(new IsoTpAction.CompleteSend(op));
+                    actions.Add(new IsoTpAction.NotifyWorkAvailable());
+                }
+                break;
+
+            case PciType.FF:
+                if (_tx.State == TxState.SendingFF && _tx.Current is not null && _tx.AwaitingEcho)
+                {
+                    _tx.AwaitingEcho = false;
+                    _tx.State = TxState.WaitingFC;
+                    _nBs.Restart();
+                }
+                break;
+
+            case PciType.CF:
+                if (_tx.State == TxState.SendingCF && _tx.Current is not null && _tx.AwaitingEcho)
+                {
+                    _tx.AwaitingEcho = false;
+
+                    if (_tx.Offset >= _tx.Current.Length)
+                    {
+                        var op = _tx.Current;
+                        _tx.Reset();
+                        actions.Add(new IsoTpAction.CompleteSend(op));
+                        actions.Add(new IsoTpAction.NotifyWorkAvailable());
+                        return;
+                    }
+
+                    if (_tx.BlockRemaining == 0)
+                    {
+                        _tx.State = TxState.WaitingFC;
+                        _nBs.Restart();
+                        return;
+                    }
+
+                    _nCs.Restart();
+                    actions.Add(new IsoTpAction.NotifyWorkAvailable());
+                }
+                break;
+
+            case PciType.FC:
+                if (_rx.State == RxState.Receiving && _rx.FcAwaitingEcho)
+                {
+                    _rx.FcPending = false;
+                    _rx.FcAwaitingEcho = false;
+                    _nCr.Restart();
+                }
+                break;
         }
-        _rxExpectedLength = 0;
-        _rxReceivedBytes = 0;
-        _rxNextSn = 0;
-        _rxBlockRemaining = 0;
-        _rx = RxState.Idle;
     }
 
-    private void CompleteReception()
+    private void OnOutboundSendFailed(in OutboundItem item, Exception error, List<IsoTpAction> actions)
     {
-        if (_rxOwner is null) return;
-        var owner = _rxOwner;
-        _rxOwner = null;
-        _rxExpectedLength = 0;
-        _rxReceivedBytes = 0;
-        _rxNextSn = 0;
-        _rxBlockRemaining = 0;
-        _rx = RxState.Idle;
-        EmitDatagram(owner);
-    }
-    private void QueueFlowControlCts()
-    {
-        EnqueueFC(FlowStatus.CTS);
-        var blockSize = FcPolicy.BS;
-        if (blockSize <= 0)
+        if (item.IsControlFrame)
         {
-            _rxBlockRemaining = int.MaxValue;
+            AbortReceiveCore();
             return;
         }
 
-        _rxBlockRemaining = blockSize;
+        if (item.Operation is not null && _tx.Current == item.Operation)
+        {
+            FailCurrentSend(actions, error);
+        }
+    }
+
+    private void OnTimerExpired(TimerKind kind, List<IsoTpAction> actions)
+    {
+        switch (kind)
+        {
+            case TimerKind.N_As:
+                if (_tx.Current is not null)
+                {
+                    FailCurrentSend(actions, new TimeoutException("N_As timeout"));
+                }
+                break;
+
+            case TimerKind.N_Bs:
+                if (_tx.Current is not null && _tx.State == TxState.WaitingFC)
+                {
+                    FailCurrentSend(actions, new TimeoutException("N_Bs timeout"));
+                }
+                break;
+
+            case TimerKind.N_Cs:
+                if (_tx.Current is not null && _tx.State == TxState.SendingCF && !_tx.AwaitingEcho)
+                {
+                    FailCurrentSend(actions, new TimeoutException("N_Cs timeout"));
+                }
+                break;
+
+            case TimerKind.N_Ar:
+                AbortReceiveCore();
+                break;
+
+            case TimerKind.N_Cr:
+                AbortReceiveCore();
+                break;
+        }
+    }
+
+    #endregion
+
+    #region Planner
+
+    /// <summary>
+    /// 当前如果允许发送，应该生成哪一帧
+    /// </summary>
+    private void PlanOutbound(long nowTicks, TimeSpan globalGuard, List<IsoTpAction> actions)
+    {
+        if (_readyControlFrames.Count > 0 || _readyDataFrames.Count > 0)
+            return;
+        if (_rx is { State: RxState.Receiving, FcPending: true, FcAwaitingEcho: false })
+        {
+            var frame = FrameCodec.BuildFC(
+                Endpoint,
+                _allocator,
+                FlowStatus.CTS,
+                (byte)Math.Max(FcPolicy.BS, 0),
+                FrameCodec.EncodeStmin(FcPolicy.STmin),
+                padding: true,
+                canfd: false);
+
+            _rx.FcAwaitingEcho = true;
+
+            actions.Add(new IsoTpAction.QueueOutbound(new OutboundItem(
+                Operation: null,
+                Endpoint: Endpoint,
+                Frame: frame,
+                Type: PciType.FC,
+                IsControlFrame: true)));
+
+            return;
+        }
+
+        EnsureActiveTx(actions);
+
+        if (_tx.Current is null)
+            return;
+
+        if (_tx.AwaitingEcho)
+            return;
+
+        switch (_tx.State)
+        {
+            case TxState.SendingSF:
+            {
+                var frame = FrameCodec.BuildSF(
+                    Endpoint,
+                    _allocator,
+                    _tx.Current.Payload.Span,
+                    _tx.Current.Padding,
+                    _tx.Current.CanFd);
+
+                _tx.AwaitingEcho = true;
+                _nAs.Restart();
+
+                actions.Add(new IsoTpAction.QueueOutbound(new OutboundItem(
+                    _tx.Current,
+                    Endpoint: Endpoint,
+                    frame,
+                    PciType.SF,
+                    IsControlFrame: false)));
+
+                return;
+            }
+
+            case TxState.SendingFF:
+            {
+                var frame = FrameCodec.BuildFF(
+                    Endpoint,
+                    _allocator,
+                    _tx.Current.Length,
+                    _tx.Current.Payload.Span,
+                    _tx.Current.CanFd);
+
+                _tx.AwaitingEcho = true;
+                _nAs.Restart();
+
+                actions.Add(new IsoTpAction.QueueOutbound(new OutboundItem(
+                    _tx.Current,
+                    Endpoint: Endpoint,
+                    frame,
+                    PciType.FF,
+                    IsControlFrame: false)));
+
+                return;
+            }
+
+            case TxState.SendingCF:
+            {
+                if (_tx.BlockRemaining == 0)
+                {
+                    _tx.State = TxState.WaitingFC;
+                    _nBs.Restart();
+                    return;
+                }
+
+                var wait = ComputeCfWait(nowTicks, globalGuard);
+                if (wait > TimeSpan.Zero)
+                    return;
+
+                var cfMax = CalcCfPayloadMax(_tx.Current.CanFd, Endpoint.AddrUsePayload);
+                var remaining = _tx.Current.Length - _tx.Offset;
+                var take = Math.Min(cfMax, remaining);
+
+                if (take <= 0)
+                    return;
+
+                var frame = FrameCodec.BuildCF(
+                    Endpoint,
+                    _allocator,
+                    _tx.NextSn,
+                    _tx.Current.Payload.Span.Slice(_tx.Offset, take),
+                    _tx.Current.Padding,
+                    _tx.Current.CanFd);
+
+                _tx.Offset += take;
+                _tx.NextSn = (byte)((_tx.NextSn + 1) % IsoTpConst.SN_Mod);
+
+                if (_tx.BlockRemaining != int.MaxValue)
+                    _tx.BlockRemaining--;
+
+                _tx.AwaitingEcho = true;
+                _nAs.Restart();
+
+                actions.Add(new IsoTpAction.QueueOutbound(new OutboundItem(
+                    _tx.Current,
+                    Endpoint: Endpoint,
+                    frame,
+                    PciType.CF,
+                    IsControlFrame: false)));
+
+                return;
+            }
+        }
+    }
+
+    private void EnsureActiveTx(List<IsoTpAction> actions)
+    {
+        if (_tx.Current is not null || _tx.State != TxState.Idle)
+            return;
+
+        while (_txPending.Count > 0)
+        {
+            var op = _txPending.Dequeue();
+
+            if (op.IsCanceled)
+            {
+                op.Dispose();
+                continue;
+            }
+
+            _tx.Current = op;
+            _tx.AwaitingEcho = false;
+            _tx.NextSn = 1;
+            _tx.LastCfTicks = 0;
+            _tx.Stmin = TimeSpan.Zero;
+
+            var sfMax = CalcSfPayloadMax(op.CanFd, Endpoint.AddrUsePayload);
+            if (op.Length <= sfMax)
+            {
+                _tx.Offset = op.Length;
+                _tx.BlockRemaining = 0;
+                _tx.State = TxState.SendingSF;
+            }
+            else
+            {
+                var ffPayload = CalcFfPayloadMax(op.CanFd, Endpoint.AddrUsePayload, op.Length);
+                _tx.Offset = Math.Min(ffPayload, op.Length);
+                _tx.BlockRemaining = 0;
+                _tx.State = TxState.SendingFF;
+            }
+
+            actions.Add(new IsoTpAction.NotifyWorkAvailable());
+            return;
+        }
+    }
+
+    #endregion
+
+    #region Executor
+
+    private void Execute(IEnumerable<IsoTpAction> actions)
+    {
+        foreach (var action in actions)
+        {
+            switch (action)
+            {
+                case IsoTpAction.NotifyWorkAvailable:
+                    OnWorkAvailable?.Invoke();
+                    break;
+
+                case IsoTpAction.QueueOutbound e:
+                    if (e.Item.IsControlFrame)
+                        _readyControlFrames.Enqueue(e.Item);
+                    else
+                        _readyDataFrames.Enqueue(e.Item);
+                    break;
+
+                case IsoTpAction.CompleteSend e:
+                    e.Operation.Tcs.TrySetResult(true);
+                    e.Operation.Dispose();
+                    break;
+
+                case IsoTpAction.FailSend e:
+                    if (e.Operation is not null)
+                    {
+                        e.Operation.Tcs.TrySetException(e.Error);
+                        e.Operation.Dispose();
+                    }
+                    break;
+
+                case IsoTpAction.EmitDatagram e:
+                    EmitDatagram(e.Owner);
+                    break;
+
+                case IsoTpAction.AbortReceive:
+                    AbortReceiveCore();
+                    break;
+            }
+        }
+    }
+
+    #endregion
+
+    #region Helpers
+
+    private void CancelOperation(TxOperation op)
+    {
+        lock (_gate)
+        {
+            if (op.IsCanceled) return;
+
+            op.MarkCanceled();
+
+            if (_tx.Current == op)
+            {
+                List<IsoTpAction> actions = new(2);
+                FailCurrentSend(actions, new OperationCanceledException("User canceled send"));
+                Execute(actions);
+            }
+        }
+    }
+
+    private void FailCurrentSend(List<IsoTpAction> actions, Exception error)
+    {
+        var op = _tx.Current;
+        _tx.Reset();
+
+        if (op is not null)
+            actions.Add(new IsoTpAction.FailSend(op, error));
+
+        actions.Add(new IsoTpAction.NotifyWorkAvailable());
+    }
+
+    private void QueueFlowControlCts()
+    {
+        _rx.FcPending = true;
+        _rx.FcAwaitingEcho = false;
+
+        var bs = Math.Max(FcPolicy.BS, 0);
+        _rx.BlockRemaining = bs == 0 ? int.MaxValue : bs;
+    }
+
+    private void CompleteReceive(List<IsoTpAction> actions)
+    {
+        if (_rx.Owner is null)
+        {
+            AbortReceiveCore();
+            return;
+        }
+
+        var owner = _rx.Owner;
+
+        _rx.Owner = null;
+        _rx.State = RxState.Idle;
+        _rx.ExpectedLength = 0;
+        _rx.ReceivedBytes = 0;
+        _rx.NextSn = 0;
+        _rx.BlockRemaining = 0;
+        _rx.FcPending = false;
+        _rx.FcAwaitingEcho = false;
+
+        actions.Add(new IsoTpAction.EmitDatagram(owner));
+    }
+
+    private void AbortReceiveCore()
+    {
+        _rx.Reset();
     }
 
     private void EmitDatagram(IMemoryOwner<byte> owner)
@@ -413,27 +1099,44 @@ internal sealed class IsoTpChannelCore : IDisposable
             datagram.Dispose();
             return;
         }
+
         handler(this, datagram);
+    }
+
+    private TimeSpan ComputeWaitTime(long nowTicks, TimeSpan globalGuard)
+    {
+        if (_tx.Current is null || _tx.State != TxState.SendingCF || _tx.AwaitingEcho)
+            return TimeSpan.MaxValue;
+
+        return ComputeCfWait(nowTicks, globalGuard);
+    }
+
+    private TimeSpan ComputeCfWait(long nowTicks, TimeSpan globalGuard)
+    {
+        var interval = globalGuard > _tx.Stmin ? globalGuard : _tx.Stmin;
+        if (interval <= TimeSpan.Zero || _tx.LastCfTicks == 0)
+            return TimeSpan.Zero;
+
+        var elapsed = TimeSpan.FromSeconds((nowTicks - _tx.LastCfTicks) / (double)Stopwatch.Frequency);
+        return elapsed >= interval ? TimeSpan.Zero : interval - elapsed;
     }
 
     private static ReadOnlySpan<byte> GetFramePayload(in CanFrame frame, IsoTpEndpoint endpoint, Pci pci)
     {
         var start = ComputePayloadStart(frame, endpoint, pci);
         if (start >= frame.Data.Length)
-        {
             return ReadOnlySpan<byte>.Empty;
-        }
         return frame.Data.Span.Slice(start);
     }
 
     private static int ComputePayloadStart(in CanFrame frame, IsoTpEndpoint endpoint, Pci pci)
     {
-        var baseOffset = endpoint.UsePayload ? 1 : 0;
+        var baseOffset = endpoint.AddrUsePayload ? 1 : 0;
         var dataLen = frame.Data.Length;
+
         if (baseOffset >= dataLen)
-        {
             return dataLen;
-        }
+
         return pci.Type switch
         {
             PciType.SF => baseOffset + (NeedsExtendedSfHeader(frame, baseOffset) ? 2 : 1),
@@ -460,111 +1163,67 @@ internal sealed class IsoTpChannelCore : IDisposable
                data[baseOffset + 1] == 0;
     }
 
-    public bool IsReadyToSendData(long nowTicks, TimeSpan? globalGuard)
+    private static int CalcSfPayloadMax(bool canFd, bool addrInPayload)
     {
-        if (_pendingOperations.IsEmpty) return false;
-        if (_tx is TxState.WaitFc or TxState.WaitFcAfterBlock or TxState.Failed) return false;
-        if (_tx == TxState.SendCf)
-        {
-            var guard = globalGuard ?? TimeSpan.Zero;
-            var interval = guard > _currentStmin ? guard : _currentStmin;
-            if (interval <= TimeSpan.Zero || _lastCfTicks == 0) return true;
-            var elapsed = TimeSpan.FromSeconds((nowTicks - _lastCfTicks) / (double)Stopwatch.Frequency);
-            return elapsed >= interval;
-        }
-        return true;
+        var baseOffset = addrInPayload ? 1 : 0;
+
+        if (!canFd)
+            return 8 - baseOffset - 1;
+
+        // CAN FD 单帧建议统一按扩展 SF header 算，
+        // 这样 payload 上限就是 64 - addr - 2
+        return 64 - baseOffset - 2;
     }
 
-    public Task<bool> SendAsync(ReadOnlySpan<byte> data, bool padding, bool canFd, CancellationToken ct)
+    private static int CalcFfPayloadMax(bool canFd, bool addrInPayload, int totalPayloadLength)
     {
-        if (_tx != TxState.Idle)
-        {
-            return Task.FromException<bool>(new IsoTpException(IsoTpErrorCode.Busy, "Channel busy", Endpoint));
-        }
+        var baseOffset = addrInPayload ? 1 : 0;
 
-        var operation = new TxOperation(Endpoint.TxId, Endpoint.TargetAddress);
-        operation.Ctr = ct.Register(() => OnTxFailed(operation, default, new OperationCanceledException("User canceled send")),
-            false);
-        _pendingOperations.Enqueue(operation);
+        if (!canFd)
+            return 8 - baseOffset - 2;
 
-        var sfMax = CalcSfMax(canFd, Endpoint.UsePayload);
-        if (data.Length <= sfMax)
-        {
-            operation.Enqueue(FrameCodec.BuildSF(Endpoint, _allocator, data, padding, canFd), PciType.SF);
-        }
-        else
-        {
-            operation.Enqueue(FrameCodec.BuildFF(Endpoint, _allocator, data.Length, data, canFd), PciType.FF);
-            _tx = TxState.WaitFc;
-            int index = sfMax;
-            int cfLen = CalcCfMax(canFd, Endpoint.UsePayload);
-            byte sn = 0;
-            while (index < data.Length)
-            {
-                operation.Enqueue(FrameCodec.BuildCF(Endpoint, _allocator, sn, data.Slice(index), padding, canFd),
-                    PciType.CF);
-                sn = (byte)((sn + 1) % 16);
-                index += cfLen;
-            }
-        }
-
-        return WaitSendAsync(operation.Tcs);
-
-        async Task<bool> WaitSendAsync(TaskCompletionSource<bool> tcs)
-            => await tcs.Task;
-
-        int CalcSfMax(bool fd, bool extendAddress)
-            => fd ? 62 : (extendAddress ? 6 : 7);
-
-        int CalcCfMax(bool fd, bool extendAddress)
-            => (fd ? 63 : 7) - (extendAddress ? 1 : 0);
+        // 当总长度 > 0xFFF 时，FF 要走扩展长度格式，header 为 6 字节
+        var useExtendedFfHeader = totalPayloadLength > 0xFFF;
+        return 64 - baseOffset - (useExtendedFfHeader ? 6 : 2);
     }
 
-
-    private void EnqueueFC(FlowStatus fs)
+    private static int CalcCfPayloadMax(bool canFd, bool addrInPayload)
     {
-        var bs = (byte)FcPolicy.BS;
-        var st = FrameCodec.EncodeStmin(FcPolicy.STmin);
-        var txOperation = new TxOperation(Endpoint.TxId, Endpoint.TargetAddress);
-        txOperation.Enqueue(
-            FrameCodec.BuildFC(Endpoint, _allocator, fs, bs, st, /*padding*/true,
-                /*canfd*/false),
-            PciType.FC);
-        _pendingFc.Enqueue(txOperation);
+        var baseOffset = addrInPayload ? 1 : 0;
+        return (canFd ? 64 : 8) - baseOffset - 1;
     }
 
-    public TxOperation? TryDequeueFC()
-    {
-        if (_pendingFc.TryDequeue(out var poolFrame))
-        {
-            return poolFrame;
-        }
-        return null;
-    }
-
-    public bool TryPeekOperation(out TxOperation operation)
-    {
-        return _pendingOperations.TryPeek(out operation!);
-    }
-
-    public bool TryPeekData(out CanFrame frame)
-    {
-        frame = default;
-        var re = false;
-        if (TryPeekOperation(out var txOperation))
-        {
-            re = txOperation.TryPeek(out var txF);
-            frame = txF.Frame;
-        }
-        return re;
-    }
+    #endregion
 
     public void Dispose()
     {
-        while (_pendingFc.TryDequeue(out var result))
+        lock (_gate)
         {
-            try { result.Dispose(); } catch { /*Ignored*/ }
+            while (_readyControlFrames.Count > 0)
+            {
+                var item = _readyControlFrames.Dequeue();
+                try { item.Frame.Dispose(); } catch { /* ignore */ }
+            }
+
+            while (_readyDataFrames.Count > 0)
+            {
+                var item = _readyDataFrames.Dequeue();
+                try { item.Frame.Dispose(); } catch { /* ignore */ }
+            }
+
+            while (_txPending.Count > 0)
+            {
+                var op = _txPending.Dequeue();
+                try { op.Dispose(); } catch { /* ignore */ }
+            }
+
+            if (_tx.Current is not null)
+            {
+                try { _tx.Current.Dispose(); } catch { /* ignore */ }
+            }
+
+            _tx.Reset();
+            AbortReceiveCore();
         }
-        ResetReception();
     }
 }

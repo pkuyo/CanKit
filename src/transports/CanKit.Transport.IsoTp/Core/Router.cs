@@ -1,9 +1,11 @@
+using CanKit.Abstractions.API.Can.Definitions;
 using CanKit.Abstractions.API.Common.Definitions;
 
 namespace CanKit.Transport.IsoTp.Core;
 
 internal sealed class Router
 {
+
     private readonly List<IsoTpChannelCore> _channels = new();
 
     public void Register(IsoTpChannelCore ch) => _channels.Add(ch);
@@ -23,13 +25,13 @@ internal sealed class Router
         return false;
     }
 
-    public bool Route(IsoTpChannelCore.TxOperation tx, in IsoTpChannelCore.TxFrame frame)
+    public bool Route(OutboundItem item)
     {
         foreach (var ch in _channels)
         {
-            if (ch.Match(tx))
+            if (ch.Match(item.Endpoint))
             {
-                ch.OnTx(tx, frame);
+                ch.OnFrameAccepted(item);
                 return true;
             }
         }
@@ -37,17 +39,18 @@ internal sealed class Router
         return false;
     }
 
-    public bool Route(in IsoTpChannelCore.TxOperation tx, in IsoTpChannelCore.TxFrame frame, Exception exception)
+    public bool Route(OutboundItem item, Exception exception)
     {
         foreach (var ch in _channels)
         {
-            if (ch.Match(tx))
+            if (ch.Match(item.Endpoint))
             {
-                ch.OnTxFailed(tx, frame, exception);
+                ch.OnFrameSendFailed(item, exception);
                 return true;
             }
         }
 
         return false;
     }
+
 }

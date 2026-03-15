@@ -5,7 +5,8 @@ namespace CanKit.Abstractions.API.Transport.Definitions;
 
 public class IsoTpOptions
 {
-    public bool CanPadding { get; set; }
+    public bool TxPadding { get; set; }
+    public bool RxPadding { get; set; }
     public TimeSpan? GlobalBusGuard { get; set; }
 
     public CanProtocolMode Protocol { get; set; }

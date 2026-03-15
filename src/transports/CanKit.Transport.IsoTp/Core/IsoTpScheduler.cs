@@ -5,28 +5,28 @@ using CanKit.Abstractions.API.Common;
 using CanKit.Abstractions.API.Common.Definitions;
 using CanKit.Abstractions.API.Transport;
 using CanKit.Abstractions.API.Transport.Excpetions;
+using CanKit.Core.Utils;
 using CanKit.Protocol.IsoTp.Utils;
 
 namespace CanKit.Transport.IsoTp.Core;
 
-
-internal sealed class IsoTpScheduler : IIsoTpScheduler
+/// <summary>
+/// ISOTP总线调度器
+/// </summary>
+internal sealed class IsoTpScheduler
 {
+
     private readonly ICanBus _bus;
-    private readonly bool _canEcho;
     private readonly IBusOptions _opt;
     private TimeSpan? _globalBusGuard;
     private readonly Router _router = new();
     private readonly List<IsoTpChannelCore> _channels = new();
-    private readonly List<(double score, IsoTpChannelCore ch)> _candidates = new();
-    private long _lastDataTxTicks;
-    private AsyncAutoResetEvent _txOrTimeOutEvent = new();
 
-    internal delegate void TxOperationTransmittedHandle(IsoTpChannelCore.TxOperation operation,
-        in IsoTpChannelCore.TxFrame frame);
+    private TaskCompletionSource<bool>? _waitAnyDeadline;
+    private AsyncAutoResetEvent _waitAnyTxOperation = new();
+    internal delegate void TxOperationTransmittedHandle(OutboundItem item);
 
-    internal delegate void TxOperationExceptionOccurredHandle(IsoTpChannelCore.TxOperation operation,
-        in IsoTpChannelCore.TxFrame frame, Exception exception);
+    internal delegate void TxOperationExceptionOccurredHandle(OutboundItem item, Exception exception);
 
     internal event TxOperationTransmittedHandle? TxOperationTransmitted;
 
@@ -36,7 +36,6 @@ internal sealed class IsoTpScheduler : IIsoTpScheduler
     {
         _bus = bus;
         _opt = options;
-        _canEcho = (_bus.Options.Features & CanFeature.Echo) != 0;
     }
 
     public void Register(IsoTpChannelCore ch)
@@ -53,94 +52,76 @@ internal sealed class IsoTpScheduler : IIsoTpScheduler
         RecalculateGlobalBusGuard();
     }
 
-    public void TransmitTxOperation(in IsoTpChannelCore.TxOperation operation)
+    public void TransmitTxOperation(in OutboundItem item)
     {
-        var txFrame = operation.Dequeue();
-        using var frame = txFrame.Frame;
+        using var frame = item.Frame;
         if (_bus.Transmit(frame) == 0)
         {
-            TxOperationExceptionOccurred?.Invoke(operation, txFrame, new IsoTpException(IsoTpErrorCode.BusTxRejected));
+            TxOperationExceptionOccurred?.Invoke(item, new IsoTpException(IsoTpErrorCode.BusTxRejected));
         }
         else
         {
-            TxOperationTransmitted?.Invoke(operation, txFrame);
+            TxOperationTransmitted?.Invoke(item);
         }
     }
 
-    public async Task RunAsync(CancellationToken ct)
+    public async Task TimeOutScheduler(CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            if (_channels.Count == 0)
+            {
+                _waitAnyDeadline = new TaskCompletionSource<bool>();
+                ct.Register(() => _waitAnyDeadline.TrySetResult(true));
+                await _waitAnyDeadline.Task;
+                continue;
+            }
+
+            var minExpiryTime = TimeSpan.MaxValue;
+            var now = Stopwatch.GetTimestamp();
+            foreach (var channel in _channels)
+            {
+                var tmp = channel.GetNextExpiryTime(now, _globalBusGuard);
+                minExpiryTime = tmp < minExpiryTime ? tmp : minExpiryTime;
+            }
+            await PreciseDelay.DelayAsync(minExpiryTime, ct: ct);
+        }
+    }
+
+    public async Task TxScheduler(CancellationToken ct)
     {
         _bus.FrameReceived += OnFrameReceived;
         _bus.BackgroundExceptionOccurred += OnBackgroundExceptionOccurred;
         TxOperationTransmitted += OnOperationTransmitted;
         TxOperationExceptionOccurred += OnTxExceptionOccurred;
 
-        //TODO:
-        await Task.Delay(1);
-
         while (!ct.IsCancellationRequested)
         {
-            // FC优先
-            foreach (var ch in _channels)
-            {
-                while (true)
-                {
-                    using var pf = ch.TryDequeueFC();
-                    if (pf is null)
-                        break;
-                    TransmitTxOperation(pf);
-                }
-            }
-
-
-            _candidates.Clear();
+            _waitAnyTxOperation.Reset();
             var now = Stopwatch.GetTimestamp();
+            var minTime = TimeSpan.MaxValue;
             foreach (var ch in _channels)
             {
-                if (!ch.IsReadyToSendData(now, _globalBusGuard)) continue;
-                if (!ch.TryPeekData(out var f))
-                    continue;
-                var score = Score(ch, f, now);
-                _candidates.Add((score, ch));
-            }
-
-
-            if (_candidates.Count > 0 && RespectBusGuard(now))
-            {
-                _candidates.Sort((a, b) => b.score.CompareTo(a.score));
-                var (score, ch) = _candidates[0];
-                if (ch.TryPeekOperation(out var operation))
+                TimeSpan waitTime;
+                while (ch.TryDequeueReadyFrame(now, _globalBusGuard, out OutboundItem item,out waitTime))
                 {
-                    TransmitTxOperation(operation);
-                    _lastDataTxTicks = Stopwatch.GetTimestamp();
+                    TransmitTxOperation(item);
                 }
+                minTime = minTime > waitTime ? waitTime : minTime;
             }
+            await Task.WhenAny(_waitAnyTxOperation.WaitAsync(), PreciseDelay.DelayAsync(minTime, ct: ct));
         }
     }
+    private void OnWorkAvailable() => _waitAnyTxOperation.Set();
 
-
-
-    private bool RespectBusGuard(long nowTicks)
+    private void OnOperationTransmitted(OutboundItem item)
     {
-        if (_globalBusGuard is null) return true;
-        var elapsed = TimeSpan.FromSeconds((nowTicks - _lastDataTxTicks) / (double)Stopwatch.Frequency);
-        return elapsed >= _globalBusGuard.Value;
+        _router.Route(item);
     }
 
-    private static double Score(IsoTpChannelCore ch, CanFrame f, long nowTicks)
+    private void OnTxExceptionOccurred(OutboundItem item, Exception exception)
     {
-        // TODO:优先级计算
-        return nowTicks * 1e-12;
-    }
-
-    private void OnOperationTransmitted(IsoTpChannelCore.TxOperation operation, in IsoTpChannelCore.TxFrame frame)
-    {
-        _router.Route(operation, frame);
-    }
-
-    private void OnTxExceptionOccurred(IsoTpChannelCore.TxOperation operation,
-        in IsoTpChannelCore.TxFrame frame, Exception exception)
-    {
-        _router.Route(operation, frame, exception);
+        _router.Route(item);
     }
 
     private void OnFrameReceived(object? sender, CanReceiveData e)
@@ -150,6 +131,7 @@ internal sealed class IsoTpScheduler : IIsoTpScheduler
 
     private void OnBackgroundExceptionOccurred(object? _, Exception e)
     {
+        //TODO: 异常处理
         throw new IsoTpException(IsoTpErrorCode.BackgroundException, e.Message, null, e);
     }
 
@@ -180,7 +162,19 @@ internal sealed class IsoTpScheduler : IIsoTpScheduler
     public void Dispose() => _bus.Dispose();
     public IBusRTOptionsConfigurator Options => _bus.Options;
     public BusNativeHandle NativeHandle => _bus.NativeHandle;
-    public void AddChannel(IIsoTpChannel channel) => throw new NotImplementedException();
 
-    public void RemoveChannel(IIsoTpChannel channel) => throw new NotImplementedException();
+    public void AddChannel(IsoTpChannelCore channel)
+    {
+        _channels.Add(channel);
+        channel.OnWorkAvailable += OnWorkAvailable;
+    }
+
+
+
+    public void RemoveChannel(IsoTpChannelCore channel)
+    {
+        _channels.Remove(channel);
+        channel.OnWorkAvailable -= OnWorkAvailable;
+    }
+
 }

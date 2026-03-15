@@ -13,7 +13,7 @@ using Peak.Can.Basic;
 
 namespace CanKit.Adapter.PCAN.Transport;
 
-internal class PcanIsoTpScheduler : IIsoTpScheduler
+internal class PcanIsoTpScheduler
 {
     internal delegate bool MsgReceivedHandler(in PcanIsoTp.PCanTpMsg msg);
 

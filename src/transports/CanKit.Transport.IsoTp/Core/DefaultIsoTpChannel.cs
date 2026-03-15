@@ -27,13 +27,13 @@ public sealed class DefaultIsoTpChannel : IIsoTpChannel
 
     public Task<bool> SendAsync(ReadOnlyMemory<byte> pdu, CancellationToken ct = default)
     {
-        return Core.SendAsync(pdu.Span, false, Options.Protocol == CanProtocolMode.CanFd, ct);
+        return Core.SendAsync(pdu.Span, Options.TxPadding, Options.Protocol == CanProtocolMode.CanFd, ct);
     }
 
 
     public async Task<IsoTpDatagram> RequestAsync(ReadOnlyMemory<byte> request, CancellationToken ct = default)
     {
-        await Core.SendAsync(request.Span, false, Options.Protocol == CanProtocolMode.CanFd, ct);
+        await Core.SendAsync(request.Span, Options.TxPadding, Options.Protocol == CanProtocolMode.CanFd, ct);
         throw new NotImplementedException();
     }
 
