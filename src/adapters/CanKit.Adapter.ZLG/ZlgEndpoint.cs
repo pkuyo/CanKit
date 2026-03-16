@@ -9,6 +9,8 @@ using CanKit.Abstractions.Attributes;
 using CanKit.Abstractions.SPI;
 using CanKit.Abstractions.SPI.Common;
 using CanKit.Abstractions.SPI.Registry.Core.Endpoints;
+using CanKit.Adapter.ZLG.Definitions;
+using CanKit.Adapter.ZLG.Native;
 using CanKit.Adapter.ZLG.Options;
 using CanKit.Core.Definitions;
 using CanKit.Core.Endpoints;
@@ -108,5 +110,38 @@ internal static class ZlgEndpoint
         {
             // best effort; ignore
         }
+    }
+
+    public static unsafe IEnumerable<BusEndpointInfo> Enumerate()
+    {
+        if (!ZLGCAN.ZCLOUD_IsConnected()) return [];
+        var userData = ZLGCAN.ZCLOUD_GetUserData();
+        List<BusEndpointInfo> infos = new();
+        for (ulong i = 0; i < userData->devCnt; i++)
+        {
+            var device = userData->devices[i];
+            for (var j = 0; j < device.channelCnt; j++)
+            {
+                var chn = device.channels[j];
+                infos.Add(new BusEndpointInfo()
+                {
+                    Scheme = "zlg",
+                    DeviceType = ZlgDeviceType.ZCAN_CLOUD,
+                    Endpoint = $"zlg://ZCAN_CLOUD?index={i}#ch{j}",
+                    Title = $"{device.name}-Channel{j} (ZLGCloud)",
+                    Meta =  new Dictionary<string, string>
+                    {
+                        { "type" , $"{device.type}" },
+                        { "name" , $"{device.name}" },
+                        { "serial" , $"{device.serial}" },
+                        { "devId" , $"{device.id}" },
+                        { "fwVer" , $"{device.fwVer}" },
+                        { "hwVer" , $"{device.hwVer}" },
+                        { "chnId" , $"{chn}" },
+                    }
+                });
+            }
+        }
+        return infos;
     }
 }
