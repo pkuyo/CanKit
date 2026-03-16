@@ -17,5 +17,7 @@ public class IsoTpOptions
     public TimeSpan N_Cs { get; set; }
     public TimeSpan N_Cr { get; set; }
 
+    public bool EnableAwaitEcho { get; set; }
+
     public IsoTpEndpoint Endpoint { get; set; } = new();
 }

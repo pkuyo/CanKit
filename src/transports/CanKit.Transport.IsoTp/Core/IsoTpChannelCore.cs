@@ -1,4 +1,4 @@
-﻿using System.Buffers;
+using System.Buffers;
 using System.Diagnostics;
 using CanKit.Abstractions.API.Can.Definitions;
 using CanKit.Abstractions.API.Common.Definitions;
@@ -272,6 +272,7 @@ internal sealed class IsoTpChannelCore : IDisposable
     public IsoTpOptions Options { get; }
     public RxFcPolicy FcPolicy { get; }
 
+
     public IsoTpChannelCore(
         IsoTpEndpoint endpoint,
         IsoTpOptions options,
@@ -311,9 +312,9 @@ internal sealed class IsoTpChannelCore : IDisposable
             var op = TxOperation.Create(Endpoint, _allocator, payload, padding, canFd);
             op.BindCancellation(() => CancelOperation(op), ct);
 
-            _txPending.Enqueue(op);
-
-            Execute([new IsoTpAction.NotifyWorkAvailable()]);
+            var actions = new List<IsoTpAction>(4);
+            Reduce(new IsoTpEvent.SendRequested(op), actions);
+            Execute(actions);
 
             return op.Tcs.Task;
         }
@@ -402,6 +403,12 @@ internal sealed class IsoTpChannelCore : IDisposable
                 _tx.LastCfTicks = Stopwatch.GetTimestamp();
             }
 
+            if (!Options.EnableAwaitEcho)
+            {
+                var actions = new List<IsoTpAction>(4);
+                Reduce(new IsoTpEvent.EchoReceived(item.Type), actions);
+                Execute(actions);
+            }
             item.Frame.Dispose();
         }
     }
@@ -551,7 +558,7 @@ internal sealed class IsoTpChannelCore : IDisposable
 
     private void OnRemoteSingleFrame(in CanReceiveData rx, Pci pci, List<IsoTpAction> actions)
     {
-        AbortReceiveCore();
+        actions.Add(new IsoTpAction.AbortReceive());
 
         var payload = GetFramePayload(rx.CanFrame, Endpoint, pci);
         var length = Math.Min(payload.Length, pci.Len);
@@ -564,7 +571,7 @@ internal sealed class IsoTpChannelCore : IDisposable
 
     private void OnRemoteFirstFrame(in CanReceiveData rx, Pci pci, List<IsoTpAction> actions)
     {
-        AbortReceiveCore();
+        actions.Add(new IsoTpAction.AbortReceive());
 
         var total = pci.Len;
         if (total <= 0)
@@ -600,7 +607,7 @@ internal sealed class IsoTpChannelCore : IDisposable
     {
         if (_rx.State != RxState.Receiving || _rx.Owner is null)
         {
-            AbortReceiveCore();
+            actions.Add(new IsoTpAction.AbortReceive());
             return;
         }
 
@@ -608,13 +615,13 @@ internal sealed class IsoTpChannelCore : IDisposable
         // 对端继续发 CF，视为时序错误，直接中止本次接收
         if (_rx.FcPending || _rx.FcAwaitingEcho)
         {
-            AbortReceiveCore();
+            actions.Add(new IsoTpAction.AbortReceive());
             return;
         }
 
         if (pci.SN != _rx.NextSn)
         {
-            AbortReceiveCore();
+            actions.Add(new IsoTpAction.AbortReceive());
             return;
         }
 
@@ -625,7 +632,7 @@ internal sealed class IsoTpChannelCore : IDisposable
         if (!Options.RxPadding && payload.Length > take)
         {
             //TODO:异常处理
-            AbortReceiveCore();
+            actions.Add(new IsoTpAction.AbortReceive());
             return;
         }
 
@@ -754,7 +761,7 @@ internal sealed class IsoTpChannelCore : IDisposable
     {
         if (item.IsControlFrame)
         {
-            AbortReceiveCore();
+            actions.Add(new IsoTpAction.AbortReceive());
             return;
         }
 
@@ -790,11 +797,11 @@ internal sealed class IsoTpChannelCore : IDisposable
                 break;
 
             case TimerKind.N_Ar:
-                AbortReceiveCore();
+                actions.Add(new IsoTpAction.AbortReceive());
                 break;
 
             case TimerKind.N_Cr:
-                AbortReceiveCore();
+                actions.Add(new IsoTpAction.AbortReceive());
                 break;
         }
     }
