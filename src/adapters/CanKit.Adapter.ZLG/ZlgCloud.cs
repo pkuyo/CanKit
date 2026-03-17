@@ -1,5 +1,6 @@
-﻿using System;
+using System;
 using System.Threading;
+using System.Threading.Tasks;
 using CanKit.Adapter.ZLG.Definitions;
 using CanKit.Adapter.ZLG.Diagnostics;
 using CanKit.Adapter.ZLG.Exceptions;
@@ -38,6 +39,11 @@ public class ZlgCloud : IDisposable
                 throw new ObjectDisposedException(nameof(ZlgCloud));
             return _userName;
         }
+    }
+
+    public static Task<ZlgCloud> ConnectServerAsync(ZlgServerInfo serverInfo, string userName, string password)
+    {
+        return Task<ZlgCloud>.Run(() => ConnectServerAsync(serverInfo, userName, password));
     }
 
     /// <summary>Connects to the ZLG cloud server and returns a new session  (连接到 ZLG 云服务器并返回新会话)</summary>
