@@ -72,13 +72,22 @@ internal abstract record IsoTpAction
 
     public sealed record QueueOutbound(OutboundItem Item) : IsoTpAction;
 
-    public sealed record CompleteSend(TxOperation Operation) : IsoTpAction;
-
-    public sealed record FailSend(TxOperation? Operation, Exception Error) : IsoTpAction;
-
-    public sealed record EmitDatagram(IMemoryOwner<byte> Owner) : IsoTpAction;
-
     public sealed record AbortReceive : IsoTpAction;
+
+}
+
+#endregion
+
+#region Effect
+
+internal abstract record IsoTpEffect
+{
+    public sealed record EmitDatagram(IMemoryOwner<byte> Owner) : IsoTpEffect;
+
+    public sealed record CompleteSend(TxOperation Operation) : IsoTpEffect;
+
+    public sealed record FailSend(TxOperation? Operation, Exception Error) : IsoTpEffect;
+
 }
 
 #endregion
@@ -108,6 +117,8 @@ internal sealed class TxContext
     /// <summary>最近一次成功送出 CF 的时间戳，用于 STmin</summary>
     public long LastCfTicks { get; set; }
 
+    public int Generation { get; set; }
+
     public void Reset()
     {
         State = TxState.Idle;
@@ -116,6 +127,7 @@ internal sealed class TxContext
         Offset = 0;
         NextSn = 1;
         BlockRemaining = 0;
+        Generation++;
         Stmin = TimeSpan.Zero;
         LastCfTicks = 0;
     }
@@ -142,14 +154,21 @@ internal sealed class RxContext
     /// <summary>FC 已经准备发出/已交给下层，正在等 echo</summary>
     public bool FcAwaitingEcho { get; set; }
 
-    public void Reset()
+    public int Generation { get; set; }
+
+    public void Reset(bool disposeOwner)
     {
-        Owner?.Dispose();
+        if (disposeOwner)
+        {
+            Owner?.Dispose();
+        }
+
         Owner = null;
         State = RxState.Idle;
         ExpectedLength = 0;
         ReceivedBytes = 0;
         NextSn = 0;
+        Generation++;
         BlockRemaining = 0;
         FcPending = false;
         FcAwaitingEcho = false;
@@ -237,8 +256,12 @@ internal readonly record struct OutboundItem(
     TxOperation? Operation,
     IsoTpEndpoint Endpoint,
     CanFrame Frame,
+    int Generation,
     PciType Type,
-    bool IsControlFrame);
+    bool IsControlFrame)
+{
+    public bool IsTx => Operation != null;
+}
 
 #endregion
 
@@ -307,59 +330,63 @@ internal sealed class IsoTpChannelCore : IDisposable
 
     public Task<bool> SendAsync(ReadOnlySpan<byte> payload, bool padding, bool canFd, CancellationToken ct)
     {
+        Task<bool> result;
+        var actions = new List<IsoTpAction>(2);
+        var effects = new List<IsoTpEffect>(2);
         lock (_gate)
         {
             var op = TxOperation.Create(Endpoint, _allocator, payload, padding, canFd);
             op.BindCancellation(() => CancelOperation(op), ct);
 
-            var actions = new List<IsoTpAction>(4);
-            Reduce(new IsoTpEvent.SendRequested(op), actions);
-            Execute(actions);
+            Reduce(new IsoTpEvent.SendRequested(op), actions, effects);
+            ExecuteAction(actions);
 
-            return op.Tcs.Task;
+            result = op.Tcs.Task;
         }
+        ExecuteEffect(effects);
+        return result;
     }
 
     public void OnRx(in CanReceiveData rx)
     {
+        if (!FrameCodec.TryParsePci(rx, Endpoint, out var pci))
+        {
+            //TODO:解析失败
+            return;
+        }
+        var actions = new List<IsoTpAction>(2);
+        var effects = new List<IsoTpEffect>(2);
         lock (_gate)
         {
-            if (!FrameCodec.TryParsePci(rx, Endpoint, out var pci))
-            {
-                //TODO:解析失败
-                return;
-            }
-
-            List<IsoTpAction> actions = new(4);
-
             if (rx.IsEcho)
             {
-                Reduce(new IsoTpEvent.EchoReceived(pci.Type), actions);
+                Reduce(new IsoTpEvent.EchoReceived(pci.Type), actions, effects);
             }
             else
             {
                 switch (pci.Type)
                 {
                     case PciType.SF:
-                        Reduce(new IsoTpEvent.RemoteSingleFrame(rx, pci), actions);
+                        Reduce(new IsoTpEvent.RemoteSingleFrame(rx, pci), actions, effects);
                         break;
 
                     case PciType.FF:
-                        Reduce(new IsoTpEvent.RemoteFirstFrame(rx, pci), actions);
+                        Reduce(new IsoTpEvent.RemoteFirstFrame(rx, pci), actions, effects);
                         break;
 
                     case PciType.CF:
-                        Reduce(new IsoTpEvent.RemoteConsecutiveFrame(rx, pci), actions);
+                        Reduce(new IsoTpEvent.RemoteConsecutiveFrame(rx, pci), actions, effects);
                         break;
 
                     case PciType.FC:
-                        Reduce(new IsoTpEvent.RemoteFlowControl(pci), actions);
+                        Reduce(new IsoTpEvent.RemoteFlowControl(pci), actions, effects);
                         break;
                 }
             }
 
-            Execute(actions);
+            ExecuteAction(actions);
         }
+        ExecuteEffect(effects);
     }
 
     /// <summary>
@@ -367,37 +394,73 @@ internal sealed class IsoTpChannelCore : IDisposable
     /// </summary>
     public bool TryDequeueReadyFrame(long nowTicks, TimeSpan? globalGuard, out OutboundItem item, out TimeSpan waitTime)
     {
+        List<IsoTpAction> actions = new(2);
+        List<IsoTpEffect> effects = new(2);
+        var result = false;
         lock (_gate)
         {
-            List<IsoTpAction> actions = new(2);
-            PlanOutbound(nowTicks, globalGuard ?? TimeSpan.Zero, actions);
-            Execute(actions);
-
-            if (_readyControlFrames.Count > 0)
+            DropStaleQueuedFrames();
+            do
             {
-                item = _readyControlFrames.Dequeue();
-                waitTime = TimeSpan.Zero;
-                return true;
-            }
+                PlanOutbound(nowTicks, globalGuard ?? TimeSpan.Zero, actions, effects);
+                ExecuteAction(actions);
 
-            if (_readyDataFrames.Count > 0)
-            {
-                item = _readyDataFrames.Dequeue();
-                waitTime = TimeSpan.Zero;
-                return true;
-            }
+                if (_readyControlFrames.Count > 0)
+                {
+                    item = _readyControlFrames.Dequeue();
+                    waitTime = TimeSpan.Zero;
+                    result = true;
+                    break;
+                }
 
-            item = default;
-            waitTime = ComputeWaitTime(nowTicks, globalGuard ?? TimeSpan.Zero);
-            return false;
+                if (_readyDataFrames.Count > 0)
+                {
+                    item = _readyDataFrames.Dequeue();
+                    waitTime = TimeSpan.Zero;
+                    result = true;
+                    break;
+                }
+
+                item = default;
+                waitTime = ComputeWaitTime(nowTicks, globalGuard ?? TimeSpan.Zero);
+            } while (false);
+        }
+        ExecuteEffect(effects);
+        return result;
+    }
+
+    private void DropStaleQueuedFrames()
+    {
+        while (_readyControlFrames.Count > 0)
+        {
+            var head = _readyControlFrames.Peek();
+            if (!IsStale(head)) break;
+
+            _readyControlFrames.Dequeue().Frame.Dispose();
+        }
+
+        while (_readyDataFrames.Count > 0)
+        {
+            var head = _readyDataFrames.Peek();
+            if (!IsStale(head)) break;
+
+            _readyDataFrames.Dequeue().Frame.Dispose();
         }
     }
 
 
     public void OnFrameAccepted(in OutboundItem item)
     {
+        List<IsoTpEffect>? effects = null;
         lock (_gate)
         {
+            //帧发送回调时已经被触发超时中断
+            if (IsStale(item))
+            {
+                item.Frame.Dispose();
+                return;
+            }
+
             if (item.Type == PciType.CF && item.Operation is not null && _tx.Current == item.Operation)
             {
                 _tx.LastCfTicks = Stopwatch.GetTimestamp();
@@ -405,25 +468,39 @@ internal sealed class IsoTpChannelCore : IDisposable
 
             if (!Options.EnableAwaitEcho)
             {
-                var actions = new List<IsoTpAction>(4);
-                Reduce(new IsoTpEvent.EchoReceived(item.Type), actions);
-                Execute(actions);
+                var actions = new List<IsoTpAction>(2);
+                effects = new List<IsoTpEffect>(2);
+                Reduce(new IsoTpEvent.EchoReceived(item.Type), actions, effects);
+                ExecuteAction(actions);
             }
             item.Frame.Dispose();
+        }
+
+        if (effects != null)
+        {
+            ExecuteEffect(effects);
         }
     }
 
     public void OnFrameSendFailed(in OutboundItem item, Exception error)
     {
+        var actions = new List<IsoTpAction>(2);
+        var effects = new List<IsoTpEffect>(2);
         lock (_gate)
         {
+            //帧发送回调时已经被触发超时中断
+            if (IsStale(item))
+            {
+                item.Frame.Dispose();
+                return;
+            }
+
             // 发送失败时，frame 内存应释放
             item.Frame.Dispose();
-
-            List<IsoTpAction> actions = new(2);
-            Reduce(new IsoTpEvent.OutboundSendFailed(item, error), actions);
-            Execute(actions);
+            Reduce(new IsoTpEvent.OutboundSendFailed(item, error), actions, effects);
+            ExecuteAction(actions);
         }
+        ExecuteEffect(effects);
     }
 
     public TimeSpan GetNextExpiryTime(long nowTicks, TimeSpan? globalGuard)
@@ -475,88 +552,89 @@ internal sealed class IsoTpChannelCore : IDisposable
     /// </summary>
     public void CheckTimeouts()
     {
+        var actions = new List<IsoTpAction>(2);
+        var effects = new List<IsoTpEffect>(2);
         lock (_gate)
         {
-            List<IsoTpAction> actions = new(2);
-
             if (_tx.State == TxState.SendingSF && _nAs.Remaining <= TimeSpan.Zero)
-                Reduce(new IsoTpEvent.TimerExpired(TimerKind.N_As), actions);
+                Reduce(new IsoTpEvent.TimerExpired(TimerKind.N_As), actions, effects);
 
             if (_tx.State == TxState.SendingFF && _nAs.Remaining <= TimeSpan.Zero)
-                Reduce(new IsoTpEvent.TimerExpired(TimerKind.N_As), actions);
+                Reduce(new IsoTpEvent.TimerExpired(TimerKind.N_As), actions, effects);
 
             if (_tx.State == TxState.WaitingFC && _nBs.Remaining <= TimeSpan.Zero)
-                Reduce(new IsoTpEvent.TimerExpired(TimerKind.N_Bs), actions);
+                Reduce(new IsoTpEvent.TimerExpired(TimerKind.N_Bs), actions, effects);
 
             if (_tx.State == TxState.SendingCF)
             {
                 if (_tx.AwaitingEcho && _nAs.Remaining <= TimeSpan.Zero)
-                    Reduce(new IsoTpEvent.TimerExpired(TimerKind.N_As), actions);
+                    Reduce(new IsoTpEvent.TimerExpired(TimerKind.N_As), actions, effects);
                 else if (!_tx.AwaitingEcho && _nCs.Remaining <= TimeSpan.Zero)
-                    Reduce(new IsoTpEvent.TimerExpired(TimerKind.N_Cs), actions);
+                    Reduce(new IsoTpEvent.TimerExpired(TimerKind.N_Cs), actions, effects);
             }
 
             if (_rx.State == RxState.Receiving)
             {
                 if ((_rx.FcPending || _rx.FcAwaitingEcho) && _nAr.Remaining <= TimeSpan.Zero)
-                    Reduce(new IsoTpEvent.TimerExpired(TimerKind.N_Ar), actions);
+                    Reduce(new IsoTpEvent.TimerExpired(TimerKind.N_Ar), actions, effects);
                 else if (!_rx.FcPending && !_rx.FcAwaitingEcho && _nCr.Remaining <= TimeSpan.Zero)
-                    Reduce(new IsoTpEvent.TimerExpired(TimerKind.N_Cr), actions);
+                    Reduce(new IsoTpEvent.TimerExpired(TimerKind.N_Cr), actions, effects);
             }
 
-            Execute(actions);
+            ExecuteAction(actions);
         }
+        ExecuteEffect(effects);
     }
 
     #endregion
 
     #region Reducer
 
-    private void Reduce(IsoTpEvent ev, List<IsoTpAction> actions)
+    private void Reduce(IsoTpEvent ev, List<IsoTpAction> actions, List<IsoTpEffect> effects)
     {
         switch (ev)
         {
             case IsoTpEvent.SendRequested e:
-                OnSendRequested(e.Operation, actions);
+                OnSendRequested(e.Operation, actions, effects);
                 break;
 
             case IsoTpEvent.RemoteSingleFrame e:
-                OnRemoteSingleFrame(e.Rx, e.Pci, actions);
+                OnRemoteSingleFrame(e.Rx, e.Pci, actions, effects);
                 break;
 
             case IsoTpEvent.RemoteFirstFrame e:
-                OnRemoteFirstFrame(e.Rx, e.Pci, actions);
+                OnRemoteFirstFrame(e.Rx, e.Pci, actions, effects);
                 break;
 
             case IsoTpEvent.RemoteConsecutiveFrame e:
-                OnRemoteConsecutiveFrame(e.Rx, e.Pci, actions);
+                OnRemoteConsecutiveFrame(e.Rx, e.Pci, actions, effects);
                 break;
 
             case IsoTpEvent.RemoteFlowControl e:
-                OnRemoteFlowControl(e.Pci, actions);
+                OnRemoteFlowControl(e.Pci, actions, effects);
                 break;
 
             case IsoTpEvent.EchoReceived e:
-                OnEchoReceived(e.Type, actions);
+                OnEchoReceived(e.Type, actions, effects);
                 break;
 
             case IsoTpEvent.OutboundSendFailed e:
-                OnOutboundSendFailed(e.Item, e.Error, actions);
+                OnOutboundSendFailed(e.Item, e.Error, actions, effects);
                 break;
 
             case IsoTpEvent.TimerExpired e:
-                OnTimerExpired(e.Kind, actions);
+                OnTimerExpired(e.Kind, actions, effects);
                 break;
         }
     }
 
-    private void OnSendRequested(TxOperation operation, List<IsoTpAction> actions)
+    private void OnSendRequested(TxOperation operation, List<IsoTpAction> actions, List<IsoTpEffect> effects)
     {
         _txPending.Enqueue(operation);
         actions.Add(new IsoTpAction.NotifyWorkAvailable());
     }
 
-    private void OnRemoteSingleFrame(in CanReceiveData rx, Pci pci, List<IsoTpAction> actions)
+    private void OnRemoteSingleFrame(in CanReceiveData rx, Pci pci, List<IsoTpAction> actions, List<IsoTpEffect> effects)
     {
         actions.Add(new IsoTpAction.AbortReceive());
 
@@ -566,10 +644,10 @@ internal sealed class IsoTpChannelCore : IDisposable
 
         var owner = _allocator.Rent(length);
         payload.Slice(0, length).CopyTo(owner.Memory.Span);
-        actions.Add(new IsoTpAction.EmitDatagram(owner));
+        effects.Add(new IsoTpEffect.EmitDatagram(owner));
     }
 
-    private void OnRemoteFirstFrame(in CanReceiveData rx, Pci pci, List<IsoTpAction> actions)
+    private void OnRemoteFirstFrame(in CanReceiveData rx, Pci pci, List<IsoTpAction> actions, List<IsoTpEffect> effects)
     {
         actions.Add(new IsoTpAction.AbortReceive());
 
@@ -599,11 +677,11 @@ internal sealed class IsoTpChannelCore : IDisposable
 
         if (_rx.ReceivedBytes >= _rx.ExpectedLength)
         {
-            CompleteReceive(actions);
+            CompleteReceive(effects);
         }
     }
 
-    private void OnRemoteConsecutiveFrame(in CanReceiveData rx, Pci pci, List<IsoTpAction> actions)
+    private void OnRemoteConsecutiveFrame(in CanReceiveData rx, Pci pci, List<IsoTpAction> actions, List<IsoTpEffect> effects)
     {
         if (_rx.State != RxState.Receiving || _rx.Owner is null)
         {
@@ -644,7 +722,7 @@ internal sealed class IsoTpChannelCore : IDisposable
 
         if (_rx.ReceivedBytes >= _rx.ExpectedLength)
         {
-            CompleteReceive(actions);
+            CompleteReceive(effects);
             return;
         }
 
@@ -665,7 +743,7 @@ internal sealed class IsoTpChannelCore : IDisposable
         _nCr.Restart();
     }
 
-    private void OnRemoteFlowControl(Pci pci, List<IsoTpAction> actions)
+    private void OnRemoteFlowControl(Pci pci, List<IsoTpAction> actions, List<IsoTpEffect> effects)
     {
         if (_tx.State != TxState.WaitingFC || _tx.Current is null)
         {
@@ -689,7 +767,7 @@ internal sealed class IsoTpChannelCore : IDisposable
                 break;
 
             case FlowStatus.OVFLW:
-                FailCurrentSend(actions, new IsoTpException(
+                FailCurrentSend(actions, effects, new IsoTpException(
                     IsoTpErrorCode.Remote_Overflow,
                     "Peer reported FC.OVFLW",
                     Endpoint));
@@ -697,7 +775,7 @@ internal sealed class IsoTpChannelCore : IDisposable
         }
     }
 
-    private void OnEchoReceived(PciType type, List<IsoTpAction> actions)
+    private void OnEchoReceived(PciType type, List<IsoTpAction> actions, List<IsoTpEffect> effects)
     {
         switch (type)
         {
@@ -706,7 +784,7 @@ internal sealed class IsoTpChannelCore : IDisposable
                 {
                     var op = _tx.Current;
                     _tx.Reset();
-                    actions.Add(new IsoTpAction.CompleteSend(op));
+                    effects.Add(new IsoTpEffect.CompleteSend(op));
                     actions.Add(new IsoTpAction.NotifyWorkAvailable());
                 }
                 break;
@@ -729,7 +807,7 @@ internal sealed class IsoTpChannelCore : IDisposable
                     {
                         var op = _tx.Current;
                         _tx.Reset();
-                        actions.Add(new IsoTpAction.CompleteSend(op));
+                        effects.Add(new IsoTpEffect.CompleteSend(op));
                         actions.Add(new IsoTpAction.NotifyWorkAvailable());
                         return;
                     }
@@ -757,7 +835,7 @@ internal sealed class IsoTpChannelCore : IDisposable
         }
     }
 
-    private void OnOutboundSendFailed(in OutboundItem item, Exception error, List<IsoTpAction> actions)
+    private void OnOutboundSendFailed(in OutboundItem item, Exception error, List<IsoTpAction> actions, List<IsoTpEffect> effects)
     {
         if (item.IsControlFrame)
         {
@@ -767,32 +845,32 @@ internal sealed class IsoTpChannelCore : IDisposable
 
         if (item.Operation is not null && _tx.Current == item.Operation)
         {
-            FailCurrentSend(actions, error);
+            FailCurrentSend(actions, effects, error);
         }
     }
 
-    private void OnTimerExpired(TimerKind kind, List<IsoTpAction> actions)
+    private void OnTimerExpired(TimerKind kind, List<IsoTpAction> actions, List<IsoTpEffect> effects)
     {
         switch (kind)
         {
             case TimerKind.N_As:
                 if (_tx.Current is not null)
                 {
-                    FailCurrentSend(actions, new TimeoutException("N_As timeout"));
+                    FailCurrentSend(actions, effects, new TimeoutException("N_As timeout"));
                 }
                 break;
 
             case TimerKind.N_Bs:
                 if (_tx.Current is not null && _tx.State == TxState.WaitingFC)
                 {
-                    FailCurrentSend(actions, new TimeoutException("N_Bs timeout"));
+                    FailCurrentSend(actions, effects, new TimeoutException("N_Bs timeout"));
                 }
                 break;
 
             case TimerKind.N_Cs:
                 if (_tx.Current is not null && _tx.State == TxState.SendingCF && !_tx.AwaitingEcho)
                 {
-                    FailCurrentSend(actions, new TimeoutException("N_Cs timeout"));
+                    FailCurrentSend(actions, effects, new TimeoutException("N_Cs timeout"));
                 }
                 break;
 
@@ -813,7 +891,7 @@ internal sealed class IsoTpChannelCore : IDisposable
     /// <summary>
     /// 当前如果允许发送，应该生成哪一帧
     /// </summary>
-    private void PlanOutbound(long nowTicks, TimeSpan globalGuard, List<IsoTpAction> actions)
+    private void PlanOutbound(long nowTicks, TimeSpan globalGuard, List<IsoTpAction> actions, List<IsoTpEffect> effects)
     {
         if (_readyControlFrames.Count > 0 || _readyDataFrames.Count > 0)
             return;
@@ -834,6 +912,7 @@ internal sealed class IsoTpChannelCore : IDisposable
                 Operation: null,
                 Endpoint: Endpoint,
                 Frame: frame,
+                Generation: _rx.Generation,
                 Type: PciType.FC,
                 IsControlFrame: true)));
 
@@ -851,95 +930,98 @@ internal sealed class IsoTpChannelCore : IDisposable
         switch (_tx.State)
         {
             case TxState.SendingSF:
-            {
-                var frame = FrameCodec.BuildSF(
-                    Endpoint,
-                    _allocator,
-                    _tx.Current.Payload.Span,
-                    _tx.Current.Padding,
-                    _tx.Current.CanFd);
-
-                _tx.AwaitingEcho = true;
-                _nAs.Restart();
-
-                actions.Add(new IsoTpAction.QueueOutbound(new OutboundItem(
-                    _tx.Current,
-                    Endpoint: Endpoint,
-                    frame,
-                    PciType.SF,
-                    IsControlFrame: false)));
-
-                return;
-            }
-
-            case TxState.SendingFF:
-            {
-                var frame = FrameCodec.BuildFF(
-                    Endpoint,
-                    _allocator,
-                    _tx.Current.Length,
-                    _tx.Current.Payload.Span,
-                    _tx.Current.CanFd);
-
-                _tx.AwaitingEcho = true;
-                _nAs.Restart();
-
-                actions.Add(new IsoTpAction.QueueOutbound(new OutboundItem(
-                    _tx.Current,
-                    Endpoint: Endpoint,
-                    frame,
-                    PciType.FF,
-                    IsControlFrame: false)));
-
-                return;
-            }
-
-            case TxState.SendingCF:
-            {
-                if (_tx.BlockRemaining == 0)
                 {
-                    _tx.State = TxState.WaitingFC;
-                    _nBs.Restart();
+                    var frame = FrameCodec.BuildSF(
+                        Endpoint,
+                        _allocator,
+                        _tx.Current.Payload.Span,
+                        _tx.Current.Padding,
+                        _tx.Current.CanFd);
+
+                    _tx.AwaitingEcho = true;
+                    _nAs.Restart();
+
+                    actions.Add(new IsoTpAction.QueueOutbound(new OutboundItem(
+                        _tx.Current,
+                        Endpoint: Endpoint,
+                        Frame: frame,
+                        Generation: _tx.Generation,
+                        PciType.SF,
+                        IsControlFrame: false)));
+
                     return;
                 }
 
-                var wait = ComputeCfWait(nowTicks, globalGuard);
-                if (wait > TimeSpan.Zero)
+            case TxState.SendingFF:
+                {
+                    var frame = FrameCodec.BuildFF(
+                        Endpoint,
+                        _allocator,
+                        _tx.Current.Length,
+                        _tx.Current.Payload.Span,
+                        _tx.Current.CanFd);
+
+                    _tx.AwaitingEcho = true;
+                    _nAs.Restart();
+
+                    actions.Add(new IsoTpAction.QueueOutbound(new OutboundItem(
+                        _tx.Current,
+                        Endpoint: Endpoint,
+                        Frame: frame,
+                        Generation: _tx.Generation,
+                        PciType.FF,
+                        IsControlFrame: false)));
+
                     return;
+                }
 
-                var cfMax = CalcCfPayloadMax(_tx.Current.CanFd, Endpoint.AddrUsePayload);
-                var remaining = _tx.Current.Length - _tx.Offset;
-                var take = Math.Min(cfMax, remaining);
+            case TxState.SendingCF:
+                {
+                    if (_tx.BlockRemaining == 0)
+                    {
+                        _tx.State = TxState.WaitingFC;
+                        _nBs.Restart();
+                        return;
+                    }
 
-                if (take <= 0)
+                    var wait = ComputeCfWait(nowTicks, globalGuard);
+                    if (wait > TimeSpan.Zero)
+                        return;
+
+                    var cfMax = CalcCfPayloadMax(_tx.Current.CanFd, Endpoint.AddrUsePayload);
+                    var remaining = _tx.Current.Length - _tx.Offset;
+                    var take = Math.Min(cfMax, remaining);
+
+                    if (take <= 0)
+                        return;
+
+                    var frame = FrameCodec.BuildCF(
+                        Endpoint,
+                        _allocator,
+                        _tx.NextSn,
+                        _tx.Current.Payload.Span.Slice(_tx.Offset, take),
+                        _tx.Current.Padding,
+                        _tx.Current.CanFd);
+
+                    _tx.Offset += take;
+                    _tx.NextSn = (byte)((_tx.NextSn + 1) % IsoTpConst.SN_Mod);
+
+                    if (_tx.BlockRemaining != int.MaxValue)
+                        _tx.BlockRemaining--;
+
+                    _tx.AwaitingEcho = true;
+                    _nAs.Restart();
+
+                    actions.Add(new IsoTpAction.QueueOutbound(new OutboundItem(
+                        _tx.Current,
+                        Endpoint: Endpoint,
+                        Frame: frame,
+                        Generation: _tx.Generation,
+                        PciType.CF,
+                        IsControlFrame: false)));
+
                     return;
-
-                var frame = FrameCodec.BuildCF(
-                    Endpoint,
-                    _allocator,
-                    _tx.NextSn,
-                    _tx.Current.Payload.Span.Slice(_tx.Offset, take),
-                    _tx.Current.Padding,
-                    _tx.Current.CanFd);
-
-                _tx.Offset += take;
-                _tx.NextSn = (byte)((_tx.NextSn + 1) % IsoTpConst.SN_Mod);
-
-                if (_tx.BlockRemaining != int.MaxValue)
-                    _tx.BlockRemaining--;
-
-                _tx.AwaitingEcho = true;
-                _nAs.Restart();
-
-                actions.Add(new IsoTpAction.QueueOutbound(new OutboundItem(
-                    _tx.Current,
-                    Endpoint: Endpoint,
-                    frame,
-                    PciType.CF,
-                    IsControlFrame: false)));
-
-                return;
-            }
+                }
         }
     }
 
@@ -988,7 +1070,7 @@ internal sealed class IsoTpChannelCore : IDisposable
 
     #region Executor
 
-    private void Execute(IEnumerable<IsoTpAction> actions)
+    private void ExecuteAction(IEnumerable<IsoTpAction> actions)
     {
         foreach (var action in actions)
         {
@@ -1004,13 +1086,25 @@ internal sealed class IsoTpChannelCore : IDisposable
                     else
                         _readyDataFrames.Enqueue(e.Item);
                     break;
+                case IsoTpAction.AbortReceive:
+                    AbortReceiveCore();
+                    break;
+            }
+        }
+    }
 
-                case IsoTpAction.CompleteSend e:
+    private void ExecuteEffect(IEnumerable<IsoTpEffect> effects)
+    {
+        foreach (var effect in effects)
+        {
+            switch (effect)
+            {
+                case IsoTpEffect.CompleteSend e:
                     e.Operation.Tcs.TrySetResult(true);
                     e.Operation.Dispose();
                     break;
 
-                case IsoTpAction.FailSend e:
+                case IsoTpEffect.FailSend e:
                     if (e.Operation is not null)
                     {
                         e.Operation.Tcs.TrySetException(e.Error);
@@ -1018,12 +1112,8 @@ internal sealed class IsoTpChannelCore : IDisposable
                     }
                     break;
 
-                case IsoTpAction.EmitDatagram e:
+                case IsoTpEffect.EmitDatagram e:
                     EmitDatagram(e.Owner);
-                    break;
-
-                case IsoTpAction.AbortReceive:
-                    AbortReceiveCore();
                     break;
             }
         }
@@ -1035,6 +1125,7 @@ internal sealed class IsoTpChannelCore : IDisposable
 
     private void CancelOperation(TxOperation op)
     {
+        List<IsoTpEffect>? effects = null;
         lock (_gate)
         {
             if (op.IsCanceled) return;
@@ -1043,20 +1134,26 @@ internal sealed class IsoTpChannelCore : IDisposable
 
             if (_tx.Current == op)
             {
-                List<IsoTpAction> actions = new(2);
-                FailCurrentSend(actions, new OperationCanceledException("User canceled send"));
-                Execute(actions);
+                List<IsoTpAction> actions = new(1);
+                effects = new(1);
+                FailCurrentSend(actions, effects, new OperationCanceledException("User canceled send"));
+                ExecuteAction(actions);
             }
+        }
+
+        if (effects != null)
+        {
+            ExecuteEffect(effects);
         }
     }
 
-    private void FailCurrentSend(List<IsoTpAction> actions, Exception error)
+    private void FailCurrentSend(List<IsoTpAction> actions, List<IsoTpEffect> effects, Exception error)
     {
         var op = _tx.Current;
         _tx.Reset();
 
         if (op is not null)
-            actions.Add(new IsoTpAction.FailSend(op, error));
+            effects.Add(new IsoTpEffect.FailSend(op, error));
 
         actions.Add(new IsoTpAction.NotifyWorkAvailable());
     }
@@ -1070,7 +1167,7 @@ internal sealed class IsoTpChannelCore : IDisposable
         _rx.BlockRemaining = bs == 0 ? int.MaxValue : bs;
     }
 
-    private void CompleteReceive(List<IsoTpAction> actions)
+    private void CompleteReceive(List<IsoTpEffect> effects)
     {
         if (_rx.Owner is null)
         {
@@ -1079,22 +1176,14 @@ internal sealed class IsoTpChannelCore : IDisposable
         }
 
         var owner = _rx.Owner;
+        _rx.Reset(false);
 
-        _rx.Owner = null;
-        _rx.State = RxState.Idle;
-        _rx.ExpectedLength = 0;
-        _rx.ReceivedBytes = 0;
-        _rx.NextSn = 0;
-        _rx.BlockRemaining = 0;
-        _rx.FcPending = false;
-        _rx.FcAwaitingEcho = false;
-
-        actions.Add(new IsoTpAction.EmitDatagram(owner));
+        effects.Add(new IsoTpEffect.EmitDatagram(owner));
     }
 
     private void AbortReceiveCore()
     {
-        _rx.Reset();
+        _rx.Reset(true);
     }
 
     private void EmitDatagram(IMemoryOwner<byte> owner)
@@ -1201,6 +1290,15 @@ internal sealed class IsoTpChannelCore : IDisposable
     }
 
     #endregion
+
+    private bool IsStale(in OutboundItem item)
+    {
+        return item.IsTx switch
+        {
+            true => item.Generation != _tx.Generation,
+            false => item.Generation != _rx.Generation
+        };
+    }
 
     public void Dispose()
     {
