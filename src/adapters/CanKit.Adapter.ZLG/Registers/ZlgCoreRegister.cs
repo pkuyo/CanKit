@@ -36,12 +36,16 @@ internal sealed class ZlgCoreRegister : ICanRegisterFactory, ICanRegisterProvide
             list.Add(new PCIECANFD200UProvider());
             var g5 = new USBCANEProviderGroup();
             list.AddRange(g5.SupportedDeviceTypes.Select(dt => g5.Create(dt)));
+            list.Add(new ZlgCloudProvider());
             return list;
         }
     }
 
     /* -----------endpoint------------ */
 
-    public RawEndpointRegistration Endpoint => new("zlg", ZlgEndpoint.Open, ZlgEndpoint.Prepare);
+    public RawEndpointRegistration Endpoint => new("zlg", ZlgEndpoint.Open, ZlgEndpoint.Prepare)
+    {
+        Enumerate = ZlgEndpoint.Enumerate
+    };
 
 }

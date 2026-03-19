@@ -1,3 +1,4 @@
+using System;
 using CanKit.Adapter.ZLG.Definitions;
 using CanKit.Core.Exceptions;
 
@@ -32,6 +33,23 @@ namespace CanKit.Adapter.ZLG.Exceptions
         /// Channel error info for diagnostics (通道错误详情)。
         /// </summary>
         public ZlgErrorInfo? ChannelErrorInfo { get; }
+    }
+
+    /// <summary>
+    /// Thrown when connected to ZLGCloud failed (连接至ZLGCloud失败)。
+    /// </summary>
+    public sealed class ZlgCloudConnectException : CanKitException
+    {
+        /// <summary>
+        /// 连接失败的服务器信息
+        /// </summary>
+        public ZlgServerInfo Info { get; }
+
+        public ZlgCloudConnectException(ZlgServerInfo info, string message, uint? nativeErrorCode = null,
+            Exception? innerException = null) : base(CanKitErrorCode.NativeCallFailed, message, nativeErrorCode, innerException)
+        {
+            Info = info;
+        }
     }
 
     /// <summary>

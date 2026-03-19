@@ -78,6 +78,15 @@ public enum ZlgErrorFlag
 public enum ZlgFeature
 {
     None = 0x0,
+
+    /// <summary>
+    /// 合并接收
+    /// </summary>
     MergeReceive = 0x4,
+
+    /// <summary>
+    /// 适用于ZlgCloud设备，不设置波特率
+    /// </summary>
+    SkipBitRate = 0x8,
 }
 

@@ -191,6 +191,20 @@ namespace CanKit.Adapter.ZLG.Native
         [DllImport(DllName, CallingConvention = CallingConvention.StdCall, CharSet = CharSet.Ansi)]
         public static extern uint ZCAN_ReadChannelErrInfo(ZlgChannelHandle channel_handle, out ZCAN_CHANNEL_ERROR_INFO pErrInfo);
 
+        [DllImport(DllName, CallingConvention = CallingConvention.StdCall, CharSet = CharSet.Ansi)]
+        public static extern void ZCLOUD_SetServerInfo(string httpSvr, ushort httpPort, string mqttSvr, ushort mqttPort);
+
+        [DllImport(DllName, CallingConvention = CallingConvention.StdCall, CharSet = CharSet.Ansi)]
+        public static extern uint ZCLOUD_ConnectServer(string username, string password);
+
+        [DllImport(DllName, CallingConvention = CallingConvention.StdCall, CharSet = CharSet.Ansi)]
+        public static extern bool ZCLOUD_IsConnected();
+
+        [DllImport(DllName, CallingConvention = CallingConvention.StdCall, CharSet = CharSet.Ansi)]
+        public static extern uint ZCLOUD_DisconnectServer();
+
+        [DllImport(DllName, CallingConvention = CallingConvention.StdCall, CharSet = CharSet.Ansi)]
+        public static extern IntPtr ZCLOUD_GetUserData();
         #endregion
 
         #region 结构体
@@ -440,6 +454,61 @@ namespace CanKit.Adapter.ZLG.Native
 
             [MarshalAs(UnmanagedType.ByValArray, SizeConst = 4)]
             public byte[] reserved;
+        }
+
+        public const int ZCLOUD_MAX_DEVICES = 100;
+        public const int ZCLOUD_MAX_CHANNEL = 16;
+
+        [StructLayout(LayoutKind.Sequential, Pack = 1)]
+        public struct ZCLOUD_CHNINFO
+        {
+            public byte enable;  // 0:disable，1:enable
+            public byte type;    // 0:CAN，1:ISO CANFD，2:Non-ISO CANFD
+            public byte isUpload;
+            public byte isDownload;
+        }
+
+        [StructLayout(LayoutKind.Sequential, Pack = 1)]
+        public struct ZCLOUD_DEVINFO
+        {
+            public int            devIndex;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)]
+            public string           type;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)]
+            public string           id;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)]
+            public string           name;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)]
+            public string           owner;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)]
+            public string           model;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 16)]
+            public string           fwVer;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 16)]
+            public string           hwVer;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)]
+            public string           serial;
+            public int            status;  // 0:online，1:offline
+            public byte           bGpsUpload;
+            public byte           channelCnt;
+
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = ZCLOUD_MAX_CHANNEL)]
+            public ZCLOUD_CHNINFO[] channels;
+        }
+
+        [StructLayout(LayoutKind.Sequential, Pack = 1)]
+
+        public struct ZCLOUD_USER_DATA
+        {
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)]
+            public string           username;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)]
+            public string           mobile;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 16)]
+            public string           dllVer;  // cloud dll version
+            public nuint            devCnt;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = ZCLOUD_MAX_DEVICES)]
+            public ZCLOUD_DEVINFO[] devices;
         }
     }
 }

@@ -1,7 +1,10 @@
 ﻿using System;
+using System.Collections.Generic;
 using CanKit.Abstractions.SPI;
 using CanKit.Abstractions.SPI.Common;
+using CanKit.Abstractions.SPI.Registry.Core.Endpoints;
 using CanKit.Adapter.ZLG.Definitions;
+using CanKit.Adapter.ZLG.Native;
 using CanKit.Adapter.ZLG.Options;
 using CanKit.Core.Exceptions;
 using CanKit.Core.Registry;
@@ -42,5 +45,10 @@ public static class ZlgCan
         if (channel is IOwnership own)
             own.AttachOwner(lease);
         return (ZlgCanBus)channel;
+    }
+
+    public static ZlgCloud ConnectServer(ZlgServerInfo serverInfo, string userName, string password)
+    {
+        return ZlgCloud.ConnectServer(serverInfo, userName, password);
     }
 }

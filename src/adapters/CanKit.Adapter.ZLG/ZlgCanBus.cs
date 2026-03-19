@@ -348,34 +348,17 @@ namespace CanKit.Adapter.ZLG
             }
         }
 
-        public void ApplyConfig(ICanOptions options)
+        private void ApplyBitRate(ZlgBusOptions zlgOption)
         {
-            if (options is not ZlgBusOptions zlgOption)
-            {
-                throw new CanOptionTypeMismatchException(
-                    CanKitErrorCode.ChannelOptionTypeMismatch,
-                    typeof(ZlgBusOptions),
-                    options.GetType(),
-                    $"channel {Options.ChannelIndex}");
-            }
-
-            if (zlgOption.MergeReceive.HasValue && zlgOption.ZlgFeatures.HasFlag(ZlgFeature.MergeReceive))
-            {
-                ZlgErr.ThrowIfError(
-                    ZLGCAN.ZCAN_SetValue(
-                        _devicePtr,
-                        Options.ChannelIndex + "/set_device_recv_merge",
-                        zlgOption.MergeReceive.Value ? "1" : "0"),
-                    "ZCAN_SetValue(set_device_recv_merge)");
-            }
-
             if (zlgOption.ProtocolMode == CanProtocolMode.CanFd)
             {
                 ZLGCAN.ZCAN_SetValue(_devicePtr, Options.ChannelIndex + "/canfd_standard", "0");
                 var arbitrationRate = zlgOption.BitTiming.Fd?.Nominal.Bitrate
-                                  ?? throw new CanBusConfigurationException("Arbitration bitrate must be specified when configuring CAN FD timing.");
+                                      ?? throw new CanBusConfigurationException(
+                                          "Arbitration bitrate must be specified when configuring CAN FD timing.");
                 var dataRate = zlgOption.BitTiming.Fd?.Data.Bitrate
-                               ?? throw new CanBusConfigurationException("Data bitrate must be specified when configuring CAN FD timing.");
+                               ?? throw new CanBusConfigurationException(
+                                   "Data bitrate must be specified when configuring CAN FD timing.");
 
                 if (!Enum.IsDefined(typeof(ZlgBaudRate), arbitrationRate) ||
                     !Enum.IsDefined(typeof(ZlgDataDaudRate), dataRate))
@@ -427,7 +410,33 @@ namespace CanKit.Adapter.ZLG
                         "ZCAN_SetValue(baud_rate)");
                 }
             }
+        }
 
+        internal void ApplyConfig(ICanOptions options)
+        {
+            if (options is not ZlgBusOptions zlgOption)
+            {
+                throw new CanOptionTypeMismatchException(
+                    CanKitErrorCode.ChannelOptionTypeMismatch,
+                    typeof(ZlgBusOptions),
+                    options.GetType(),
+                    $"channel {Options.ChannelIndex}");
+            }
+
+            if (zlgOption.MergeReceive.HasValue && zlgOption.ZlgFeatures.HasFlag(ZlgFeature.MergeReceive))
+            {
+                ZlgErr.ThrowIfError(
+                    ZLGCAN.ZCAN_SetValue(
+                        _devicePtr,
+                        Options.ChannelIndex + "/set_device_recv_merge",
+                        zlgOption.MergeReceive.Value ? "1" : "0"),
+                    "ZCAN_SetValue(set_device_recv_merge)");
+            }
+
+            if (!zlgOption.ZlgFeatures.HasFlag(ZlgFeature.SkipBitRate))
+            {
+                ApplyBitRate(zlgOption);
+            }
 
             ZLGCAN.ZCAN_SetValue(
                 _devicePtr,

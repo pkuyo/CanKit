@@ -692,6 +692,31 @@ public static class ZLGCAN
         return dec;
     }
 
+    public static void ZCLOUD_SetServerInfo(string httpSvr, ushort httpPort, string mqttSvr, ushort mqttPort)
+    {
+
+    }
+
+    public static uint ZCLOUD_ConnectServer(string username, string password)
+    {
+        return 0;
+    }
+
+    public static bool ZCLOUD_IsConnected()
+    {
+        return false;
+    }
+
+    public static uint ZCLOUD_DisconnectServer()
+    {
+        return 0;
+    }
+
+    public static unsafe IntPtr ZCLOUD_GetUserData()
+    {
+        return  IntPtr.Zero;
+    }
+
     // ---- Structs (mirror a subset so consumers compile) ----
     [StructLayout(LayoutKind.Sequential)]
     public struct ZCAN_CHANNEL_INIT_CONFIG
@@ -893,6 +918,61 @@ public static class ZLGCAN
         public ushort nBusUsage; // *100
         public uint nFrameCount;
     }
+
+  [StructLayout(LayoutKind.Sequential, Pack = 1)]
+        public struct ZCLOUD_CHNINFO
+        {
+            public byte enable;  // 0:disable，1:enable
+            public byte type;    // 0:CAN，1:ISO CANFD，2:Non-ISO CANFD
+            public byte isUpload;
+            public byte isDownload;
+        }
+
+          public const int ZCLOUD_MAX_DEVICES = 100;
+        public const int ZCLOUD_MAX_CHANNEL = 16;
+
+        [StructLayout(LayoutKind.Sequential, Pack = 1)]
+        public struct ZCLOUD_DEVINFO
+        {
+            public int            devIndex;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)]
+            public string           type;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)]
+            public string           id;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)]
+            public string           name;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)]
+            public string           owner;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)]
+            public string           model;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 16)]
+            public string           fwVer;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 16)]
+            public string           hwVer;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)]
+            public string           serial;
+            public int            status;  // 0:online，1:offline
+            public byte           bGpsUpload;
+            public byte           channelCnt;
+
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = ZCLOUD_MAX_CHANNEL)]
+            public ZCLOUD_CHNINFO[] channels;
+        }
+
+        [StructLayout(LayoutKind.Sequential, Pack = 1)]
+
+        public struct ZCLOUD_USER_DATA
+        {
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)]
+            public string           username;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)]
+            public string           mobile;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 16)]
+            public string           dllVer;  // cloud dll version
+            public ulong         devCnt;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = ZCLOUD_MAX_DEVICES)]
+            public ZCLOUD_DEVINFO[] devices;
+        }
 }
 
 #endif
