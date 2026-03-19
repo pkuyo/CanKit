@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Runtime.InteropServices;
 using CanKit.Abstractions.API.Can;
 using CanKit.Abstractions.API.Common;
 using CanKit.Abstractions.API.Common.Definitions;
@@ -16,6 +17,7 @@ using CanKit.Core.Definitions;
 using CanKit.Core.Endpoints;
 using CanKit.Core.Exceptions;
 using CanKit.Core.Registry;
+using static CanKit.Adapter.ZLG.Native.ZLGCAN;
 
 namespace CanKit.Adapter.ZLG;
 
@@ -115,11 +117,11 @@ internal static class ZlgEndpoint
     public static unsafe IEnumerable<BusEndpointInfo> Enumerate()
     {
         if (!ZLGCAN.ZCLOUD_IsConnected()) return [];
-        var userData = ZLGCAN.ZCLOUD_GetUserData();
+        var userData = Marshal.PtrToStructure<ZCLOUD_USER_DATA>(ZLGCAN.ZCLOUD_GetUserData());
         List<BusEndpointInfo> infos = new();
-        for (ulong i = 0; i < userData->devCnt; i++)
+        for (ulong i = 0; i < userData.devCnt; i++)
         {
-            var device = userData->devices[i];
+            var device = userData.devices[i];
             for (var j = 0; j < device.channelCnt; j++)
             {
                 var chn = device.channels[j];
@@ -127,18 +129,22 @@ internal static class ZlgEndpoint
                 {
                     Scheme = "zlg",
                     DeviceType = ZlgDeviceType.ZCAN_CLOUD,
-                    Endpoint = $"zlg://ZCAN_CLOUD?index={i}#ch{j}",
+                    Endpoint = $"zlg://ZCAN_CLOUD?index={device.devIndex}#ch{j}",
                     Title = $"{device.name}-Channel{j} (ZLGCloud)",
                     Meta =  new Dictionary<string, string>
-                    {
-                        { "type" , $"{device.type}" },
-                        { "name" , $"{device.name}" },
-                        { "serial" , $"{device.serial}" },
-                        { "devId" , $"{device.id}" },
-                        { "fwVer" , $"{device.fwVer}" },
-                        { "hwVer" , $"{device.hwVer}" },
-                        { "chnId" , $"{chn}" },
-                    }
+                {
+                    { "devIndex" , $"{device.devIndex}" },
+                    { "chnIndex" , $"{j}" },
+                    { "devId" , $"{device.id}" },
+                    { "chnId" , $"{chn}" },
+                    { "devType" , $"{device.type}" },
+                    { "chnType" , $"{chn.type}" }, // 0-CAN，1-ISO CANFD，2-Non-ISO CANFD
+                    { "status" , $"{device.status}" },// 0: online, 1: offline
+                    { "name" , $"{device.name}" },
+                    { "serial" , $"{device.serial}" },
+                    { "fwVer" , $"{device.fwVer}" },
+                    { "hwVer" , $"{device.hwVer}" },
+                }
                 });
             }
         }

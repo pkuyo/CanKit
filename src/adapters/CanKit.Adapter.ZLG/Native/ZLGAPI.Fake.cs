@@ -712,9 +712,9 @@ public static class ZLGCAN
         return 0;
     }
 
-    public static unsafe  ZCLOUD_USER_DATA* ZCLOUD_GetUserData()
+    public static unsafe IntPtr ZCLOUD_GetUserData()
     {
-        return (ZCLOUD_USER_DATA*)(0);
+        return  IntPtr.Zero;
     }
 
     // ---- Structs (mirror a subset so consumers compile) ----
@@ -959,13 +959,15 @@ public static class ZLGCAN
             public ZCLOUD_CHNINFO[] channels;
         }
 
+        [StructLayout(LayoutKind.Sequential, Pack = 1)]
+
         public struct ZCLOUD_USER_DATA
         {
             [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)]
             public string           username;
             [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)]
             public string           mobile;
-            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)]
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 16)]
             public string           dllVer;  // cloud dll version
             public ulong         devCnt;
             [MarshalAs(UnmanagedType.ByValArray, SizeConst = ZCLOUD_MAX_DEVICES)]

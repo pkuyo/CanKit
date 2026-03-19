@@ -204,7 +204,7 @@ namespace CanKit.Adapter.ZLG.Native
         public static extern uint ZCLOUD_DisconnectServer();
 
         [DllImport(DllName, CallingConvention = CallingConvention.StdCall, CharSet = CharSet.Ansi)]
-        public static unsafe extern ZCLOUD_USER_DATA* ZCLOUD_GetUserData();
+        public static extern IntPtr ZCLOUD_GetUserData();
         #endregion
 
         #region 结构体
@@ -496,15 +496,17 @@ namespace CanKit.Adapter.ZLG.Native
             public ZCLOUD_CHNINFO[] channels;
         }
 
+        [StructLayout(LayoutKind.Sequential, Pack = 1)]
+
         public struct ZCLOUD_USER_DATA
         {
             [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)]
             public string           username;
             [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)]
             public string           mobile;
-            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)]
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 16)]
             public string           dllVer;  // cloud dll version
-            public ulong         devCnt;
+            public nuint            devCnt;
             [MarshalAs(UnmanagedType.ByValArray, SizeConst = ZCLOUD_MAX_DEVICES)]
             public ZCLOUD_DEVINFO[] devices;
         }
