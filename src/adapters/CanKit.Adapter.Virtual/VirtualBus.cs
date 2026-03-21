@@ -31,7 +31,6 @@ public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, IOwnership
     private Func<CanFrame, bool>? _softwareFilterPredicate;
     private bool _useSoftwareFilter;
 
-    private EventHandler<CanReceiveData>? _frameReceived;
     private EventHandler<ICanErrorInfo>? _errorOccurred;
     private IDisposable? _owner;
     private bool _disposed;
@@ -45,8 +44,8 @@ public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, IOwnership
         Options.Init((VirtualBusOptions)options);
         _options = options;
         _transceiver = transceiver;
-        var cap = Options.AsyncBufferCapacity > 0 ? Options.AsyncBufferCapacity : (int?)null;
-        _asyncRx = new AsyncFramePipe<CanReceiveData>(cap);
+        _asyncRx = new AsyncFramePipe<CanReceiveData>(Options.AsyncBufferCapacity > 0 ? Options.AsyncBufferCapacity : null,
+            static data => data.CanFrame.Dispose());
 
         _exceptionPolicy = options.ExceptionPolicy ?? CanExceptionPolicy.Default;
         _exceptions = new CanBusExceptionDispatcher(
@@ -178,23 +177,9 @@ public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, IOwnership
 
     IBusRTOptionsConfigurator ICanBus.Options => Options;
 
-    public event EventHandler<CanReceiveData>? FrameReceived
-    {
-        add
-        {
-            lock (_evtGate)
-            {
-                _frameReceived += value;
-            }
-        }
-        remove
-        {
-            lock (_evtGate)
-            {
-                _frameReceived -= value;
-            }
-        }
-    }
+    public event EventHandler<CanReceiveData>? FrameReceived;
+
+    public event EventHandler<CanReceiveDataView>? FrameObserved;
 
     public event EventHandler<ICanErrorInfo>? ErrorFrameReceived
     {
@@ -248,7 +233,7 @@ public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, IOwnership
 
         try
         {
-            var span = Volatile.Read(ref _frameReceived);
+            var span = Volatile.Read(ref FrameReceived);
             span?.Invoke(this, data);
         }
         catch (Exception e)
@@ -258,6 +243,19 @@ public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, IOwnership
                 CanExceptionSource.SubscriberCallback,
                 severity: _exceptionPolicy.SubscriberCallbackSeverity,
                 message: "Virtual FrameReceived handler threw an exception.");
+        }
+        try
+        {
+            var span = Volatile.Read(ref FrameObserved);
+            span?.Invoke(this, new CanReceiveDataView(data));
+        }
+        catch (Exception e)
+        {
+            _exceptions.Report(
+                e,
+                CanExceptionSource.SubscriberCallback,
+                severity: _exceptionPolicy.SubscriberCallbackSeverity,
+                message: "Virtual FrameObserved handler threw an exception.");
         }
         _asyncRx.Publish(data);
 

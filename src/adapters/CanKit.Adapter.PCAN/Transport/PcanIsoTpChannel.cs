@@ -26,7 +26,8 @@ public class PcanIsoTpChannel : IIsoTpChannel, IOwnership
         _scheduler = scheduler;
         Options = options;
         _scheduler.AddChannel(this);
-        _asyncRx = new AsyncFramePipe<IsoTpDatagram>(_scheduler.AsyncBufferCapacity);
+        _asyncRx = new AsyncFramePipe<IsoTpDatagram>(_scheduler.AsyncBufferCapacity,
+            static data => data.Dispose());
         _allocator = _scheduler.Options.BufferAllocator;
         _scheduler.MsgReceived += OnMsgReceived;
         _scheduler.BackgroundExceptionOccurred += OnBackgroundExceptionOccurred;

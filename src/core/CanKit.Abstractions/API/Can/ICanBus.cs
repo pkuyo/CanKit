@@ -178,9 +178,21 @@ namespace CanKit.Abstractions.API.Can
 
 
         /// <summary>
-        /// Raised when a new CAN frame is received (接收到新 CAN 帧时触发)。
+        /// Raised when a new CAN frame is received.
+        /// （在接收到新的 CAN 帧时触发。）
         /// </summary>
+        /// <remarks>
+        /// This event will be deprecated in a future version. Use <see cref="FrameObserved"/> instead.
+        /// （此事件将在未来版本中弃用，请改用 <see cref="FrameObserved"/>。）
+        /// </remarks>
+        [Obsolete("This event will be deprecated in a future version. Use FrameObserved instead.")]
         event EventHandler<CanReceiveData> FrameReceived;
+
+        /// <summary>
+        /// Raised when a new CAN frame is observed through a read-only view.
+        /// （在接收到新的 CAN 帧只读视图时触发。）
+        /// </summary>
+        event EventHandler<CanReceiveDataView> FrameObserved;
 
         /// <summary>
         /// Raised when a CAN error frame is received（接收到新的 CAN 错误帧的时候触发）。

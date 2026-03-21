@@ -49,7 +49,7 @@ namespace CanKit.Sample.PeriodicTx
             using var periodic = bus.TransmitPeriodic(frame, new PeriodicTxOptions(TimeSpan.FromMilliseconds(period), repeat));
             Console.WriteLine($"Periodic TX started: ep={endpoint} id=0x{id:X} dlc={frame.Dlc} fd={fd} brs={brs} period={period}ms count={repeat}");
 
-            bus.FrameReceived += (_, e) =>
+            bus.FrameObserved+= (_, e) =>
             {
                 Console.WriteLine(RenderRx(e));
             };
@@ -61,7 +61,7 @@ namespace CanKit.Sample.PeriodicTx
             return 0;
         }
 
-        private static string RenderRx(CanReceiveData e)
+        private static string RenderRx(CanReceiveDataView e)
         {
             var f = e.CanFrame;
             var sb = new StringBuilder();

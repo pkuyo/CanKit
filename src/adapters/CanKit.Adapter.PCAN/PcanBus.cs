@@ -22,6 +22,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IOwnership
 
     private readonly ITransceiver _transceiver;
     private EventHandler<CanReceiveData>? _frameReceived;
+    private EventHandler<CanReceiveDataView>? _frameObserved;
     private EventHandler<ICanErrorInfo>? _errorOccured;
 
     private bool _isDisposed;
@@ -43,7 +44,8 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IOwnership
         Options = new PcanBusRtConfigurator();
         Options.Init((PcanBusOptions)options);
         _transceiver = transceiver;
-        _asyncRx = new AsyncFramePipe<CanReceiveData>(Options.AsyncBufferCapacity > 0 ? Options.AsyncBufferCapacity : null);
+        _asyncRx = new AsyncFramePipe<CanReceiveData>(Options.AsyncBufferCapacity > 0 ? Options.AsyncBufferCapacity : null,
+            static data => data.CanFrame.Dispose());
 
         _handle = PcanProvider.ParseHandle(Options.ChannelName!);
         options.Capabilities = PcanProvider.QueryCapabilities(_handle, Options.Features);
@@ -335,6 +337,24 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IOwnership
         }
     }
 
+    public event EventHandler<CanReceiveDataView>? FrameObserved
+    {
+        add
+        {
+            lock (_evtGate)
+            {
+                _frameObserved += value;
+            }
+        }
+        remove
+        {
+            lock (_evtGate)
+            {
+                _frameObserved -= value;
+            }
+        }
+    }
+
     public event EventHandler<ICanErrorInfo>? ErrorFrameReceived
     {
         add
@@ -518,6 +538,19 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IOwnership
                         message: "PCAN FrameReceived handler threw an exception.");
                 }
 
+                try
+                {
+                    var evSnap = Volatile.Read(ref _frameObserved);
+                    evSnap?.Invoke(this, new CanReceiveDataView(rec));
+                }
+                catch (Exception e)
+                {
+                    _exceptions.Report(
+                        e,
+                        CanExceptionSource.SubscriberCallback,
+                        severity: _exceptionPolicy.SubscriberCallbackSeverity,
+                        message: "PCAN FrameObserved handler threw an exception.");
+                }
                 _asyncRx.Publish(rec);
             }
 

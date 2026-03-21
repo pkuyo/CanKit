@@ -53,17 +53,17 @@ namespace CanKit.Sample.Sniffer
 #if NET8_0_OR_GREATER
             await foreach (var e in bus.GetFramesAsync(cts.Token))
             {
-                LogFrame(e);
+                LogFrame(new CanReceiveDataView(e));
             }
 #else
-            bus.FrameReceived += (_, e) => LogFrame(e);
+            bus.FrameObserved += (_, e) => LogFrame(e);
             cts.Token.WaitHandle.WaitOne();
             await Task.Delay(1); //disable warning CS1998
 #endif
             return 0;
         }
 
-        private static void LogFrame(CanReceiveData e)
+        private static void LogFrame(CanReceiveDataView e)
         {
             var f = e.CanFrame;
             var sb = new StringBuilder();

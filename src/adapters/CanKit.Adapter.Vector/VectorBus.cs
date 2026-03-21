@@ -23,9 +23,10 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
     private readonly IVectorTransceiver _transceiver;
     private readonly AsyncFramePipe<CanReceiveData> _asyncRx;
     private readonly IDisposable _driverScope;
-    private CancellationTokenSource _pollCts;
+    private CancellationTokenSource? _pollCts;
 
     private EventHandler<CanReceiveData>? _frameReceived;
+    private EventHandler<CanReceiveDataView>? _frameObserved;
     private EventHandler<ICanErrorInfo>? _errorFrameReceived;
 
     private Func<CanFrame, bool>? _softwareFilterPredicate;
@@ -61,7 +62,8 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
         Options = new VectorBusRtConfigurator();
         Options.Init((VectorBusOptions)options);
         _transceiver = (IVectorTransceiver)transceiver;
-        _asyncRx = new AsyncFramePipe<CanReceiveData>(Options.AsyncBufferCapacity > 0 ? Options.AsyncBufferCapacity : null);
+        _asyncRx = new AsyncFramePipe<CanReceiveData>(Options.AsyncBufferCapacity > 0 ? Options.AsyncBufferCapacity : null,
+            static data => data.CanFrame.Dispose());
 
         var vectorOptions = (VectorBusOptions)options;
         var info = ((VectorProvider)provider).QueryChannelInfo(vectorOptions)
@@ -414,6 +416,25 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
         }
     }
 
+    public event EventHandler<CanReceiveDataView>? FrameObserved
+    {
+        add
+        {
+            ThrowIfDisposed();
+            lock (_evtGate)
+            {
+                _frameObserved += value;
+            }
+        }
+        remove
+        {
+            lock (_evtGate)
+            {
+                _frameObserved -= value;
+            }
+        }
+    }
+
     public event EventHandler<ICanErrorInfo> ErrorFrameReceived
     {
         add
@@ -452,7 +473,10 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
         finally
         {
             cts?.Dispose();
-            Interlocked.CompareExchange(ref _pollCts, null, cts);
+            if (_pollCts != null)
+            {
+                Interlocked.CompareExchange(ref _pollCts, null, cts);
+            }
         }
 
     }
@@ -534,7 +558,20 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
                                         severity: _exceptionPolicy.SubscriberCallbackSeverity,
                                         message: "Vector FrameReceived handler threw an exception.");
                                 }
-                                _frameReceived?.Invoke(this, data);
+
+                                try
+                                {
+                                    var evSnap = Volatile.Read(ref _frameObserved);
+                                    evSnap?.Invoke(this, new CanReceiveDataView(data));
+                                }
+                                catch (Exception e)
+                                {
+                                    _exceptions.Report(
+                                        e,
+                                        CanExceptionSource.SubscriberCallback,
+                                        severity: _exceptionPolicy.SubscriberCallbackSeverity,
+                                        message: "Vector FrameObserved handler threw an exception.");
+                                }
                                 _asyncRx.Publish(data);
                             }
                         }

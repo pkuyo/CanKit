@@ -55,7 +55,7 @@ namespace CanKit.Sample.QuickStartTxRx
             });
 
             // receive frames event
-            rxBus.FrameReceived += (_, e) =>
+            rxBus.FrameObserved += (_, e) =>
             {
                 var fr = e.CanFrame;
                 var sb = new StringBuilder();

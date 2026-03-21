@@ -57,7 +57,7 @@ dotnet add package CanKit.Adapter.Virtual
   - Endpoint 打开或强类型打开；支持枚举 Endpoint
   - 支持经典 CAN 2.0 与 CAN FD 帧类型
   - 同步/异步：`Transmit/Receive`、`TransmitAsync/ReceiveAsync`、`GetFramesAsync`（.NET 8+）
-  - 事件：`FrameReceived`、`ErrorFrameReceived`、`BackgroundExceptionOccurred`
+  - 事件：`FrameObserved`、`ErrorFrameReceived`、`BackgroundExceptionOccurred`
 - 定时与模式
   - 经典/FD 位时序配置；支持段参数（Tseg1/Tseg2/Brp 等）
   - 工作模式：正常/只听/回环（取决于设备能力）
@@ -121,7 +121,7 @@ using var bus = CanBus.Open(
     cfg => cfg.TimingClassic(500_000));
 
 // 订阅接收事件（如需错误/状态帧，请在配置中开启）
-bus.FrameReceived += (_, rec) =>
+bus.FrameObserved += (_, rec) =>
 {
     var f = rec.CanFrame;
     Console.WriteLine($"RX {f.FrameKind} ID=0x{f.ID:X} DLC={f.Dlc}");

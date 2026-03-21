@@ -24,7 +24,7 @@ public class CanBusBackgroundExceptionOccurredTests : IClassFixture<TestCaseProv
         using AutoResetEvent ev = new AutoResetEvent(false);
         using CancellationTokenSource cts = new CancellationTokenSource();
         Exception? exception = null;
-        rxClassic.FrameReceived += (sender, data) =>
+        rxClassic.FrameObserved += (sender, data) =>
         {
             throw new ArgumentException("Should throw");
         };

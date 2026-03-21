@@ -28,6 +28,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IOwnership
     private int _pending;
     private int _drainRunning;
     private EventHandler<CanReceiveData>? _frameReceived;
+    private EventHandler<CanReceiveDataView>? _frameObserved;
     private EventHandler<ICanErrorInfo>? _errorOccured;
     private CancellationTokenSource? _cts = new CancellationTokenSource();
 
@@ -44,7 +45,8 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IOwnership
         Options = new KvaserBusRtConfigurator();
         Options.Init((KvaserBusOptions)options);
         _transceiver = transceiver;
-        _asyncRx = new AsyncFramePipe<CanReceiveData>(Options.AsyncBufferCapacity > 0 ? Options.AsyncBufferCapacity : null);
+        _asyncRx = new AsyncFramePipe<CanReceiveData>(Options.AsyncBufferCapacity > 0 ? Options.AsyncBufferCapacity : null,
+            static data => data.CanFrame.Dispose());
 
         EnsureLibInitialized();
 
@@ -317,6 +319,24 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IOwnership
             lock (_evtGate)
             {
                 _frameReceived -= value;
+            }
+        }
+    }
+
+    public event EventHandler<CanReceiveDataView>? FrameObserved
+    {
+        add
+        {
+            lock (_evtGate)
+            {
+                _frameObserved += value;
+            }
+        }
+        remove
+        {
+            lock (_evtGate)
+            {
+                _frameObserved -= value;
             }
         }
     }
@@ -610,6 +630,20 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IOwnership
                         CanExceptionSource.SubscriberCallback,
                         severity: _exceptionPolicy.SubscriberCallbackSeverity,
                         message: "Kvaser FrameReceived handler threw an exception.");
+                }
+
+                try
+                {
+                    var evSnap = Volatile.Read(ref _frameObserved);
+                    evSnap?.Invoke(this, new CanReceiveDataView(rec));
+                }
+                catch (Exception e)
+                {
+                    _exceptions.Report(
+                        e,
+                        CanExceptionSource.SubscriberCallback,
+                        severity: _exceptionPolicy.SubscriberCallbackSeverity,
+                        message: "Kvaser FrameObserved handler threw an exception.");
                 }
                 _asyncRx.Publish(rec);
             }

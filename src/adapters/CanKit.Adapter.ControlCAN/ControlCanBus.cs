@@ -26,6 +26,7 @@ public sealed class ControlCanBus : ICanBus<ControlCanBusRtConfigurator>, IOwner
     private readonly object _evtGate = new();
     private readonly ITransceiver _transceiver;
     private EventHandler<CanReceiveData>? _frameReceived;
+    private EventHandler<CanReceiveDataView>? _frameObserved;
     private EventHandler<ICanErrorInfo>? _errorOccurred;
     private bool _isDisposed;
     private IDisposable? _owner;
@@ -48,7 +49,8 @@ public sealed class ControlCanBus : ICanBus<ControlCanBusRtConfigurator>, IOwner
         Options = new ControlCanBusRtConfigurator();
         Options.Init((ControlCanBusOptions)options);
         _transceiver = transceiver;
-        _asyncRx = new AsyncFramePipe<CanReceiveData>(Options.AsyncBufferCapacity > 0 ? Options.AsyncBufferCapacity : null);
+        _asyncRx = new AsyncFramePipe<CanReceiveData>(Options.AsyncBufferCapacity > 0 ? Options.AsyncBufferCapacity : null,
+            static data => data.CanFrame.Dispose());
 
         var dt = (ControlCanDeviceType)device.Options.DeviceType;
         _rawDevType = (uint)dt.Code;
@@ -328,6 +330,24 @@ public sealed class ControlCanBus : ICanBus<ControlCanBusRtConfigurator>, IOwner
         }
     }
 
+    public event EventHandler<CanReceiveDataView>? FrameObserved
+    {
+        add
+        {
+            lock (_evtGate)
+            {
+                _frameObserved += value;
+            }
+        }
+        remove
+        {
+            lock (_evtGate)
+            {
+                _frameObserved -= value;
+            }
+        }
+    }
+
     public event EventHandler<ICanErrorInfo>? ErrorFrameReceived
     {
         add
@@ -468,6 +488,21 @@ public sealed class ControlCanBus : ICanBus<ControlCanBusRtConfigurator>, IOwner
                         severity: _exceptionPolicy.SubscriberCallbackSeverity,
                         message: "ControlCAN FrameReceived handler threw an exception.");
                 }
+
+                try
+                {
+                    var evSnap = Volatile.Read(ref _frameObserved);
+                    evSnap?.Invoke(this, new CanReceiveDataView(frame));
+                }
+                catch (Exception e)
+                {
+                    _exceptions.Report(
+                        e,
+                        CanExceptionSource.SubscriberCallback,
+                        severity: _exceptionPolicy.SubscriberCallbackSeverity,
+                        message: "ControlCAN FrameObserved handler threw an exception.");
+                }
+
                 _asyncRx.Publish(frame);
                 any = true;
             }

@@ -42,6 +42,8 @@ namespace CanKit.Adapter.ZLG
 
         private EventHandler<CanReceiveData>? _frameReceived;
 
+        private EventHandler<CanReceiveDataView>? _frameObserved;
+
         private bool _isDisposed;
 
         private IDisposable? _owner;
@@ -62,7 +64,8 @@ namespace CanKit.Adapter.ZLG
 
             Options = new ZlgBusRtConfigurator();
             Options.Init((ZlgBusOptions)options);
-            _asyncRx = new AsyncFramePipe<CanReceiveData>(Options.AsyncBufferCapacity > 0 ? Options.AsyncBufferCapacity : null);
+            _asyncRx = new AsyncFramePipe<CanReceiveData>(Options.AsyncBufferCapacity > 0 ? Options.AsyncBufferCapacity : null,
+                static data => data.CanFrame.Dispose());
             _exceptionPolicy = options.ExceptionPolicy ?? CanExceptionPolicy.Default;
             _exceptions = new CanBusExceptionDispatcher(
                 "ZLG CAN bus",
@@ -297,8 +300,28 @@ namespace CanKit.Adapter.ZLG
             }
         }
 
-        public event EventHandler<Exception>? BackgroundExceptionOccurred;
+        public event EventHandler<CanReceiveDataView>? FrameObserved
+        {
+            add
+            {
+                lock (_evtGate)
+                {
+                    _frameObserved += value;
+                }
+            }
+            remove
+            {
+                lock (_evtGate)
+                {
+                    _frameObserved -= value;
+                }
+            }
+        }
+
         public event EventHandler<Exception>? FaultOccurred;
+
+
+        public event EventHandler<Exception>? BackgroundExceptionOccurred;
 
 
         public event EventHandler<ICanErrorInfo> ErrorFrameReceived
@@ -633,6 +656,20 @@ namespace CanKit.Adapter.ZLG
                                     CanExceptionSource.SubscriberCallback,
                                     severity: _exceptionPolicy.SubscriberCallbackSeverity,
                                     message: "ZLG FrameReceived handler threw an exception.");
+                            }
+
+                            try
+                            {
+                                var evSnap = Volatile.Read(ref _frameObserved);
+                                evSnap?.Invoke(this, new CanReceiveDataView(frame));
+                            }
+                            catch (Exception e)
+                            {
+                                _exceptions.Report(
+                                    e,
+                                    CanExceptionSource.SubscriberCallback,
+                                    severity: _exceptionPolicy.SubscriberCallbackSeverity,
+                                    message: "ZLG FrameObserved handler threw an exception.");
                             }
                             _asyncRx.Publish(frame);
                         }

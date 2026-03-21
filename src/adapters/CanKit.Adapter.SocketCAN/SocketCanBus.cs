@@ -35,6 +35,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IOwnersh
     private FileDescriptorHandle _fd;
     private string _ifName;
     private EventHandler<CanReceiveData>? _frameReceived;
+    private EventHandler<CanReceiveDataView>? _frameObserved;
 
     private bool _isDisposed;
 
@@ -57,8 +58,8 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IOwnersh
         _transceiver = transceiver;
         _ifName = string.Empty;
         // init async pipe with configured capacity
-        var cap = Options.AsyncBufferCapacity > 0 ? Options.AsyncBufferCapacity : (int?)null;
-        _asyncRx = new AsyncFramePipe<CanReceiveData>(cap);
+        _asyncRx = new AsyncFramePipe<CanReceiveData>(Options.AsyncBufferCapacity > 0 ? Options.AsyncBufferCapacity : null,
+            static data => data.CanFrame.Dispose());
 
         _exceptionPolicy = options.ExceptionPolicy ?? CanExceptionPolicy.Default;
         _exceptions = new CanBusExceptionDispatcher(
@@ -415,6 +416,25 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IOwnersh
             lock (_evtGate)
             {
                 _frameReceived -= value;
+            }
+        }
+    }
+
+    public event EventHandler<CanReceiveDataView>? FrameObserved
+    {
+        add
+        {
+
+            lock (_evtGate)
+            {
+                _frameObserved += value;
+            }
+        }
+        remove
+        {
+            lock (_evtGate)
+            {
+                _frameObserved -= value;
             }
         }
     }
@@ -908,6 +928,20 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IOwnersh
                             CanExceptionSource.SubscriberCallback,
                             severity: _exceptionPolicy.SubscriberCallbackSeverity,
                             message: "SocketCAN FrameReceived handler threw an exception.");
+                    }
+
+                    try
+                    {
+                        var evSnap = Volatile.Read(ref _frameObserved);
+                        evSnap?.Invoke(this, new CanReceiveDataView(rec));
+                    }
+                    catch (Exception e)
+                    {
+                        _exceptions.Report(
+                            e,
+                            CanExceptionSource.SubscriberCallback,
+                            severity: _exceptionPolicy.SubscriberCallbackSeverity,
+                            message: "SocketCAN FrameObserved handler threw an exception.");
                     }
                     _asyncRx.Publish(rec);
                 }

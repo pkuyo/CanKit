@@ -18,7 +18,7 @@ public sealed class AsyncFramePipe<T>
     private volatile TaskCompletionSource<Exception?> _exceptionPulse =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-    public AsyncFramePipe(int? capacity = null)
+    public AsyncFramePipe(int? capacity = null, Action<T>? onDropped = null)
     {
         if (capacity.HasValue)
         {
@@ -28,16 +28,14 @@ public sealed class AsyncFramePipe<T>
                 SingleWriter = false,
                 FullMode = BoundedChannelFullMode.DropOldest
             };
-            _channel = Channel.CreateBounded<T>(opt);
+
+            _channel = onDropped is null
+                ? Channel.CreateBounded<T>(opt)
+                : Channel.CreateBounded<T>(opt, onDropped);
         }
         else
         {
-            var opt = new UnboundedChannelOptions
-            {
-                SingleReader = false,
-                SingleWriter = false
-            };
-            _channel = Channel.CreateUnbounded<T>(opt);
+            _channel = Channel.CreateUnbounded<T>();
         }
     }
 

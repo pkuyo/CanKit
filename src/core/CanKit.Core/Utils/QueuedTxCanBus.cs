@@ -77,6 +77,7 @@ public sealed class QueuedCanBus : ICanBus, IAsyncDisposable
 
         // 透明转发底层事件
         _inner.FrameReceived += (s, e) => FrameReceived?.Invoke(this, e);
+        _inner.FrameObserved += (s, view) => FrameObserved?.Invoke(this, view);
         _inner.ErrorFrameReceived += (s, e) => ErrorFrameReceived?.Invoke(this, e);
         _inner.BackgroundExceptionOccurred += (s, e) => BackgroundExceptionOccurred?.Invoke(this, e);
         _inner.FaultOccurred += (s, e) => FaultOccurred?.Invoke(this, e);
@@ -109,6 +110,7 @@ public sealed class QueuedCanBus : ICanBus, IAsyncDisposable
         => _inner.TransmitPeriodic(frame, options);
 
     public event EventHandler<CanReceiveData>? FrameReceived;
+    public event EventHandler<CanReceiveDataView>? FrameObserved;
     public event EventHandler<ICanErrorInfo>? ErrorFrameReceived;
     public event EventHandler<Exception>? BackgroundExceptionOccurred;
     public event EventHandler<Exception>? FaultOccurred;

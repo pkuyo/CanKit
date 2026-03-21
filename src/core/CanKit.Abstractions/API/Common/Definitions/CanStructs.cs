@@ -208,6 +208,31 @@ public readonly record struct CanBusTiming
 }
 
 /// <summary>
+/// Represents a received CAN data event (only read). (接收的 CAN 数据事件。（只读）)
+/// </summary>
+public readonly struct CanReceiveDataView(CanReceiveData ReceiveData)
+{
+    /// <summary>
+    /// Received frame. (接收到的帧。)
+    /// </summary>
+    public CanFrameView CanFrame { get; } = new(ReceiveData.CanFrame);
+
+    /// <summary>
+    /// Device-provided timestamp (usually from hardware). (设备提供的时间戳（通常来自硬件）。)
+    /// </summary>
+    public TimeSpan ReceiveTimestamp { get; } = ReceiveData.ReceiveTimestamp;
+
+    /// <summary>
+    /// System time corresponding to this record. (该记录对应的系统时间。)
+    /// </summary>
+    public DateTime SystemTimestamp { get; } = ReceiveData.SystemTimestamp;
+
+    /// <summary>
+    /// Indicates whether this frame is a transmit echo/acknowledgment. (指示此帧是否为发送回显)
+    /// </summary>
+    public bool IsEcho { get; } = ReceiveData.IsEcho;
+}
+/// <summary>
 /// Represents a received CAN data event. (接收的 CAN 数据事件。)
 /// </summary>
 public readonly record struct CanReceiveData(CanFrame CanFrame)
@@ -228,10 +253,11 @@ public readonly record struct CanReceiveData(CanFrame CanFrame)
     public DateTime SystemTimestamp { get; } = DateTime.Now;
 
     /// <summary>
-    /// TODO:
+    /// Indicates whether this frame is a transmit echo/acknowledgment. (指示此帧是否为发送回显)
     /// </summary>
     public bool IsEcho { get; init; }
 }
+
 
 /// <summary>
 /// CAN bus error counters. (CAN 总线错误计数器。)

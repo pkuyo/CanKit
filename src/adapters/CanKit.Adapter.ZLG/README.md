@@ -57,6 +57,30 @@ foreach (var rx in bus.Receive(1, 100))
 }
 ```
 
+## 连接ZlgCloud
+```csharp
+ZlgServerInfo serverInfo = new()
+{
+    AuthServer = "cans.zlgcloud.com",
+    AuthPort = 443,
+    Mqtt = "cans.zlgcloud.com",
+    MqttPort = 443
+};
+zcloud = ZlgCan.ConnectServer(serverInfo, UserName, Password);
+```
+
+## 发现ZlgCloud设备 （需连接zlgcloud）
+
+```csharp
+using CanKit.Core.Endpoints;
+
+foreach (var ep in BusEndpointEntry.Enumerate("zlg"))
+{
+    Console.WriteLine($"{ep.Title}: {ep.Endpoint}");
+}
+```
+
+
 ## 支持设备 (未完全测试)
 
 * UUSBCAN-I/I+、USBCAN-I-MINI

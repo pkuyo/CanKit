@@ -17,6 +17,97 @@ namespace CanKit.Abstractions.API.Can.Definitions
         Error = 16
     }
 
+    public readonly record struct CanFrameView
+    {
+        private const uint ID_EFF_MASK = 0x1FFFFFFF;
+        private const uint ID_STD_MASK = 0x000007FF;
+
+        private readonly int _id;
+
+        /// <summary>
+        /// Initializes a read-only view from a frame. (从帧创建只读视图。)
+        /// </summary>
+        /// <param name="frame">Source frame. (源帧。)</param>
+        public CanFrameView(in CanFrame frame)
+        {
+            FrameKind = frame.FrameKind;
+            _id = frame._id;
+            Data = frame.Data;
+            Flags = frame.Flags;
+        }
+
+        /// <summary>
+        /// Initializes a read-only view from raw frame parts. (从帧的原始组成部分创建只读视图。)
+        /// </summary>
+        /// <param name="frameKind">Type of the CAN frame. (CAN 帧类型。)</param>
+        /// <param name="rawId">Raw ID value before flag masking. (标志位剥离前的原始 ID 值。)</param>
+        /// <param name="data">Payload bytes. (载荷数据。)</param>
+        /// <param name="flags">Frame flags. (帧标志位。)</param>
+        public CanFrameView(CanFrameType frameKind, int rawId, ReadOnlyMemory<byte> data, FrameFlags flags)
+        {
+            FrameKind = frameKind;
+            _id = rawId;
+            Data = data;
+            Flags = flags;
+        }
+
+        /// <summary>
+        /// Gets the actual ID with flag bits stripped. (获取剔除标志位后的实际 ID。)
+        /// </summary>
+        public int ID => (int)(_id & (IsExtendedFrame ? ID_EFF_MASK : ID_STD_MASK));
+
+        /// <summary>
+        /// Type of the CAN frame (Classical CAN 2.0 or CAN FD). (帧类型：CAN 2.0 或 CAN FD。)
+        /// </summary>
+        public CanFrameType FrameKind { get; }
+
+        /// <summary>
+        /// Payload bytes of the frame. (帧的载荷数据。)
+        /// </summary>
+        public ReadOnlyMemory<byte> Data { get; }
+
+        /// <summary>
+        /// Bitwise frame flags such as EXT, RTR, BRS, ESI, and Error. (帧的标志位集合，例如 EXT、RTR、BRS、ESI 和 Error。)
+        /// </summary>
+        public FrameFlags Flags { get; }
+
+        /// <summary>
+        /// Data Length Code derived from the payload length. (根据载荷长度计算得到的 DLC。)
+        /// </summary>
+        public byte Dlc => CanFrame.LenToDlc(Data.Length);
+
+        /// <summary>
+        /// Payload length in bytes. (载荷的字节长度。)
+        /// </summary>
+        public int Len => Data.Length;
+
+        /// <summary>
+        /// True if the frame uses an extended 29-bit identifier. (当使用 29 位扩展 ID 时为 true。)
+        /// </summary>
+        public bool IsExtendedFrame => (Flags & FrameFlags.Ext) != 0;
+
+        /// <summary>
+        /// True if the frame is marked as an error frame. (当标记为错误帧时为 true。)
+        /// </summary>
+        public bool IsErrorFrame => (Flags & FrameFlags.Error) != 0;
+
+        /// <summary>
+        /// True if Bit Rate Switching (BRS) is enabled in the data phase. (当数据相位启用速率切换 BRS 时为 true。)
+        /// </summary>
+        public bool BitRateSwitch => (Flags & FrameFlags.Brs) != 0;
+
+        /// <summary>
+        /// True if the transmitter is in Error State (ESI). (当发送端处于错误状态 ESI 时为 true。)
+        /// </summary>
+        public bool ErrorStateIndicator => (Flags & FrameFlags.Esi) != 0;
+
+        /// <summary>
+        /// True if the frame is a Remote (RTR) frame. (当为远程请求帧 RTR 时为 true。)
+        /// </summary>
+        public bool IsRemoteFrame => (Flags & FrameFlags.Rtr) != 0;
+    }
+
+
     public readonly record struct CanFrame : IDisposable
     {
         private const uint ID_EFF_MASK = 0x1FFFFFFF;
@@ -41,7 +132,7 @@ namespace CanKit.Abstractions.API.Can.Definitions
 
         private readonly IMemoryOwner<byte>? _memoryOwner;
 
-        private readonly int _id;
+        internal readonly int _id;
 
         /// <summary>
         /// Gets or initializes the actual ID with flag bits stripped. (获取或初始化剔除标志位后的实际 ID。)

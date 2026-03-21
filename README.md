@@ -37,7 +37,7 @@ Below is a quick CAN listener/sender demo using CanKit. With multi-vendor suppor
   - Open by endpoint or typed helpers; enumerate endpoints
   - Classic CAN 2.0 and CAN FD frames
   - Sync and async I/O: `Transmit/Receive`, `TransmitAsync/ReceiveAsync`, and `GetFramesAsync` (NET 8+)
-  - Events: `FrameReceived`, `ErrorFrameReceived`, `BackgroundExceptionOccurred`
+  - Events: `FrameObserved`, `ErrorFrameReceived`, `BackgroundExceptionOccurred`
 - Timing and modes
   - Classic and FD bit timing helpers; advanced segment-based timing via `CanBusTiming`
   - Work modes: Normal / Listen-Only / Echo (loopback) when supported by device
@@ -116,7 +116,7 @@ using var bus = CanBus.Open(
     cfg => cfg.TimingClassic(500_000));
 
 // Subscribe to frames (enable error/state frames in the configurator if you need them)
-bus.FrameReceived += (_, rec) =>
+bus.FrameObserved += (_, rec) =>
 {
     var f = rec.CanFrame;
     Console.WriteLine($"RX {f.FrameKind} ID=0x{f.ID:X} DLC={f.Dlc}");

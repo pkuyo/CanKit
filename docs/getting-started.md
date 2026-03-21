@@ -47,7 +47,7 @@ using var bus = CanBus.Open("socketcan://can0", cfg =>
        .SetAsyncBufferCapacity(1024);
 });
 
-bus.FrameReceived += (s, rec) =>
+bus.FrameObserved += (s, rec) =>
 {
     Console.WriteLine($"RX {rec.CanFrame.FrameKind} ID={rec.CanFrame.ID:X} DLC={rec.CanFrame.Dlc}");
 };
