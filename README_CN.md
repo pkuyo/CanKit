@@ -92,7 +92,7 @@ using CanKit.Core.Definitions;
 // 通过端点打开；在配置器中设置比特率等参数
 using var bus = CanBus.Open(
     "socketcan://can0#netlink",
-    cfg => cfg.TimingClassic(500_000)); // 经典 CAN 500 kbps
+    cfg => cfg.Baud(500_000)); // 经典 CAN 500 kbps
 
 // 同步发送一帧经典 CAN
 var frame = CanFrame.Classic(0x123, new byte[] { 0x11, 0x22, 0x33 });
@@ -143,7 +143,7 @@ var many = await bus.ReceiveAsync(10, timeOut: 500);
 
 ```csharp
 using CanKit.Adapter.Kvaser;
-var bus = Kvaser.Open(0, cfg => cfg.TimingFd(1_000_000, 2_000_000));
+var bus = Kvaser.Open(0, cfg => cfg.Fd(1_000_000, 2_000_000));
 ```
 
 

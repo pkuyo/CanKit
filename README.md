@@ -113,7 +113,7 @@ using System;
 // Open the bus; adjust timing/mode in the configurator as needed
 using var bus = CanBus.Open(
     "socketcan://can0#netlink",
-    cfg => cfg.TimingClassic(500_000));
+    cfg => cfg.Baud(500_000));
 
 // Subscribe to frames (enable error/state frames in the configurator if you need them)
 bus.FrameObserved += (_, rec) =>
@@ -141,7 +141,7 @@ Prefer a strongly-typed helper? Available for some adapters:
 
 ```csharp
 using CanKit.Adapter.Kvaser;
-var kvaser = Kvaser.Open(0, cfg => cfg.TimingFd(1_000_000, 2_000_000));
+var kvaser = Kvaser.Open(0, cfg => cfg.Fd(1_000_000, 2_000_000));
 ```
 
 

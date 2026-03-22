@@ -141,7 +141,12 @@ else {
 
 $versionBumps = @(
     foreach ($package in $packages) {
-    if ($package.publish -eq $false) { continue }
+    $shouldPublish = $true
+    if ($package.PSObject.Properties.Name -contains 'publish') {
+        $shouldPublish = [bool]$package.publish
+    }
+
+    if (-not $shouldPublish) { continue }
     $packageId = [string]$package.id
     $currentVersion = [string]$currentVersionMap[$packageId]
     $baseVersion = if ($baseVersionMap.ContainsKey($packageId)) { [string]$baseVersionMap[$packageId] } else { "" }
@@ -227,7 +232,9 @@ if (-not [string]::IsNullOrWhiteSpace($GitHubOutputFile)) {
     $versionBumpJson = $versionBumps | ConvertTo-Json -Compress
     $impactedMatrixJson = $impactedMatrix | ConvertTo-Json -Compress
 
-    Add-Content -Path $GitHubOutputFile -Value "has_version_bumps=$([string]($versionBumps.Count -gt 0).ToLowerInvariant())"
+    $hasVersionBumps = ([string]($versionBumps.Count -gt 0)).ToLowerInvariant()
+
+    Add-Content -Path $GitHubOutputFile -Value "has_version_bumps=$hasVersionBumps"
     Add-Content -Path $GitHubOutputFile -Value "version_bump_ids=$($versionBumpIds -join ',')"
     Add-Content -Path $GitHubOutputFile -Value "version_bump_matrix=$versionBumpJson"
     Add-Content -Path $GitHubOutputFile -Value "impacted_package_ids=$($impactedPackageIds -join ',')"
