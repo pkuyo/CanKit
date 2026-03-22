@@ -6,11 +6,11 @@
     <Platforms>x64;x86;AnyCPU</Platforms>
     <AssemblyName>CanKit.Adapter.ControlCAN</AssemblyName>
     <Nullable>enable</Nullable>
-    <Version>$(CanKitCoreVersion)</Version>
+        <Version>$(CanKitAdapterControlCANVersion)</Version>
     <Description>ControlCAN.dll的CanKit封装，支持周立功，广成，创芯</Description>
     <PackageTags>CAN;can bus;ControlCAN;CanKit</PackageTags>
     <AssemblyVersion>1.0.0.0</AssemblyVersion>
-    <FileVersion>$(CanKitCoreFileVersion)</FileVersion>
+        <FileVersion>$(CanKitSharedFileVersion)</FileVersion>
     <Authors>Pkuyo</Authors>
     <RepositoryUrl>https://github.com/pkuyo/CanKit</RepositoryUrl>
     <PackageReadmeFile>README.md</PackageReadmeFile>
@@ -22,7 +22,7 @@
     </ItemGroup>
 
     <ItemGroup Condition="'$(UseLocalProjectReferences)'!='true'">
-        <PackageReference Include="CanKit.Core" Version="$(CanKitCoreVersion)" />
+        <PackageReference Include="CanKit.Core" Version="$(CanKitCoreDependencyVersion)" />
     </ItemGroup>
 
     <ItemGroup>
@@ -33,4 +33,3 @@
     </ItemGroup>
 
 </Project>
-

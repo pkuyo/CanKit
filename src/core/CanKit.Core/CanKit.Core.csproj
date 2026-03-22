@@ -8,7 +8,7 @@
     <Description>Core utilities for CanKit: unified CAN bus API, endpoints, frames, filters, timing, and helpers.</Description>
     <PackageTags>CAN;can bus;CANFD;Core;CanKit</PackageTags>
     <AssemblyVersion>1.0.0.0</AssemblyVersion>
-    <FileVersion>$(CanKitCoreFileVersion)</FileVersion>
+    <FileVersion>$(CanKitSharedFileVersion)</FileVersion>
     <Authors>Pkuyo</Authors>
     <RepositoryUrl>https://github.com/pkuyo/CanKit</RepositoryUrl>
     <PackageReadmeFile>README.md</PackageReadmeFile>
@@ -32,7 +32,7 @@
     </ItemGroup>
 
     <ItemGroup Condition="'$(UseLocalProjectReferences)'!='true'">
-        <PackageReference Include="CanKit.Abstractions" Version="$(CanKitCoreVersion)"/>
+        <PackageReference Include="CanKit.Abstractions" Version="$(CanKitAbstractionsDependencyVersion)"/>
     </ItemGroup>
     
   <ItemGroup>

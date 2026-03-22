@@ -1,0 +1,20 @@
+<Project>
+  <PropertyGroup Label="DependencyVersions">
+    <CanKitAbstractionsDependencyVersion>0.5.5</CanKitAbstractionsDependencyVersion>
+    <CanKitCoreDependencyVersion>0.5.5</CanKitCoreDependencyVersion>
+    <CanKitSharedFileVersion>0.5.5.0</CanKitSharedFileVersion>
+  </PropertyGroup>
+
+  <PropertyGroup Label="PackageVersions">
+    <CanKitAbstractionsVersion>0.5.5</CanKitAbstractionsVersion>
+    <CanKitCoreVersion>0.5.5</CanKitCoreVersion>
+    <CanKitTransportIsoTpVersion>0.5.4</CanKitTransportIsoTpVersion>
+    <CanKitAdapterControlCANVersion>0.5.5</CanKitAdapterControlCANVersion>
+    <CanKitAdapterKvaserVersion>0.5.5</CanKitAdapterKvaserVersion>
+    <CanKitAdapterPCANVersion>0.5.5</CanKitAdapterPCANVersion>
+    <CanKitAdapterSocketCANVersion>0.5.5</CanKitAdapterSocketCANVersion>
+    <CanKitAdapterVectorVersion>0.5.5</CanKitAdapterVectorVersion>
+    <CanKitAdapterVirtualVersion>0.5.5</CanKitAdapterVirtualVersion>
+    <CanKitAdapterZLGVersion>0.5.5</CanKitAdapterZLGVersion>
+  </PropertyGroup>
+</Project>

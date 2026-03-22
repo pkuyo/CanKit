@@ -4,13 +4,14 @@
         <Platforms>AnyCPU</Platforms>
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
         <Configurations>Debug;Release;Fake</Configurations>
-        <Version>$(CanKitCoreVersion)</Version>
+        <Version>$(CanKitAbstractionsVersion)</Version>
         <Description>Core abstractions for CanKit: unified CAN bus API, endpoints, frames, filters, timing, and helpers.</Description>
         <PackageTags>CAN;can bus;CANFD;Core;CanKit</PackageTags>
         <AssemblyVersion>1.0.0.0</AssemblyVersion>
-        <FileVersion>$(CanKitCoreFileVersion)</FileVersion>
+        <FileVersion>$(CanKitSharedFileVersion)</FileVersion>
         <Authors>Pkuyo</Authors>
         <RepositoryUrl>https://github.com/pkuyo/CanKit</RepositoryUrl>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
     </PropertyGroup>
 
     <ItemGroup>
@@ -23,5 +24,9 @@
         <PackageReference Include="System.Memory" Version="4.5.4" />
         <PackageReference Include="System.Runtime.CompilerServices.Unsafe" Version="6.1.2" />
         <PackageReference Include="System.Threading.Channels" Version="9.0.10" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <None Include="README.md" Pack="true" PackagePath="" />
     </ItemGroup>
 </Project>

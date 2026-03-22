@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="..\package-versions.props" />
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <UseLocalProjectReferences Condition="'$(UseLocalProjectReferences)' == ''">true</UseLocalProjectReferences>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(UseLocalProjectReferences)' == 'true'">
+    <ProjectReference Include="..\..\src\core\CanKit.Abstractions\CanKit.Abstractions.csproj" />
+    <ProjectReference Include="..\..\src\core\CanKit.Core\CanKit.Core.csproj" />
+    <!--<ProjectReference Include="..\..\src\transports\CanKit.Transport.IsoTp\CanKit.Transport.IsoTp.csproj" />-->
+    <ProjectReference Include="..\..\src\adapters\CanKit.Adapter.ControlCAN\CanKit.Adapter.ControlCAN.csproj" />
+    <ProjectReference Include="..\..\src\adapters\CanKit.Adapter.Kvaser\CanKit.Adapter.Kvaser.csproj" />
+    <ProjectReference Include="..\..\src\adapters\CanKit.Adapter.PCAN\CanKit.Adapter.PCAN.csproj" />
+    <ProjectReference Include="..\..\src\adapters\CanKit.Adapter.SocketCAN\CanKit.Adapter.SocketCAN.csproj" />
+    <ProjectReference Include="..\..\src\adapters\CanKit.Adapter.Vector\CanKit.Adapter.Vector.csproj" />
+    <ProjectReference Include="..\..\src\adapters\CanKit.Adapter.Virtual\CanKit.Adapter.Virtual.csproj" />
+    <ProjectReference Include="..\..\src\adapters\CanKit.Adapter.ZLG\CanKit.Adapter.ZLG.csproj" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(UseLocalProjectReferences)' != 'true'">
+    <PackageReference Include="CanKit.Abstractions" Version="$(CanKitAbstractionsVersion)" />
+    <PackageReference Include="CanKit.Core" Version="$(CanKitCoreVersion)" />
+    <!--<PackageReference Include="CanKit.Transport.IsoTp" Version="$(CanKitTransportIsoTpVersion)" />-->
+    <PackageReference Include="CanKit.Adapter.ControlCAN" Version="$(CanKitAdapterControlCANVersion)" />
+    <PackageReference Include="CanKit.Adapter.Kvaser" Version="$(CanKitAdapterKvaserVersion)" />
+    <PackageReference Include="CanKit.Adapter.PCAN" Version="$(CanKitAdapterPCANVersion)" />
+    <PackageReference Include="CanKit.Adapter.SocketCAN" Version="$(CanKitAdapterSocketCANVersion)" />
+    <PackageReference Include="CanKit.Adapter.Vector" Version="$(CanKitAdapterVectorVersion)" />
+    <PackageReference Include="CanKit.Adapter.Virtual" Version="$(CanKitAdapterVirtualVersion)" />
+    <PackageReference Include="CanKit.Adapter.ZLG" Version="$(CanKitAdapterZLGVersion)" />
+  </ItemGroup>
+</Project>

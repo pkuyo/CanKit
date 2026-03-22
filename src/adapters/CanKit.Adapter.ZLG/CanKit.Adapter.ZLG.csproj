@@ -6,11 +6,11 @@
         <Platforms>x64;x86;AnyCPU</Platforms>
         <PackageId>CanKit.Adapter.ZLG</PackageId>
         <AssemblyName>CanKit.Adapter.ZLG</AssemblyName>
-        <Version>$(CanKitCoreVersion)</Version>
+        <Version>$(CanKitAdapterZLGVersion)</Version>
         <Description>ZLG adapter for CanKit, enabling unified access to ZLG USBCAN/PCIe CAN/CAN FD devices (zlgcan.dll).</Description>
         <PackageTags>CAN;can bus;CANFD;ZLG;zlgcan;CanKit</PackageTags>
         <AssemblyVersion>1.0.0.0</AssemblyVersion>
-        <FileVersion>$(CanKitCoreFileVersion)</FileVersion>
+        <FileVersion>$(CanKitSharedFileVersion)</FileVersion>
         <Authors>Pkuyo</Authors>
         <RepositoryUrl>https://github.com/pkuyo/CanKit</RepositoryUrl>
         <Configurations>Debug;Release;Fake</Configurations>
@@ -22,7 +22,7 @@
     </ItemGroup>
 
     <ItemGroup Condition="'$(UseLocalProjectReferences)'!='true'">
-        <PackageReference Include="CanKit.Core" Version="$(CanKitCoreVersion)"/>
+        <PackageReference Include="CanKit.Core" Version="$(CanKitCoreDependencyVersion)"/>
     </ItemGroup>
     
     <ItemGroup>

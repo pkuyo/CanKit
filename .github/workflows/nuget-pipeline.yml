@@ -1,0 +1,146 @@
+name: NuGet pipeline
+
+on:
+  pull_request:
+    paths:
+      - "src/**"
+      - "tests/**"
+      - "eng/**"
+      - "CHANGELOG.md"
+      - ".github/workflows/nuget-pipeline.yml"
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+    paths:
+      - "src/**"
+      - "tests/**"
+      - "eng/**"
+      - "CHANGELOG.md"
+      - ".github/workflows/nuget-pipeline.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: nuget-pipeline-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  pack_validate:
+    runs-on: windows-latest
+    outputs:
+      has_version_bumps: ${{ steps.graph.outputs.has_version_bumps }}
+      version_bump_matrix: ${{ steps.graph.outputs.version_bump_matrix }}
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_CLI_TELEMETRY_OPTOUT: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Resolve base ref
+        id: refs
+        shell: pwsh
+        run: |
+          $baseRef = ""
+          if ("${{ github.event_name }}" -eq "pull_request") {
+            $baseRef = "${{ github.event.pull_request.base.sha }}"
+          } elseif ("${{ github.event.before }}" -and "${{ github.event.before }}" -ne "0000000000000000000000000000000000000000") {
+            $baseRef = "${{ github.event.before }}"
+          } else {
+            try {
+              $baseRef = (git rev-parse HEAD^).Trim()
+            } catch {
+              $baseRef = ""
+            }
+          }
+
+          "base_ref=$baseRef" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Detect package graph
+        id: graph
+        shell: pwsh
+        run: |
+          pwsh -File eng/scripts/Get-PackageGraph.ps1 `
+            -BaseRef "${{ steps.refs.outputs.base_ref }}" `
+            -HeadRef "${{ github.sha }}" `
+            -GitHubOutputFile $env:GITHUB_OUTPUT
+
+      - name: Validate release metadata
+        if: steps.graph.outputs.has_version_bumps == 'true'
+        shell: pwsh
+        run: |
+          pwsh -File eng/scripts/Test-ReleasePlan.ps1 `
+            -BaseRef "${{ steps.refs.outputs.base_ref }}" `
+            -HeadRef "${{ github.sha }}"
+
+      - name: Restore
+        run: dotnet restore CanKit.sln
+
+      - name: Pack repository packages
+        shell: pwsh
+        run: pwsh -File eng/scripts/Pack-NuGetProjects.ps1
+
+      - name: Validate NuGet artifacts
+        shell: pwsh
+        run: pwsh -File eng/scripts/Test-NuGetPackages.ps1
+
+      - name: Upload NuGet artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: nuget-artifacts
+          path: artifacts/nuget/*
+          if-no-files-found: error
+
+  publish:
+    needs: pack_validate
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && needs.pack_validate.outputs.has_version_bumps == 'true'
+    runs-on: windows-latest
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_CLI_TELEMETRY_OPTOUT: true
+      NUGET_SOURCE: ${{ vars.NUGET_SOURCE }}
+      NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Download NuGet artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: nuget-artifacts
+          path: artifacts/nuget
+
+      - name: Verify publish credentials
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:NUGET_SOURCE)) {
+            throw "Repository variable NUGET_SOURCE is required."
+          }
+
+          if ([string]::IsNullOrWhiteSpace($env:NUGET_API_KEY)) {
+            throw "Repository secret NUGET_API_KEY is required."
+          }
+
+      - name: Publish bumped packages
+        shell: pwsh
+        run: |
+          pwsh -File eng/scripts/Publish-NuGetPackages.ps1 `
+            -VersionBumpMatrixJson '${{ needs.pack_validate.outputs.version_bump_matrix }}' `
+            -Source $env:NUGET_SOURCE `
+            -ApiKey $env:NUGET_API_KEY

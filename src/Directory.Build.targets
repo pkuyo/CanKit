@@ -1,0 +1,9 @@
+<Project>
+  <PropertyGroup>
+    <CanKitReleaseNotesRoot>$(CanKitRepositoryRoot)eng\release-notes\</CanKitReleaseNotesRoot>
+    <CanKitPackageIdentity Condition="'$(PackageId)' == ''">$(MSBuildProjectName)</CanKitPackageIdentity>
+    <PackageReleaseNotesFile Condition="'$(PackageReleaseNotesFile)' == '' and '$(CanKitPackageIdentity)' != '' and '$(Version)' != ''">$(CanKitReleaseNotesRoot)$(CanKitPackageIdentity)\$(Version).md</PackageReleaseNotesFile>
+    <PackageReleaseNotes Condition="'$(PackageReleaseNotes)' == '' and Exists('$(PackageReleaseNotesFile)')">$([System.IO.File]::ReadAllText('$(PackageReleaseNotesFile)'))</PackageReleaseNotes>
+    <PackageReleaseNotes Condition="'$(PackageReleaseNotes)' == ''">See CHANGELOG.md for the consolidated project changelog.</PackageReleaseNotes>
+  </PropertyGroup>
+</Project>

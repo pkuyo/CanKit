@@ -1,4 +1,6 @@
 <Project>
+  <Import Project="$(MSBuildThisFileDirectory)..\eng\package-versions.props" />
+
   <PropertyGroup>
     <TargetFrameworks>netstandard2.0;net8.0;net8.0-windows</TargetFrameworks>
     <LangVersion>12</LangVersion>
@@ -14,17 +16,13 @@
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
 
     <UseLocalProjectReferences Condition="'$(UseLocalProjectReferences)'==''">true</UseLocalProjectReferences>
-    <CanKitCoreVersion>0.5.4</CanKitCoreVersion>
-    <CanKitCoreFileVersion>0.5.4.0</CanKitCoreFileVersion>
     <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
 
-    <ReleaseNotesFile>$(MSBuildThisFileDirectory)notes/0.5.4.md</ReleaseNotesFile>
-    <PackageReleaseNotes>$([System.IO.File]::ReadAllText('$(ReleaseNotesFile)'))</PackageReleaseNotes>
-
-    <PackageOutputPath>$(MSBuildThisFileDirectory).artifacts\nuget</PackageOutputPath>
+    <CanKitRepositoryRoot>$([MSBuild]::EnsureTrailingSlash($([MSBuild]::GetDirectoryNameOfFileAbove($(MSBuildThisFileDirectory), 'CanKit.sln'))))</CanKitRepositoryRoot>
+    <PackageOutputPath>$(CanKitRepositoryRoot)artifacts\nuget</PackageOutputPath>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)' == 'Fake'">

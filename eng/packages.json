@@ -1,0 +1,122 @@
+{
+  "packages": [
+    {
+      "id": "CanKit.Abstractions",
+      "project": "src/core/CanKit.Abstractions/CanKit.Abstractions.csproj",
+      "versionProperty": "CanKitAbstractionsVersion",
+      "pathPrefixes": [
+        "src/core/CanKit.Abstractions/"
+      ],
+      "dependsOn": []
+    },
+    {
+      "id": "CanKit.Core",
+      "project": "src/core/CanKit.Core/CanKit.Core.csproj",
+      "versionProperty": "CanKitCoreVersion",
+      "pathPrefixes": [
+        "src/core/CanKit.Core/"
+      ],
+      "dependsOn": [
+        "CanKit.Abstractions"
+      ]
+    },
+    {
+      "id": "CanKit.Transport.IsoTp",
+      "project": "src/transports/CanKit.Transport.IsoTp/CanKit.Transport.IsoTp.csproj",
+      "versionProperty": "CanKitTransportIsoTpVersion",
+      "pathPrefixes": [
+        "src/transports/CanKit.Transport.IsoTp/"
+      ],
+      "dependsOn": [
+        "CanKit.Core"
+      ],
+      "publish": false
+    },
+    {
+      "id": "CanKit.Adapter.ControlCAN",
+      "project": "src/adapters/CanKit.Adapter.ControlCAN/CanKit.Adapter.ControlCAN.csproj",
+      "versionProperty": "CanKitAdapterControlCANVersion",
+      "pathPrefixes": [
+        "src/adapters/CanKit.Adapter.ControlCAN/"
+      ],
+      "dependsOn": [
+        "CanKit.Core"
+      ]
+    },
+    {
+      "id": "CanKit.Adapter.Kvaser",
+      "project": "src/adapters/CanKit.Adapter.Kvaser/CanKit.Adapter.Kvaser.csproj",
+      "versionProperty": "CanKitAdapterKvaserVersion",
+      "pathPrefixes": [
+        "src/adapters/CanKit.Adapter.Kvaser/"
+      ],
+      "dependsOn": [
+        "CanKit.Core"
+      ]
+    },
+    {
+      "id": "CanKit.Adapter.PCAN",
+      "project": "src/adapters/CanKit.Adapter.PCAN/CanKit.Adapter.PCAN.csproj",
+      "versionProperty": "CanKitAdapterPCANVersion",
+      "pathPrefixes": [
+        "src/adapters/CanKit.Adapter.PCAN/"
+      ],
+      "dependsOn": [
+        "CanKit.Core"
+      ]
+    },
+    {
+      "id": "CanKit.Adapter.SocketCAN",
+      "project": "src/adapters/CanKit.Adapter.SocketCAN/CanKit.Adapter.SocketCAN.csproj",
+      "versionProperty": "CanKitAdapterSocketCANVersion",
+      "pathPrefixes": [
+        "src/adapters/CanKit.Adapter.SocketCAN/"
+      ],
+      "dependsOn": [
+        "CanKit.Core"
+      ]
+    },
+    {
+      "id": "CanKit.Adapter.Vector",
+      "project": "src/adapters/CanKit.Adapter.Vector/CanKit.Adapter.Vector.csproj",
+      "versionProperty": "CanKitAdapterVectorVersion",
+      "pathPrefixes": [
+        "src/adapters/CanKit.Adapter.Vector/"
+      ],
+      "dependsOn": [
+        "CanKit.Core"
+      ]
+    },
+    {
+      "id": "CanKit.Adapter.Virtual",
+      "project": "src/adapters/CanKit.Adapter.Virtual/CanKit.Adapter.Virtual.csproj",
+      "versionProperty": "CanKitAdapterVirtualVersion",
+      "pathPrefixes": [
+        "src/adapters/CanKit.Adapter.Virtual/"
+      ],
+      "dependsOn": [
+        "CanKit.Core"
+      ]
+    },
+    {
+      "id": "CanKit.Adapter.ZLG",
+      "project": "src/adapters/CanKit.Adapter.ZLG/CanKit.Adapter.ZLG.csproj",
+      "versionProperty": "CanKitAdapterZLGVersion",
+      "pathPrefixes": [
+        "src/adapters/CanKit.Adapter.ZLG/"
+      ],
+      "dependsOn": [
+        "CanKit.Core"
+      ]
+    }
+  ],
+  "sharedPathPrefixes": [
+    "src/Directory.Build.props",
+    "eng/package-versions.props",
+    "eng/packages.json",
+    "eng/package-smoke/",
+    "eng/scripts/",
+    "tests/CanKit.Tests/",
+    "CHANGELOG.md"
+  ]
+}
