@@ -250,7 +250,7 @@ public readonly record struct CanReceiveData(CanFrame CanFrame)
     /// <summary>
     /// System time corresponding to this record. (该记录对应的系统时间。)
     /// </summary>
-    public DateTime SystemTimestamp { get; } = DateTime.Now;
+    public DateTime SystemTimestamp { get; init; } = DateTime.Now;
 
     /// <summary>
     /// Indicates whether this frame is a transmit echo/acknowledgment. (指示此帧是否为发送回显)

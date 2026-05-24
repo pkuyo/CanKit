@@ -931,7 +931,7 @@ public static class ZLGCAN
           public const int ZCLOUD_MAX_DEVICES = 100;
         public const int ZCLOUD_MAX_CHANNEL = 16;
 
-        [StructLayout(LayoutKind.Sequential, Pack = 1)]
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
         public struct ZCLOUD_DEVINFO
         {
             public int            devIndex;
@@ -959,7 +959,7 @@ public static class ZLGCAN
             public ZCLOUD_CHNINFO[] channels;
         }
 
-        [StructLayout(LayoutKind.Sequential, Pack = 1)]
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
 
         public struct ZCLOUD_USER_DATA
         {

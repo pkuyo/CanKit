@@ -132,7 +132,12 @@ namespace CanKit.Adapter.ZLG
             _handle = handle;
             NativeHandle = new BusNativeHandle(_handle.DangerousGetHandle());
             ZlgErr.ThrowIfInvalid(handle, nameof(ZLGCAN.ZCAN_InitCAN));
-            Reset();
+
+            try
+            {
+                Reset();
+            } catch { /*ignore*/ }
+
             ApplyConfigAfterInit(options);
 
             ZlgErr.ThrowIfError(ZLGCAN.ZCAN_StartCAN(_handle), nameof(ZLGCAN.ZCAN_StartCAN), _handle);

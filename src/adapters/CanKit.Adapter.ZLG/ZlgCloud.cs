@@ -43,7 +43,7 @@ public class ZlgCloud : IDisposable
 
     public static Task<ZlgCloud> ConnectServerAsync(ZlgServerInfo serverInfo, string userName, string password)
     {
-        return Task<ZlgCloud>.Run(() => ConnectServerAsync(serverInfo, userName, password));
+        return Task<ZlgCloud>.Run(() => ConnectServer(serverInfo, userName, password));
     }
 
     /// <summary>Connects to the ZLG cloud server and returns a new session  (连接到 ZLG 云服务器并返回新会话)</summary>
