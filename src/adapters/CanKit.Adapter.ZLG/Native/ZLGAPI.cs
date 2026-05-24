@@ -468,7 +468,7 @@ namespace CanKit.Adapter.ZLG.Native
             public byte isDownload;
         }
 
-        [StructLayout(LayoutKind.Sequential, Pack = 1)]
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
         public struct ZCLOUD_DEVINFO
         {
             public int            devIndex;
@@ -496,7 +496,7 @@ namespace CanKit.Adapter.ZLG.Native
             public ZCLOUD_CHNINFO[] channels;
         }
 
-        [StructLayout(LayoutKind.Sequential, Pack = 1)]
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
 
         public struct ZCLOUD_USER_DATA
         {
