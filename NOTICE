@@ -1,0 +1,16 @@
+CanKit.Pro
+Copyright 2026 Dietmar Borgards
+
+This product is a fork of CanKit (https://github.com/pkuyo/CanKit) and
+includes software originally developed by pkuyo and contributors,
+licensed under the Apache License, Version 2.0.
+
+Portions of this software are:
+  Copyright (c) 2025 pkuyo and contributors.
+
+Modifications and additions made in CanKit.Pro are:
+  Copyright (c) 2026 Dietmar Borgards (https://github.com/dborgards)
+
+See LICENSE for the full text of the Apache License, Version 2.0 under
+which this product, including the original work and all modifications,
+is licensed.
