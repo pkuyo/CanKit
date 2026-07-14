@@ -102,7 +102,7 @@ public sealed class VirtualBusHub
         // another consumer's (or the sender's) memory.
         foreach (var bus in targets)
         {
-            var copy = frame.Clone(bus.Options.BufferAllocator);
+            var copy = frame.Duplicate(bus.Options.BufferAllocator);
             var data = new CanReceiveData(copy) { ReceiveTimestamp = TimeSpan.Zero };
             bus.InternalDeliver(data);
         }
@@ -110,7 +110,7 @@ public sealed class VirtualBusHub
         // echo back if sender is in Echo mode
         if (sender.Options.WorkMode == ChannelWorkMode.Echo)
         {
-            var copy = frame.Clone(sender.Options.BufferAllocator);
+            var copy = frame.Duplicate(sender.Options.BufferAllocator);
             var echoData = new CanReceiveData(copy) { ReceiveTimestamp = TimeSpan.Zero, IsEcho = true };
             sender.InternalDeliver(echoData);
         }
