@@ -2,6 +2,7 @@
 using System.Buffers;
 using CanKit.Abstractions.API.Common;
 using CanKit.Abstractions.API.Common.Definitions;
+using CanKit.Abstractions.SPI.Common;
 
 namespace CanKit.Abstractions.API.Can.Definitions
 {
@@ -365,8 +366,54 @@ namespace CanKit.Abstractions.API.Can.Definitions
         }
 
         /// <summary>
+        /// Creates an independent copy of this frame backed by a freshly rented buffer, so the
+        /// copy's lifetime (and <see cref="Dispose"/>) is fully decoupled from this frame's memory
+        /// owner. Used to hand out per-consumer copies when the same logical frame is delivered to
+        /// multiple independent owners (see the frame ownership contract in
+        /// docs/architecture/arc42-CanKit.md §8.1).
+        /// 创建该帧的独立副本：副本使用新租借的缓冲区，其生命周期（及 <see cref="Dispose"/>）与原帧的内存所有者完全解耦。
+        /// 用于将同一逻辑帧分发给多个独立所有者时，为每个消费者提供各自的副本
+        /// （参见 docs/architecture/arc42-CanKit.md §8.1 中的帧所有权契约）。
+        /// </summary>
+        /// <param name="allocator">Allocator used to rent the copy's backing buffer. (用于为副本租借底层缓冲区的分配器。)</param>
+        public CanFrame Clone(IBufferAllocator allocator)
+        {
+            if (allocator is null) throw new ArgumentNullException(nameof(allocator));
+            var owner = allocator.Rent(Data.Length);
+            Data.Span.CopyTo(owner.Memory.Span);
+            return new CanFrame(FrameKind, _id, allocator.FrameNeedDispose, owner)
+            {
+                Flags = Flags
+            };
+        }
+
+        /// <summary>
         /// Releases the owned memory if this frame owns its payload memory. (若该帧拥有其载荷内存，则释放该内存)
         /// </summary>
-        public void Dispose() => _memoryOwner?.Dispose();
+        /// <remarks>
+        /// Only frames created with <c>ownMemory: true</c> (the default for the memory-owner
+        /// factory overloads and <see cref="Clone"/>) actually release the backing
+        /// <see cref="IMemoryOwner{T}"/>; frames that do not own their memory (plain
+        /// <see cref="ReadOnlyMemory{T}"/> payloads, or explicit <c>ownMemory: false</c>) treat
+        /// <see cref="Dispose"/> as a no-op, per the frame ownership contract in
+        /// docs/architecture/arc42-CanKit.md §8.1.
+        /// 仅当帧以 <c>ownMemory: true</c> 创建时（内存所有者工厂重载及 <see cref="Clone"/> 的默认值），
+        /// 才会真正释放底层 <see cref="IMemoryOwner{T}"/>；不拥有内存的帧（普通 <see cref="ReadOnlyMemory{T}"/>
+        /// 载荷，或显式 <c>ownMemory: false</c>）将 <see cref="Dispose"/> 视为空操作，
+        /// 参见 docs/architecture/arc42-CanKit.md §8.1 中的帧所有权契约。
+        /// <para>
+        /// Because <see cref="CanFrame"/> is a value type, copies of an owning frame share the
+        /// same <see cref="IMemoryOwner{T}"/>; callers must ensure at most one copy per frame
+        /// lineage is disposed. The built-in allocators' owners tolerate redundant disposal
+        /// (idempotent), but a custom <see cref="IBufferAllocator"/> is not guaranteed to.
+        /// 由于 <see cref="CanFrame"/> 是值类型，拥有内存的帧的多个副本会共享同一个
+        /// <see cref="IMemoryOwner{T}"/>；调用方需确保同一帧谱系最多只释放一次。内置分配器的
+        /// Owner 容忍重复释放（幂等），但自定义 <see cref="IBufferAllocator"/> 不保证如此。
+        /// </para>
+        /// </remarks>
+        public void Dispose()
+        {
+            if (OwnMemory) _memoryOwner?.Dispose();
+        }
     }
 }

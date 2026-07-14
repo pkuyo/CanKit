@@ -66,8 +66,7 @@ public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, IOwnership
             });
 
         // join hub
-        _hub = VirtualBusHub.Get(Options.SessionId);
-        _hub.Attach(this);
+        _hub = VirtualBusHub.Join(Options.SessionId, this);
 
         // apply initial options (software filter, etc.)
         ApplyConfig(_options);
@@ -228,6 +227,10 @@ public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, IOwnership
         var pred = _softwareFilterPredicate;
         if (_useSoftwareFilter && pred is not null && !pred(data.CanFrame))
         {
+            // This frame is our own independent RX-lease copy (see VirtualBusHub.Broadcast);
+            // since nothing else will ever see or dispose it, we must release it here or its
+            // pooled buffer (if any) leaks.
+            data.CanFrame.Dispose();
             return;
         }
 
