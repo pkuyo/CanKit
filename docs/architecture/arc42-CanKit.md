@@ -409,7 +409,7 @@ flowchart TB
 | L2-Baustein | Lücke | Zweck | vorgesehene Schnittstelle | Erfüllt |
 |-------------|-------|-------|----------------------------|---------|
 | `ICanBusService` | – | Ein Dienst-Objekt pro `ICanBus`; hält Subscriptions, TX-Confirm, Aktoren. | `Subscribe(filter) → ISubscription`, `SendConfirmed(frame) → Task<TxConfirmation>` | `FR-RAW-SVC-*` |
-| Multi-Protokoll-Demux | (2) | Ein RX-Strom → N unabhängige gefilterte Consumer, **ohne** konkurrierendes `ReceiveAsync`. | `ISubscription { IAsyncEnumerable<CanFrameView> Frames; }` | `FR-RAW-DEMUX-*` |
+| Multi-Protokoll-Demux | (2) | Ein RX-Strom → N unabhängige gefilterte Consumer, **ohne** konkurrierendes `ReceiveAsync`. **Umgesetzt** im neuen Paket `CanKit.Pro.RawCan` (`ICanBusService`/`CanBusService` + `ISubscription`): je Subscription ein eigener bounded Drop-Oldest-Channel (FR-RAW-011), Fast-Path `CanIdFilter` (ID-Range/Maske) neben generischem `Func<CanFrameView,bool>` (FR-RAW-010/013), deterministisches Dispose (FR-RAW-012). Baut ausschließlich auf `ICanBus.FrameObserved`, kein Adapter-Eingriff. | `ICanBusService.Subscribe(filter) → ISubscription { IAsyncEnumerable<CanFrameView> Frames; }` | `FR-RAW-010..013` |
 | Frame-Ownership-Vertrag | (1) | Verbindliche Lease-Regeln (siehe 8.1); verhindert Use-after-free/Double-Dispose. **Kernmechanik umgesetzt** (`OwnMemory`-Fix, `CanFrame.Clone`, Virtual-Hub-Broadcast per Kopie); ausstehend: TX-Lease für übrige L0-Adapter/ISO-TP-Scheduler. | Vertragsdoku + `OwnMemory`-Fix (Review §1.5) | `FR-RAW-OWN-*` |
 | TX-Confirm | (4) | Einheitliche „gesendet"-Bestätigung, egal ob Hardware-Echo vorhanden. | `TxConfirmation { Confirmed; Timestamp; IsApproximated; }` | `FR-RAW-TXC-*` |
 | Adressierungs-Helfer | – | 11/29-bit, Extended/Mixed/NormalFixed (heute in `IsoTpEndpoint` verstreut). | ID-Bau/-Zerlegung, PGN/Prio-Helfer | `FR-RAW-ADDR-*` |
@@ -1026,13 +1026,24 @@ STmin-Grenzwerte, SN-Folge, N_Bs/N_Cr-Timeouts gegen Virtual.
 - **Konsequenzen:** + Kern bleibt schlank, unabhängige Release-Kadenz. − heute fälschliche
   `Peak.PCANBasic.NET`-Referenz und `Description=TODO` (§11); Paket muss `IsPackable=false`/„experimental".
 
-### ADR-5 (Ziel): L2-Demux statt konkurrierendem `ReceiveAsync`
+### ADR-5 (umgesetzt): L2-Demux statt konkurrierendem `ReceiveAsync`
 - **Kontext:** Mehrere Protokolle wollen denselben RX-Strom sehen; heute konkurrieren
   `ReceiveAsync`-Aufrufe um dieselben Frames.
 - **Entscheidung:** L2 führt eine Subscription-Demux ein: ein RX-Strom → N unabhängige,
   gefilterte read-only Views.
 - **Konsequenzen:** + mehrere Protokoll-Stacks parallel auf einem Bus (Q1). − zusätzliche
   Schicht, Broadcast-Kosten; erfordert Ownership-Vertrag (ADR-9).
+- **Status:** Umgesetzt im neuen Paket `CanKit.Pro.RawCan` (`ICanBusService`/`CanBusService`,
+  `ISubscription`, `CanIdFilter`). Die Demux hört genau einmal auf `ICanBus.FrameObserved` und
+  fächert jede `CanFrameView` lock-frei (Copy-on-Write-Snapshot der Subscription-Registry) an alle
+  Subscriptions auf; jede Subscription besitzt einen eigenen bounded Drop-Oldest-Channel, sodass
+  eine langsame/blockierte Subscription weder andere noch das Basis-Event verzögert (FR-RAW-011).
+  `Subscribe` bietet einen generischen Prädikat- und einen allokationsfreien `CanIdFilter`-Fast-Path
+  (FR-RAW-010/013); `Dispose` meldet Subscriptions deterministisch ab und schließt ihren Channel
+  (FR-RAW-012), das Verwerfen des Dienstes hängt sich vom `FrameObserved`-Event ab. Baut rein auf der
+  bestehenden `ICanBus`-Oberfläche — kein Adapter-Eingriff. Abgesichert per Virtual-Loopback
+  (`tests/CanKit.Tests/TestCases/RawCanSubscriptionTests.cs`). Offen: Laufzeit-Rekonfiguration der
+  Filterkriterien (FR-RAW-014, Could) ist bewusst nicht Teil dieser Umsetzung.
 
 ### ADR-6 (Ziel): Aktor-Modell pro Protokollinstanz
 - **Kontext:** ISO-TP-Prototyp mutiert State über Thread-Grenzen ohne Sync (Datenrennen, Busy-Loop).
