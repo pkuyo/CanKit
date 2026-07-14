@@ -66,8 +66,7 @@ public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, IOwnership
             });
 
         // join hub
-        _hub = VirtualBusHub.Get(Options.SessionId);
-        _hub.Attach(this);
+        _hub = VirtualBusHub.Join(Options.SessionId, this);
 
         // apply initial options (software filter, etc.)
         ApplyConfig(_options);

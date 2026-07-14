@@ -410,7 +410,7 @@ flowchart TB
 |-------------|-------|-------|----------------------------|---------|
 | `ICanBusService` | – | Ein Dienst-Objekt pro `ICanBus`; hält Subscriptions, TX-Confirm, Aktoren. | `Subscribe(filter) → ISubscription`, `SendConfirmed(frame) → Task<TxConfirmation>` | `FR-RAW-SVC-*` |
 | Multi-Protokoll-Demux | (2) | Ein RX-Strom → N unabhängige gefilterte Consumer, **ohne** konkurrierendes `ReceiveAsync`. | `ISubscription { IAsyncEnumerable<CanFrameView> Frames; }` | `FR-RAW-DEMUX-*` |
-| Frame-Ownership-Vertrag | (1) | Verbindliche Lease-Regeln (siehe 8.1); verhindert Use-after-free/Double-Dispose. | Vertragsdoku + `OwnMemory`-Fix (Review §1.5) | `FR-RAW-OWN-*` |
+| Frame-Ownership-Vertrag | (1) | Verbindliche Lease-Regeln (siehe 8.1); verhindert Use-after-free/Double-Dispose. **Kernmechanik umgesetzt** (`OwnMemory`-Fix, `CanFrame.Clone`, Virtual-Hub-Broadcast per Kopie); ausstehend: TX-Lease für übrige L0-Adapter/ISO-TP-Scheduler. | Vertragsdoku + `OwnMemory`-Fix (Review §1.5) | `FR-RAW-OWN-*` |
 | TX-Confirm | (4) | Einheitliche „gesendet"-Bestätigung, egal ob Hardware-Echo vorhanden. | `TxConfirmation { Confirmed; Timestamp; IsApproximated; }` | `FR-RAW-TXC-*` |
 | Adressierungs-Helfer | – | 11/29-bit, Extended/Mixed/NormalFixed (heute in `IsoTpEndpoint` verstreut). | ID-Bau/-Zerlegung, PGN/Prio-Helfer | `FR-RAW-ADDR-*` |
 | Aktor-/Threading-Modell | (3) | Genau ein Bearbeitungs-Thread/Mailbox pro Protokollinstanz; kein geteilter mutabler State. | `IProtocolActor { Post(msg); }` | `FR-RAW-ACTOR-*` |
@@ -818,12 +818,28 @@ und `IDisposable`. Der Wert wird kopiert, über Events geteilt, durch die `Async
 gereicht und im Virtual-Hub an N Empfänger gebroadcastet. Ohne verbindlichen Vertrag
 entstehen **Use-after-free** und **Double-Dispose** (Review §1.5, §2.1).
 
-**Ist-Zustand (Schuld):**
-- `CanFrame.Dispose()` gibt den Owner **immer** frei und ignoriert das gespeicherte
-  `OwnMemory`-Flag (`CanFrame.cs:370`).
-- Derselbe Frame (inkl. Owner) geht gleichzeitig an Event-Handler **und** die Pipe;
-  der Pipe-`onDropped` disposed, während Handler den Frame noch lesen.
-- Virtual-Hub reicht den Sender-Frame **ohne Kopie** an alle Empfänger.
+**Ist-Zustand (behoben, FR-RAW-001/002/004):**
+- `CanFrame.Dispose()` respektiert das `OwnMemory`-Flag und gibt den Owner nur frei, wenn
+  die Frame-Instanz laut Ownership-Vertrag Eigentümerin ist (vormals Review §1.5,
+  `CanFrame.cs:370`; behoben).
+- `CanFrame.Clone(IBufferAllocator)` (neu) erzeugt eine unabhängig lebensfähige Kopie mit
+  eigenem gemieteten Puffer, deren `Dispose()` vom Original entkoppelt ist — die konkrete
+  Primitive, mit der Multi-Consumer-Verteiler eigenständige RX-Leases herstellen.
+- `VirtualBusHub.Broadcast` reicht nicht mehr den geteilten Sender-Frame weiter, sondern
+  ruft für jeden Empfänger (und den Echo-Pfad) `frame.Clone(...)` auf, sodass ein Consumer,
+  der seine Kopie sofort disposed, Sender oder andere Consumer nicht mehr invalidieren kann
+  (vormals Review §2.1, VirtualBusHub-Use-after-free; behoben, siehe
+  `tests/CanKit.Tests/TestCases/VirtualBusOwnershipTests.cs`).
+- `VirtualBusHub._hubs` entfernt leere Hubs jetzt beim Verlassen des letzten Mitglieds
+  (`VirtualBusHub.Detach`/`Join`, atomar unter einem gemeinsamen Registry-Lock), statt
+  unbegrenzt zu wachsen (vormals Review §2.4; behoben).
+
+**Noch offen:** Event-Beobachter (`FrameReceived`, deprecated) erhalten weiterhin den
+disposable `CanFrame` statt nur einer `CanFrameView`, was Fehlgebrauch erlaubt (Migration
+auf `FrameObserved` läuft, aber `FrameReceived` bleibt aus Kompatibilitätsgründen bestehen).
+Der TX-Lease-Grundsatz (3) ist für den Virtual-Adapter umgesetzt; für die übrigen L0-Adapter
+und insbesondere den ISO-TP-Scheduler (Echo-Matching, Review §2.1 „Scheduler (ISO-TP)“) steht
+die Umsetzung noch aus (`FR-RAW-005`, Should).
 
 **Ziel-Vertrag (L2, `FR-RAW-OWN-*`):**
 
@@ -1039,12 +1055,17 @@ STmin-Grenzwerte, SN-Folge, N_Bs/N_Cr-Timeouts gegen Virtual.
 - **Konsequenzen:** + hardwarelose Matrix-CI (Q4). − Fake bildet Timing/Fehlerfälle nur
   begrenzt ab; Virtual-Hub hat heute Ownership-/Leak-Schulden (§11).
 
-### ADR-9 (Ziel): Verbindlicher Frame-Ownership-/Lifetime-Vertrag
+### ADR-9 (teilweise umgesetzt): Verbindlicher Frame-Ownership-/Lifetime-Vertrag
 - **Kontext:** geteilte `CanFrame`-Werte mit Owner → Use-after-free/Double-Dispose.
 - **Entscheidung:** RX-Lease (Pipe besitzt; Beobachter → View), TX-Lease (Aufrufer besitzt;
   Adapter kopiert); `Dispose()` respektiert `OwnMemory`.
 - **Konsequenzen:** + sichere Grundlage für L2–L4 (Q1/Q5). − erfordert Anpassung von Pipe,
   QueuedCanBus, Virtual-Hub, ISO-TP-Scheduler.
+- **Status:** `Dispose()`/`OwnMemory` und Virtual-Hub (`CanFrame.Clone`, Broadcast-Kopie,
+  `_hubs`-Leak-Fix) sind umgesetzt und per Unit-/Virtual-Loopback-Test abgesichert
+  (`tests/CanKit.Tests/TestCases/CanFrameTests.cs`,
+  `tests/CanKit.Tests/TestCases/VirtualBusOwnershipTests.cs`). Offen: TX-Lease-Kopie in den
+  übrigen L0-Adaptern und im ISO-TP-Scheduler (Echo-Matching).
 
 ---
 
@@ -1096,14 +1117,14 @@ Priorisierung: **K** = kritisch, **W** = wichtig, **G** = gering.
 | Prio | Risiko / Schuld | Auswirkung | Gegenmaßnahme | Review § |
 |------|------------------|-----------|---------------|----------|
 | K | **ISO-TP funktional defekt (WIP)**: `IsoTp.Open` wirft `NotImplementedException`; invertiertes `canfd` in allen 4 Buildern; FC trägt FF-PCI; FC-Padding nullt BS/STmin; FF-Längenparsing verliert High-Nibble; `EncodeStmin` wirft bei 0/1 ms; CF-Segmentierung (Byte 6 verloren, SN=0 statt 1); Multi-Frame-TX startet nie (`WaitFc`+`IsReadyToSendData=false`). | Jede ISO-TP-Übertragung schlägt fehl bzw. hängt; Paket nicht funktionsfähig. | Protokollfehler beheben; Scheduler ereignisgetrieben (`AsyncAutoResetEvent`) + Deadline-Prüfung; Virtual-Loopback-Tests; **bis dahin `IsPackable=false`/„experimental"**. | §1.1 |
-| K | **Frame-Ownership**: `CanFrame.Dispose()` ignoriert `OwnMemory` (gibt Owner immer frei). | Use-after-free / Double-Dispose bei gepoolten Buffern über Events/Pipe/Virtual-Hub. | `Dispose()` → `if (OwnMemory) _memoryOwner?.Dispose();`; Ownership-Vertrag (8.1/ADR-9) durchsetzen. | §1.5, §2.1 |
-| K | **`QueuedCanBus`-Retry-Stau**: Batch-Reste bleiben bis zum nächsten `Enqueue` liegen (blockiert in `WaitToReadAsync`). | Frames werden verspätet oder nie gesendet; Backoff wirkungslos. | `WaitToReadAsync` nur bei `index==0`; sonst direkter Retry mit Backoff. | §1.2 |
-| K | **SocketCAN/ZLG Stopwatch nie gestartet**: `remainingTime` bleibt konstant. | Sende-`poll()`-Endlosschleife bei nicht-annehmendem, schreibbarem Bus; unbegrenzte Wartezeit. | `Stopwatch.StartNew()` in `SocketCanBus.Transmit` (2×) und 3 ZLG-Transceivern. | §1.3 |
-| K | **BCMPeriodicTx `Update()` FD-Zweig**: `Can20` doppelt (Copy-Paste) statt `CanFd`. | Jedes `Update(fdFrame)` wirft `NotSupportedException`; `RemainingCount` unzuverlässig (EAGAIN). | FD-Zweig auf `CanFd`; `RemainingCount` per `poll` absichern. | §1.4 |
+| K | ✅ *Behoben.* **Frame-Ownership**: `CanFrame.Dispose()` ignorierte `OwnMemory` (gab Owner immer frei). | Use-after-free / Double-Dispose bei gepoolten Buffern über Events/Pipe/Virtual-Hub. | `Dispose()` → `if (OwnMemory) _memoryOwner?.Dispose();`; `CanFrame.Clone(IBufferAllocator)` ergänzt; Ownership-Vertrag (8.1/ADR-9) durchgesetzt. | §1.5, §2.1 |
+| K | ✅ *Behoben.* **`QueuedCanBus`-Retry-Stau**: Batch-Reste blieben bis zum nächsten `Enqueue` liegen (blockierte in `WaitToReadAsync`). | Frames wurden verspätet oder nie gesendet; Backoff wirkungslos. | `WaitToReadAsync` nur bei `index==0`; sonst direkter Retry mit Backoff; nur die gültige Batch-Teilmenge wird an `Transmit` übergeben. | §1.2 |
+| K | ✅ *Behoben.* **SocketCAN/ZLG Stopwatch nie gestartet**: `remainingTime` blieb konstant. | Sende-`poll()`-Endlosschleife bei nicht-annehmendem, schreibbarem Bus; unbegrenzte Wartezeit. | `Stopwatch.StartNew()` in `SocketCanBus.Transmit` (2×) und 3 ZLG-Transceivern. | §1.3 |
+| K | ✅ *Behoben.* **BCMPeriodicTx `Update()` FD-Zweig**: `Can20` doppelt (Copy-Paste) statt `CanFd`. | Jedes `Update(fdFrame)` warf `NotSupportedException`; `RemainingCount` unzuverlässig (EAGAIN, weiterhin offen). | FD-Zweig auf `CanFd` korrigiert; `RemainingCount`-Robustheit per `poll` bleibt offen. | §1.4 |
 | W | **macOS-Timing-Busy-Loop**: `clock_nanosleep` fehlt auf macOS, Exception verschluckt. | `PreWait` kehrt sofort zurück → sendet Frames maximal schnell (Bus-Flut). | `OperatingSystem.IsMacOS()` → `Thread.Sleep`-Fallback. | §2.3 |
 | W | **AsyncFramePipe Fehlerpfade**: verwaister Reader konsumiert später Frame; Nutzer-Cancellation wird geschluckt. | Frame-Verlust nach Hintergrundfehlern; inkonsistenter Cancellation-Kontrakt. | Reader-Lebenszyklus an `WhenAny` binden; Cancellation-Kontrakt vereinheitlichen + dokumentieren. | §2.2 |
 | W | **Nebenläufigkeit im ISO-TP**: `_tx`, `_pendingOperations`, `Router._channels` (List) ohne Sync; `SetResult`/`SetException` statt `Try*`; Scheduler-Busy-Loop (100 % CPU), `RunAsync` nirgends aufgerufen. | Datenrennen (`InvalidOperationException`), CPU-Last, Nichtfunktion. | Aktor-Modell (ADR-6): 1 Mailbox/Loop je Instanz; `TrySet*`; ereignisgetriebenes Warten. | §1.1/9,14 |
-| W | **Virtual-Hub-Leak & Ownership**: `VirtualBusHub._hubs` (static) entfernt leere Hubs nie; Broadcast ohne Kopie. | Speicher-Leak über Sessions; Use-after-free zwischen Empfängern/Sender. | Leere Hubs entfernen; Broadcast kopiert je Empfänger (bzw. Lease-Semantik). | §2.4 |
+| W | ✅ *Behoben.* **Virtual-Hub-Leak & Ownership**: `VirtualBusHub._hubs` (static) entfernte leere Hubs nie; Broadcast ohne Kopie. | Speicher-Leak über Sessions; Use-after-free zwischen Empfängern/Sender. | Leere Hubs werden beim Verlassen des letzten Mitglieds entfernt (`Join`/`Detach`, atomar); `Broadcast` kopiert je Empfänger via `CanFrame.Clone(...)` (Lease-Semantik). | §2.4 |
 | W | **`CanBus.Open<..>(DeviceType)` Device-Leak**: bei Wurf nach `CreateDevice` wird Device nie disposed. | Natives Handle-Leak. | `try/finally` um `Open(device,…)`; Device bei Fehler disposen. | §2.5 |
 | W | **`BitTimingSolver.FromSamplePoint`**: `Clamp` wirft statt `continue` bei kleinen NTQ. | Gesamte Timing-Suche crasht für bestimmte Limits. | ungültige NTQ überspringen (`continue`). | §2.5 |
 | W | **`CanEndpoint.Parse` lowercased Host**: `zlg://USBCANFD-200U` → `usbcanfd-200u`; Sonderzeichen werfen. | Adapter müssen case-insensitiv sein (nicht garantiert); Namen mit Leerzeichen scheitern. | Host case-preserving parsen; Namensregeln dokumentieren. | §2.5 |
@@ -1112,10 +1133,12 @@ Priorisierung: **K** = kritisch, **W** = wichtig, **G** = gering.
 | G | **Zeitbasis gemischt** (`DateTime.Now` vs. `UtcNow`) und Copy-Paste-Logtexte („Vector CAN bus", „ControlCAN poll loop"). | Korrelation erschwert; irreführende Logs. | Einheitlich UTC; Logtexte korrigieren. | §2.4, §2.5 |
 | G | **CI-Trigger tot** (`branches:[main]`, Default `master`); kein ISO-TP-Workflow. | Push-Trigger feuert nicht; Transport ungetestet. | Trigger auf `master`; ISO-TP-Workflow ergänzen. | §3, §4 |
 
-**Gesamtbewertung:** L0/L1 sind produktionsnah, tragen aber punktuelle kritische Bugs
-(Stopwatch, BCM, QueuedCanBus, Ownership). L3 (ISO-TP) ist ein nicht funktionsfähiger
-Prototyp. Die Ziel-Architektur L2 adressiert die vier strukturellen Lücken (Ownership,
-Demux, Threading/Aktor, TX-Confirm) und ist Voraussetzung für belastbare L3/L4-Stacks.
+**Gesamtbewertung:** L0/L1 sind produktionsnah; die punktuellen kritischen Bugs
+(Stopwatch, BCM, QueuedCanBus, Frame-Ownership, Virtual-Hub) sind behoben (siehe ✅-Markierungen
+oben). L3 (ISO-TP) ist weiterhin ein nicht funktionsfähiger Prototyp. Von den vier
+strukturellen L2-Lücken ist der Frame-Ownership-Vertrag (FR-RAW-001..005) für L1-Kern und
+Virtual-Adapter umgesetzt (siehe §8.1); Demux, Threading/Aktor und TX-Confirm sind weiterhin
+Ziel-Architektur und Voraussetzung für belastbare L3/L4-Stacks.
 
 ---
 
