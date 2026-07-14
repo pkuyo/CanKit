@@ -1,0 +1,14 @@
+{
+    "solution":
+    {
+        "path": "CanKit.sln",
+        "projects":
+        [
+            "src\\core\\CanKit.Abstractions\\CanKit.Abstractions.csproj",
+            "src\\core\\CanKit.Core\\CanKit.Core.csproj",
+            "src\\core\\CanKit.Pro.RawCan\\CanKit.Pro.RawCan.csproj",
+            "src\\adapters\\CanKit.Adapter.Virtual\\CanKit.Adapter.Virtual.csproj",
+            "tests\\CanKit.Tests\\CanKit.Tests.csproj",
+        ]
+    }
+}
