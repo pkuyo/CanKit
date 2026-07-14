@@ -49,14 +49,14 @@ public class CanFrameTests : IClassFixture<TestCaseProvider>
     }
 
     [Fact]
-    public void Clone_Produces_Independently_Disposable_Copy()
+    public void Duplicate_Produces_Independently_Disposable_Copy()
     {
         var sourceOwner = new TrackingMemoryOwner(3);
         new byte[] { 1, 2, 3 }.AsSpan().CopyTo(sourceOwner.Memory.Span);
         var frame = CanFrame.Classic(0x100, sourceOwner, ownMemory: true);
 
         var allocator = new ArrayPoolBufferAllocator();
-        var clone = frame.Clone(allocator);
+        var clone = frame.Duplicate(allocator);
 
         clone.Data.ToArray().Should().Equal(1, 2, 3);
 
