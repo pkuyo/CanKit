@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -6,6 +7,7 @@ using System.Threading.Tasks;
 using CanKit.Abstractions.API.Can;
 using CanKit.Abstractions.API.Can.Definitions;
 using CanKit.Abstractions.API.Common.Definitions;
+using CanKit.Abstractions.SPI.Common;
 using CanKit.Core;
 using CanKit.Core.Definitions;
 using CanKit.Pro.RawCan;
@@ -205,5 +207,79 @@ public class RawCanSubscriptionTests : IClassFixture<TestCaseProvider>
 
         // Double-dispose of the service itself is also safe.
         service.Dispose();
+    }
+
+    // Allocator whose owner zeroes its buffer on Dispose, simulating a pooled buffer being
+    // returned to the pool and reused by someone else. Used to make "did the subscription queue
+    // an aliased view instead of an independent copy" observable deterministically, rather than
+    // relying on ArrayPool's actual (unspecified) reuse timing.
+    private sealed class PoisoningBufferAllocator : IBufferAllocator
+    {
+        public IMemoryOwner<byte> Rent(int length, bool zeroFill = false) => new PoisoningOwner(length);
+
+        public bool FrameNeedDispose => true;
+
+        private sealed class PoisoningOwner(int length) : IMemoryOwner<byte>
+        {
+            private readonly byte[] _buffer = new byte[length];
+
+            public Memory<byte> Memory => _buffer;
+
+            public void Dispose() => Array.Clear(_buffer, 0, _buffer.Length);
+        }
+    }
+
+    // Regression test for a Bugbot finding on this PR: ICanBus.FrameObserved fires (and TryDeliver
+    // enqueues into the subscription's channel) *before* the same frame is handed to the bus's own
+    // L1 AsyncFramePipe, which may later dispose it (pool return / reuse) independently of whether
+    // this subscription has read its buffered copy yet. Queuing the raw CanFrameView (which aliases
+    // that memory) instead of a copy would let the later dispose corrupt an unread buffered frame.
+    [Fact]
+    public async Task Buffered_Frame_Survives_Its_Source_RX_Lease_Being_Disposed_Afterward()
+    {
+        var session = NewSession();
+        var allocator = new PoisoningBufferAllocator();
+
+        using var sender = Open(session, 0);
+        using var receiver = CanBus.Open($"virtual://{session}/1", cfg =>
+            cfg.SetProtocolMode(CanProtocolMode.Can20)
+                .Baud(TestCaseProvider.AbitRate)
+                .BufferAllocator(allocator)
+                .SetAsyncBufferCapacity(1)); // tiny L1 pipe: the next frame drops+disposes this one
+
+        using var service = new CanBusService(receiver);
+        using var sub = service.Subscribe();
+
+        sender.Transmit(CanFrame.Classic(0x100, new byte[] { 1, 2, 3 }));
+        // Overflows the 1-capacity L1 pipe: AsyncFramePipe's DropOldest policy disposes the first
+        // frame's CanReceiveData (and, via PoisoningBufferAllocator, zeroes its buffer) right here,
+        // synchronously, well before this test ever drains the subscription.
+        sender.Transmit(CanFrame.Classic(0x101, new byte[] { 4, 5, 6 }));
+
+        var frames = await Drain(sub, 2, ShortTimeout);
+
+        frames.Select(f => f.Data.ToArray()).Should().BeEquivalentTo(
+            new[] { new byte[] { 1, 2, 3 }, new byte[] { 4, 5, 6 } },
+            opts => opts.WithStrictOrdering());
+    }
+
+    // Regression test for a second Bugbot finding: a caller-supplied predicate that throws must
+    // not suppress delivery to other subscriptions, nor abort the dispatch loop early.
+    [Fact]
+    public async Task Throwing_Predicate_In_One_Subscription_Does_Not_Suppress_Delivery_To_Others()
+    {
+        var session = NewSession();
+        using var sender = Open(session, 0);
+        using var receiver = Open(session, 1);
+        using var service = new CanBusService(receiver);
+
+        // Registered first, so it is dispatched before `healthy` in the snapshot order.
+        using var broken = service.Subscribe(_ => throw new InvalidOperationException("boom"));
+        using var healthy = service.Subscribe();
+
+        sender.Transmit(CanFrame.Classic(0x100, new byte[] { 9 }));
+
+        var healthyFrames = await Drain(healthy, 1, ShortTimeout);
+        healthyFrames.Select(f => f.ID).Should().Equal(0x100);
     }
 }

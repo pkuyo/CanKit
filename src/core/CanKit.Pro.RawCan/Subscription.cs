@@ -54,6 +54,17 @@ namespace CanKit.Pro.RawCan
         /// stalling the dispatch loop. Writing after the channel is completed (post-dispose) simply
         /// returns false, so a racing dispatch after removal is harmless.
         /// </summary>
+        /// <remarks>
+        /// <paramref name="view"/> aliases the payload memory of the adapter's own (disposable)
+        /// RX-lease frame: <c>ICanBus.FrameObserved</c> fires before that frame is handed to the
+        /// bus's L1 <c>AsyncFramePipe</c>, which may later dispose it (pool return / reuse) —
+        /// regardless of whether a subscription has read its buffered copy yet. Queuing the raw
+        /// view here would let that later dispose corrupt an unread buffered frame, so we copy the
+        /// payload into an independently-owned array before writing to the channel. This is a
+        /// deliberate small per-matched-frame allocation: <see cref="CanFrameView"/> has no
+        /// disposal/ownership contract of its own for callers to release a pooled copy, so pooling
+        /// here would require a larger API change.
+        /// </remarks>
         internal void TryDeliver(in CanFrameView view)
         {
             if (_idFilter is { } filter)
@@ -65,7 +76,8 @@ namespace CanKit.Pro.RawCan
                 return;
             }
 
-            _channel.Writer.TryWrite(view);
+            var owned = new CanFrameView(view.FrameKind, view.ID, view.Data.ToArray(), view.Flags);
+            _channel.Writer.TryWrite(owned);
         }
 
         public IAsyncEnumerable<CanFrameView> Frames => ReadAsync();

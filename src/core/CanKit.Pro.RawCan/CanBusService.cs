@@ -109,7 +109,23 @@ namespace CanKit.Pro.RawCan
 
             var view = e.CanFrame;
             foreach (var subscription in subscriptions)
-                subscription.TryDeliver(view);
+            {
+                // A subscription's filter predicate is caller-supplied and may throw. Isolate each
+                // delivery so one broken predicate can never suppress delivery to the *other*
+                // subscriptions for this frame, nor escape into the bus's FrameObserved multicast
+                // (which would abort dispatch to every subscription still pending in this loop) —
+                // that would violate the independence every subscription is guaranteed under
+                // FR-RAW-010. There is currently no fault channel on ICanBusService to surface this
+                // to the caller; swallowing here is the least-bad option until one exists.
+                try
+                {
+                    subscription.TryDeliver(view);
+                }
+                catch
+                {
+                    // ignored: see remark above.
+                }
+            }
         }
 
         /// <inheritdoc />
