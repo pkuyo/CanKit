@@ -176,7 +176,7 @@ public sealed class BCMPeriodicTx : IPeriodicTx
                     var fr = _frame.ToCanFrame();
                     Unsafe.CopyBlockUnaligned(buf + headSize, &fr, (uint)sz);
                 }
-                else if (_frame.FrameKind is CanFrameType.Can20)
+                else if (_frame.FrameKind is CanFrameType.CanFd)
                 {
                     var sz = Marshal.SizeOf<Libc.canfd_frame>();
                     var fr = _frame.ToCanFdFrame();

@@ -94,7 +94,7 @@ namespace CanKit.Adapter.ZLG.Transceivers
             var pool = ArrayPool<ZLGCAN.ZCAN_ReceiveFD_Data>.Shared;
             var buf = pool.Rent(ZLGCAN.BATCH_COUNT);
             if (count < 0) throw new ArgumentOutOfRangeException(nameof(count));
-            var stopWatch = new Stopwatch();
+            var stopWatch = Stopwatch.StartNew();
             try
             {
                 while (count > 0)

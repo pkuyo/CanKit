@@ -196,13 +196,20 @@ public sealed class QueuedCanBus : ICanBus, IAsyncDisposable
         {
             try
             {
-                if (!await _txChan.Reader.WaitToReadAsync(token)) break;
+                // Only wait for new items when the batch is empty; a non-empty batch
+                // means frames from a previous busy/backoff cycle are still pending
+                // and must be retried without requiring a fresh enqueue to wake us up.
+                if (index == 0)
+                {
+                    if (!await _txChan.Reader.WaitToReadAsync(token)) break;
+                }
+
                 while (index < _opts.SendBatchSize && _txChan.Reader.TryRead(out var f))
                     batch[index++] = f;
 
                 if (index == 0) continue;
 
-                int accepted = _inner.Transmit(batch, timeOut: 0);
+                int accepted = _inner.Transmit(new ArraySegment<CanFrame>(batch, 0, index), timeOut: 0);
                 if (accepted > 0)
                 {
                     Interlocked.Add(ref _drvAccepted, accepted);

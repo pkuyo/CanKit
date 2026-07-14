@@ -71,7 +71,7 @@ public class ZlgCanMergeTransceiver : ITransceiver
         var buf = pool.Rent(ZLGCAN.BATCH_COUNT);
         try
         {
-            var stopWatch = new Stopwatch();
+            var stopWatch = Stopwatch.StartNew();
             while (count > 0)
             {
                 var remaining = timeOut - (int)stopWatch.Elapsed.TotalMilliseconds;

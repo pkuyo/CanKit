@@ -101,7 +101,7 @@ namespace CanKit.Adapter.ZLG.Transceivers
         {
             var pool = ArrayPool<ZLGCAN.ZCAN_Receive_Data>.Shared;
             var buf = pool.Rent(ZLGCAN.BATCH_COUNT);
-            var stopWatch = new Stopwatch();
+            var stopWatch = Stopwatch.StartNew();
             if (count < 0) throw new ArgumentOutOfRangeException(nameof(count));
             try
             {
