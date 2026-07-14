@@ -364,3 +364,6 @@ FodyWeavers.xsd
 /.idea
 
 global.json
+
+# Claude Code agent scratch space (background-agent worktrees, session-local; never project source)
+/.claude/
