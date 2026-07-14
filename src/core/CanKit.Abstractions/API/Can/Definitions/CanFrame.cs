@@ -376,7 +376,16 @@ namespace CanKit.Abstractions.API.Can.Definitions
         /// （参见 docs/architecture/arc42-CanKit.md §8.1 中的帧所有权契约）。
         /// </summary>
         /// <param name="allocator">Allocator used to rent the copy's backing buffer. (用于为副本租借底层缓冲区的分配器。)</param>
-        public CanFrame Clone(IBufferAllocator allocator)
+        /// <remarks>
+        /// Named <c>Duplicate</c> rather than <c>Clone</c>: <see cref="CanFrame"/> is a
+        /// <c>record struct</c>, and the C# compiler reserves the member name <c>Clone</c> for its
+        /// own synthesized copy machinery (used by <c>with</c> expressions) — declaring a member
+        /// called <c>Clone</c> on a record is a compile error (CS8859).
+        /// 命名为 <c>Duplicate</c> 而非 <c>Clone</c>：<see cref="CanFrame"/> 是 <c>record struct</c>，
+        /// C# 编译器为其自身合成的拷贝机制（供 <c>with</c> 表达式使用）保留了 <c>Clone</c> 这个成员名，
+        /// 在 record 上声明名为 <c>Clone</c> 的成员会导致编译错误（CS8859）。
+        /// </remarks>
+        public CanFrame Duplicate(IBufferAllocator allocator)
         {
             if (allocator is null) throw new ArgumentNullException(nameof(allocator));
             var owner = allocator.Rent(Data.Length);
@@ -392,12 +401,12 @@ namespace CanKit.Abstractions.API.Can.Definitions
         /// </summary>
         /// <remarks>
         /// Only frames created with <c>ownMemory: true</c> (the default for the memory-owner
-        /// factory overloads and <see cref="Clone"/>) actually release the backing
+        /// factory overloads and <see cref="Duplicate"/>) actually release the backing
         /// <see cref="IMemoryOwner{T}"/>; frames that do not own their memory (plain
         /// <see cref="ReadOnlyMemory{T}"/> payloads, or explicit <c>ownMemory: false</c>) treat
         /// <see cref="Dispose"/> as a no-op, per the frame ownership contract in
         /// docs/architecture/arc42-CanKit.md §8.1.
-        /// 仅当帧以 <c>ownMemory: true</c> 创建时（内存所有者工厂重载及 <see cref="Clone"/> 的默认值），
+        /// 仅当帧以 <c>ownMemory: true</c> 创建时（内存所有者工厂重载及 <see cref="Duplicate"/> 的默认值），
         /// 才会真正释放底层 <see cref="IMemoryOwner{T}"/>；不拥有内存的帧（普通 <see cref="ReadOnlyMemory{T}"/>
         /// 载荷，或显式 <c>ownMemory: false</c>）将 <see cref="Dispose"/> 视为空操作，
         /// 参见 docs/architecture/arc42-CanKit.md §8.1 中的帧所有权契约。
