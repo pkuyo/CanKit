@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 using System.Collections;
 using System.Linq;
 using System.Reflection;
@@ -7,6 +8,7 @@ using System.Threading.Tasks;
 using CanKit.Abstractions.API.Can;
 using CanKit.Abstractions.API.Can.Definitions;
 using CanKit.Abstractions.API.Common.Definitions;
+using CanKit.Abstractions.SPI.Common;
 using CanKit.Adapter.Virtual;
 using CanKit.Core;
 using CanKit.Core.Definitions;
@@ -22,6 +24,42 @@ namespace CanKit.Tests.TestCases;
 public class VirtualBusOwnershipTests : IClassFixture<TestCaseProvider>
 {
     private static string NewSession() => $"ownership-{Guid.NewGuid():N}";
+
+    // Wraps ArrayPoolBufferAllocator to count buffers that are rented but never returned,
+    // so leaks (e.g. a delivery that's dropped by a software filter without disposing its
+    // RX-lease copy) show up as a non-zero Outstanding count instead of silently exhausting
+    // the shared ArrayPool over time.
+    private sealed class CountingBufferAllocator : IBufferAllocator
+    {
+        private readonly ArrayPoolBufferAllocator _inner = new();
+        private int _outstanding;
+
+        public int Outstanding => Volatile.Read(ref _outstanding);
+
+        public IMemoryOwner<byte> Rent(int length, bool zeroFill = false)
+        {
+            Interlocked.Increment(ref _outstanding);
+            return new TrackedOwner(_inner.Rent(length, zeroFill), this);
+        }
+
+        public bool FrameNeedDispose => true;
+
+        private sealed class TrackedOwner(IMemoryOwner<byte> inner, CountingBufferAllocator owner) : IMemoryOwner<byte>
+        {
+            private int _disposed;
+
+            public Memory<byte> Memory => inner.Memory;
+
+            public void Dispose()
+            {
+                if (Interlocked.Exchange(ref _disposed, 1) == 0)
+                {
+                    inner.Dispose();
+                    Interlocked.Decrement(ref owner._outstanding);
+                }
+            }
+        }
+    }
 
     [Fact]
     public async Task Broadcast_Gives_Each_Consumer_An_Independent_Copy_Safe_To_Dispose_Early()
@@ -99,5 +137,29 @@ public class VirtualBusOwnershipTests : IClassFixture<TestCaseProvider>
         }
 
         hubs.Contains(session).Should().BeFalse();
+    }
+
+    [Fact]
+    public void Filter_Rejected_Delivery_Releases_Its_Rented_Buffer()
+    {
+        var session = NewSession();
+        var allocator = new CountingBufferAllocator();
+
+        using var sender = CanBus.Open($"virtual://{session}/0", cfg =>
+            cfg.SetProtocolMode(CanProtocolMode.Can20).Baud(TestCaseProvider.AbitRate));
+
+        // Only accepts IDs in [0x001, 0x002]; a frame sent on 0x123 will be dropped by the
+        // software filter inside InternalDeliver.
+        using var rejecting = CanBus.Open($"virtual://{session}/1", cfg =>
+            cfg.SetProtocolMode(CanProtocolMode.Can20)
+                .Baud(TestCaseProvider.AbitRate)
+                .BufferAllocator(allocator)
+                .RangeFilter(0x001, 0x002, CanFilterIDType.Standard));
+
+        sender.Transmit(CanFrame.Classic(0x123, new byte[] { 1, 2, 3 }));
+
+        // Delivery (including the filter check) happens synchronously inside Transmit, so no
+        // wait is needed before asserting the rejected copy's buffer was released.
+        allocator.Outstanding.Should().Be(0);
     }
 }

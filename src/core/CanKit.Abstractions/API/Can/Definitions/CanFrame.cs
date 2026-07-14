@@ -401,6 +401,15 @@ namespace CanKit.Abstractions.API.Can.Definitions
         /// 才会真正释放底层 <see cref="IMemoryOwner{T}"/>；不拥有内存的帧（普通 <see cref="ReadOnlyMemory{T}"/>
         /// 载荷，或显式 <c>ownMemory: false</c>）将 <see cref="Dispose"/> 视为空操作，
         /// 参见 docs/architecture/arc42-CanKit.md §8.1 中的帧所有权契约。
+        /// <para>
+        /// Because <see cref="CanFrame"/> is a value type, copies of an owning frame share the
+        /// same <see cref="IMemoryOwner{T}"/>; callers must ensure at most one copy per frame
+        /// lineage is disposed. The built-in allocators' owners tolerate redundant disposal
+        /// (idempotent), but a custom <see cref="IBufferAllocator"/> is not guaranteed to.
+        /// 由于 <see cref="CanFrame"/> 是值类型，拥有内存的帧的多个副本会共享同一个
+        /// <see cref="IMemoryOwner{T}"/>；调用方需确保同一帧谱系最多只释放一次。内置分配器的
+        /// Owner 容忍重复释放（幂等），但自定义 <see cref="IBufferAllocator"/> 不保证如此。
+        /// </para>
         /// </remarks>
         public void Dispose()
         {

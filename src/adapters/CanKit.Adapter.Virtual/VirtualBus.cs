@@ -227,6 +227,10 @@ public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, IOwnership
         var pred = _softwareFilterPredicate;
         if (_useSoftwareFilter && pred is not null && !pred(data.CanFrame))
         {
+            // This frame is our own independent RX-lease copy (see VirtualBusHub.Broadcast);
+            // since nothing else will ever see or dispose it, we must release it here or its
+            // pooled buffer (if any) leaks.
+            data.CanFrame.Dispose();
             return;
         }
 
