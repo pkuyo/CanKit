@@ -13,6 +13,16 @@ public class TestCaseProvider : IDisposable
     static TestCaseProvider()
     {
         Provider = new EmptyTestDataProvider();
+
+        // Some test suites (e.g. VirtualBusOwnershipTests, RawCanSubscriptionTests) always open
+        // "virtual://" endpoints to exercise adapter-agnostic behavior, regardless of which vendor
+        // adapter is under test in this CI job. CanRegistry only discovers endpoint/factory
+        // registrations from assemblies that are actually loaded into the AppDomain by the time its
+        // lazy singleton is first built, so CanKit.Adapter.Virtual must be force-loaded here too -
+        // otherwise those tests fail with "No endpoint handler registered for 'virtual://...'" on
+        // every CI job other than the Virtual one.
+        SafeLoad(new AssemblyName("CanKit.Adapter.Virtual"));
+
         var env = Environment.GetEnvironmentVariable("CANKIT_TEST_ADAPTERS");
         if (env is null)
         {
