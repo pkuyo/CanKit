@@ -412,7 +412,7 @@ flowchart TB
 | Multi-Protokoll-Demux | (2) | Ein RX-Strom → N unabhängige gefilterte Consumer, **ohne** konkurrierendes `ReceiveAsync`. **Umgesetzt** im neuen Paket `CanKit.Pro.RawCan` (`ICanBusService`/`CanBusService` + `ISubscription`): je Subscription ein eigener bounded Drop-Oldest-Channel (FR-RAW-011), Fast-Path `CanIdFilter` (ID-Range/Maske) neben generischem `Func<CanFrameView,bool>` (FR-RAW-010/013), deterministisches Dispose (FR-RAW-012). Baut ausschließlich auf `ICanBus.FrameObserved`, kein Adapter-Eingriff. | `ICanBusService.Subscribe(filter) → ISubscription { IAsyncEnumerable<CanFrameView> Frames; }` | `FR-RAW-010..013` |
 | Frame-Ownership-Vertrag | (1) | Verbindliche Lease-Regeln (siehe 8.1); verhindert Use-after-free/Double-Dispose. **Kernmechanik umgesetzt** (`OwnMemory`-Fix, `CanFrame.Duplicate`, Virtual-Hub-Broadcast per Kopie); ausstehend: TX-Lease für übrige L0-Adapter/ISO-TP-Scheduler. | Vertragsdoku + `OwnMemory`-Fix (Review §1.5) | `FR-RAW-OWN-*` |
 | TX-Confirm | (4) | Einheitliche „gesendet"-Bestätigung, egal ob Hardware-Echo vorhanden. **Umgesetzt** in `CanKit.Pro.RawCan` (`ICanBusService.SendConfirmed`): FIFO-Echo-Matching je (ID, Payload) für gleichzeitige inhaltsgleiche Sendevorgänge (FR-RAW-031), dokumentierte Treiber-Akzeptanz-Approximation ohne Echo (FR-RAW-032), beobachtbare Fehlschläge statt Hängen bei Timeout/BusOff/Ablehnung (FR-RAW-033), konfigurierbarer Timeout je Aufruf (FR-RAW-034). | `TxConfirmation { Confirmed; Timestamp; IsApproximated; FailureReason; }` | `FR-RAW-030..034` |
-| Adressierungs-Helfer | – | 11/29-bit, Extended/Mixed/NormalFixed (heute in `IsoTpEndpoint` verstreut). | ID-Bau/-Zerlegung, PGN/Prio-Helfer | `FR-RAW-ADDR-*` |
+| Adressierungs-Helfer | – | 11/29-bit, Extended/Mixed/NormalFixed (bislang nur als Einzelfall in `IsoTpEndpoint` vorhanden). **Umgesetzt** als eigenständiges, abhängigkeitsfreies Paket `CanKit.Pro.Addressing`: validierte 11-/29-Bit-ID-Prüfung (`CanIdRange`), allgemeine J1939-PGN/Priorität/PDU-Format/Quelladresse-Komposition/-Dekomposition (`J1939Id`/`J1939Fields`, FR-RAW-040) — verallgemeinert die zuvor auf eine feste Diagnose-PGN beschränkte 29-Bit-Konstruktion aus `IsoTpEndpoint.CreateNormalFixed`. Zusätzlich `CanIdFilter.Overlaps` sowie `ICanBusService.FindOverlappingFilterSubscriptions()` in `CanKit.Pro.RawCan` zur Erkennung überlappender Subscription-Filter (FR-RAW-041, Should). | ID-Bau/-Zerlegung, PGN/Prio-Helfer | `FR-RAW-ADDR-*` |
 | Aktor-/Threading-Modell | (3) | Genau ein Bearbeitungs-Thread/Mailbox pro Protokollinstanz; kein geteilter mutabler State. **Umgesetzt** als eigenständiges, abhängigkeitsfreies Paket `CanKit.Pro.Actor` (siehe ADR-6): ereignisgetriebener Loop (kein Busy-Loop, FR-RAW-022), je Instanz wählbarer Ausführungskontext (`ActorExecutionMode`: `DedicatedThread`/`ThreadPool`/`SynchronizationContext`, FR-RAW-024), `BackgroundExceptionOccurred` als einziger Kanal für Hintergrundfehler (FR-RAW-023). Vom ISO-TP-Prototyp noch nicht genutzt. | `IProtocolActor { Post(msg); PostAsync(msg); Schedule(delay, cb); }` | `FR-RAW-ACTOR-*` |
 | Timeout-Infrastruktur | – | Einheitliche Deadline-Verwaltung (ersetzt verstreute ISO-TP-`Deadline`s). | `IDeadlineScheduler` | `FR-RAW-TIMEOUT-*` |
 
@@ -1118,6 +1118,29 @@ STmin-Grenzwerte, SN-Folge, N_Bs/N_Cr-Timeouts gegen Virtual.
   (`tests/CanKit.Tests/TestCases/CanFrameTests.cs`,
   `tests/CanKit.Tests/TestCases/VirtualBusOwnershipTests.cs`). Offen: TX-Lease-Kopie in den
   übrigen L0-Adaptern und im ISO-TP-Scheduler (Echo-Matching).
+
+### ADR-10 (umgesetzt): Adressierungs-Helfer als eigenständiges Paket
+- **Kontext:** 11-/29-Bit-ID- und J1939-PGN-Logik existierte nur als ein einziger, fest auf eine
+  Diagnose-PGN zugeschnittener Sonderfall in `IsoTpEndpoint.CreateNormalFixed` (`Build29`), ohne
+  allgemeine Dekomposition und ohne Wiederverwendbarkeit für andere Protokollschichten (Review
+  „Adressierungs-/ID-Helfer" fehlt).
+- **Entscheidung:** reine, abhängigkeitsfreie Helferfunktionen in einem eigenen Paket
+  `CanKit.Pro.Addressing`, getrennt von `CanKit.Pro.RawCan`/`CanKit.Pro.Actor`, da die Logik
+  weder Frame-Dispatch noch Threading betrifft, sondern reine Bitarithmetik auf `uint`-IDs ist.
+- **Konsequenzen:** + wiederverwendbar für ISO-TP/J1939/CANopen ohne Kopplung an RawCan/Actor. −
+  ein weiteres kleines Paket in der Solution.
+- **Status:** Umgesetzt: `CanIdRange` (validierte 11-/29-Bit-Prüfung, FR-RAW-040) sowie
+  `J1939Id`/`J1939Fields` (allgemeine PGN/Priorität/PDU-Format/PDU-Specific/Quelladresse-
+  Komposition und -Dekomposition inkl. PDU1/PDU2-Unterscheidung und abgeleiteter Zieladresse,
+  FR-RAW-040) — verallgemeinert `IsoTpEndpoint.Build29`, das weiterhin unverändert besteht (kein
+  Umbau bestehender Adapter/Transporte in dieser Umsetzung). Zusätzlich `CanIdFilter.Overlaps`
+  und `ICanBusService.FindOverlappingFilterSubscriptions()` in `CanKit.Pro.RawCan` (FR-RAW-041,
+  Should): erkennt überlappende Range/Mask-Filter unter den aktuell registrierten Subscriptions
+  als Fehldiagnose-Hilfe bei falsch konfigurierten Protokollinstanzen — Range/Range und
+  Mask/Mask-Überlappung über direkte Intervall-/Bitvergleiche, Range/Mask-Überlappung über eine
+  bitweise Existenzsuche (O(Bitbreite), kein Aufzählen einzelner ID-Werte). Abgesichert per
+  Unit-Test (`tests/CanKit.Tests/TestCases/AddressingTests.cs`,
+  `tests/CanKit.Tests/TestCases/CanIdFilterOverlapTests.cs`).
 
 ---
 

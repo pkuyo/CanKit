@@ -11,6 +11,7 @@
     <CanKitTransportIsoTpVersion>0.5.4</CanKitTransportIsoTpVersion>
     <CanKitProRawCanVersion>0.1.0</CanKitProRawCanVersion>
     <CanKitProActorVersion>0.1.0</CanKitProActorVersion>
+    <CanKitProAddressingVersion>0.1.0</CanKitProAddressingVersion>
     <CanKitAdapterControlCANVersion>0.5.5</CanKitAdapterControlCANVersion>
     <CanKitAdapterKvaserVersion>0.5.5</CanKitAdapterKvaserVersion>
     <CanKitAdapterPCANVersion>0.5.5</CanKitAdapterPCANVersion>

@@ -96,6 +96,29 @@ namespace CanKit.Pro.RawCan
         public ISubscription Subscribe(CanIdFilter filter, int? bufferCapacity = null)
             => AddSubscription(idFilter: filter, predicate: null, bufferCapacity);
 
+        /// <inheritdoc />
+        public IReadOnlyList<(ISubscription First, ISubscription Second)> FindOverlappingFilterSubscriptions()
+        {
+            // Snapshot read, same lock-free discipline as the dispatch hot path -- this is a
+            // diagnostic call, not something exercised per-frame, but there's no reason to take
+            // _gate for a read when the existing snapshot already gives a consistent view.
+            var subscriptions = _snapshot;
+            var overlaps = new List<(ISubscription, ISubscription)>();
+
+            for (var i = 0; i < subscriptions.Length; i++)
+            {
+                if (subscriptions[i].IsDisposed || subscriptions[i].IdFilter is not { } filterI) continue;
+                for (var j = i + 1; j < subscriptions.Length; j++)
+                {
+                    if (subscriptions[j].IsDisposed || subscriptions[j].IdFilter is not { } filterJ) continue;
+                    if (filterI.Overlaps(filterJ))
+                        overlaps.Add((subscriptions[i], subscriptions[j]));
+                }
+            }
+
+            return overlaps;
+        }
+
         private ISubscription AddSubscription(CanIdFilter? idFilter, Func<CanFrameView, bool>? predicate, int? bufferCapacity)
         {
             var capacity = bufferCapacity ?? DefaultBufferCapacity;
