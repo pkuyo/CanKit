@@ -1,0 +1,11 @@
+{
+    "solution":
+    {
+        "path": "CanKit.sln",
+        "projects":
+        [
+            "src\\core\\CanKit.Pro.Actor\\CanKit.Pro.Actor.csproj",
+            "tests\\CanKit.Tests\\CanKit.Tests.csproj",
+        ]
+    }
+}
