@@ -121,6 +121,28 @@ public class DeadlineTests
     }
 
     [Fact]
+    public void Rearm_After_The_Actor_Is_Disposed_Marks_The_Deadline_Cancelled_Instead_Of_Orphaning_It()
+    {
+        var actor = new ProtocolActor();
+        var scheduler = new DeadlineScheduler(actor);
+
+        using var deadline = scheduler.Arm(TimeSpan.FromSeconds(30), () => { });
+        actor.Dispose();
+
+        // Rearm disposes the old (already-inert) timer and tries to arm a new one on the now-dead
+        // actor; Schedule throws ObjectDisposedException. The deadline must not be left stuck at
+        // Pending forever with no active timer -- it has no way to resolve itself anymore, so it is
+        // forced to the Cancelled terminal state instead of becoming an unobservable zombie.
+        Action rearm = () => deadline.Rearm(TimeSpan.FromMilliseconds(50));
+
+        rearm.Should().Throw<ObjectDisposedException>();
+        deadline.IsCancelled.Should().BeTrue(
+            "a deadline whose Rearm failed because its actor is gone can never resolve on its own and must report a terminal state");
+        deadline.IsExpired.Should().BeFalse();
+        deadline.IsCompleted.Should().BeFalse();
+    }
+
+    [Fact]
     public async Task Exception_From_OnExpired_Surfaces_Via_The_Actor_Background_Exception_Channel()
     {
         using var actor = new ProtocolActor();

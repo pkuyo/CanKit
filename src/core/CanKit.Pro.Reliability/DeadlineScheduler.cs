@@ -142,7 +142,25 @@ namespace CanKit.Pro.Reliability
                 // learn that instead of believing the re-arm succeeded.
                 _scheduledHandle?.Dispose();
                 Interlocked.Increment(ref _generation);
-                ArmLocked(timeout);
+
+                try
+                {
+                    ArmLocked(timeout);
+                }
+                catch
+                {
+                    // The old timer is already disposed and ArmLocked never got as far as installing
+                    // a replacement (Schedule threw before the assignment), so this deadline has no
+                    // active timer left and can never resolve on its own -- it would otherwise sit
+                    // stuck at Pending forever, observably indistinguishable from a healthy still-
+                    // pending deadline except for the exception that already unwound past this call.
+                    // Force it to the terminal state the class's own contract already implies
+                    // ("a disposed actor means this deadline can no longer be serviced"): best-effort
+                    // CAS to Cancelled, so a concurrent Complete/Dispose that already resolved it
+                    // first is left untouched and simply wins instead.
+                    Interlocked.CompareExchange(ref _state, StateCancelled, StatePending);
+                    throw;
+                }
 
                 // Complete/Dispose resolve _state via a lock-free CAS rather than this lock, so
                 // either can win between the check above and ArmLocked finishing. Re-check under
