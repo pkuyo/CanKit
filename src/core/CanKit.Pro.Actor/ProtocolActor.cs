@@ -338,11 +338,22 @@ namespace CanKit.Pro.Actor
                 // callers must not invoke Dispose() synchronously *from* the actor's own target
                 // context thread -- that would block the very thread this Send needs serviced,
                 // the same well-known pitfall as any synchronous wait on captured-context work.
-                _syncContext.Send(state =>
+                try
                 {
-                    try { ((Action)state!)(); }
-                    catch (Exception ex) { RaiseBackgroundException(ex); }
-                }, work);
+                    _syncContext.Send(state =>
+                    {
+                        try { ((Action)state!)(); }
+                        catch (Exception ex) { RaiseBackgroundException(ex); }
+                    }, work);
+                }
+                catch (Exception ex)
+                {
+                    // The user callback's own exceptions are already caught and routed above;
+                    // this guards against Send itself throwing (e.g. the target context rejects
+                    // marshaling because it is being torn down), so a single bad send cannot
+                    // escape RunSafely and fault the loop -- see FR-RAW-023.
+                    RaiseBackgroundException(ex);
+                }
                 return;
             }
 
