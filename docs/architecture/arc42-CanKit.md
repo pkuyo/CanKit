@@ -414,7 +414,7 @@ flowchart TB
 | TX-Confirm | (4) | Einheitliche „gesendet"-Bestätigung, egal ob Hardware-Echo vorhanden. **Umgesetzt** in `CanKit.Pro.RawCan` (`ICanBusService.SendConfirmed`): FIFO-Echo-Matching je (ID, Payload) für gleichzeitige inhaltsgleiche Sendevorgänge (FR-RAW-031), dokumentierte Treiber-Akzeptanz-Approximation ohne Echo (FR-RAW-032), beobachtbare Fehlschläge statt Hängen bei Timeout/BusOff/Ablehnung (FR-RAW-033), konfigurierbarer Timeout je Aufruf (FR-RAW-034). | `TxConfirmation { Confirmed; Timestamp; IsApproximated; FailureReason; }` | `FR-RAW-030..034` |
 | Adressierungs-Helfer | – | 11/29-bit, Extended/Mixed/NormalFixed (bislang nur als Einzelfall in `IsoTpEndpoint` vorhanden). **Umgesetzt** als eigenständiges, abhängigkeitsfreies Paket `CanKit.Pro.Addressing`: validierte 11-/29-Bit-ID-Prüfung (`CanIdRange`), allgemeine J1939-PGN/Priorität/PDU-Format/Quelladresse-Komposition/-Dekomposition (`J1939Id`/`J1939Fields`, FR-RAW-040) — verallgemeinert die zuvor auf eine feste Diagnose-PGN beschränkte 29-Bit-Konstruktion aus `IsoTpEndpoint.CreateNormalFixed`. Zusätzlich `CanIdFilter.Overlaps` sowie `ICanBusService.FindOverlappingFilterSubscriptions()` in `CanKit.Pro.RawCan` zur Erkennung überlappender Subscription-Filter (FR-RAW-041, Should). | ID-Bau/-Zerlegung, PGN/Prio-Helfer | `FR-RAW-ADDR-*` |
 | Aktor-/Threading-Modell | (3) | Genau ein Bearbeitungs-Thread/Mailbox pro Protokollinstanz; kein geteilter mutabler State. **Umgesetzt** als eigenständiges, abhängigkeitsfreies Paket `CanKit.Pro.Actor` (siehe ADR-6): ereignisgetriebener Loop (kein Busy-Loop, FR-RAW-022), je Instanz wählbarer Ausführungskontext (`ActorExecutionMode`: `DedicatedThread`/`ThreadPool`/`SynchronizationContext`, FR-RAW-024), `BackgroundExceptionOccurred` als einziger Kanal für Hintergrundfehler (FR-RAW-023). Vom ISO-TP-Prototyp noch nicht genutzt. | `IProtocolActor { Post(msg); PostAsync(msg); Schedule(delay, cb); }` | `FR-RAW-ACTOR-*` |
-| Timeout-Infrastruktur | – | Einheitliche Deadline-Verwaltung (ersetzt verstreute ISO-TP-`Deadline`s). | `IDeadlineScheduler` | `FR-RAW-TIMEOUT-*` |
+| Fehler-/Timeout-Infrastruktur | – | Einheitliche Deadline-Verwaltung (ersetzt verstreute ISO-TP-`Deadline`s) und gepushte Bus-Fehlerzustände. **Umgesetzt** als eigenständiges Paket `CanKit.Pro.Reliability` (siehe ADR-11), aufbauend auf `CanKit.Pro.Actor`: `IDeadlineScheduler`/`DeadlineScheduler`/`Deadline` ist eine wiederverwendbare Deadline-Primitive, deren Ablauf über `IProtocolActor.Schedule` auf dem Aktor-Loop tatsächlich eingeplant, geprüft und gemeldet wird — behebt die Klasse „Deadlines werden gepflegt, aber nie geprüft" (Review §1.1 Punkt 10, FR-RAW-050); die Pending→{Expired\|Completed\|Cancelled}-Auflösung ist per `Interlocked`-CAS genau einmal entscheidbar, Ausnahmen aus `onExpired` laufen über den bestehenden `BackgroundExceptionOccurred`-Kanal (kein zweiter Fehlerkanal). `BusStateMonitor`/`BusStateChangedEventArgs`/`BusStateExtensions` pusht `ICanBus.BusState`-Übergänge (ErrWarning/ErrPassive/BusOff sowie Erholung) an Protokollinstanzen — zuverlässig über einen selbst-rearmenden Poll auf dem Aktor-`Schedule` (Standard 50 ms) statt eines freilaufenden Timers, ergänzt um `ErrorFrameReceived`/`FaultOccurred` als Latenz-Hinweise (FR-RAW-051). FR-RAW-052 (reservierte/ungültige Protokollwerte) ist bewusst **zurückgestellt** und dem ISO-TP-Codec-Fix FR-TP-007 zugeordnet, nicht als generische L2-Primitive gebaut. | `IDeadlineScheduler`, `DeadlineScheduler`/`Deadline`, `BusStateMonitor`, `BusStateExtensions` | `FR-RAW-050..051` |
 
 ## 5.4 Ebene 2/3 – Zoom L3: ISO-TP-Interna (Prototyp – Klassendiagramm)
 
@@ -1142,6 +1142,39 @@ STmin-Grenzwerte, SN-Folge, N_Bs/N_Cr-Timeouts gegen Virtual.
   Unit-Test (`tests/CanKit.Tests/TestCases/AddressingTests.cs`,
   `tests/CanKit.Tests/TestCases/CanIdFilterOverlapTests.cs`).
 
+### ADR-11 (umgesetzt): Fehler-/Timeout-Infrastruktur als eigenständiges Paket
+- **Kontext:** L3-Protokolle brauchen zeitgebundene Zustandsübergänge (ISO-TP N_Bs/N_Cr, J1939-,
+  UDS-P2-, CANopen-SDO-Timeouts) und müssen Bus-Fehlerzustände (`ErrWarning`/`ErrPassive`/`BusOff`)
+  kennen, um aktive Übertragungen kontrolliert abzubrechen/zu pausieren. Der ISO-TP-Prototyp
+  pflegte zwar `Deadline`-Werte, prüfte deren Ablauf aber nie (Review §1.1 Punkt 10: „Deadlines
+  werden gepflegt, aber nie geprüft"), und `ICanBus.BusState` besitzt kein Änderungs-Event.
+- **Entscheidung:** eine wiederverwendbare, aktorgetriebene Infrastruktur in einem eigenen Paket
+  `CanKit.Pro.Reliability`, das ausschließlich auf `CanKit.Core` (für `ICanBus`/`BusState`) und
+  `CanKit.Pro.Actor` (für `IProtocolActor`) aufbaut — getrennt von `CanKit.Pro.RawCan`, da es weder
+  Frame-Demux noch TX-Confirm betrifft. Deadlines werden **nicht** als eigenständige Timer mit
+  eigenem Thread realisiert, sondern über `IProtocolActor.Schedule` auf dem ohnehin vorhandenen
+  Aktor-Loop jeder Protokollinstanz eingeplant (FR-RAW-020); ebenso läuft die Bus-Zustandsprüfung
+  als selbst-rearmender Poll auf demselben `Schedule` statt als freilaufender Timer/Busy-Loop.
+- **Konsequenzen:** + der Ablauf einer Deadline wird nachweislich eingeplant und geprüft (behebt die
+  Fehlerklasse aus Review §1.1 Punkt 10), einmalig per `Interlocked`-CAS aufgelöst
+  (`Pending → Expired|Completed|Cancelled`), und Ausnahmen aus `onExpired` nutzen den bestehenden
+  `BackgroundExceptionOccurred`-Kanal des Aktors statt eines zweiten Fehlerkanals; + Bus-Zustands-
+  Übergänge (auch Erholung, z. B. `BusOff → ErrActive`) werden edge-getriggert gepusht, ohne
+  Busy-Loop. − ein weiteres kleines Paket in der Solution; − der `BusState`-Getter läuft je
+  Poll-Tick synchron auf dem Instanz-Loop (bewusster Tradeoff, siehe README). Das `Rearm`-Verhalten
+  ist bei Rennen gegen einen bereits dispatchten Fire nur „best-effort" (per Generationszähler
+  gegen Doppelauslösung stale gewordener Timer abgesichert), analog dem dokumentierten
+  `Schedule`-Vorbehalt des Aktors.
+- **Status:** Umgesetzt: `IDeadlineScheduler`/`DeadlineScheduler`/`Deadline` (FR-RAW-050) sowie
+  `BusStateMonitor`/`BusStateChangedEventArgs`/`BusStateExtensions` (FR-RAW-051), abgesichert per
+  Unit-/Virtual-Loopback-Test (`tests/CanKit.Tests/TestCases/DeadlineTests.cs`,
+  `tests/CanKit.Tests/TestCases/BusStateMonitorTests.cs`). Die Primitive ist **reusable L2-
+  Infrastruktur** und wird vom weiterhin defekten ISO-TP-Prototyp noch nicht genutzt (dessen
+  Scheduler bleibt unverändert, eigener Must-Fix FR-TP-xxx). FR-RAW-052 (reservierte/ungültige
+  Protokollwerte, z. B. reservierte ISO-TP-STmin-Werte) ist bewusst **nicht** hier umgesetzt,
+  sondern als protokoll-codec-spezifische Aufgabe dem künftigen ISO-TP-Fix FR-TP-007 (Review §1.1
+  Punkt 6) zugeordnet — eine generische „Reserved-Value"-Abstraktion wäre hier spekulativ.
+
 ---
 
 # 10. Qualitätsanforderungen
@@ -1191,7 +1224,7 @@ Priorisierung: **K** = kritisch, **W** = wichtig, **G** = gering.
 
 | Prio | Risiko / Schuld | Auswirkung | Gegenmaßnahme | Review § |
 |------|------------------|-----------|---------------|----------|
-| K | **ISO-TP funktional defekt (WIP)**: `IsoTp.Open` wirft `NotImplementedException`; invertiertes `canfd` in allen 4 Buildern; FC trägt FF-PCI; FC-Padding nullt BS/STmin; FF-Längenparsing verliert High-Nibble; `EncodeStmin` wirft bei 0/1 ms; CF-Segmentierung (Byte 6 verloren, SN=0 statt 1); Multi-Frame-TX startet nie (`WaitFc`+`IsReadyToSendData=false`). | Jede ISO-TP-Übertragung schlägt fehl bzw. hängt; Paket nicht funktionsfähig. | Protokollfehler beheben; Scheduler ereignisgetrieben (`AsyncAutoResetEvent`) + Deadline-Prüfung; Virtual-Loopback-Tests; **bis dahin `IsPackable=false`/„experimental"**. | §1.1 |
+| K | **ISO-TP funktional defekt (WIP)**: `IsoTp.Open` wirft `NotImplementedException`; invertiertes `canfd` in allen 4 Buildern; FC trägt FF-PCI; FC-Padding nullt BS/STmin; FF-Längenparsing verliert High-Nibble; `EncodeStmin` wirft bei 0/1 ms; CF-Segmentierung (Byte 6 verloren, SN=0 statt 1); Multi-Frame-TX startet nie (`WaitFc`+`IsReadyToSendData=false`). | Jede ISO-TP-Übertragung schlägt fehl bzw. hängt; Paket nicht funktionsfähig. | Protokollfehler beheben; Scheduler ereignisgetrieben (`AsyncAutoResetEvent`) + Deadline-Prüfung; Virtual-Loopback-Tests; **bis dahin `IsPackable=false`/„experimental"**. *Hinweis (Teil-Baustein Review §1.1 Punkt 10 „Deadlines werden gepflegt, aber nie geprüft"):* die wiederverwendbare, aktorgetriebene Deadline-Primitive `CanKit.Pro.Reliability.Deadline` (FR-RAW-050) samt `BusStateMonitor` (FR-RAW-051) existiert nun als L2-Infrastruktur (ADR-11) und steht zur Übernahme durch ISO-TP/L3 bereit — der ISO-TP-Scheduler selbst ist von diesem PR jedoch **unverändert** und bleibt eigener Must-Fix. | §1.1 |
 | K | ✅ *Behoben.* **Frame-Ownership**: `CanFrame.Dispose()` ignorierte `OwnMemory` (gab Owner immer frei). | Use-after-free / Double-Dispose bei gepoolten Buffern über Events/Pipe/Virtual-Hub. | `Dispose()` → `if (OwnMemory) _memoryOwner?.Dispose();`; `CanFrame.Duplicate(IBufferAllocator)` ergänzt; Ownership-Vertrag (8.1/ADR-9) durchgesetzt. | §1.5, §2.1 |
 | K | ✅ *Behoben.* **`QueuedCanBus`-Retry-Stau**: Batch-Reste blieben bis zum nächsten `Enqueue` liegen (blockierte in `WaitToReadAsync`). | Frames wurden verspätet oder nie gesendet; Backoff wirkungslos. | `WaitToReadAsync` nur bei `index==0`; sonst direkter Retry mit Backoff; nur die gültige Batch-Teilmenge wird an `Transmit` übergeben. | §1.2 |
 | K | ✅ *Behoben.* **SocketCAN/ZLG Stopwatch nie gestartet**: `remainingTime` blieb konstant. | Sende-`poll()`-Endlosschleife bei nicht-annehmendem, schreibbarem Bus; unbegrenzte Wartezeit. | `Stopwatch.StartNew()` in `SocketCanBus.Transmit` (2×) und 3 ZLG-Transceivern. | §1.3 |
