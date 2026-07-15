@@ -411,7 +411,7 @@ flowchart TB
 | `ICanBusService` | – | Ein Dienst-Objekt pro `ICanBus`; hält Subscriptions, TX-Confirm, Aktoren. | `Subscribe(filter) → ISubscription`, `SendConfirmed(frame) → Task<TxConfirmation>` | `FR-RAW-SVC-*` |
 | Multi-Protokoll-Demux | (2) | Ein RX-Strom → N unabhängige gefilterte Consumer, **ohne** konkurrierendes `ReceiveAsync`. **Umgesetzt** im neuen Paket `CanKit.Pro.RawCan` (`ICanBusService`/`CanBusService` + `ISubscription`): je Subscription ein eigener bounded Drop-Oldest-Channel (FR-RAW-011), Fast-Path `CanIdFilter` (ID-Range/Maske) neben generischem `Func<CanFrameView,bool>` (FR-RAW-010/013), deterministisches Dispose (FR-RAW-012). Baut ausschließlich auf `ICanBus.FrameObserved`, kein Adapter-Eingriff. | `ICanBusService.Subscribe(filter) → ISubscription { IAsyncEnumerable<CanFrameView> Frames; }` | `FR-RAW-010..013` |
 | Frame-Ownership-Vertrag | (1) | Verbindliche Lease-Regeln (siehe 8.1); verhindert Use-after-free/Double-Dispose. **Kernmechanik umgesetzt** (`OwnMemory`-Fix, `CanFrame.Duplicate`, Virtual-Hub-Broadcast per Kopie); ausstehend: TX-Lease für übrige L0-Adapter/ISO-TP-Scheduler. | Vertragsdoku + `OwnMemory`-Fix (Review §1.5) | `FR-RAW-OWN-*` |
-| TX-Confirm | (4) | Einheitliche „gesendet"-Bestätigung, egal ob Hardware-Echo vorhanden. | `TxConfirmation { Confirmed; Timestamp; IsApproximated; }` | `FR-RAW-TXC-*` |
+| TX-Confirm | (4) | Einheitliche „gesendet"-Bestätigung, egal ob Hardware-Echo vorhanden. **Umgesetzt** in `CanKit.Pro.RawCan` (`ICanBusService.SendConfirmed`): FIFO-Echo-Matching je (ID, Payload) für gleichzeitige inhaltsgleiche Sendevorgänge (FR-RAW-031), dokumentierte Treiber-Akzeptanz-Approximation ohne Echo (FR-RAW-032), beobachtbare Fehlschläge statt Hängen bei Timeout/BusOff/Ablehnung (FR-RAW-033), konfigurierbarer Timeout je Aufruf (FR-RAW-034). | `TxConfirmation { Confirmed; Timestamp; IsApproximated; FailureReason; }` | `FR-RAW-030..034` |
 | Adressierungs-Helfer | – | 11/29-bit, Extended/Mixed/NormalFixed (heute in `IsoTpEndpoint` verstreut). | ID-Bau/-Zerlegung, PGN/Prio-Helfer | `FR-RAW-ADDR-*` |
 | Aktor-/Threading-Modell | (3) | Genau ein Bearbeitungs-Thread/Mailbox pro Protokollinstanz; kein geteilter mutabler State. | `IProtocolActor { Post(msg); }` | `FR-RAW-ACTOR-*` |
 | Timeout-Infrastruktur | – | Einheitliche Deadline-Verwaltung (ersetzt verstreute ISO-TP-`Deadline`s). | `IDeadlineScheduler` | `FR-RAW-TIMEOUT-*` |
@@ -1052,13 +1052,28 @@ STmin-Grenzwerte, SN-Folge, N_Bs/N_Cr-Timeouts gegen Virtual.
 - **Konsequenzen:** + deterministisches Threading (Q3/Q4), kein Lock-Zoo. − Umbau des ISO-TP-Kerns;
   Latenz durch Mailbox-Hop.
 
-### ADR-7 (Ziel): TX-Confirm-Abstraktion
+### ADR-7 (umgesetzt): TX-Confirm-Abstraktion
 - **Kontext:** Manche Hardware liefert TX-Echo (`CanFeature.Echo`), andere nicht; Protokolle
   brauchen ein „gesendet"-Signal (N_As).
 - **Entscheidung:** einheitliche `TxConfirmation` in L2; Echo-Matching wo verfügbar, sonst
   Approximation (`IsApproximated=true`).
 - **Konsequenzen:** + protokollunabhängige Confirm-Semantik. − Approximation ist ungenau
   (Jitter), muss dokumentiert werden.
+- **Status:** Umgesetzt in `CanKit.Pro.RawCan` (`ICanBusService.SendConfirmed`). Nutzung von
+  Echo-Matching hängt von **zwei** Bedingungen ab: `CanFeature.Echo` (Hardware-Fähigkeit) UND
+  `WorkMode == ChannelWorkMode.Echo` (Session-Opt-in) — reines Vorhandensein der Fähigkeit reicht
+  nicht. Ausstehende Bestätigungen werden pro (ID, Payload)-Schlüssel FIFO in einer
+  `LinkedList<PendingSend>` geführt, sodass mehrere gleichzeitige, inhaltsgleiche Sendevorgänge
+  je einzeln (nicht querverwechselt) bestätigt werden (FR-RAW-031) — genau die Fehlerklasse, die
+  im Review als `QueuedDeadline.Enqueue`-Absturz bei identischen Frames benannt wurde. Fehlschläge
+  (Timeout, BusOff, Ablehnung durch den Treiber) lösen die zurückgegebene Task beobachtbar auf
+  (`TxConfirmation.FailureReason`), nie unbegrenztes Hängen; explizite Aufrufer-Cancellation läuft
+  getrennt davon über Task-Cancellation. `BusState.BusOff` löst über `ICanBus.FaultOccurred` ein
+  proaktives Fast-Fail aller offenen Bestätigungen aus, statt auf den vollen Timeout zu warten.
+  `CanKit.Adapter.Virtual` deklarierte `CanFeature.Echo` bislang nicht statisch (im Gegensatz zu
+  allen echten Adaptern) und wurde dafür ergänzt — sonst wäre Echo-Matching mangels
+  hardwareunabhängiger CI gar nicht testbar gewesen. Abgesichert per Virtual-Loopback
+  (`tests/CanKit.Tests/TestCases/TxConfirmTests.cs`).
 
 ### ADR-8: Fake-Native + Virtual-Loopback als Teststrategie
 - **Kontext:** CI ohne CAN-Hardware, deterministische Protokolltests.
