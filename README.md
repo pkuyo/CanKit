@@ -1,221 +1,147 @@
-# CanKit
-[![Nuget](https://img.shields.io/nuget/v/CanKit.Core.svg?logo=nuget)](https://www.nuget.org/packages/CanKit.Core/)
-[![NuGet Downloads](https://img.shields.io/nuget/dt/CanKit.Core.svg?logo=nuget)](https://www.nuget.org/packages/CanKit.Core)
-[![.NET Standard 2.0](https://img.shields.io/badge/.NET%20Standard-2.0-512BD4?logo=dotnet&logoColor=white)](#)
-[![.NET 8](https://img.shields.io/badge/.NET-8.0-512BD4?logo=dotnet&logoColor=white)](#)
+# CanKit.Pro
 
-[![CI-adapter-vector](https://github.com/pkuyo/CanKit/actions/workflows/vector-ci.yml/badge.svg)](https://github.com/pkuyo/CanKit/actions/workflows/vector-ci.yml)
-[![CI-adapter-kvaser](https://github.com/pkuyo/CanKit/actions/workflows/kvaser-ci.yml/badge.svg)](https://github.com/pkuyo/CanKit/actions/workflows/kvaser-ci.yml)
-[![CI-adapter-pcan](https://github.com/pkuyo/CanKit/actions/workflows/pcan-ci.yml/badge.svg)](https://github.com/pkuyo/CanKit/actions/workflows/pcan-ci.yml)
-[![CI-adapter-socketcan](https://github.com/pkuyo/CanKit/actions/workflows/socketcan-ci.yml/badge.svg)](https://github.com/pkuyo/CanKit/actions/workflows/socketcan-ci.yml)
-[![CI-adapter-controlCAN](https://github.com/pkuyo/CanKit/actions/workflows/controlcan-ci.yml/badge.svg)](https://github.com/pkuyo/CanKit/actions/workflows/controlcan-ci.yml)
-[![CI-adapter-zlgcan](https://github.com/pkuyo/CanKit/actions/workflows/zlg-ci.yml/badge.svg)](https://github.com/pkuyo/CanKit/actions/workflows/zlg-ci.yml)
-[![CI-adapter-virtual](https://github.com/pkuyo/CanKit/actions/workflows/virtual-ci.yml/badge.svg)](https://github.com/pkuyo/CanKit/actions/workflows/virtual-ci.yml)
+**Erweiterte CAN-Protokoll-Bibliothek für .NET**  
+Höhere Schichten auf Basis von [CanKit](https://github.com/pkuyo/CanKit)
 
+---
 
+## Über CanKit.Pro
 
-**CanKit** is an unified, cross-platform, multi-vendor, high-performance c# CAN communication library.
+**CanKit.Pro** ist ein Fork von **CanKit** und erweitert die bewährte, hochperformante und herstellerübergreifende CAN-Basis um **höhere Protokolle** wie:
 
-It supports opening buses via endpoint strings or strongly-typed helpers, and exposes common operations (send/receive, filters, periodic TX, error monitoring) across adapters.
+- **CANopen** (PDO, SDO, NMT, Heartbeat, LSS, etc.)
+- **J1939** (PGN, SPN, Transport Protocol, BAM, CM etc.)
+- **UDS** (ISO 14229 – Unified Diagnostic Services)
+- Weitere Protokolle (in Planung): ISO-TP, XCP, DeviceNet, Safety (z. B. CANopen Safety)
 
-- Adapters: PCAN-Basic (Peak CAN), CANlib(Kvaser), SocketCAN (Linux), ZLG
+Ziel ist es, eine moderne, einheitliche und typsichere .NET-Bibliothek für industrielle, automotive und embedded CAN-Anwendungen bereitzustellen.
 
-For Chinese readers, see: [README_CN.md](README_CN.md)
-
-----
-
-Below is a quick CAN listener/sender demo using CanKit. With multi-vendor support, you can get hands-on with CanKit features in minutes. [CanKit ToolKit](https://github.com/pkuyo/CanKit-Toolkit) 
-
-![Preview](https://github.com/pkuyo/CanKit-Toolkit/blob/master/docs/pics/cankitdemo_preview1.png)
+---
 
 ## Features
 
-- Performance and backpressure
-  - High-throughput pipeline with backpressure-aware async APIs
-  - Configurable buffering to avoid overload and drop
-- Unified API surface
-  - Open by endpoint or typed helpers; enumerate endpoints
-  - Classic CAN 2.0 and CAN FD frames
-  - Sync and async I/O: `Transmit/Receive`, `TransmitAsync/ReceiveAsync`, and `GetFramesAsync` (NET 8+)
-  - Events: `FrameObserved`, `ErrorFrameReceived`, `BackgroundExceptionOccurred`
-- Timing and modes
-  - Classic and FD bit timing helpers; advanced segment-based timing via `CanBusTiming`
-  - Work modes: Normal / Listen-Only / Echo (loopback) when supported by device
-- Filtering
-  - Configure mask or range filters via a unified API
-  - Software fallbacks when hardware filtering is limited
-- Periodic transmit
-  - Hardware cyclic TX where available; otherwise software periodic TX
-- Diagnostics and telemetry
-  - Error frames, bus state, error counters, bus usage (availability depends on adapter)
+### Kern (von CanKit übernommen)
+- Herstellerübergreifende Adapter-Unterstützung (PCAN, Kvaser, Vector, SocketCAN, ZLG, …)
+- Hohe Performance & Async-First API
+- CAN + CAN FD
+- Einheitliche Endpunkt-Konfiguration
 
-## Install
+### Neue Protokoll-Features in CanKit.Pro
 
-Add the core package and one or more adapter packages as needed. Package IDs are indicative; use the actual published IDs for your feed.
+- **CANopen**
+  - Vollständiger Object Dictionary Support
+  - PDO Mapping (statisch + dynamisch)
+  - SDO Client & Server
+  - NMT Master/Slave
+  - Heartbeat Producer/Consumer
 
-```
+- **J1939**
+  - PGN-basiertes Messaging
+  - Multi-Packet Transport (TP.BAM & TP.CM)
+  - Address Claiming
+  - DM1/DM2 Diagnose-Nachrichten
+
+- **UDS**
+  - ISO-14229 Diagnoseprotokoll
+  - Session Management
+  - Standard Services (0x10, 0x22, 0x2E, 0x31, 0x3E, …)
+  - Security Access
+
+- Moderne C# APIs (Records, Source Generators, stark typisierte Nachrichten)
+
+---
+
+## Installation
+
+```bash
+# Core + Adapter (wie bei CanKit)
 dotnet add package CanKit.Core
+dotnet add package CanKit.Adapter.PCAN     # oder Kvaser, Vector, SocketCAN...
 
-// Pick adapters you need
-dotnet add package CanKit.Adapter.PCAN
-dotnet add package CanKit.Adapter.Kvaser
-dotnet add package CanKit.Adapter.SocketCAN
-dotnet add package CanKit.Adapter.ZLG
-dotnet add package CanKit.Adapter.Virtual
+# Protokoll-Erweiterungen
+dotnet add package CanKit.Pro.CanOpen
+dotnet add package CanKit.Pro.J1939
+dotnet add package CanKit.Pro.UDS
 ```
 
+---
 
-## Quick Start
+## Schnellstart
 
-Open a bus using an endpoint string, then send/receive frames. Examples:
+### CANopen Beispiel
 
-- PCAN: `pcan://PCAN_USBBUS1`
-- Kvaser: `kvaser://0` or `kvaser://?ch=0`
-- SocketCAN (Linux): `socketcan://can0`
-- ZLG: `zlg://USBCANFD-200U?index=0#ch1`
-- Virtual: `virtual://alpha/0`
-- Vector: `vector://YourAppName/0`
-- ControlCAN: `controlcan://USBCAN2index=0#ch0`
-
-
-### Send & Receive
 ```csharp
-using CanKit.Core;
-using CanKit.Core.Definitions;
+using CanKit.Pro.CanOpen;
 
-// Open via endpoint; tune bitrate and other options in the configurator
-using var bus = CanBus.Open(
-    "socketcan://can0#netlink",
-    cfg => cfg.TimingClassic(500_000)); // 500 kbit/s for classic CAN
+// Bus öffnen (wie gewohnt)
+using var bus = CanBus.Open("pcan://PCAN_USBBUS1", cfg => cfg.Baud(500_000));
 
-// Transmit a classic CAN frame (sync)
-var frame = CanFrame.Classic(0x123, new byte[] { 0x11, 0x22, 0x33 });
-var sentCount = bus.Transmit(frame);
+var node = new CanOpenNode(bus, nodeId: 0x10);
 
-// Transmit the same frame (async)
-sentCount = await bus.TransmitAsync(frame);
+// SDO Read
+var value = await node.ReadAsync<byte>(0x1000, 0x00); // Device Type
 
-// Receive up to 1 frame (blocking), timeout in milliseconds
-var items = bus.Receive(1, timeOut: 100);
-
-// Receive up to 10 frames (async batch) with timeout
-var list = await bus.ReceiveAsync(10, timeOut: 500);
+// PDO Mapping
+node.ConfigurePdo(...);
 ```
 
-### Event-driven RX + Batch TX
+### J1939 Beispiel
+
 ```csharp
-// Event-driven receive, pretty-print frames, and batch transmit
-using CanKit.Core;
-using CanKit.Core.Abstractions;
-using CanKit.Core.Definitions;
-using System;
+var j1939 = new J1939Controller(bus);
 
-// Open the bus; adjust timing/mode in the configurator as needed
-using var bus = CanBus.Open(
-    "socketcan://can0#netlink",
-    cfg => cfg.Baud(500_000));
-
-// Subscribe to frames (enable error/state frames in the configurator if you need them)
-bus.FrameObserved += (_, rec) =>
+j1939.MessageReceived += (sender, msg) =>
 {
-    var f = rec.CanFrame;
-    Console.WriteLine($"RX {f.FrameKind} ID=0x{f.ID:X} DLC={f.Dlc}");
+    if (msg.PGN == Pgns.EngineTemperature1)
+        Console.WriteLine($`Öltemperatur: {msg.GetSpn(Spns.EngineOilTemperature1)}`);
 };
-
-// Single frame TX (sync + async)
-var frame = CanFrame.Classic(0x123, new byte[] { 0x11, 0x22, 0x33 });
-var sentCount = bus.Transmit(frame);
-sentCount = await bus.TransmitAsync(frame);
-
-// Batch TX (sync + async)
-var frames = new[] { frame, frame, frame, frame };
-sentCount = bus.Transmit(frames);
-sentCount = await bus.TransmitAsync(frames);
-
-// Optional: also pull frames on demand (sync/async) with timeouts
-var one = bus.Receive(1, timeOut: 100);
-var many = await bus.ReceiveAsync(10, timeOut: 500);
 ```
 
-Prefer a strongly-typed helper? Available for some adapters:
+---
 
-```csharp
-using CanKit.Adapter.Kvaser;
-var kvaser = Kvaser.Open(0, cfg => cfg.Fd(1_000_000, 2_000_000));
-```
-
-
-
-## Endpoints & Enumeration
-
-Enumerate discoverable endpoints:
-
-```csharp
-using CanKit.Core.Endpoints;
-
-foreach (var ep in BusEndpointEntry.Enumerate("pcan", "kvaser", "socketcan", "zlg", "virtual"))
-{
-    Console.WriteLine($"{ep.Title ?? ep.Endpoint} -> {ep.Endpoint}");
-}
-```
-## Query Device Capabilities
-```csharp
-using CanKit.Core;
-
-var capability = CanBus.QueryCapabilities("kvaser://0");
-Console.WriteLine($"support: {capability.Features}")
-```
-
-## Error Handling & Monitoring
-
-CanKit exposes events to handle critical failures, background loop exceptions, and CAN bus error frames.
-
-```csharp
-
-// Triggered when the connection is broken or a fatal driver error occurs.
-bus.FaultOccurred += (sender, exception) => {};
-
-// Triggered when a non-fatal exception occurs in the receive/transmit loops. 
-bus.BackgroundExceptionOccurred += (sender, exception) => {};
-
-// Triggered when the CAN controller detects physical bus errors (Bit, Stuff, CRC, etc.).
-bus.ErrorFrameReceived += (sender, errorInfo) => {};
+## Projektstruktur
 
 ```
+CanKit.Pro/
+├── src/
+│   ├── CanKit.Pro.Core/          # Gemeinsame Typen & Hilfen
+│   ├── CanKit.Pro.CanOpen/
+│   ├── CanKit.Pro.J1939/
+│   ├── CanKit.Pro.UDS/
+│   └── CanKit.Pro.ISO-TP/
+├── samples/
+├── tests/
+└── docs/
+```
 
-## Getting Started
+---
 
-Read the step-by-step guide, including installing drivers/runtime libraries per adapter:
+## Roadmap
 
-- English: [getting-started](docs/getting-started.md)
+- [ ] Vollständige CANopen Implementierung
+- [ ] J1939 Transport Protocol & Address Claim
+- [ ] UDS Diagnose-Stack
+- [ ] Source Generatoren für Object Dictionaries / PGNs
+- [ ] DBC & EDS Import/Export
+- [ ] GUI-Tool (CanKit.Pro.Toolkit)
 
+---
 
-## Adapter Notes (Quick)
+## Mitwirken
 
-- PCAN (Windows): install PCAN drivers and PCAN-Basic; the native PCANBasic.dll must be loadable (x86/x64 must match your process).
-- Kvaser (Windows/Linux): install Kvaser Driver + CANlib; ensure canlib is loadable and channel accessible.
-- SocketCAN (Linux): enable SocketCAN, configure the interface (ip link...), and install libsocketcan for netlink-based config (`#netlink`).
-- ZLG (Windows): ensure zlgcan.dll is present and bitness matches your process.
-- Virtual: no driver needed.
+Beiträge sind herzlich willkommen!  
+Siehe [CONTRIBUTING.md](CONTRIBUTING.md) für Details.
 
+---
 
-## Behavior Differences (Heads-up)
+## Lizenz
 
-Different adapters may handle timeouts, filters, error frames, and periodic TX differently:
+Dieses Projekt basiert auf [CanKit](https://github.com/pkuyo/CanKit) und steht unter der **Apache License 2.0**.
 
-- Timeouts: some adapters ignore TX timeouts (e.g., PCAN, Kvaser), others honor both TX/RX timeouts.
-- Filters: mask vs. range support varies; software fallback can be enabled when hardware filtering is limited.
-- Error Frames/Counters/Bus Usage: availability depends on adapter/driver.
-- Periodic TX: hardware-backed on some adapters; otherwise use software periodic TX fallback.
+---
 
-See docs for detailed, adapter-specific notes.
+**Hinweis**: Dies ist ein aktiver Fork / Community-Projekt und nicht mit dem Original-CanKit verbunden.
 
+---
 
-## Project Status
-
-This library is under active development. Due to limited access to hardware, not every feature is fully validated across all device families and OS combinations. If you hit issues, please open an issue. Contributions (PRs), device-specific fixes, and test reports are very welcome!
-
-
-## License
-
-This project is available under the LICENSE in this repository.
+**Made with ❤️ für die CAN-Community**

@@ -4,11 +4,13 @@ on:
   push:
     paths:
       - 'src/core/CanKit.Core/**'
+      - 'src/core/CanKit.Abstractions/**'
       - 'src/adapters/CanKit.Adapter.Virtual/**'
       - 'tests/CanKit.Tests/**'
   pull_request:
     paths:
       - 'src/core/CanKit.Core/**'
+      - 'src/core/CanKit.Abstractions/**'
       - 'src/adapters/CanKit.Adapter.Virtual/**'
       - 'tests/CanKit.Tests/**'
 jobs:

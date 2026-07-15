@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <Nullable>enable</Nullable>
+        <LangVersion>12</LangVersion>
+        <Version>$(CanKitProActorVersion)</Version>
+        <Description>Generic protocol-instance actor/scheduler for CanKit (CanKit.Pro): a single-mailbox, single-writer execution model with event-driven timer scheduling and a dedicated background-exception channel, giving protocol layers (ISO-TP, J1939, CANopen, ...) a documented threading model instead of hand-rolled locks and busy loops.</Description>
+        <PackageTags>CAN;can bus;actor;scheduler;threading;CanKit;CanKit.Pro</PackageTags>
+        <AssemblyVersion>1.0.0.0</AssemblyVersion>
+        <FileVersion>$(CanKitSharedFileVersion)</FileVersion>
+        <Authors>Pkuyo</Authors>
+        <RepositoryUrl>https://github.com/pkuyo/CanKit</RepositoryUrl>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
+        <Configurations>Debug;Release;Fake</Configurations>
+        <Platforms>AnyCPU</Platforms>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <None Include="README.md" Pack="true" PackagePath="" />
+    </ItemGroup>
+</Project>

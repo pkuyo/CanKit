@@ -1,4 +1,5 @@
 using System;
+using System.Buffers;
 using CanKit.Abstractions.API.Can;
 using CanKit.Abstractions.API.Can.Definitions;
 using CanKit.Abstractions.API.Common.Definitions;
@@ -10,6 +11,63 @@ namespace CanKit.Tests.TestCases;
 
 public class CanFrameTests : IClassFixture<TestCaseProvider>
 {
+    // Test double that exposes whether Dispose() was actually invoked, so the frame
+    // ownership contract (docs/architecture/arc42-CanKit.md §8.1) can be asserted precisely.
+    private sealed class TrackingMemoryOwner : IMemoryOwner<byte>
+    {
+        private readonly byte[] _buffer;
+
+        public TrackingMemoryOwner(int length) => _buffer = new byte[length];
+
+        public bool Disposed { get; private set; }
+
+        public Memory<byte> Memory => _buffer;
+
+        public void Dispose() => Disposed = true;
+    }
+
+    [Fact]
+    public void Dispose_Without_OwnMemory_Does_Not_Dispose_Underlying_Owner()
+    {
+        var owner = new TrackingMemoryOwner(4);
+        var frame = CanFrame.Classic(0x100, owner, ownMemory: false);
+
+        frame.Dispose();
+
+        owner.Disposed.Should().BeFalse();
+    }
+
+    [Fact]
+    public void Dispose_With_OwnMemory_Disposes_Underlying_Owner()
+    {
+        var owner = new TrackingMemoryOwner(4);
+        var frame = CanFrame.Classic(0x100, owner, ownMemory: true);
+
+        frame.Dispose();
+
+        owner.Disposed.Should().BeTrue();
+    }
+
+    [Fact]
+    public void Duplicate_Produces_Independently_Disposable_Copy()
+    {
+        var sourceOwner = new TrackingMemoryOwner(3);
+        new byte[] { 1, 2, 3 }.AsSpan().CopyTo(sourceOwner.Memory.Span);
+        var frame = CanFrame.Classic(0x100, sourceOwner, ownMemory: true);
+
+        var allocator = new ArrayPoolBufferAllocator();
+        var clone = frame.Duplicate(allocator);
+
+        clone.Data.ToArray().Should().Equal(1, 2, 3);
+
+        // Disposing the source frame must not affect the clone's independent buffer.
+        frame.Dispose();
+        sourceOwner.Disposed.Should().BeTrue();
+        clone.Data.ToArray().Should().Equal(1, 2, 3);
+
+        clone.Dispose();
+    }
+
     [Fact]
     public void Classic_Data_Length_Over_8_Should_Throw()
     {
