@@ -1,6 +1,9 @@
 using System;
+using System.Threading;
+using System.Threading.Tasks;
 using CanKit.Abstractions.API.Can;
 using CanKit.Abstractions.API.Can.Definitions;
+using CanKit.Abstractions.API.Common.Definitions;
 
 namespace CanKit.Pro.RawCan
 {
@@ -60,5 +63,46 @@ namespace CanKit.Pro.RawCan
         /// <see cref="CanBusService.DefaultBufferCapacity"/>. (本订阅的有界缓冲容量；null 使用默认值。)
         /// </param>
         ISubscription Subscribe(CanIdFilter filter, int? bufferCapacity = null);
+
+        /// <summary>
+        /// Sends <paramref name="frame"/> and asynchronously confirms it was actually sent, using
+        /// a uniform abstraction regardless of whether the underlying bus has hardware TX echo
+        /// enabled (arc42 §6.3, ADR-7; FR-RAW-030). When the bus both declares
+        /// <see cref="CanFeature.Echo"/> and has <c>WorkMode == ChannelWorkMode.Echo</c> configured,
+        /// confirmation comes from an actually-matched echo frame (FR-RAW-031, including correct
+        /// FIFO matching of multiple concurrent byte-identical sends — no cross-matching or crash);
+        /// otherwise it is a documented approximation based on driver acceptance
+        /// (<see cref="TxConfirmation.IsApproximated"/>, FR-RAW-032). Never hangs: timeout,
+        /// bus-off, and outright rejection all resolve the returned task within bounded time
+        /// (FR-RAW-033) — see <see cref="TxConfirmation"/> for exactly how.
+        /// (发送 <paramref name="frame"/> 并异步确认其确已被发送，无论底层总线是否启用了硬件发送回显均采用统一的抽象。
+        /// 当总线同时声明 <see cref="CanFeature.Echo"/> 且配置了 <c>WorkMode == ChannelWorkMode.Echo</c> 时，
+        /// 确认来自实际匹配到的回显帧（含对多路并发、字节内容相同的发送的正确 FIFO 匹配，不会互相匹配错乱或崩溃）；
+        /// 否则为基于驱动接受的、有文档说明的近似确认。永不悬挂：超时、总线关闭（BusOff）以及被驱动直接拒绝，
+        /// 均会在有限时间内使返回的任务得到结果。)
+        /// </summary>
+        /// <param name="frame">
+        /// The frame to send. As with <see cref="ICanBus.Transmit(in CanFrame)"/>, the caller
+        /// remains the owner (TX-lease) and is responsible for disposing it after this call
+        /// returns/completes — <see cref="ICanBusService"/> never disposes it.
+        /// (要发送的帧。与 <see cref="ICanBus.Transmit(in CanFrame)"/> 一致，调用方始终是所有者（TX 租约），
+        /// 本调用返回/完成后需自行释放该帧——<see cref="ICanBusService"/> 不会释放它。)
+        /// </param>
+        /// <param name="timeout">
+        /// Maximum time to wait for an echo before failing with
+        /// <see cref="TxConfirmFailureReason.Timeout"/> (FR-RAW-034); null uses
+        /// <see cref="CanBusService.DefaultConfirmTimeout"/>. Ignored on the approximated path
+        /// (driver acceptance is synchronous/immediate). Must be positive.
+        /// (等待回显的最长时间，超时后以 <see cref="TxConfirmFailureReason.Timeout"/> 失败；null 表示使用
+        /// <see cref="CanBusService.DefaultConfirmTimeout"/>。近似确认路径下忽略此参数（驱动接受是同步/即时的）。
+        /// 必须为正值。)
+        /// </param>
+        /// <param name="cancellationToken">
+        /// Caller-supplied cancellation; cancels the returned task per standard .NET convention,
+        /// distinct from the domain-level <see cref="TxConfirmFailureReason.Timeout"/> outcome.
+        /// (调用方提供的取消令牌；按 .NET 标准约定取消返回的任务，与领域级别的
+        /// <see cref="TxConfirmFailureReason.Timeout"/> 结果是两回事。)
+        /// </param>
+        Task<TxConfirmation> SendConfirmed(CanFrame frame, TimeSpan? timeout = null, CancellationToken cancellationToken = default);
     }
 }

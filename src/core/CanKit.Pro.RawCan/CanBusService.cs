@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 using CanKit.Abstractions.API.Can;
 using CanKit.Abstractions.API.Can.Definitions;
 using CanKit.Abstractions.API.Common.Definitions;
@@ -10,7 +12,9 @@ namespace CanKit.Pro.RawCan
     /// <summary>
     /// Default <see cref="ICanBusService"/>: attaches once to <see cref="ICanBus.FrameObserved"/>
     /// and fans each observed <see cref="CanFrameView"/> out to every registered
-    /// <see cref="Subscription"/> (arc42 §5.3 "Multi-Protokoll-Demux", ADR-5).
+    /// <see cref="Subscription"/> (arc42 §5.3 "Multi-Protokoll-Demux", ADR-5), and implements
+    /// <see cref="SendConfirmed"/> (arc42 §6.3, ADR-7; FR-RAW-030..034) on the same single
+    /// <see cref="ICanBus.FrameObserved"/> subscription.
     /// </summary>
     public sealed class CanBusService : ICanBusService
     {
@@ -19,6 +23,12 @@ namespace CanKit.Pro.RawCan
         /// (未显式指定时每路订阅的默认有界缓冲容量。)
         /// </summary>
         public const int DefaultBufferCapacity = 1024;
+
+        /// <summary>
+        /// Default <see cref="SendConfirmed"/> echo-wait timeout when none is specified
+        /// (FR-RAW-034). (未显式指定时 <see cref="SendConfirmed"/> 等待回显的默认超时。)
+        /// </summary>
+        public static readonly TimeSpan DefaultConfirmTimeout = TimeSpan.FromSeconds(1);
 
         private readonly ICanBus _bus;
 
@@ -33,6 +43,18 @@ namespace CanKit.Pro.RawCan
         // holding _hubsGate while delivering.
         private volatile Subscription[] _snapshot = Array.Empty<Subscription>();
 
+        // Pending SendConfirmed calls awaiting an echo match, keyed by (ID, payload) so multiple
+        // concurrent byte-identical sends are matched FIFO instead of crashing/cross-matching
+        // (FR-RAW-031). Guarded by its own lock, separate from _gate, so TX-confirm churn never
+        // contends with subscription registry churn (and vice versa).
+        private readonly object _pendingGate = new();
+        private readonly Dictionary<PendingKey, LinkedList<PendingSend>> _pending = new();
+
+        // Cheap lock-free fast path: skip the _pendingGate lock (and the PendingKey hashing) in
+        // OnFrameObserved entirely for services where nobody has ever called SendConfirmed. Same
+        // "no cost for callers who don't use the feature" discipline as the subscription snapshot.
+        private int _pendingCount;
+
         private int _disposed;
 
         /// <summary>
@@ -44,6 +66,7 @@ namespace CanKit.Pro.RawCan
         {
             _bus = bus ?? throw new ArgumentNullException(nameof(bus));
             _bus.FrameObserved += OnFrameObserved;
+            _bus.FaultOccurred += OnFaultOccurred;
         }
 
         /// <inheritdoc />
@@ -104,6 +127,12 @@ namespace CanKit.Pro.RawCan
 
         private void OnFrameObserved(object? sender, CanReceiveDataView e)
         {
+            // Independent of subscription dispatch below: echo frames must be checked against
+            // outstanding SendConfirmed calls regardless of whether anyone also has a
+            // subscription open. Guarded by the same lock-free fast path as subscriptions.
+            if (e.IsEcho && Volatile.Read(ref _pendingCount) > 0)
+                TryMatchEcho(e.CanFrame);
+
             var subscriptions = _snapshot; // volatile read; no lock, no per-frame allocation
             if (subscriptions.Length == 0) return;
 
@@ -137,6 +166,7 @@ namespace CanKit.Pro.RawCan
             // down (no leaked FrameObserved handler — the exact class of leak the ownership PR
             // fixed for VirtualBusHub._hubs, here for the subscription registry).
             _bus.FrameObserved -= OnFrameObserved;
+            _bus.FaultOccurred -= OnFaultOccurred;
 
             Subscription[] outstanding;
             lock (_gate)
@@ -150,6 +180,219 @@ namespace CanKit.Pro.RawCan
             // registry), so a slow subscriber can never turn teardown into a lock convoy.
             foreach (var subscription in outstanding)
                 subscription.CompleteFromService();
+
+            // Cancel every outstanding SendConfirmed call rather than leaving it to time out on
+            // its own -- otherwise disposing the service while sends are in flight would make
+            // their tasks hang until each one's individual timeout, not "no leaked resources"
+            // (same reasoning as unwinding subscriptions above; standard .NET convention is that
+            // disposing an in-flight operation's owner cancels it, hence TrySetCanceled rather
+            // than a TxConfirmation result -- there's no SRS-defined FailureReason for "disposed").
+            PendingSend[] pending;
+            lock (_pendingGate)
+            {
+                pending = _pending.Values.SelectMany(list => list).ToArray();
+                // Null out Node before clearing: SendWithEchoConfirmAsync's `finally` still calls
+                // RemovePending once its WaitForPendingAsync unblocks below, and RemovePending's
+                // "already removed" no-op check (Node == null) is what stops it from decrementing
+                // _pendingCount a second time for the entries we're resolving right here.
+                foreach (var p in pending)
+                    p.Node = null;
+                _pending.Clear();
+                Volatile.Write(ref _pendingCount, 0);
+            }
+            foreach (var p in pending)
+                p.Tcs.TrySetCanceled();
+        }
+
+        /// <inheritdoc />
+        public async Task<TxConfirmation> SendConfirmed(CanFrame frame, TimeSpan? timeout = null, CancellationToken cancellationToken = default)
+        {
+            if (Volatile.Read(ref _disposed) != 0)
+                throw new ObjectDisposedException(nameof(CanBusService));
+
+            var effectiveTimeout = timeout ?? DefaultConfirmTimeout;
+            if (effectiveTimeout <= TimeSpan.Zero)
+                throw new ArgumentOutOfRangeException(nameof(timeout), "Timeout must be positive.");
+
+            // FR-RAW-030: one API, two internal strategies, chosen by whether the bus both
+            // declares the hardware capability *and* has actually enabled it for this session --
+            // CanFeature.Echo alone only means "this adapter type is capable of it", exactly like
+            // every other CanFeature flag; WorkMode == Echo is the existing cross-adapter opt-in
+            // that turns real echo delivery on for a given bus (see VirtualBusHub.Broadcast).
+            var useEcho = _bus.Options.Features.HasFlag(CanFeature.Echo)
+                          && _bus.Options.WorkMode == ChannelWorkMode.Echo;
+
+            return useEcho
+                ? await SendWithEchoConfirmAsync(frame, effectiveTimeout, cancellationToken).ConfigureAwait(false)
+                : await SendApproximatedAsync(frame, cancellationToken).ConfigureAwait(false);
+        }
+
+        private async Task<TxConfirmation> SendApproximatedAsync(CanFrame frame, CancellationToken cancellationToken)
+        {
+            // FR-RAW-032: best-effort approximation -- confirmed as soon as the driver accepts the
+            // frame, explicitly marked IsApproximated so callers can never mistake this for a real
+            // hardware acknowledgment.
+            var accepted = await _bus.TransmitAsync(frame, cancellationToken).ConfigureAwait(false);
+            return accepted > 0
+                ? new TxConfirmation { Confirmed = true, IsApproximated = true, Timestamp = DateTime.UtcNow, FailureReason = TxConfirmFailureReason.None }
+                : new TxConfirmation { Confirmed = false, IsApproximated = false, Timestamp = DateTime.UtcNow, FailureReason = TxConfirmFailureReason.Rejected };
+        }
+
+        private async Task<TxConfirmation> SendWithEchoConfirmAsync(CanFrame frame, TimeSpan timeout, CancellationToken cancellationToken)
+        {
+            // Register *before* transmitting: on Virtual (and potentially other adapters) the echo
+            // can be delivered synchronously inside Transmit itself, before it returns -- missing
+            // that window would make every send look like a timeout.
+            var pending = new PendingSend(new PendingKey(frame.ID, frame.Data));
+            RegisterPending(pending);
+
+            int accepted;
+            try
+            {
+                accepted = _bus.Transmit(in frame);
+            }
+            catch
+            {
+                RemovePending(pending);
+                throw;
+            }
+
+            if (accepted <= 0)
+            {
+                RemovePending(pending);
+                return new TxConfirmation { Confirmed = false, IsApproximated = false, Timestamp = DateTime.UtcNow, FailureReason = TxConfirmFailureReason.Rejected };
+            }
+
+            try
+            {
+                return await WaitForPendingAsync(pending, timeout, cancellationToken).ConfigureAwait(false);
+            }
+            finally
+            {
+                // No-op if TryMatchEcho/OnFaultOccurred/Dispose already removed it; defensive
+                // cleanup for the timeout/cancellation paths, which don't remove it themselves.
+                RemovePending(pending);
+            }
+        }
+
+        private static async Task<TxConfirmation> WaitForPendingAsync(PendingSend pending, TimeSpan timeout, CancellationToken cancellationToken)
+        {
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            // Registration fires on whichever comes first: caller cancellation or our own timeout.
+            using var registration = timeoutCts.Token.Register(static state =>
+            {
+                var (p, ct) = ((PendingSend, CancellationToken))state!;
+                if (ct.IsCancellationRequested)
+                {
+                    p.Tcs.TrySetCanceled(ct);
+                }
+                else
+                {
+                    p.Tcs.TrySetResult(new TxConfirmation
+                    {
+                        Confirmed = false,
+                        IsApproximated = false,
+                        Timestamp = DateTime.UtcNow,
+                        FailureReason = TxConfirmFailureReason.Timeout,
+                    });
+                }
+            }, (pending, cancellationToken));
+
+            timeoutCts.CancelAfter(timeout);
+            return await pending.Tcs.Task.ConfigureAwait(false);
+        }
+
+        private void RegisterPending(PendingSend pending)
+        {
+            lock (_pendingGate)
+            {
+                if (!_pending.TryGetValue(pending.Key, out var list))
+                {
+                    list = new LinkedList<PendingSend>();
+                    _pending[pending.Key] = list;
+                }
+                pending.Node = list.AddLast(pending);
+                Interlocked.Increment(ref _pendingCount);
+            }
+        }
+
+        private void RemovePending(PendingSend pending)
+        {
+            lock (_pendingGate)
+            {
+                var node = pending.Node;
+                if (node is null) return; // already removed by a match, fault, or dispose
+
+                var list = node.List;
+                list?.Remove(node);
+                pending.Node = null;
+                Interlocked.Decrement(ref _pendingCount);
+
+                if (list is { Count: 0 })
+                    _pending.Remove(pending.Key);
+            }
+        }
+
+        private void TryMatchEcho(in CanFrameView echoView)
+        {
+            var key = new PendingKey(echoView.ID, echoView.Data);
+            PendingSend? matched = null;
+
+            lock (_pendingGate)
+            {
+                if (_pending.TryGetValue(key, out var list) && list.First is { } node)
+                {
+                    matched = node.Value;
+                    list.RemoveFirst(); // FIFO: oldest pending send for this key matches first
+                    matched.Node = null;
+                    Interlocked.Decrement(ref _pendingCount);
+
+                    if (list.Count == 0)
+                        _pending.Remove(key);
+                }
+            }
+
+            // TrySetResult outside the lock: never invoke TCS continuations while holding a lock.
+            matched?.Tcs.TrySetResult(new TxConfirmation
+            {
+                Confirmed = true,
+                IsApproximated = false,
+                Timestamp = DateTime.UtcNow,
+                FailureReason = TxConfirmFailureReason.None,
+            });
+        }
+
+        private void OnFaultOccurred(object? sender, Exception ex)
+        {
+            // Scoped strictly to FR-RAW-033's named "Bus-Off" failure mode: FaultOccurred fires for
+            // other fault severities too (see CanBusExceptionDispatcher), which aren't necessarily
+            // a reason to fail every outstanding confirmation -- BusState is the authoritative
+            // signal for whether this specific fault means the bus actually went off.
+            if (_bus.BusState != BusState.BusOff) return;
+
+            PendingSend[] pending;
+            lock (_pendingGate)
+            {
+                pending = _pending.Values.SelectMany(list => list).ToArray();
+                // See the identical comment in Dispose(): null Node before clearing so the
+                // pending SendWithEchoConfirmAsync calls' own `finally`-triggered RemovePending
+                // no-ops instead of double-decrementing _pendingCount.
+                foreach (var p in pending)
+                    p.Node = null;
+                _pending.Clear();
+                Volatile.Write(ref _pendingCount, 0);
+            }
+
+            foreach (var p in pending)
+            {
+                p.Tcs.TrySetResult(new TxConfirmation
+                {
+                    Confirmed = false,
+                    IsApproximated = false,
+                    Timestamp = DateTime.UtcNow,
+                    FailureReason = TxConfirmFailureReason.BusOff,
+                });
+            }
         }
     }
 }
