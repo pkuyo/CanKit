@@ -413,7 +413,7 @@ flowchart TB
 | Frame-Ownership-Vertrag | (1) | Verbindliche Lease-Regeln (siehe 8.1); verhindert Use-after-free/Double-Dispose. **Kernmechanik umgesetzt** (`OwnMemory`-Fix, `CanFrame.Duplicate`, Virtual-Hub-Broadcast per Kopie); ausstehend: TX-Lease für übrige L0-Adapter/ISO-TP-Scheduler. | Vertragsdoku + `OwnMemory`-Fix (Review §1.5) | `FR-RAW-OWN-*` |
 | TX-Confirm | (4) | Einheitliche „gesendet"-Bestätigung, egal ob Hardware-Echo vorhanden. **Umgesetzt** in `CanKit.Pro.RawCan` (`ICanBusService.SendConfirmed`): FIFO-Echo-Matching je (ID, Payload) für gleichzeitige inhaltsgleiche Sendevorgänge (FR-RAW-031), dokumentierte Treiber-Akzeptanz-Approximation ohne Echo (FR-RAW-032), beobachtbare Fehlschläge statt Hängen bei Timeout/BusOff/Ablehnung (FR-RAW-033), konfigurierbarer Timeout je Aufruf (FR-RAW-034). | `TxConfirmation { Confirmed; Timestamp; IsApproximated; FailureReason; }` | `FR-RAW-030..034` |
 | Adressierungs-Helfer | – | 11/29-bit, Extended/Mixed/NormalFixed (heute in `IsoTpEndpoint` verstreut). | ID-Bau/-Zerlegung, PGN/Prio-Helfer | `FR-RAW-ADDR-*` |
-| Aktor-/Threading-Modell | (3) | Genau ein Bearbeitungs-Thread/Mailbox pro Protokollinstanz; kein geteilter mutabler State. | `IProtocolActor { Post(msg); }` | `FR-RAW-ACTOR-*` |
+| Aktor-/Threading-Modell | (3) | Genau ein Bearbeitungs-Thread/Mailbox pro Protokollinstanz; kein geteilter mutabler State. **Umgesetzt** als eigenständiges, abhängigkeitsfreies Paket `CanKit.Pro.Actor` (siehe ADR-6): ereignisgetriebener Loop (kein Busy-Loop, FR-RAW-022), je Instanz wählbarer Ausführungskontext (`ActorExecutionMode`: `DedicatedThread`/`ThreadPool`/`SynchronizationContext`, FR-RAW-024), `BackgroundExceptionOccurred` als einziger Kanal für Hintergrundfehler (FR-RAW-023). Vom ISO-TP-Prototyp noch nicht genutzt. | `IProtocolActor { Post(msg); PostAsync(msg); Schedule(delay, cb); }` | `FR-RAW-ACTOR-*` |
 | Timeout-Infrastruktur | – | Einheitliche Deadline-Verwaltung (ersetzt verstreute ISO-TP-`Deadline`s). | `IDeadlineScheduler` | `FR-RAW-TIMEOUT-*` |
 
 ## 5.4 Ebene 2/3 – Zoom L3: ISO-TP-Interna (Prototyp – Klassendiagramm)
@@ -920,12 +920,15 @@ flowchart TB
     end
 ```
 
-**Ziel-Aktor-Modell (`FR-RAW-ACTOR-*`):** Jede Protokollinstanz besitzt genau **eine
+**Aktor-Modell (`FR-RAW-ACTOR-*`, umgesetzt):** Jede Protokollinstanz besitzt genau **eine
 Mailbox** und einen **Single-Threaded-Bearbeitungsloop**. RX-Frames, TX-Confirmations und
 Deadline-Ticks werden als Nachrichten in die Mailbox gepostet; der State wird
 ausschließlich im Aktor-Loop mutiert. Damit entfallen die heutigen Datenrennen und der
-Busy-Loop wird durch ereignisgetriebenes Warten (`AsyncAutoResetEvent`) ersetzt
-(Review-Empfehlung 6).
+Busy-Loop wird durch ereignisgetriebenes Warten (`SemaphoreSlim.Wait`/`WaitAsync`) ersetzt
+(Review-Empfehlung 6). Umgesetzt als eigenständiges, von keinem anderen CanKit-Paket
+abhängiges `IProtocolActor`/`ProtocolActor` in `CanKit.Pro.Actor` (siehe ADR-6) — der
+ISO-TP-Prototyp selbst (funktional defekt, Review §1.1) nutzt es noch nicht; das ist
+bewusst außerhalb des Umfangs dieser Umsetzung.
 
 ## 8.4 Ressourcen & Pooling
 
@@ -1045,12 +1048,35 @@ STmin-Grenzwerte, SN-Folge, N_Bs/N_Cr-Timeouts gegen Virtual.
   (`tests/CanKit.Tests/TestCases/RawCanSubscriptionTests.cs`). Offen: Laufzeit-Rekonfiguration der
   Filterkriterien (FR-RAW-014, Could) ist bewusst nicht Teil dieser Umsetzung.
 
-### ADR-6 (Ziel): Aktor-Modell pro Protokollinstanz
+### ADR-6 (umgesetzt): Aktor-Modell pro Protokollinstanz
 - **Kontext:** ISO-TP-Prototyp mutiert State über Thread-Grenzen ohne Sync (Datenrennen, Busy-Loop).
 - **Entscheidung:** jede Protokollinstanz = 1 Mailbox + 1 Single-Threaded-Loop; RX/TX-Confirm/
   Deadlines als Nachrichten.
 - **Konsequenzen:** + deterministisches Threading (Q3/Q4), kein Lock-Zoo. − Umbau des ISO-TP-Kerns;
   Latenz durch Mailbox-Hop.
+- **Status:** Umgesetzt als eigenständiges Paket `CanKit.Pro.Actor` (`IProtocolActor`/
+  `ProtocolActor`), ohne Abhängigkeit auf irgendein anderes CanKit-Paket — reiner, wiederverwendbarer
+  Single-Writer-Executor plus ereignisgetriebene Timer-Warteschlange, den Protokollschichten
+  (ISO-TP, J1939, CANopen, …) einbinden. Genau eine `ConcurrentQueue<Action>`-Mailbox und eine
+  nach Fälligkeit sortierte Timer-Liste werden ausschließlich vom jeweils laufenden Loop-Thread
+  mutiert (kein Lock nötig, FR-RAW-020/021). Der Loop wartet blockierend auf einem
+  `SemaphoreSlim` auf entweder neue Mailbox-Arbeit oder die nächste Timer-Fälligkeit,
+  je nachdem was zuerst eintritt — kein Polling, kein Busy-Loop (FR-RAW-022). Ausführungskontext
+  ist je Instanz wählbar (`ActorExecutionMode`, FR-RAW-024): `DedicatedThread` (Default, ein
+  echter `Thread` für die gesamte Lebensdauer — messbar dasselbe Thread für jeden Callback, siehe
+  Test), `ThreadPool` (kein dedizierter Thread, aber weiterhin strikt single-writer) oder
+  `SynchronizationContext` (jeder Callback wird über `SynchronizationContext.Post` auf einen
+  vom Aufrufer bereitgestellten Kontext umgeleitet, z. B. einen UI-Dispatcher). Hintergrundfehler
+  aus `Post`/`Schedule`-Elementen werden gefangen und über `BackgroundExceptionOccurred` gemeldet;
+  der Loop läuft danach weiter (FR-RAW-023) — `PostAsync`/`PostAsync<T>`-Fehlschläge laufen
+  stattdessen über die zurückgegebene Task, da der Aufrufer sie ohnehin per `await` beobachtet.
+  `Dispose` verwirft neue Arbeit sofort (`ObjectDisposedException`), führt aber bereits
+  eingereihte Arbeit noch zu Ende, statt eine zum Dispose-Zeitpunkt wartende `PostAsync`-Task
+  auf unbestimmte Zeit hängen zu lassen. Der ISO-TP-Prototyp selbst (funktional defekt, Review
+  §1.1, u. a. 100 %-CPU-Busy-Loop und unsynchronisierte `List`-Zustände) nutzt `ProtocolActor`
+  noch nicht — dessen Umbau ist bewusst nicht Teil dieser Umsetzung. Abgesichert per
+  Unit-/Nebenläufigkeitstest (`tests/CanKit.Tests/TestCases/ProtocolActorTests.cs`), u. a.
+  paralleler `PostAsync`-Zugriff aus echten OS-Threads ohne Datenverlust.
 
 ### ADR-7 (umgesetzt): TX-Confirm-Abstraktion
 - **Kontext:** Manche Hardware liefert TX-Echo (`CanFeature.Echo`), andere nicht; Protokolle
