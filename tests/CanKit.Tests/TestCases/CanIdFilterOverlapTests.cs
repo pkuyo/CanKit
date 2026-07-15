@@ -85,6 +85,20 @@ public class CanIdFilterOverlapTests : IClassFixture<TestCaseProvider>
     }
 
     [Fact]
+    public void Range_And_Mask_Filters_Honor_Acceptance_Mask_Bits_Above_The_29Bit_Id_Space()
+    {
+        // No real CAN ID ever has bit 29 set (IDs are at most 29 bits wide), so a mask that
+        // requires bit 29 to be 1 can never actually be satisfied by any ID -- including every ID
+        // in 'range'. The range/mask overlap check must honor that acceptance-mask bit even though
+        // it falls outside the bits a valid range bound can vary over.
+        var range = CanIdFilter.Range(0x100, 0x10F, CanFilterIDType.Extend);
+        var unsatisfiableMask = CanIdFilter.Mask(accCode: 0x20000100, accMask: 0x20000700, idType: CanFilterIDType.Extend);
+
+        range.Overlaps(unsatisfiableMask).Should().BeFalse();
+        unsatisfiableMask.Overlaps(range).Should().BeFalse("overlap must be symmetric regardless of argument order");
+    }
+
+    [Fact]
     public void FindOverlappingFilterSubscriptions_Reports_Overlapping_Registered_Subscriptions()
     {
         using var bus = Open(NewSession(), 0);

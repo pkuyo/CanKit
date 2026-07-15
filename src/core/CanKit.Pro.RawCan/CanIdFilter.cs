@@ -125,9 +125,16 @@ namespace CanKit.Pro.RawCan
         // search terminates early rather than enumerating actual ID values. Runs in O(bit-width):
         // at most one branch stays "tight" past any given level, so this never actually branches
         // into an exponential search despite the naive-looking recursion.
+        //
+        // Walks the full 32 bits (not just the 29 bits of a valid extended CAN ID): Matches()
+        // performs a plain (id & _b) == (_a & _b) with no restriction on which bits of _b/_a are
+        // set, and Mask/Mask overlap likewise compares the full mask, so an accMask/accCode pair
+        // with bits set above bit 28 -- which can never be satisfied by any real CAN ID, since
+        // id's high bits are always 0 -- must be honored here too, or a range/mask pair could be
+        // reported as overlapping when no ID in the range could actually satisfy Matches.
         private static bool RangeIntersectsMask(uint lo, uint hi, uint code, uint mask)
         {
-            return Exists(28, true, true);
+            return Exists(31, true, true);
 
             bool Exists(int bit, bool loTight, bool hiTight)
             {
