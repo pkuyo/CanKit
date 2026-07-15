@@ -23,6 +23,15 @@ namespace CanKit.Pro.RawCan
 
         private int _disposed;
 
+        /// <summary>
+        /// The ID-range/mask filter this subscription was registered with, or null for a
+        /// predicate-based or catch-all subscription. Used only by
+        /// <see cref="CanBusService.FindOverlappingFilterSubscriptions"/> (FR-RAW-041) to inspect
+        /// currently registered filters; not part of the public <see cref="ISubscription"/>
+        /// surface.
+        /// </summary>
+        internal CanIdFilter? IdFilter => _idFilter;
+
         internal Subscription(
             CanBusService service,
             CanIdFilter? idFilter,

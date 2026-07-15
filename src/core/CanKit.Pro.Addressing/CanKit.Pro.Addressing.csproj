@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <Nullable>enable</Nullable>
+        <LangVersion>12</LangVersion>
+        <Version>$(CanKitProAddressingVersion)</Version>
+        <Description>CAN-ID addressing helpers for CanKit (CanKit.Pro): validated 11-bit/29-bit ID construction, J1939 PGN/Priority/PDU-Format/Source-Address composition and decomposition, and ID-range/mask filter overlap detection -- pure, dependency-free helper functions any protocol layer (ISO-TP, J1939, CANopen, ...) can build on instead of hand-rolled bit math scattered across endpoint types.</Description>
+        <PackageTags>CAN;can bus;J1939;PGN;addressing;CanKit;CanKit.Pro</PackageTags>
+        <AssemblyVersion>1.0.0.0</AssemblyVersion>
+        <FileVersion>$(CanKitSharedFileVersion)</FileVersion>
+        <Authors>Pkuyo</Authors>
+        <RepositoryUrl>https://github.com/pkuyo/CanKit</RepositoryUrl>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
+        <Configurations>Debug;Release;Fake</Configurations>
+        <Platforms>AnyCPU</Platforms>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <None Include="README.md" Pack="true" PackagePath="" />
+    </ItemGroup>
+</Project>

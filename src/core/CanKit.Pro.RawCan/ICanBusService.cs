@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using CanKit.Abstractions.API.Can;
@@ -63,6 +64,18 @@ namespace CanKit.Pro.RawCan
         /// <see cref="CanBusService.DefaultBufferCapacity"/>. (本订阅的有界缓冲容量；null 使用默认值。)
         /// </param>
         ISubscription Subscribe(CanIdFilter filter, int? bufferCapacity = null);
+
+        /// <summary>
+        /// Diagnostic: finds every pair of currently registered, still-undisposed
+        /// <see cref="CanIdFilter"/>-based subscriptions whose ID spaces overlap (FR-RAW-041,
+        /// "Should") -- helps catch misconfiguration when multiple protocol instances were meant
+        /// to have disjoint ID ranges but don't. Subscriptions registered via the generic
+        /// <see cref="Subscribe(Func{CanFrameView,bool}, int?)"/> predicate overload are opaque
+        /// and are not analyzable, so they are skipped. (诊断：查找当前所有已注册、尚未释放、基于
+        /// <see cref="CanIdFilter"/> 的订阅中，ID 空间存在重叠的每一对——用于发现多个协议实例本应互不重叠、
+        /// 但实际配置错误导致重叠的情形。通过泛型谓词重载注册的订阅是不透明的，无法分析，将被跳过。)
+        /// </summary>
+        IReadOnlyList<(ISubscription First, ISubscription Second)> FindOverlappingFilterSubscriptions();
 
         /// <summary>
         /// Sends <paramref name="frame"/> and asynchronously confirms it was actually sent, using
