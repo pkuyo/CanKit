@@ -143,6 +143,17 @@ namespace CanKit.Pro.Reliability
                 _scheduledHandle?.Dispose();
                 Interlocked.Increment(ref _generation);
                 ArmLocked(timeout);
+
+                // Complete/Dispose resolve _state via a lock-free CAS rather than this lock, so
+                // either can win between the check above and ArmLocked finishing. Re-check under
+                // the same lock so a concurrent Complete/Dispose isn't reported as a successful
+                // re-arm; best-effort cancel the handle we just installed in that case.
+                if (Volatile.Read(ref _state) != StatePending)
+                {
+                    _scheduledHandle?.Dispose();
+                    return false;
+                }
+
                 return true;
             }
         }

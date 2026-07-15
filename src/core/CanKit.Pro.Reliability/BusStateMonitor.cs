@@ -257,7 +257,16 @@ namespace CanKit.Pro.Reliability
                 return;
             try
             {
-                Volatile.Write(ref _pollHandle, _actor.Schedule(_pollInterval, PollTick));
+                var handle = _actor.Schedule(_pollInterval, PollTick);
+                Volatile.Write(ref _pollHandle, handle);
+
+                // Dispose() may have run concurrently between the check above and Schedule
+                // returning, in which case it could have missed cancelling this handle. Re-check
+                // and best-effort cancel it ourselves so the poll loop still quiets down promptly.
+                if (Volatile.Read(ref _disposed) != 0)
+                {
+                    handle.Dispose();
+                }
             }
             catch (ObjectDisposedException)
             {
