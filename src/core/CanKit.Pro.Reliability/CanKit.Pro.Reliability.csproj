@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <Nullable>enable</Nullable>
+        <LangVersion>12</LangVersion>
+        <Version>$(CanKitProReliabilityVersion)</Version>
+        <Description>Error/timeout infrastructure for CanKit (CanKit.Pro): a reusable actor-driven deadline primitive (DeadlineScheduler/Deadline) whose expiry is guaranteed to actually be checked and fired, plus a BusStateMonitor that pushes ICanBus.BusState transitions (ErrWarning/ErrPassive/BusOff and recovery) to protocol instances -- composed on top of CanKit.Pro.Actor's single-mailbox loop, no free-running timers or busy loops.</Description>
+        <PackageTags>CAN;can bus;timeout;deadline;bus-off;reliability;CanKit;CanKit.Pro</PackageTags>
+        <AssemblyVersion>1.0.0.0</AssemblyVersion>
+        <FileVersion>$(CanKitSharedFileVersion)</FileVersion>
+        <Authors>Pkuyo</Authors>
+        <RepositoryUrl>https://github.com/pkuyo/CanKit</RepositoryUrl>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
+        <Configurations>Debug;Release;Fake</Configurations>
+        <Platforms>AnyCPU</Platforms>
+    </PropertyGroup>
+
+    <ItemGroup Condition="'$(UseLocalProjectReferences)'=='true'">
+        <ProjectReference Include="..\CanKit.Core\CanKit.Core.csproj"/>
+        <ProjectReference Include="..\CanKit.Pro.Actor\CanKit.Pro.Actor.csproj"/>
+    </ItemGroup>
+
+    <ItemGroup Condition="'$(UseLocalProjectReferences)'!='true'">
+        <PackageReference Include="CanKit.Core" Version="$(CanKitCoreDependencyVersion)"/>
+        <PackageReference Include="CanKit.Pro.Actor" Version="$(CanKitProActorVersion)"/>
+    </ItemGroup>
+
+    <ItemGroup>
+        <None Include="README.md" Pack="true" PackagePath="" />
+    </ItemGroup>
+</Project>
