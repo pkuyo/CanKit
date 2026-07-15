@@ -107,10 +107,10 @@ namespace CanKit.Pro.RawCan
 
             for (var i = 0; i < subscriptions.Length; i++)
             {
-                if (subscriptions[i].IdFilter is not { } filterI) continue;
+                if (subscriptions[i].IsDisposed || subscriptions[i].IdFilter is not { } filterI) continue;
                 for (var j = i + 1; j < subscriptions.Length; j++)
                 {
-                    if (subscriptions[j].IdFilter is not { } filterJ) continue;
+                    if (subscriptions[j].IsDisposed || subscriptions[j].IdFilter is not { } filterJ) continue;
                     if (filterI.Overlaps(filterJ))
                         overlaps.Add((subscriptions[i], subscriptions[j]));
                 }

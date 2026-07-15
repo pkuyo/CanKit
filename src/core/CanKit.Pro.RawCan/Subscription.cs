@@ -32,6 +32,14 @@ namespace CanKit.Pro.RawCan
         /// </summary>
         internal CanIdFilter? IdFilter => _idFilter;
 
+        /// <summary>
+        /// True once this subscription has been disposed (by itself or by the owning service).
+        /// Used only by <see cref="CanBusService.FindOverlappingFilterSubscriptions"/> to exclude
+        /// entries that a concurrent <see cref="Dispose"/> may still leave in the snapshot it
+        /// reads (FR-RAW-041).
+        /// </summary>
+        internal bool IsDisposed => Volatile.Read(ref _disposed) != 0;
+
         internal Subscription(
             CanBusService service,
             CanIdFilter? idFilter,

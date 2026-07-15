@@ -33,6 +33,11 @@ namespace CanKit.Pro.RawCan
             Mask = 1,
         }
 
+        // Largest valid standard (11-bit) / extended (29-bit) CAN ID, matching the masks
+        // CanFrameView.ID applies before Matches ever sees an ID.
+        private const uint ID_STD_MASK = 0x7FF;
+        private const uint ID_EXT_MASK = 0x1FFFFFFF;
+
         private readonly Kind _kind;
 
         // Range: [_a.._b] inclusive. Mask: _a = acceptance code, _b = acceptance mask.
@@ -105,15 +110,24 @@ namespace CanKit.Pro.RawCan
         {
             if (IdType != other.IdType) return false;
 
+            // Matches() only ever sees IDs already clipped to the ID space (via
+            // CanFrameView.ID's masking), so the intersection must be clipped the same way --
+            // otherwise a range/mask that reaches past 0x7FF (standard) or 0x1FFFFFFF (extended)
+            // can be reported as overlapping another filter purely on the out-of-space portion,
+            // which no real frame could ever match.
+            var maxId = IdType == CanFilterIDType.Extend ? ID_EXT_MASK : ID_STD_MASK;
+
             return (_kind, other._kind) switch
             {
-                (Kind.Range, Kind.Range) => _a <= other._b && other._a <= _b,
+                (Kind.Range, Kind.Range) => Math.Max(_a, other._a) <= Math.Min(Math.Min(_b, other._b), maxId),
                 // Two acceptance-mask filters overlap iff, on every bit position both masks
-                // constrain, the two required bit patterns agree -- bit positions constrained by
-                // only one filter (or neither) are always satisfiable by some ID.
-                (Kind.Mask, Kind.Mask) => (_a & _b & other._b) == (other._a & _b & other._b),
-                (Kind.Range, Kind.Mask) => RangeIntersectsMask(_a, _b, other._a, other._b),
-                (Kind.Mask, Kind.Range) => RangeIntersectsMask(other._a, other._b, _a, _b),
+                // constrain, the two required bit patterns agree, and some in-space ID exists
+                // that also satisfies whichever bits either mask alone constrains -- bit
+                // positions constrained by neither filter are always satisfiable by some ID.
+                (Kind.Mask, Kind.Mask) => (_a & _b & other._b) == (other._a & _b & other._b)
+                    && RangeIntersectsMask(0, maxId, (_a & _b) | (other._a & other._b), _b | other._b),
+                (Kind.Range, Kind.Mask) => RangeIntersectsMask(_a, Math.Min(_b, maxId), other._a, other._b),
+                (Kind.Mask, Kind.Range) => RangeIntersectsMask(other._a, Math.Min(other._b, maxId), _a, _b),
                 _ => false,
             };
         }
@@ -134,6 +148,8 @@ namespace CanKit.Pro.RawCan
         // reported as overlapping when no ID in the range could actually satisfy Matches.
         private static bool RangeIntersectsMask(uint lo, uint hi, uint code, uint mask)
         {
+            if (lo > hi) return false; // empty range once clipped to the ID space
+
             return Exists(31, true, true);
 
             bool Exists(int bit, bool loTight, bool hiTight)

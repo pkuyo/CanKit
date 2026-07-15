@@ -99,6 +99,28 @@ public class CanIdFilterOverlapTests : IClassFixture<TestCaseProvider>
     }
 
     [Fact]
+    public void Range_Filters_Whose_Numeric_Overlap_Lies_Entirely_Above_The_Standard_11Bit_Space_Do_Not_Overlap()
+    {
+        // [0x7F0, 0x900] and [0x800, 0x810] intersect numerically, but Matches() only ever sees
+        // 11-bit standard IDs (<= 0x7FF), so no standard frame can ever match the second filter.
+        var a = CanIdFilter.Range(0x7F0, 0x900);
+        var b = CanIdFilter.Range(0x800, 0x810);
+
+        a.Overlaps(b).Should().BeFalse();
+        b.Overlaps(a).Should().BeFalse("overlap must be symmetric regardless of argument order");
+    }
+
+    [Fact]
+    public void Range_Filters_Whose_Numeric_Overlap_Lies_Entirely_Above_The_Extended_29Bit_Space_Do_Not_Overlap()
+    {
+        var a = CanIdFilter.Range(0x1FFFFFF0, 0x20000100, CanFilterIDType.Extend);
+        var b = CanIdFilter.Range(0x20000000, 0x20000010, CanFilterIDType.Extend);
+
+        a.Overlaps(b).Should().BeFalse();
+        b.Overlaps(a).Should().BeFalse("overlap must be symmetric regardless of argument order");
+    }
+
+    [Fact]
     public void FindOverlappingFilterSubscriptions_Reports_Overlapping_Registered_Subscriptions()
     {
         using var bus = Open(NewSession(), 0);
