@@ -17,7 +17,7 @@ namespace CanKit.Pro.Actor
     /// </summary>
     public sealed class ProtocolActor : IProtocolActor
     {
-        private readonly ConcurrentQueue<Action> _mailbox = new();
+        private readonly ConcurrentQueue<MailboxItem> _mailbox = new();
 
         // Schedule() insertions go through this queue instead of _mailbox, and are always applied
         // inline on the loop thread (never marshaled through _syncContext): _timers is
@@ -56,6 +56,15 @@ namespace CanKit.Pro.Actor
         // rejected with ObjectDisposedException before anything is enqueued -- closing the race
         // completely rather than merely narrowing it.
         private readonly object _disposeGate = new();
+
+        // Set for the duration of the loop's own execution (RunLoopBlocking/RunLoopAsync), and
+        // correctly flows through await/thread-pool hops and into SynchronizationContext.Send
+        // callbacks via ExecutionContext, regardless of which OS thread ends up running any given
+        // piece of it. Lets Dispose() detect the one case it must never block in: being called
+        // reentrantly from a Post/Schedule callback that the actor's own loop is currently running.
+        // Instance-scoped (not static) so disposing a *different* actor from within this one's loop
+        // is correctly not treated as reentrant.
+        private readonly AsyncLocal<bool> _isOnLoop = new();
 
         /// <inheritdoc />
         public event EventHandler<Exception>? BackgroundExceptionOccurred;
@@ -101,12 +110,7 @@ namespace CanKit.Pro.Actor
         public void Post(Action work)
         {
             if (work is null) throw new ArgumentNullException(nameof(work));
-            lock (_disposeGate)
-            {
-                ThrowIfDisposed();
-                _mailbox.Enqueue(work);
-                _signal.Release();
-            }
+            PostInternal(work, onDispatchFailure: null);
         }
 
         /// <inheritdoc />
@@ -114,18 +118,24 @@ namespace CanKit.Pro.Actor
         {
             if (work is null) throw new ArgumentNullException(nameof(work));
             var tcs = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
-            Post(() =>
-            {
-                try
+            PostInternal(
+                () =>
                 {
-                    work();
-                    tcs.TrySetResult(null);
-                }
-                catch (Exception ex)
-                {
-                    tcs.TrySetException(ex);
-                }
-            });
+                    try
+                    {
+                        work();
+                        tcs.TrySetResult(null);
+                    }
+                    catch (Exception ex)
+                    {
+                        tcs.TrySetException(ex);
+                    }
+                },
+                // If the marshal itself fails (SynchronizationContext mode, Send throws before
+                // ever invoking the wrapped work above), the wrapper's own try/catch never runs,
+                // so nothing would otherwise complete this task -- it would hang forever even
+                // though PostAsync failures are documented to surface via the returned task.
+                onDispatchFailure: ex => tcs.TrySetException(ex));
             return tcs.Task;
         }
 
@@ -134,18 +144,30 @@ namespace CanKit.Pro.Actor
         {
             if (work is null) throw new ArgumentNullException(nameof(work));
             var tcs = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
-            Post(() =>
-            {
-                try
+            PostInternal(
+                () =>
                 {
-                    tcs.TrySetResult(work());
-                }
-                catch (Exception ex)
-                {
-                    tcs.TrySetException(ex);
-                }
-            });
+                    try
+                    {
+                        tcs.TrySetResult(work());
+                    }
+                    catch (Exception ex)
+                    {
+                        tcs.TrySetException(ex);
+                    }
+                },
+                onDispatchFailure: ex => tcs.TrySetException(ex));
             return tcs.Task;
+        }
+
+        private void PostInternal(Action work, Action<Exception>? onDispatchFailure)
+        {
+            lock (_disposeGate)
+            {
+                ThrowIfDisposed();
+                _mailbox.Enqueue(new MailboxItem(work, onDispatchFailure));
+                _signal.Release();
+            }
         }
 
         /// <inheritdoc />
@@ -183,32 +205,35 @@ namespace CanKit.Pro.Actor
             // ObjectDisposedException instead of silently queuing work nobody will run.
             _stopCts.Cancel();
 
-            bool loopFinished;
-            if (_dedicatedThread is not null)
-                loopFinished = _dedicatedThread.Join(TimeSpan.FromSeconds(5));
-            else
+            if (_isOnLoop.Value)
             {
-                try { loopFinished = _loopTask is null || _loopTask.Wait(TimeSpan.FromSeconds(5)); }
-                catch (AggregateException) { loopFinished = true; /* expected: the loop observed cancellation and exited via OperationCanceledException */ }
+                // Reentrant Dispose from within our own loop -- e.g. a Post/Schedule callback that
+                // decides to dispose the very actor currently running it. Waiting below would
+                // deadlock: Thread.Join/Task.Wait can never complete while the exact thread/task
+                // that would complete it is blocked on itself. Once this call returns and the
+                // current work item's stack unwinds, the loop's own cancellation check exits it and
+                // it tears itself down on its own (see RunLoopBlocking/RunLoopAsync's finally) --
+                // no wait is needed, or safe, here.
+                return;
             }
 
-            // Only dispose these if the loop actually finished: if some posted work item is still
-            // blocking the loop past the grace period, it may still be running (e.g. stuck inside
-            // a user callback) and could touch _signal/_stopCts.Token again once that callback
-            // finally returns. Disposing out from under a still-running loop would surface as an
-            // ObjectDisposedException on that thread -- and unlike a Task, an unhandled exception
-            // on a raw dedicated Thread can crash the process. Leaking two small disposables in
-            // this already-pathological (caller's callback never returned in time) case is the
-            // safer trade-off.
-            if (loopFinished)
+            if (_dedicatedThread is not null)
+                _dedicatedThread.Join(TimeSpan.FromSeconds(5));
+            else
             {
-                _stopCts.Dispose();
-                _signal.Dispose();
+                try { _loopTask?.Wait(TimeSpan.FromSeconds(5)); }
+                catch (AggregateException) { /* expected: the loop observed cancellation and exited via OperationCanceledException */ }
             }
+            // _stopCts/_signal are disposed by the loop itself once it actually finishes (see
+            // RunLoopBlocking/RunLoopAsync's finally block below), never here -- so a timed-out
+            // wait above (the loop still stuck inside a long-running callback) can never dispose
+            // them out from under a still-running loop; they get cleaned up whenever that callback
+            // eventually returns and the loop winds down on its own.
         }
 
         private void RunLoopBlocking()
         {
+            _isOnLoop.Value = true;
             try
             {
                 while (true)
@@ -233,11 +258,18 @@ namespace CanKit.Pro.Actor
             finally
             {
                 FinalDrain();
+                // Disposed here, by the loop itself, only once it has actually stopped running --
+                // never by Dispose() directly (see its comment) -- so these objects are never
+                // touched again after this point regardless of how long a stuck callback delayed
+                // getting here.
+                _stopCts.Dispose();
+                _signal.Dispose();
             }
         }
 
         private async Task RunLoopAsync()
         {
+            _isOnLoop.Value = true;
             try
             {
                 while (true)
@@ -262,6 +294,8 @@ namespace CanKit.Pro.Actor
             finally
             {
                 FinalDrain();
+                _stopCts.Dispose();
+                _signal.Dispose();
             }
         }
 
@@ -290,8 +324,8 @@ namespace CanKit.Pro.Actor
 
         private void DrainMailbox()
         {
-            while (_mailbox.TryDequeue(out var work))
-                RunSafely(work);
+            while (_mailbox.TryDequeue(out var item))
+                RunSafely(item.Work, item.OnDispatchFailure);
         }
 
         // Always inline on the loop thread, never marshaled through _syncContext -- see the field
@@ -324,7 +358,7 @@ namespace CanKit.Pro.Actor
             _timers.Insert(index, entry);
         }
 
-        private void RunSafely(Action work)
+        private void RunSafely(Action work, Action<Exception>? onDispatchFailure = null)
         {
             if (_syncContext is not null)
             {
@@ -348,11 +382,18 @@ namespace CanKit.Pro.Actor
                 }
                 catch (Exception ex)
                 {
-                    // The user callback's own exceptions are already caught and routed above;
-                    // this guards against Send itself throwing (e.g. the target context rejects
-                    // marshaling because it is being torn down), so a single bad send cannot
-                    // escape RunSafely and fault the loop -- see FR-RAW-023.
-                    RaiseBackgroundException(ex);
+                    // The user callback's own exceptions are already caught and routed above; this
+                    // guards against Send itself throwing (e.g. the target context rejects
+                    // marshaling because it is being torn down) -- Send failing this way means
+                    // `work` never even ran. A plain fire-and-forget Post has no channel for that
+                    // other than BackgroundExceptionOccurred (FR-RAW-023); but PostAsync/
+                    // PostAsync<T> wrap their own TaskCompletionSource completion *inside* `work`,
+                    // so if it never runs, nothing else would ever complete their returned task --
+                    // onDispatchFailure lets them fail it here instead of hanging forever.
+                    if (onDispatchFailure is not null)
+                        onDispatchFailure(ex);
+                    else
+                        RaiseBackgroundException(ex);
                 }
                 return;
             }
@@ -389,6 +430,21 @@ namespace CanKit.Pro.Actor
         {
             var ms = span.TotalMilliseconds;
             return ms >= int.MaxValue ? int.MaxValue : (int)ms;
+        }
+
+        // OnDispatchFailure is null for plain Post() items (BackgroundExceptionOccurred is their
+        // only failure channel); PostAsync/PostAsync<T> set it to fail their own
+        // TaskCompletionSource if the marshal itself fails before Work ever runs (see RunSafely).
+        private readonly struct MailboxItem
+        {
+            public MailboxItem(Action work, Action<Exception>? onDispatchFailure)
+            {
+                Work = work;
+                OnDispatchFailure = onDispatchFailure;
+            }
+
+            public Action Work { get; }
+            public Action<Exception>? OnDispatchFailure { get; }
         }
 
         private sealed class TimerEntry

@@ -174,6 +174,45 @@ public class ProtocolActorTests
     }
 
     [Fact]
+    public async Task Dispose_Called_Reentrantly_From_A_Posted_Callback_Does_Not_Deadlock()
+    {
+        // Regression test: a work item that disposes the very actor currently running it (e.g. a
+        // protocol instance deciding to tear itself down) must not deadlock Thread.Join/Task.Wait
+        // against itself.
+        var actor = new ProtocolActor();
+        var completed = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        actor.Post(() =>
+        {
+            actor.Dispose();
+            completed.TrySetResult(true);
+        });
+
+        (await Task.WhenAny(completed.Task, Task.Delay(TimeSpan.FromSeconds(5)))).Should().Be(completed.Task,
+            "a self-disposing callback must return promptly instead of deadlocking on its own loop");
+
+        // The loop must still actually finish tearing itself down shortly afterward.
+        await Task.Delay(TimeSpan.FromMilliseconds(200));
+        Action postAfter = () => actor.Post(() => { });
+        postAfter.Should().Throw<ObjectDisposedException>();
+    }
+
+    [Fact]
+    public async Task PostAsync_Fails_Its_Task_Instead_Of_Hanging_When_SynchronizationContext_Send_Throws()
+    {
+        // Regression test: if Send itself throws before ever invoking the wrapped work, PostAsync's
+        // own try/catch (inside that wrapped work) never runs -- nothing else may complete its
+        // TaskCompletionSource, or the caller hangs forever despite FR-RAW-023's guarantee that
+        // PostAsync failures surface via the returned task.
+        var throwing = new AlwaysThrowingSynchronizationContext();
+        using var actor = new ProtocolActor(ActorExecutionMode.SynchronizationContext, throwing);
+
+        Func<Task> act = () => actor.PostAsync(() => { });
+
+        await act.Should().ThrowAsync<InvalidOperationException>();
+    }
+
+    [Fact]
     public async Task Dispose_Rejects_New_Work_With_ObjectDisposedException()
     {
         var actor = new ProtocolActor();
