@@ -50,6 +50,10 @@ namespace CanKit.Pro.RawCan
         private readonly object _pendingGate = new();
         private readonly Dictionary<PendingKey, LinkedList<PendingSend>> _pending = new();
 
+        // Guarded by _pendingGate; set once by Dispose so a racing SendConfirmed call can never
+        // register a pending entry after Dispose's final sweep has already canceled everything.
+        private bool _pendingDisposed;
+
         // Cheap lock-free fast path: skip the _pendingGate lock (and the PendingKey hashing) in
         // OnFrameObserved entirely for services where nobody has ever called SendConfirmed. Same
         // "no cost for callers who don't use the feature" discipline as the subscription snapshot.
@@ -190,6 +194,13 @@ namespace CanKit.Pro.RawCan
             PendingSend[] pending;
             lock (_pendingGate)
             {
+                // Set before clearing, under the same lock SendWithEchoConfirmAsync checks before
+                // registering: closes the race where a call passes SendConfirmed's eager disposed
+                // check but hasn't registered yet -- it now either registers-and-transmits fully
+                // before this line runs (and gets swept up below like any other pending entry), or
+                // sees _pendingDisposed=true and throws ObjectDisposedException instead of silently
+                // leaving an orphaned entry that would otherwise sit unmatched until its own timeout.
+                _pendingDisposed = true;
                 pending = _pending.Values.SelectMany(list => list).ToArray();
                 // Null out Node before clearing: SendWithEchoConfirmAsync's `finally` still calls
                 // RemovePending once its WaitForPendingAsync unblocks below, and RemovePending's
@@ -240,16 +251,36 @@ namespace CanKit.Pro.RawCan
 
         private async Task<TxConfirmation> SendWithEchoConfirmAsync(CanFrame frame, TimeSpan timeout, CancellationToken cancellationToken)
         {
-            // Register *before* transmitting: on Virtual (and potentially other adapters) the echo
-            // can be delivered synchronously inside Transmit itself, before it returns -- missing
-            // that window would make every send look like a timeout.
             var pending = new PendingSend(new PendingKey(frame.ID, frame.Data));
-            RegisterPending(pending);
 
             int accepted;
             try
             {
-                accepted = _bus.Transmit(in frame);
+                // Register and transmit as one atomic step under _pendingGate: this is what makes
+                // TryMatchEcho's FIFO order equal actual transmission order rather than mere
+                // registration order. Without it, two threads sending byte-identical frames could
+                // register in one order but transmit in the other, so the oldest *pending* entry
+                // is not necessarily the oldest *sent* one -- an echo could then confirm the wrong
+                // caller, or confirm a send before it was even transmitted (FR-RAW-031). A
+                // synchronous echo delivered inside Transmit itself (e.g. Virtual's
+                // WorkMode=Echo) re-enters this same lock on this same thread -- Monitor is
+                // reentrant, so TryMatchEcho can only ever see this thread's own just-registered
+                // entry at that point, never a different, unrelated in-flight one. This also
+                // closes the dispose race: Dispose sets _pendingDisposed under this same lock, so
+                // a call can never register after Dispose has already swept and canceled every
+                // pending entry -- it throws ObjectDisposedException instead, matching the eager
+                // check at the top of SendConfirmed. The lock is held only across the register +
+                // enqueue step (Transmit is expected to be a fast, non-blocking enqueue, same
+                // assumption every other caller of ICanBus.Transmit already makes), never across
+                // the echo wait, so unrelated sends are not serialized against each other.
+                lock (_pendingGate)
+                {
+                    if (_pendingDisposed)
+                        throw new ObjectDisposedException(nameof(CanBusService));
+
+                    RegisterPending(pending);
+                    accepted = _bus.Transmit(in frame);
+                }
             }
             catch
             {
