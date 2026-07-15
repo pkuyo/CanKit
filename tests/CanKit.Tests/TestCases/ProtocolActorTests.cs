@@ -245,7 +245,9 @@ public class ProtocolActorTests
     {
         public int PostCount;
 
-        public override void Post(SendOrPostCallback d, object? state)
+        // ProtocolActor marshals via the blocking Send, not fire-and-forget Post -- see
+        // RunSafely's comment for why (Dispose's "queued work completes" guarantee depends on it).
+        public override void Send(SendOrPostCallback d, object? state)
         {
             Interlocked.Increment(ref PostCount);
             d(state);
@@ -253,15 +255,16 @@ public class ProtocolActorTests
     }
 
     /// <summary>
-    /// A <see cref="SynchronizationContext"/> that genuinely defers posted work instead of running
-    /// it inline, so tests can prove something does or does not depend on the context actually
-    /// being serviced.
+    /// A <see cref="SynchronizationContext"/> that genuinely defers work instead of running it
+    /// inline (deliberately violating <see cref="Send"/>'s normal blocking-until-done contract),
+    /// so tests can prove something does or does not depend on the context actually being
+    /// serviced.
     /// </summary>
     private sealed class DeferredSynchronizationContext : SynchronizationContext
     {
         private readonly ConcurrentQueue<(SendOrPostCallback Callback, object? State)> _queue = new();
 
-        public override void Post(SendOrPostCallback d, object? state) => _queue.Enqueue((d, state));
+        public override void Send(SendOrPostCallback d, object? state) => _queue.Enqueue((d, state));
 
         public void FlushOnce()
         {

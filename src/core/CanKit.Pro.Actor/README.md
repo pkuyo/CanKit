@@ -41,11 +41,18 @@ using var timeout = actor.Schedule(TimeSpan.FromMilliseconds(150), () => channel
   pins the loop to one real `Thread` for its entire lifetime — demonstrably the same thread for
   every callback. `ActorExecutionMode.ThreadPool` is cheaper for many short-lived instances but
   does not guarantee thread affinity. `ActorExecutionMode.SynchronizationContext` marshals every
-  callback onto a caller-supplied context (e.g. a UI dispatcher) via `SynchronizationContext.Post`.
+  callback onto a caller-supplied context (e.g. a UI dispatcher) via a *blocking*
+  `SynchronizationContext.Send`, so work is guaranteed to have actually run by the time it's
+  considered processed — including during `Dispose`'s final drain.
 
 Disposing an actor stops it from accepting new work (`Post`/`Schedule` throw
 `ObjectDisposedException`) but runs whatever was already queued to completion first, so a caller
 awaiting `PostAsync` right as `Dispose` happens still gets a real result instead of hanging.
 Not-yet-due `Schedule` callbacks are discarded, not fired.
+
+**`SynchronizationContext` mode caveat**: never call `Dispose()` synchronously from the actor's
+own target context thread (e.g. from inside a UI event handler on that same dispatcher) — like any
+synchronous wait on work that needs that same thread to run, it can deadlock. Dispose from a
+different thread, or dispatch the call asynchronously.
 
 Status: pre-release (0.1.x).

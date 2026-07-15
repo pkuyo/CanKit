@@ -94,6 +94,14 @@ namespace CanKit.Pro.Actor
             if (work is null) throw new ArgumentNullException(nameof(work));
             ThrowIfDisposed();
             _mailbox.Enqueue(work);
+            // Re-check after enqueueing: Dispose() could have run its entire final drain in the
+            // gap between the check above and the enqueue, meaning nothing will ever look at
+            // _mailbox again. We can't "unenqueue" from a ConcurrentQueue, so this can't fully
+            // eliminate the race, but it closes the specific silent-failure case where Post would
+            // otherwise appear to succeed while the work never runs -- the caller gets a clear
+            // ObjectDisposedException instead.
+            if (Volatile.Read(ref _disposedFlag) != 0)
+                throw new ObjectDisposedException(nameof(ProtocolActor));
             _signal.Release();
         }
 
@@ -149,6 +157,10 @@ namespace CanKit.Pro.Actor
             // it wakes the loop promptly even if it's currently blocked waiting on a later,
             // unrelated timer deadline.
             _pendingTimerInserts.Enqueue(entry);
+            // Same post-enqueue re-check as Post() -- see its comment for why this can narrow but
+            // not fully eliminate a race against a concurrent Dispose().
+            if (Volatile.Read(ref _disposedFlag) != 0)
+                throw new ObjectDisposedException(nameof(ProtocolActor));
             _signal.Release();
             return new TimerHandle(entry);
         }
@@ -307,11 +319,17 @@ namespace CanKit.Pro.Actor
         {
             if (_syncContext is not null)
             {
-                // FIFO-ordered by the target SynchronizationContext itself (true for standard UI
-                // dispatchers): we don't wait for one Post to finish before issuing the next, but
-                // the context still executes them one at a time in the order posted, preserving
-                // single-writer semantics for actor-owned state.
-                _syncContext.Post(state =>
+                // Send (blocking marshal), not Post (fire-and-forget): by the time this call
+                // returns, the work has actually run on the target context, matching every other
+                // execution mode's RunSafely guarantee. This is what makes FinalDrain's "queued
+                // work completes before Dispose returns" promise hold for SynchronizationContext
+                // mode too -- with Post, Dispose could return (and PostAsync callers could hang
+                // forever) while work was still only sitting on the dispatcher's queue, never
+                // actually executed. Note: as with any blocking marshal onto a UI-style context,
+                // callers must not invoke Dispose() synchronously *from* the actor's own target
+                // context thread -- that would block the very thread this Send needs serviced,
+                // the same well-known pitfall as any synchronous wait on captured-context work.
+                _syncContext.Send(state =>
                 {
                     try { ((Action)state!)(); }
                     catch (Exception ex) { RaiseBackgroundException(ex); }
