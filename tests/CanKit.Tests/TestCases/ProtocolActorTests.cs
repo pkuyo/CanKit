@@ -189,6 +189,45 @@ public class ProtocolActorTests
     }
 
     [Fact]
+    public async Task Concurrent_Dispose_Never_Accepts_Work_That_Then_Fails_To_Run()
+    {
+        // Regression test: Post/Schedule must not be able to pass ThrowIfDisposed, lose a race to a
+        // concurrent Dispose, and still enqueue work that FinalDrain has already run past (or never
+        // runs at all). Every call that does *not* throw ObjectDisposedException must have its work
+        // genuinely execute -- not hang forever.
+        for (var iteration = 0; iteration < 25; iteration++)
+        {
+            var actor = new ProtocolActor();
+            var accepted = new ConcurrentBag<Task>();
+
+            var posters = Enumerable.Range(0, 4).Select(_ => new Thread(() =>
+            {
+                for (var i = 0; i < 25; i++)
+                {
+                    try
+                    {
+                        accepted.Add(actor.PostAsync(() => 0));
+                    }
+                    catch (ObjectDisposedException)
+                    {
+                        // Acceptable: this call lost the race to a concurrent Dispose.
+                    }
+                }
+            })).ToArray();
+
+            foreach (var t in posters) t.Start();
+            actor.Dispose();
+            foreach (var t in posters) t.Join();
+
+            foreach (var task in accepted)
+            {
+                (await Task.WhenAny(task, Task.Delay(TimeSpan.FromSeconds(2)))).Should().Be(task,
+                    "work accepted before Dispose observed it must still run to completion instead of hanging forever");
+            }
+        }
+    }
+
+    [Fact]
     public async Task SynchronizationContext_Mode_Marshals_Work_Through_The_Provided_Context()
     {
         var recording = new RecordingSynchronizationContext();
@@ -225,6 +264,26 @@ public class ProtocolActorTests
         // this would still hang because nothing would have told the loop the timer even existed.
         deferred.FlushOnce();
         (await Task.WhenAny(tcs.Task, Task.Delay(TimeSpan.FromSeconds(2)))).Should().Be(tcs.Task);
+    }
+
+    [Fact]
+    public async Task Dispose_In_SynchronizationContext_Mode_Runs_Already_Queued_Work_To_Completion()
+    {
+        // Regression test: FinalDrain must rely on RunSafely's blocking SynchronizationContext.Send,
+        // not a fire-and-forget Post, or Dispose could return (and this PostAsync could hang
+        // forever) while the work is only sitting in this context's Post queue, never executed.
+        // PostOnlyQueueingSynchronizationContext only overrides Post (queuing without running it) and
+        // leaves Send at its default -- which invokes the callback inline/synchronously -- so this
+        // would fail if RunSafely ever again marshaled through Post instead of Send.
+        var context = new PostOnlyQueueingSynchronizationContext();
+        var actor = new ProtocolActor(ActorExecutionMode.SynchronizationContext, context);
+        var pending = actor.PostAsync(() => 7);
+
+        actor.Dispose();
+
+        (await Task.WhenAny(pending, Task.Delay(TimeSpan.FromSeconds(2)))).Should().Be(pending,
+            "Dispose must run already-queued PostAsync work to completion even when marshaled through a SynchronizationContext");
+        (await pending).Should().Be(7);
     }
 
     [Fact]
@@ -271,5 +330,16 @@ public class ProtocolActorTests
             while (_queue.TryDequeue(out var item))
                 item.Callback(item.State);
         }
+    }
+
+    /// <summary>
+    /// A <see cref="SynchronizationContext"/> that only overrides <see cref="Post"/> (queuing
+    /// without running it) and deliberately leaves <see cref="Send"/> at the base
+    /// implementation's default synchronous-invoke behavior, so a test can distinguish "marshaled
+    /// via blocking Send" from "marshaled via fire-and-forget Post".
+    /// </summary>
+    private sealed class PostOnlyQueueingSynchronizationContext : SynchronizationContext
+    {
+        public override void Post(SendOrPostCallback d, object? state) { /* intentionally never runs d */ }
     }
 }

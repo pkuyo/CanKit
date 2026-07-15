@@ -48,6 +48,15 @@ namespace CanKit.Pro.Actor
         private readonly Task? _loopTask;
         private int _disposedFlag;
 
+        // Guards the disposed-check-then-enqueue sequence in Post/Schedule against a concurrent
+        // Dispose: without it, a caller could pass ThrowIfDisposed, lose a race to Dispose setting
+        // _disposedFlag, and still enqueue work that FinalDrain has already run past (or will never
+        // look at again). Sharing this with Dispose's flag flip makes the two mutually exclusive,
+        // so a Post/Schedule call either fully lands before Dispose is observed anywhere, or is
+        // rejected with ObjectDisposedException before anything is enqueued -- closing the race
+        // completely rather than merely narrowing it.
+        private readonly object _disposeGate = new();
+
         /// <inheritdoc />
         public event EventHandler<Exception>? BackgroundExceptionOccurred;
 
@@ -92,17 +101,12 @@ namespace CanKit.Pro.Actor
         public void Post(Action work)
         {
             if (work is null) throw new ArgumentNullException(nameof(work));
-            ThrowIfDisposed();
-            _mailbox.Enqueue(work);
-            // Re-check after enqueueing: Dispose() could have run its entire final drain in the
-            // gap between the check above and the enqueue, meaning nothing will ever look at
-            // _mailbox again. We can't "unenqueue" from a ConcurrentQueue, so this can't fully
-            // eliminate the race, but it closes the specific silent-failure case where Post would
-            // otherwise appear to succeed while the work never runs -- the caller gets a clear
-            // ObjectDisposedException instead.
-            if (Volatile.Read(ref _disposedFlag) != 0)
-                throw new ObjectDisposedException(nameof(ProtocolActor));
-            _signal.Release();
+            lock (_disposeGate)
+            {
+                ThrowIfDisposed();
+                _mailbox.Enqueue(work);
+                _signal.Release();
+            }
         }
 
         /// <inheritdoc />
@@ -149,26 +153,31 @@ namespace CanKit.Pro.Actor
         {
             if (callback is null) throw new ArgumentNullException(nameof(callback));
             if (delay < TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(delay), "Delay must not be negative.");
-            ThrowIfDisposed();
 
             var entry = new TimerEntry(DateTime.UtcNow + delay, callback);
-            // Applied by the loop itself, inline and never marshaled (see _pendingTimerInserts),
-            // so _timers is only ever touched by the loop thread. _signal.Release() mirrors Post:
-            // it wakes the loop promptly even if it's currently blocked waiting on a later,
-            // unrelated timer deadline.
-            _pendingTimerInserts.Enqueue(entry);
-            // Same post-enqueue re-check as Post() -- see its comment for why this can narrow but
-            // not fully eliminate a race against a concurrent Dispose().
-            if (Volatile.Read(ref _disposedFlag) != 0)
-                throw new ObjectDisposedException(nameof(ProtocolActor));
-            _signal.Release();
+            lock (_disposeGate)
+            {
+                ThrowIfDisposed();
+                // Applied by the loop itself, inline and never marshaled (see _pendingTimerInserts),
+                // so _timers is only ever touched by the loop thread. _signal.Release() mirrors Post:
+                // it wakes the loop promptly even if it's currently blocked waiting on a later,
+                // unrelated timer deadline.
+                _pendingTimerInserts.Enqueue(entry);
+                _signal.Release();
+            }
             return new TimerHandle(entry);
         }
 
         /// <inheritdoc />
         public void Dispose()
         {
-            if (Interlocked.Exchange(ref _disposedFlag, 1) != 0) return; // idempotent
+            // Sharing _disposeGate with Post/Schedule closes the race where a caller passes
+            // ThrowIfDisposed, then loses to this flag flip, then still enqueues work that
+            // FinalDrain either already ran past or will never look at again.
+            lock (_disposeGate)
+            {
+                if (Interlocked.Exchange(ref _disposedFlag, 1) != 0) return; // idempotent
+            }
 
             // Wakes a blocked wait immediately; further Post/Schedule calls now throw
             // ObjectDisposedException instead of silently queuing work nobody will run.
