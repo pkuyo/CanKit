@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -200,6 +201,33 @@ public class ProtocolActorTests
     }
 
     [Fact]
+    public async Task Schedule_Still_Fires_Promptly_When_The_SynchronizationContext_Defers_Posted_Work()
+    {
+        // Regression test: Schedule's timer-list insertion must never be marshaled through the
+        // SynchronizationContext -- only the eventual callback (user-facing work) should be. With
+        // a context that genuinely defers execution (unlike RecordingSynchronizationContext above,
+        // which runs inline), a deferred *insertion* would race the loop's own bookkeeping and
+        // could leave the timer sitting unnoticed forever, since nothing re-signals the loop once
+        // a deferred insert eventually lands.
+        var deferred = new DeferredSynchronizationContext();
+        using var actor = new ProtocolActor(ActorExecutionMode.SynchronizationContext, deferred);
+
+        var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var handle = actor.Schedule(TimeSpan.FromMilliseconds(100), () => tcs.TrySetResult(true));
+
+        // The callback itself *is* user-facing work, so it must wait for the (not-yet-flushed)
+        // context -- this alone proves the context is genuinely wired in, not bypassed entirely.
+        (await Task.WhenAny(tcs.Task, Task.Delay(TimeSpan.FromMilliseconds(500)))).Should().NotBe(tcs.Task);
+
+        // Flushing must make it fire essentially immediately: the timer already became due and was
+        // sitting in the actor's own timer list (inserted inline, independent of the context) --
+        // if the insertion had instead been deferred through the context like the callback is,
+        // this would still hang because nothing would have told the loop the timer even existed.
+        deferred.FlushOnce();
+        (await Task.WhenAny(tcs.Task, Task.Delay(TimeSpan.FromSeconds(2)))).Should().Be(tcs.Task);
+    }
+
+    [Fact]
     public void Constructor_Requires_A_Context_For_SynchronizationContext_Mode()
     {
         Action act = () => new ProtocolActor(ActorExecutionMode.SynchronizationContext, synchronizationContext: null);
@@ -221,6 +249,24 @@ public class ProtocolActorTests
         {
             Interlocked.Increment(ref PostCount);
             d(state);
+        }
+    }
+
+    /// <summary>
+    /// A <see cref="SynchronizationContext"/> that genuinely defers posted work instead of running
+    /// it inline, so tests can prove something does or does not depend on the context actually
+    /// being serviced.
+    /// </summary>
+    private sealed class DeferredSynchronizationContext : SynchronizationContext
+    {
+        private readonly ConcurrentQueue<(SendOrPostCallback Callback, object? State)> _queue = new();
+
+        public override void Post(SendOrPostCallback d, object? state) => _queue.Enqueue((d, state));
+
+        public void FlushOnce()
+        {
+            while (_queue.TryDequeue(out var item))
+                item.Callback(item.State);
         }
     }
 }

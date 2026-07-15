@@ -19,6 +19,17 @@ namespace CanKit.Pro.Actor
     {
         private readonly ConcurrentQueue<Action> _mailbox = new();
 
+        // Schedule() insertions go through this queue instead of _mailbox, and are always applied
+        // inline on the loop thread (never marshaled through _syncContext): _timers is
+        // loop-thread-owned state, not user-facing work, so it must stay on the single logical
+        // thread regardless of ActorExecutionMode. Routing it through _mailbox/RunSafely would
+        // defer the insert onto the SynchronizationContext's own thread in that mode, letting it
+        // race with FireDueTimers/NextWaitTimeoutMilliseconds on the loop thread, and -- since
+        // nothing re-signals the loop once that deferred insert finally lands -- could also leave
+        // a freshly scheduled timer sitting unnoticed behind whatever (possibly much longer or
+        // infinite) wait the loop already committed to.
+        private readonly ConcurrentQueue<TimerEntry> _pendingTimerInserts = new();
+
         // Released once per Post/Schedule call; the loop waits on it (blocking or async depending
         // on execution mode) instead of polling. Over-counting is harmless: each wake drains
         // *everything* currently available, not just one item, so an extra pending count just
@@ -26,9 +37,9 @@ namespace CanKit.Pro.Actor
         private readonly SemaphoreSlim _signal = new(0, int.MaxValue);
 
         // Sorted ascending by TimerEntry.DueUtc. Touched only by the loop thread (both when
-        // draining Schedule's "insert" messages from the mailbox and when firing due timers), so
-        // it needs no lock of its own -- the same single-writer guarantee FR-RAW-021 asks every
-        // protocol instance to have for its own state.
+        // draining _pendingTimerInserts and when firing due timers), so it needs no lock of its
+        // own -- the same single-writer guarantee FR-RAW-021 asks every protocol instance to have
+        // for its own state.
         private readonly List<TimerEntry> _timers = new();
 
         private readonly CancellationTokenSource _stopCts = new();
@@ -133,9 +144,12 @@ namespace CanKit.Pro.Actor
             ThrowIfDisposed();
 
             var entry = new TimerEntry(DateTime.UtcNow + delay, callback);
-            // Inserted by the loop itself (as a mailbox message) so _timers is only ever touched
-            // by the loop thread -- consistent with every other loop-owned-state rule here.
-            Post(() => InsertTimerSorted(entry));
+            // Applied by the loop itself, inline and never marshaled (see _pendingTimerInserts),
+            // so _timers is only ever touched by the loop thread. _signal.Release() mirrors Post:
+            // it wakes the loop promptly even if it's currently blocked waiting on a later,
+            // unrelated timer deadline.
+            _pendingTimerInserts.Enqueue(entry);
+            _signal.Release();
             return new TimerHandle(entry);
         }
 
@@ -148,16 +162,28 @@ namespace CanKit.Pro.Actor
             // ObjectDisposedException instead of silently queuing work nobody will run.
             _stopCts.Cancel();
 
+            bool loopFinished;
             if (_dedicatedThread is not null)
-                _dedicatedThread.Join(TimeSpan.FromSeconds(5));
+                loopFinished = _dedicatedThread.Join(TimeSpan.FromSeconds(5));
             else
             {
-                try { _loopTask?.Wait(TimeSpan.FromSeconds(5)); }
-                catch (AggregateException) { /* expected: the loop observes cancellation and exits via OperationCanceledException */ }
+                try { loopFinished = _loopTask is null || _loopTask.Wait(TimeSpan.FromSeconds(5)); }
+                catch (AggregateException) { loopFinished = true; /* expected: the loop observed cancellation and exited via OperationCanceledException */ }
             }
 
-            _stopCts.Dispose();
-            _signal.Dispose();
+            // Only dispose these if the loop actually finished: if some posted work item is still
+            // blocking the loop past the grace period, it may still be running (e.g. stuck inside
+            // a user callback) and could touch _signal/_stopCts.Token again once that callback
+            // finally returns. Disposing out from under a still-running loop would surface as an
+            // ObjectDisposedException on that thread -- and unlike a Task, an unhandled exception
+            // on a raw dedicated Thread can crash the process. Leaking two small disposables in
+            // this already-pathological (caller's callback never returned in time) case is the
+            // safer trade-off.
+            if (loopFinished)
+            {
+                _stopCts.Dispose();
+                _signal.Dispose();
+            }
         }
 
         private void RunLoopBlocking()
@@ -179,6 +205,7 @@ namespace CanKit.Pro.Actor
                     }
 
                     DrainMailbox();
+                    DrainPendingTimerInserts();
                     FireDueTimers();
                 }
             }
@@ -207,6 +234,7 @@ namespace CanKit.Pro.Actor
                     }
 
                     DrainMailbox();
+                    DrainPendingTimerInserts();
                     FireDueTimers();
                 }
             }
@@ -224,6 +252,7 @@ namespace CanKit.Pro.Actor
         private void FinalDrain()
         {
             DrainMailbox();
+            DrainPendingTimerInserts();
             FireDueTimers();
         }
 
@@ -242,6 +271,14 @@ namespace CanKit.Pro.Actor
         {
             while (_mailbox.TryDequeue(out var work))
                 RunSafely(work);
+        }
+
+        // Always inline on the loop thread, never marshaled through _syncContext -- see the field
+        // comment on _pendingTimerInserts for why this must not go through RunSafely/_mailbox.
+        private void DrainPendingTimerInserts()
+        {
+            while (_pendingTimerInserts.TryDequeue(out var entry))
+                InsertTimerSorted(entry);
         }
 
         private void FireDueTimers()
