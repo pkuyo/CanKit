@@ -287,6 +287,29 @@ public class ProtocolActorTests
     }
 
     [Fact]
+    public async Task SynchronizationContext_Send_Failure_Surfaces_Via_BackgroundExceptionOccurred_And_Loop_Keeps_Running()
+    {
+        // Regression test: RunSafely's try/catch previously only wrapped the user callback inside
+        // the delegate passed to Send, not the Send call itself. A Send that throws directly (e.g.
+        // the target context was torn down) must not escape the loop -- it needs the exact same
+        // "caught and raised via BackgroundExceptionOccurred, loop keeps running" treatment as any
+        // other failure source (FR-RAW-023).
+        var throwing = new AlwaysThrowingSynchronizationContext();
+        using var actor = new ProtocolActor(ActorExecutionMode.SynchronizationContext, throwing);
+        var observed = new ConcurrentBag<Exception>();
+        using var gate = new SemaphoreSlim(0);
+        actor.BackgroundExceptionOccurred += (_, ex) => { observed.Add(ex); gate.Release(); };
+
+        actor.Post(() => { });
+        (await gate.WaitAsync(TimeSpan.FromSeconds(5))).Should().BeTrue("Send's own exception must be observable, not lost or crash the loop");
+        observed.Should().ContainSingle().Which.Should().BeOfType<InvalidOperationException>();
+
+        // The loop itself must still be alive and processing subsequent items afterward.
+        actor.Post(() => { });
+        (await gate.WaitAsync(TimeSpan.FromSeconds(5))).Should().BeTrue("one Send failure must never take down the whole actor");
+    }
+
+    [Fact]
     public void Constructor_Requires_A_Context_For_SynchronizationContext_Mode()
     {
         Action act = () => new ProtocolActor(ActorExecutionMode.SynchronizationContext, synchronizationContext: null);
@@ -341,5 +364,15 @@ public class ProtocolActorTests
     private sealed class PostOnlyQueueingSynchronizationContext : SynchronizationContext
     {
         public override void Post(SendOrPostCallback d, object? state) { /* intentionally never runs d */ }
+    }
+
+    /// <summary>
+    /// A <see cref="SynchronizationContext"/> whose <see cref="Send"/> always throws, simulating a
+    /// torn-down dispatcher, so tests can prove a failure in the marshal call itself (not just in
+    /// the marshaled work) is caught rather than escaping the actor loop.
+    /// </summary>
+    private sealed class AlwaysThrowingSynchronizationContext : SynchronizationContext
+    {
+        public override void Send(SendOrPostCallback d, object? state) => throw new InvalidOperationException("context torn down");
     }
 }
