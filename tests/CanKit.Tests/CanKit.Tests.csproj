@@ -27,6 +27,7 @@
     <ProjectReference Include="..\..\src\adapters\CanKit.Adapter.Kvaser\CanKit.Adapter.Kvaser.csproj" />
     <ProjectReference Include="..\..\src\adapters\CanKit.Adapter.ZLG\CanKit.Adapter.ZLG.csproj" />
     <ProjectReference Include="..\..\src\core\CanKit.Pro.RawCan\CanKit.Pro.RawCan.csproj" />
+    <ProjectReference Include="..\..\src\core\CanKit.Pro.Actor\CanKit.Pro.Actor.csproj" />
   </ItemGroup>
 </Project>
 

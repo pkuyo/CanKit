@@ -367,9 +367,9 @@ Verweise auf Architektur-Bausteine nutzen die in Abschnitt 2.1 definierten Schic
 | Anforderung(en) | Architektur-Baustein (L0–L4) | Verifikation |
 |---|---|---|
 | FR-RAW-001..005 | L2 – *Frame-Ownership-Vertrag* (geplant), aufbauend auf L1 `CanFrame`/`CanFrameView` (`src/core/CanKit.Abstractions/API/Can/Definitions/CanFrame.cs`) | Unit-Test, Virtual-Loopback-Integrationstest |
-| FR-RAW-010..014 | L2 – *Demultiplex-Hub/Subscription-Manager* (geplant), aufbauend auf L1 `ICanBus.FrameObserved` (`src/core/CanKit.Abstractions/API/Can/ICanBus.cs`) | Virtual-Loopback-Integrationstest, Lasttest |
-| FR-RAW-020..024 | L2 – *Protokollinstanz-Aktor/Scheduler* (geplant), Referenzimplementierung bestehend in L3 `IsoTpScheduler` (`src/transports/CanKit.Transport.IsoTp/IsoTpScheduler.cs`) | Stress-/Nebenläufigkeitstest |
-| FR-RAW-030..034 | L2 – *TX-Confirm-Abstraktion* (geplant), aufbauend auf L1 `CanFeature.Echo`, `ITransceiver.Transmit` | Virtual-Loopback-Integrationstest (mit/ohne Echo) |
+| FR-RAW-010..014 | L2 – *Demultiplex-Hub/Subscription-Manager* (umgesetzt in `CanKit.Pro.RawCan`), aufbauend auf L1 `ICanBus.FrameObserved` (`src/core/CanKit.Abstractions/API/Can/ICanBus.cs`) | Virtual-Loopback-Integrationstest, Lasttest |
+| FR-RAW-020..024 | L2 – *Protokollinstanz-Aktor/Scheduler* (umgesetzt als eigenständiges `CanKit.Pro.Actor`, `IProtocolActor`/`ProtocolActor`); Referenzimplementierung noch **nicht** umgestellt in L3 `IsoTpScheduler` (`src/transports/CanKit.Transport.IsoTp/IsoTpScheduler.cs`, funktional defekt, s. Review §1.1) | Stress-/Nebenläufigkeitstest |
+| FR-RAW-030..034 | L2 – *TX-Confirm-Abstraktion* (umgesetzt in `CanKit.Pro.RawCan`), aufbauend auf L1 `CanFeature.Echo`, `ITransceiver.Transmit` | Virtual-Loopback-Integrationstest (mit/ohne Echo) |
 | FR-RAW-040..041 | L2 – *Adressierungs-Helfer* (geplant) | Unit-Test |
 | FR-RAW-050..052 | L2 – *Fehler-/Timeout-Infrastruktur* (geplant), aufbauend auf L1 `ICanBus.BusState`, `ErrorCounters()` | Unit-Test, Integrationstest |
 | FR-TP-001..020 | L3 – ISO-TP-Transport, `CanKit.Transport.IsoTp` (`IsoTpChannelCore`, `IsoTpScheduler`, `FrameCodec`, `Router`, `Deadline`/`QueuedDeadline`) | Unit-Test (Codec/Timing), Virtual-Loopback-Integrationstest, HIL-Stichprobe |
