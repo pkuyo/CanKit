@@ -115,6 +115,14 @@ namespace CanKit.Pro.Reliability
             _errorHint = OnBusHint;
             _faultHint = OnFaultHint;
 
+            // Arm the first poll tick on the loop before subscribing any bus events. Posting
+            // (rather than scheduling directly) keeps all timer bookkeeping originating from the
+            // actor's own thread, consistent with how the rest of the monitor's state is touched.
+            // Doing this first means that if the actor is already disposed and Post throws, the
+            // constructor fails before any bus event handler is attached, so no partially
+            // constructed instance is left pinned by the bus.
+            _actor.Post(RearmPoll);
+
             // Subscribe the hints best-effort: a controlled TX abort must not be prevented just
             // because an adapter won't surface error frames. If a subscription throws (adapter
             // configuration), fall back to poll-only for that channel.
@@ -137,11 +145,6 @@ namespace CanKit.Pro.Reliability
             {
                 _faultHintSubscribed = false;
             }
-
-            // Arm the first poll tick on the loop. Posting (rather than scheduling directly) keeps
-            // all timer bookkeeping originating from the actor's own thread, consistent with how the
-            // rest of the monitor's state is touched.
-            _actor.Post(RearmPoll);
         }
 
         /// <summary>
@@ -237,6 +240,14 @@ namespace CanKit.Pro.Reliability
                 return;
 
             Volatile.Write(ref _stateRaw, (int)current);
+
+            // Re-check disposal right before notifying: Dispose() runs on an arbitrary caller
+            // thread and can complete while this method (on the actor's loop thread) was busy
+            // reading BusState above, so the single guard in RecheckOnLoop's entry is not enough
+            // to prevent a StateChanged after the monitor has been disposed.
+            if (Volatile.Read(ref _disposed) != 0)
+                return;
+
             StateChanged?.Invoke(this, new BusStateChangedEventArgs(previous, current));
         }
 
