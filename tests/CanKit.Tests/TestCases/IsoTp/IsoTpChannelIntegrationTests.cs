@@ -1,12 +1,14 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using CanKit.Abstractions.API.Can;
 using CanKit.Abstractions.API.Can.Definitions;
 using CanKit.Abstractions.API.Common.Definitions;
 using CanKit.Core;
+using CanKit.Pro.Actor;
 using CanKit.Pro.IsoTp;
 using CanKit.Pro.RawCan;
 using FluentAssertions;
@@ -748,11 +750,11 @@ public class IsoTpChannelIntegrationTests : IClassFixture<TestCaseProvider>
     // BeginSendOnLoop just plowed ahead and pushed a Single-Frame onto the wire even though
     // the TCS had already (or was about to be) cancelled.
     //
-    // We arrange the race deterministically: park the sender's actor inside its
-    // BackgroundExceptionOccurred handler, queue BeginSendOnLoop while the actor is stuck,
-    // then cancel the token (which also queues CancelInFlightSend), then release the actor.
-    // With this ordering the actor unambiguously observes both work items already in its
-    // mailbox and the token's IsCancellationRequested==true when begin runs.
+    // We arrange the race deterministically by parking the sender's ProtocolActor mailbox
+    // directly (Post a blocking work item). DatagramReceived is raised off-actor
+    // (Bugbot 3596580061), so the older "throw in DatagramReceived + block in
+    // BackgroundExceptionOccurred" trick no longer freezes the actor and let begin race
+    // ahead of Cancel on CI.
     // --------------------------------------------------------------------------------
     [Fact]
     public async Task Send_Cancelled_Before_Actor_Delivery_Emits_No_Frame_And_Channel_Remains_Usable()
@@ -774,35 +776,30 @@ public class IsoTpChannelIntegrationTests : IClassFixture<TestCaseProvider>
             if (e.CanFrame.ID == 0x220) Interlocked.Increment(ref framesToPeer);
         };
 
-        // Park sender's actor: a throwing DatagramReceived handler triggers RaiseBackgroundException
-        // synchronously on the actor loop, then the BackgroundExceptionOccurred handler blocks
-        // on a gate we control -- so long as we don't release it, the actor thread is stuck.
+        var actorField = sender.GetType().GetField("_actor",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        actorField.Should().NotBeNull("IsoTpChannel must keep an _actor field for this race test");
+        var actor = (IProtocolActor)actorField!.GetValue(sender)!;
+
         using var actorParked = new ManualResetEventSlim(false);
         using var releaseActor = new ManualResetEventSlim(false);
-        sender.DatagramReceived += (_, __) => throw new InvalidOperationException("test-park-trigger");
-        sender.BackgroundExceptionOccurred += (_, __) =>
+        actor.Post(() =>
         {
             actorParked.Set();
             releaseActor.Wait(TimeSpan.FromSeconds(10));
-        };
-
-        // Bounce one datagram through sender to fire DatagramReceived (and thus the parking
-        // BackgroundException handler). receiver.SendAsync uses receiver's own actor, so this
-        // does not park us prematurely.
-        await receiver.SendAsync(new byte[] { 0x00 }).WaitAsync(ShortTimeout);
+        });
         actorParked.Wait(TimeSpan.FromSeconds(5)).Should().BeTrue(
-            "the sender's actor must be sitting inside our BackgroundException handler by now");
+            "the sender's actor must be sitting inside our parked work item by now");
 
         // Sender's actor is now blocked. Queue BeginSendOnLoop, then cancel the token (which
-        // synchronously fires the cancel callback -> Post CancelInFlightSend). Both work items
-        // are safely sitting in the actor's mailbox before the actor gets to run again.
+        // synchronously completes the send TCS and posts actor-side TX cleanup). Begin +
+        // cleanup sit in the mailbox until we release.
         using var cts = new CancellationTokenSource();
         var sendTask = sender.SendAsync(new byte[] { 0xDE, 0xAD, 0xBE, 0xEF }, cts.Token);
         cts.Cancel();
 
-        // Release the parked actor; it now drains [begin, cancel]. Under the fix, begin sees
-        // ct.IsCancellationRequested==true (or tcs.Task.IsCompleted==true) and no-ops.
-        // Under the bug, begin sets _tx and puts the SF on the wire regardless.
+        // Release the parked actor; it now drains [begin, cleanup]. Under the fix, begin sees
+        // tcs.Task.IsCompleted / ct.IsCancellationRequested and emits nothing.
         releaseActor.Set();
 
         Func<Task> act = () => sendTask.WaitAsync(ShortTimeout);
@@ -814,8 +811,6 @@ public class IsoTpChannelIntegrationTests : IClassFixture<TestCaseProvider>
             "a send cancelled before the actor delivers BeginSendOnLoop must never put a frame on the bus");
 
         // One-in-flight guarantee: the send gate must be released and the actor usable.
-        // (The parking handlers only fire on RX at *sender*; the final send is A -> B and
-        // does not deliver a datagram back to sender, so it doesn't re-park.)
         var recvTask2 = receiver.ReceiveAsync(new CancellationTokenSource(ShortTimeout).Token);
         byte[] normal2 = { 0x01, 0x02, 0x03 };
         await sender.SendAsync(normal2).WaitAsync(ShortTimeout);

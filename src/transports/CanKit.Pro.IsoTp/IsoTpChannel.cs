@@ -392,14 +392,11 @@ internal sealed class IsoTpChannel : IIsoTpChannel
     {
         // Fix (Bugbot 3594960794): the send may have been canceled between when the caller
         // posted us and when the actor got around to running us -- CancelInFlightSend may have
-        // even already run (it saw _tx==null so it just canceled `tcs`). In either case the
-        // outbound frame must never hit the wire; TrySetCanceled is a no-op if the TCS is
-        // already completed.
-        if (tcs.Task.IsCompleted || ct.IsCancellationRequested)
-        {
-            tcs.TrySetCanceled(ct);
+        // even already completed `tcs` synchronously (and/or posted actor-side cleanup that
+        // saw _tx==null). In either case the outbound frame must never hit the wire;
+        // TrySetCanceled is a no-op if the TCS is already completed.
+        if (IsSendAlreadyCanceled(tcs, ct))
             return;
-        }
 
         if (_tx is not null)
         {
@@ -412,6 +409,16 @@ internal sealed class IsoTpChannel : IIsoTpChannel
         }
 
         _tx = new TxState(pdu, tcs);
+
+        // Re-check after publishing _tx: CancelInFlightSend can complete `tcs` on another
+        // thread the moment the token flips, and will post actor cleanup after us. If the
+        // caller already canceled, drop _tx and emit nothing.
+        if (IsSendAlreadyCanceled(tcs, ct))
+        {
+            if (ReferenceEquals(_tx?.Tcs, tcs))
+                _tx = null;
+            return;
+        }
 
         // Fix (Bugbot 3594960783): any synchronous throw from the codec (bad endpoint / bad
         // length / etc.) must clear _tx and fail the TCS. Otherwise the actor's own
@@ -434,6 +441,14 @@ internal sealed class IsoTpChannel : IIsoTpChannel
         {
             FailTx(ex);
         }
+    }
+
+    private static bool IsSendAlreadyCanceled(TaskCompletionSource<object?> tcs, CancellationToken ct)
+    {
+        if (!tcs.Task.IsCompleted && !ct.IsCancellationRequested)
+            return false;
+        tcs.TrySetCanceled(ct);
+        return true;
     }
 
     private void SendSingleFrame()
@@ -741,10 +756,13 @@ internal sealed class IsoTpChannel : IIsoTpChannel
 
     private void CancelInFlightSend(TaskCompletionSource<object?> tcs, CancellationToken ct)
     {
-        // Runs on whatever thread the CTS is cancelled from (thread-pool or user thread). Hop to
-        // the actor so we don't race the state machine. Deliver the standard OperationCanceled
-        // status regardless of whether the actor still has this exact TX active -- the caller
-        // asked for cancellation and its awaited TCS must reflect that.
+        // Complete the caller's await immediately (any thread). BeginSendOnLoop may still be
+        // sitting in the actor mailbox ahead of our cleanup work item; completing `tcs` here
+        // lets that begin observe tcs.Task.IsCompleted and refuse to emit (Bugbot 3594960794).
+        tcs.TrySetCanceled(ct);
+
+        // Hop to the actor to tear down any TX state that begin already published. Safe if
+        // begin has not run yet (_tx is null / different TCS) or if dispose raced Post.
         try
         {
             _actor.Post(() =>
@@ -755,12 +773,11 @@ internal sealed class IsoTpChannel : IIsoTpChannel
                     tx.NBsDeadline?.Complete();
                     _tx = null;
                 }
-                tcs.TrySetCanceled(ct);
             });
         }
         catch (ObjectDisposedException)
         {
-            tcs.TrySetCanceled(ct);
+            // Channel tearing down; TCS already canceled above.
         }
     }
 
