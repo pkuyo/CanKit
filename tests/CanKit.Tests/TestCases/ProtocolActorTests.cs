@@ -293,14 +293,20 @@ public class ProtocolActorTests
         var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         using var handle = actor.Schedule(TimeSpan.FromMilliseconds(100), () => tcs.TrySetResult(true));
 
-        // The callback itself *is* user-facing work, so it must wait for the (not-yet-flushed)
-        // context -- this alone proves the context is genuinely wired in, not bypassed entirely.
-        (await Task.WhenAny(tcs.Task, Task.Delay(TimeSpan.FromMilliseconds(500)))).Should().NotBe(tcs.Task);
+        // Wait until the actor loop has posted the due callback into the deferred context.
+        // A fixed sleep-then-FlushOnce is flaky on slow CI (notably Windows/net48): if FlushOnce
+        // runs before the loop posts, the callback lands later with nobody left to flush it.
+        (await deferred.WaitForQueuedAsync(TimeSpan.FromSeconds(5))).Should().BeTrue(
+            "Schedule must insert the timer independently of the SynchronizationContext so the due callback is posted once the delay elapses");
+
+        // The callback itself *is* user-facing work, so it must still be waiting for a flush --
+        // this alone proves the context is genuinely wired in, not bypassed entirely.
+        tcs.Task.IsCompleted.Should().BeFalse();
 
         // Flushing must make it fire essentially immediately: the timer already became due and was
         // sitting in the actor's own timer list (inserted inline, independent of the context) --
         // if the insertion had instead been deferred through the context like the callback is,
-        // this would still hang because nothing would have told the loop the timer even existed.
+        // WaitForQueuedAsync above would have timed out instead.
         deferred.FlushOnce();
         (await Task.WhenAny(tcs.Task, Task.Delay(TimeSpan.FromSeconds(2)))).Should().Be(tcs.Task);
     }
@@ -384,8 +390,15 @@ public class ProtocolActorTests
     private sealed class DeferredSynchronizationContext : SynchronizationContext
     {
         private readonly ConcurrentQueue<(SendOrPostCallback Callback, object? State)> _queue = new();
+        private readonly SemaphoreSlim _queued = new(0);
 
-        public override void Send(SendOrPostCallback d, object? state) => _queue.Enqueue((d, state));
+        public override void Send(SendOrPostCallback d, object? state)
+        {
+            _queue.Enqueue((d, state));
+            _queued.Release();
+        }
+
+        public Task<bool> WaitForQueuedAsync(TimeSpan timeout) => _queued.WaitAsync(timeout);
 
         public void FlushOnce()
         {
