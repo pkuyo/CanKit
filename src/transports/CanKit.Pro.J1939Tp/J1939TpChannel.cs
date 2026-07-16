@@ -566,28 +566,47 @@ internal sealed class J1939TpChannel : IJ1939TpChannel
                 session.Deadline = _deadlines.Arm(_options.T4, () => OnTxT4Expired(key));
                 return;
             }
-            if (nextSn != session.NextSn && !(session.NextSn == 0 && nextSn == 1))
+
+            // Expected SN for the *next* block. While the last DT of the current block is still
+            // awaiting SendConfirmed, NextSn has not yet advanced — but a fast peer (Virtual
+            // loopback) may already have received that DT and emitted the next CTS. Accept a CTS
+            // that asks for NextSn + BlockRemaining in that race, and apply it once the block drains.
+            int expectedSn = session.State == TxStage.SendingDt && session.BlockRemaining > 0
+                ? session.NextSn + session.BlockRemaining
+                : (session.NextSn == 0 ? 1 : session.NextSn);
+            if (nextSn != expectedSn)
             {
-                // If this is the first CTS after RTS, session.NextSn is still 0; otherwise the
-                // peer must be requesting the exact next-in-order SN.
-                if (!(session.NextSn == 0 && nextSn == 1))
-                {
-                    AbortTx(session, J1939TpAbortReason.UnexpectedCtsSequenceNumber,
-                        $"Peer requested SN {nextSn} but we expected SN {(session.NextSn == 0 ? 1 : session.NextSn)}.");
-                    return;
-                }
+                AbortTx(session, J1939TpAbortReason.UnexpectedCtsSequenceNumber,
+                    $"Peer requested SN {nextSn} but we expected SN {expectedSn}.");
+                return;
             }
-            int totalRemaining = session.TotalPackets - Math.Max(0, session.NextSn - 1);
-            if (session.NextSn == 0) totalRemaining = session.TotalPackets;
+
+            int packetsBeforeNextBlock = session.State == TxStage.SendingDt
+                ? Math.Max(0, session.NextSn + Math.Max(0, session.BlockRemaining) - 1)
+                : Math.Max(0, (session.NextSn == 0 ? 1 : session.NextSn) - 1);
+            int totalRemaining = session.TotalPackets - packetsBeforeNextBlock;
             if (numPackets > totalRemaining)
             {
                 AbortTx(session, J1939TpAbortReason.UnexpectedCtsNumPackets,
                     $"Peer requested {numPackets} packets but only {totalRemaining} remain.");
                 return;
             }
+
+            // Early CTS while the current block is still draining: stash and apply on block end.
+            if (session.State == TxStage.SendingDt && session.BlockRemaining > 0)
+            {
+                session.PendingCtsNumPackets = numPackets;
+                session.PendingCtsNextSn = nextSn;
+                session.HasPendingCts = true;
+                session.Deadline?.Dispose();
+                session.Deadline = null;
+                return;
+            }
+
             session.State = TxStage.SendingDt;
             session.NextSn = nextSn;
             session.BlockRemaining = numPackets;
+            session.HasPendingCts = false;
             session.Deadline?.Dispose();
             session.Deadline = null;
             TrySendNextCmDt(key);
@@ -684,7 +703,20 @@ internal sealed class J1939TpChannel : IJ1939TpChannel
 
         if (session.BlockRemaining <= 0)
         {
-            // Block done -- wait for next CTS (T2).
+            // Block done. If the peer already cleared the next block (early CTS race on a fast
+            // Virtual bus), apply the stashed CTS immediately; otherwise wait for T2.
+            if (session.HasPendingCts)
+            {
+                session.HasPendingCts = false;
+                session.State = TxStage.SendingDt;
+                session.NextSn = session.PendingCtsNextSn;
+                session.BlockRemaining = session.PendingCtsNumPackets;
+                session.Deadline?.Dispose();
+                session.Deadline = null;
+                TrySendNextCmDt(key);
+                return;
+            }
+
             session.State = TxStage.WaitCts;
             session.Deadline?.Dispose();
             session.Deadline = _deadlines.Arm(_options.T2, () => OnTxT2Expired(key));
@@ -848,7 +880,7 @@ internal sealed class J1939TpChannel : IJ1939TpChannel
 
         public bool Equals(TxSessionKey other) => DestinationAddress == other.DestinationAddress && Pgn == other.Pgn;
         public override bool Equals(object? obj) => obj is TxSessionKey k && Equals(k);
-        public override int GetHashCode() => HashCode.Combine(DestinationAddress, Pgn);
+        public override int GetHashCode() => unchecked((DestinationAddress * 397) ^ (int)Pgn);
     }
 
     private readonly struct RxSessionKey : IEquatable<RxSessionKey>
@@ -864,7 +896,7 @@ internal sealed class J1939TpChannel : IJ1939TpChannel
 
         public bool Equals(RxSessionKey other) => SourceAddress == other.SourceAddress && Pgn == other.Pgn;
         public override bool Equals(object? obj) => obj is RxSessionKey k && Equals(k);
-        public override int GetHashCode() => HashCode.Combine(SourceAddress, Pgn);
+        public override int GetHashCode() => unchecked((SourceAddress * 397) ^ (int)Pgn);
     }
 
     private enum TxStage : byte { WaitCts, SendingDt, WaitEom }
@@ -890,6 +922,14 @@ internal sealed class J1939TpChannel : IJ1939TpChannel
         public byte NextSn { get; set; }
         public int BlockRemaining { get; set; }
         public IDeadline? Deadline { get; set; }
+
+        /// <summary>
+        /// Set when a CTS for the next block arrives before the last DT of the current block has
+        /// been confirmed (Virtual-loopback race). Applied in <see cref="OnCmDtConfirmed"/>.
+        /// </summary>
+        public bool HasPendingCts { get; set; }
+        public byte PendingCtsNumPackets { get; set; }
+        public byte PendingCtsNextSn { get; set; }
 
         public void Cancel()
         {
