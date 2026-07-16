@@ -446,4 +446,48 @@ public class IsoTpChannelIntegrationTests : IClassFixture<TestCaseProvider>
         await sender.SendAsync(normal2).WaitAsync(ShortTimeout);
         (await recvTask2).Should().Equal(normal2);
     }
+
+    // --------------------------------------------------------------------------------
+    // Bugbot 3594960802 (MEDIUM) — Extended addressing round-trip when sourceAddress and
+    // targetAddress DIFFER. Under the bug, IsoTpEndpoint.Extended stored only the target
+    // address as AddressExtension, so the RX filter compared inbound frames against the
+    // outbound TX address-extension byte and dropped every legitimate reply.
+    // --------------------------------------------------------------------------------
+    [Fact]
+    public async Task ExtendedAddressing_With_Distinct_Source_And_Target_Round_Trips()
+    {
+        var session = NewSession();
+        using var busA = OpenClassic(session, 0);
+        using var busB = OpenClassic(session, 1);
+
+        // Alice: SA=0xAA, TA=0xBB. Alice's outbound AE=0xBB; Alice expects inbound AE=0xAA.
+        // Bob:   SA=0xBB, TA=0xAA. Bob's outbound AE=0xAA;   Bob expects inbound AE=0xBB.
+        var alice = IsoTpEndpoint.Extended(txCanId: 0x300, rxCanId: 0x301,
+            sourceAddress: 0xAA, targetAddress: 0xBB);
+        var bob = IsoTpEndpoint.Extended(txCanId: 0x301, rxCanId: 0x300,
+            sourceAddress: 0xBB, targetAddress: 0xAA);
+
+        // Sanity-check the endpoint values themselves so the test still catches the bug even if
+        // the runtime later stops using RxAddressExtension.
+        alice.AddressExtension.Should().Be(0xBB);
+        alice.RxAddressExtension.Should().Be(0xAA);
+        bob.AddressExtension.Should().Be(0xAA);
+        bob.RxAddressExtension.Should().Be(0xBB);
+
+        using var sender = IsoTpFactory.Open(busA, alice, FastOptions());
+        using var receiver = IsoTpFactory.Open(busB, bob, FastOptions());
+
+        // A -> B: Alice writes AE=0xBB, Bob expects AE=0xBB -> match.
+        var recvOnBob = receiver.ReceiveAsync(new CancellationTokenSource(ShortTimeout).Token);
+        byte[] a2b = { 0xC0, 0xDE };
+        await sender.SendAsync(a2b);
+        (await recvOnBob).Should().Equal(a2b);
+
+        // B -> A: Bob writes AE=0xAA, Alice expects AE=0xAA -> match.
+        // Under the bug Alice's RX filter compared against 0xBB (target) and dropped the frame.
+        var recvOnAlice = sender.ReceiveAsync(new CancellationTokenSource(ShortTimeout).Token);
+        byte[] b2a = { 0xBE, 0xEF };
+        await receiver.SendAsync(b2a);
+        (await recvOnAlice).Should().Equal(b2a);
+    }
 }

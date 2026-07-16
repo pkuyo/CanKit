@@ -247,7 +247,12 @@ internal sealed class IsoTpChannel : IIsoTpChannel
                 // Endpoint uses an address-extension byte and the first byte does not match:
                 // skip this frame silently (matches ISO 15765-2 §5.2.4.4 semantics for a foreign
                 // address-extension on the same CAN-ID).
-                if (addrExt && (payload.Length == 0 || payload[0] != _endpoint.AddressExtension))
+                //
+                // Fix (Bugbot 3594960802): filter on the *RX* address extension. For Extended
+                // addressing that is the local node's source address (which the peer writes into
+                // the AE byte when it addresses us), NOT our outbound target-address byte.
+                // For Mixed addressing the two are the same, so this is unchanged there.
+                if (addrExt && (payload.Length == 0 || payload[0] != _endpoint.RxAddressExtension))
                     continue;
 
                 _actor.Post(() => HandleReceivedFrame(payload));
