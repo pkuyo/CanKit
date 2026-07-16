@@ -436,13 +436,21 @@ public static class IsoTpFrameCodec
     /// bytes for CAN-FD).</param>
     /// <param name="endpoint">Endpoint whose addressing mode decides whether the first payload
     /// byte is the address-extension byte.</param>
+    /// <param name="isCanFd">
+    /// <c>true</c> when the caller knows the frame was received as a CAN-FD frame, <c>false</c> for
+    /// classic CAN. The Single-Frame and First-Frame escape forms (<c>PCI 0x00 LEN …</c> and
+    /// <c>PCI 0x10 0x00 LEN[4] …</c>) are only defined on CAN-FD per ISO 15765-2, so this flag is
+    /// required to distinguish a legitimate escape header from a malformed classic-CAN PCI whose
+    /// SF_DL / FF_DL is zero (fixes review §1.1 point 8 / bugbot 3594958440 / 3594958445).
+    /// </param>
     /// <param name="pci">On success, the parsed PCI view.</param>
     /// <returns>
     /// <c>true</c> when the frame has enough bytes and a valid PCI nibble; <c>false</c> for
-    /// truncated frames, reserved PCI nibbles (&gt; 3) or reserved Flow-Status values (&gt; 2).
+    /// truncated frames, reserved PCI nibbles (&gt; 3), reserved Flow-Status values (&gt; 2), or
+    /// escape-form PCIs on classic CAN.
     /// </returns>
     public static bool TryParsePci(ReadOnlySpan<byte> canPayload, in IsoTpEndpoint endpoint,
-        out Pci pci)
+        bool isCanFd, out Pci pci)
     {
         pci = default;
         int addrExt = endpoint.AddressExtensionSize;
@@ -463,7 +471,11 @@ public static class IsoTpFrameCodec
                     int shortLen = first & 0x0F;
                     if (shortLen == 0)
                     {
-                        // CAN-FD SF escape form: 0x00 LEN, then user data
+                        // CAN-FD SF escape form: 0x00 LEN, then user data. On classic CAN a zero
+                        // SF_DL nibble is reserved/invalid — reject rather than mis-parsing it as
+                        // an escape header (fixes bugbot 3594958440).
+                        if (!isCanFd)
+                            return false;
                         int lenIndex = pciIndex + 1;
                         if (canPayload.Length <= lenIndex)
                             return false;
@@ -493,7 +505,13 @@ public static class IsoTpFrameCodec
                     int lowByte = canPayload[secondIndex];
                     if (highNibble == 0 && lowByte == 0)
                     {
-                        // CAN-FD FF escape form: 0x10 0x00 followed by 4-byte length
+                        // CAN-FD FF escape form: 0x10 0x00 followed by a 4-byte length. On classic
+                        // CAN this bit-pattern would announce an FF_DL of zero, which ISO 15765-2
+                        // does not permit and which cannot be an escape header either (the escape
+                        // form is CAN-FD-only). Reject to avoid conflating the two encodings
+                        // (fixes bugbot 3594958445).
+                        if (!isCanFd)
+                            return false;
                         int lenStart = pciIndex + 2;
                         if (canPayload.Length < lenStart + 4)
                             return false;

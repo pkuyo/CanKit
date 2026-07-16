@@ -123,7 +123,7 @@ public class IsoTpFrameCodecTests
 
         var frame = IsoTpFrameCodec.BuildFirstFrame(ep, totalLength, chunk, isCanFd: false);
 
-        IsoTpFrameCodec.TryParsePci(frame, ep, out var pci).Should().BeTrue();
+        IsoTpFrameCodec.TryParsePci(frame, ep, isCanFd: false, out var pci).Should().BeTrue();
         pci.Type.Should().Be(PciType.FirstFrame);
         pci.Length.Should().Be(totalLength);
     }
@@ -143,7 +143,7 @@ public class IsoTpFrameCodecTests
         // First-Frame escape PCI: 0x10, 0x00, then 32-bit big-endian length
         frame[0].Should().Be(0x10);
         frame[1].Should().Be(0x00);
-        IsoTpFrameCodec.TryParsePci(frame, ep, out var pci).Should().BeTrue();
+        IsoTpFrameCodec.TryParsePci(frame, ep, isCanFd: true, out var pci).Should().BeTrue();
         pci.Type.Should().Be(PciType.FirstFrame);
         pci.Length.Should().Be((int)totalLength);
     }
@@ -170,7 +170,7 @@ public class IsoTpFrameCodecTests
         var frame = new byte[] { 0x11, 0x00, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF };
         var ep = IsoTpEndpoint.Normal(0x1, 0x2);
 
-        IsoTpFrameCodec.TryParsePci(frame, ep, out var pci).Should().BeTrue();
+        IsoTpFrameCodec.TryParsePci(frame, ep, isCanFd: false, out var pci).Should().BeTrue();
         pci.Type.Should().Be(PciType.FirstFrame);
         pci.Length.Should().Be(0x100);
         pci.DataOffset.Should().Be(2);
@@ -238,7 +238,7 @@ public class IsoTpFrameCodecTests
     public void TryParsePci_On_Empty_Payload_Returns_False_Without_Exception()
     {
         var ep = IsoTpEndpoint.Normal(0x1, 0x2);
-        IsoTpFrameCodec.TryParsePci(ReadOnlySpan<byte>.Empty, ep, out var pci).Should().BeFalse();
+        IsoTpFrameCodec.TryParsePci(ReadOnlySpan<byte>.Empty, ep, isCanFd: false, out var pci).Should().BeFalse();
         pci.Should().Be(default(Pci));
     }
 
@@ -249,7 +249,7 @@ public class IsoTpFrameCodecTests
         var frame = new byte[] { 0x30 };
         var ep = IsoTpEndpoint.Normal(0x1, 0x2);
 
-        IsoTpFrameCodec.TryParsePci(frame, ep, out _).Should().BeFalse();
+        IsoTpFrameCodec.TryParsePci(frame, ep, isCanFd: false, out _).Should().BeFalse();
     }
 
     [Fact]
@@ -258,17 +258,17 @@ public class IsoTpFrameCodecTests
         var frame = new byte[] { 0x11 }; // FF PCI byte only, no length low byte
         var ep = IsoTpEndpoint.Normal(0x1, 0x2);
 
-        IsoTpFrameCodec.TryParsePci(frame, ep, out _).Should().BeFalse();
+        IsoTpFrameCodec.TryParsePci(frame, ep, isCanFd: false, out _).Should().BeFalse();
     }
 
     [Fact]
     public void TryParsePci_Truncated_FirstFrame_Escape_Returns_False_Without_Exception()
     {
-        // FF escape header 0x10 0x00 present but 32-bit length missing.
+        // FF escape header 0x10 0x00 present but 32-bit length missing (CAN-FD frame).
         var frame = new byte[] { 0x10, 0x00, 0x00 };
         var ep = IsoTpEndpoint.Normal(0x1, 0x2);
 
-        IsoTpFrameCodec.TryParsePci(frame, ep, out _).Should().BeFalse();
+        IsoTpFrameCodec.TryParsePci(frame, ep, isCanFd: true, out _).Should().BeFalse();
     }
 
     [Fact]
@@ -278,7 +278,7 @@ public class IsoTpFrameCodecTests
         var frame = new byte[] { 0x40, 0, 0, 0, 0, 0, 0, 0 };
         var ep = IsoTpEndpoint.Normal(0x1, 0x2);
 
-        IsoTpFrameCodec.TryParsePci(frame, ep, out _).Should().BeFalse();
+        IsoTpFrameCodec.TryParsePci(frame, ep, isCanFd: false, out _).Should().BeFalse();
     }
 
     [Fact]
@@ -287,7 +287,7 @@ public class IsoTpFrameCodecTests
         var frame = new byte[] { 0x33, 0x00, 0x00 }; // FS = 3 is reserved
         var ep = IsoTpEndpoint.Normal(0x1, 0x2);
 
-        IsoTpFrameCodec.TryParsePci(frame, ep, out _).Should().BeFalse();
+        IsoTpFrameCodec.TryParsePci(frame, ep, isCanFd: false, out _).Should().BeFalse();
     }
 
     [Fact]
@@ -297,7 +297,7 @@ public class IsoTpFrameCodecTests
         var frame = new byte[] { 0xF7, 0x03, 0x11, 0x22, 0x33, 0, 0, 0 };
         var ep = IsoTpEndpoint.Extended(0x1, 0x2, sourceAddress: 0xF7, targetAddress: 0xF7);
 
-        IsoTpFrameCodec.TryParsePci(frame, ep, out var pci).Should().BeTrue();
+        IsoTpFrameCodec.TryParsePci(frame, ep, isCanFd: false, out var pci).Should().BeTrue();
         pci.Type.Should().Be(PciType.SingleFrame);
         pci.Length.Should().Be(3);
         pci.DataOffset.Should().Be(2); // 1 (ext) + 1 (PCI)
@@ -384,7 +384,7 @@ public class IsoTpFrameCodecTests
 
         var frame = IsoTpFrameCodec.BuildSingleFrame(ep, payload, isCanFd, padding);
 
-        IsoTpFrameCodec.TryParsePci(frame, ep, out var pci).Should().BeTrue();
+        IsoTpFrameCodec.TryParsePci(frame, ep, isCanFd, out var pci).Should().BeTrue();
         pci.Type.Should().Be(PciType.SingleFrame);
         pci.Length.Should().Be(payload.Length);
         frame.AsSpan(pci.DataOffset, pci.Length).ToArray().Should().Equal(payload);
@@ -401,7 +401,7 @@ public class IsoTpFrameCodecTests
         // Escape form: PCI byte 0 must be 0x00, LEN in byte 1.
         frame[0].Should().Be(0x00);
         frame[1].Should().Be((byte)payload.Length);
-        IsoTpFrameCodec.TryParsePci(frame, ep, out var pci).Should().BeTrue();
+        IsoTpFrameCodec.TryParsePci(frame, ep, isCanFd: true, out var pci).Should().BeTrue();
         pci.Type.Should().Be(PciType.SingleFrame);
         pci.Length.Should().Be(payload.Length);
         frame.AsSpan(pci.DataOffset, pci.Length).ToArray().Should().Equal(payload);
@@ -416,7 +416,7 @@ public class IsoTpFrameCodecTests
             stMinRaw: IsoTpFrameCodec.EncodeStMin(TimeSpan.FromMilliseconds(10)),
             isCanFd: false, padding: true);
 
-        IsoTpFrameCodec.TryParsePci(frame, ep, out var pci).Should().BeTrue();
+        IsoTpFrameCodec.TryParsePci(frame, ep, isCanFd: false, out var pci).Should().BeTrue();
         pci.Type.Should().Be(PciType.FlowControl);
         pci.FlowStatus.Should().Be(FlowStatus.Wait);
         pci.BlockSize.Should().Be((byte)0x11);
@@ -432,7 +432,7 @@ public class IsoTpFrameCodecTests
         var frame = IsoTpFrameCodec.BuildConsecutiveFrame(ep, sequenceNumber: 5, chunk,
             isCanFd: false, padding: false);
 
-        IsoTpFrameCodec.TryParsePci(frame, ep, out var pci).Should().BeTrue();
+        IsoTpFrameCodec.TryParsePci(frame, ep, isCanFd: false, out var pci).Should().BeTrue();
         pci.Type.Should().Be(PciType.ConsecutiveFrame);
         pci.SequenceNumber.Should().Be((byte)5);
         frame.AsSpan(pci.DataOffset).ToArray().Should().Equal(chunk);
@@ -440,10 +440,9 @@ public class IsoTpFrameCodecTests
 
     // ---------------------------------------------------------------------------------------------
     // Bugbot 3594958440: zero-length Single Frame is rejected at build time.
-    // A classic-CAN SF with SF_DL=0 is invalid per ISO 15765-2, and any consumer that later parsed
-    // the resulting bytes would treat the zero low-nibble as either an escape header (CAN-FD only)
-    // or a malformed frame — so building such a frame at all would yield an on-wire payload no
-    // conformant peer could parse. Reject at build time instead.
+    // A classic-CAN SF with SF_DL=0 is invalid per ISO 15765-2, and TryParsePci would (correctly)
+    // treat any low nibble of 0 as either the CAN-FD escape header or a malformed classic frame —
+    // so building such a frame at all would produce something no conformant peer could parse.
     // ---------------------------------------------------------------------------------------------
 
     [Theory]
@@ -471,5 +470,71 @@ public class IsoTpFrameCodecTests
 
         act.Should().Throw<ArgumentOutOfRangeException>()
             .Which.ParamName.Should().Be("userData");
+    }
+
+    // ---------------------------------------------------------------------------------------------
+    // Bugbot 3594958440 + 3594958445: TryParsePci must know the frame kind. The Single-Frame
+    // escape header (PCI nibble 0x0 low-nibble 0x0) and the First-Frame escape header
+    // (0x10 0x00 + 32-bit length) are only defined on CAN-FD; on classic CAN those bit-patterns
+    // are invalid and must be rejected — never mis-parsed as escape headers.
+    // ---------------------------------------------------------------------------------------------
+
+    [Fact]
+    public void TryParsePci_SingleFrame_ClassicCan_Zero_Nibble_Is_Rejected()
+    {
+        // Classic-CAN SF PCI with low nibble = 0 is not defined by ISO 15765-2 and MUST NOT be
+        // parsed as the CAN-FD escape form (which does not exist on classic CAN).
+        var frame = new byte[] { 0x00, 0x03, 0x11, 0x22, 0x33, 0, 0, 0 };
+        var ep = IsoTpEndpoint.Normal(0x1, 0x2);
+
+        IsoTpFrameCodec.TryParsePci(frame, ep, isCanFd: false, out _).Should().BeFalse();
+    }
+
+    [Fact]
+    public void TryParsePci_SingleFrame_CanFd_Zero_Nibble_Still_Parses_Escape_Form()
+    {
+        // Same first byte, but on CAN-FD it is the escape header: LEN then user data.
+        var frame = new byte[]
+        {
+            0x00, 0x03, 0x11, 0x22, 0x33,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        };
+        var ep = IsoTpEndpoint.Normal(0x1, 0x2);
+
+        IsoTpFrameCodec.TryParsePci(frame, ep, isCanFd: true, out var pci).Should().BeTrue();
+        pci.Type.Should().Be(PciType.SingleFrame);
+        pci.Length.Should().Be(3);
+        pci.DataOffset.Should().Be(2);
+    }
+
+    [Fact]
+    public void TryParsePci_FirstFrame_ClassicCan_Escape_Header_Is_Rejected()
+    {
+        // 0x10 0x00 on classic CAN is neither a valid FF (FF_DL == 0 is not permitted) nor an
+        // escape header (escape form is CAN-FD-only). Must not be confused with the CAN-FD
+        // escape header (bugbot 3594958445).
+        var frame = new byte[] { 0x10, 0x00, 0x00, 0x00, 0x00, 0x0A, 0xAA, 0xBB };
+        var ep = IsoTpEndpoint.Normal(0x1, 0x2);
+
+        IsoTpFrameCodec.TryParsePci(frame, ep, isCanFd: false, out _).Should().BeFalse();
+    }
+
+    [Fact]
+    public void TryParsePci_FirstFrame_CanFd_Escape_Header_Still_Parses()
+    {
+        // Same bit-pattern on CAN-FD MUST parse as the 32-bit escape header.
+        var frame = new byte[]
+        {
+            0x10, 0x00, 0x00, 0x00, 0x10, 0x00, // total length = 0x1000 = 4096
+            1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+            11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+            21, 22, 23, 24,
+        };
+        var ep = IsoTpEndpoint.Normal(0x1, 0x2);
+
+        IsoTpFrameCodec.TryParsePci(frame, ep, isCanFd: true, out var pci).Should().BeTrue();
+        pci.Type.Should().Be(PciType.FirstFrame);
+        pci.Length.Should().Be(0x1000);
+        pci.DataOffset.Should().Be(6);
     }
 }
