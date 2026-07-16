@@ -212,7 +212,7 @@ flowchart TB
 | Q1 Erweiterbarkeit | **Schichtenmodell L0–L4** + **SPI/Registry** | Ist: L0/L1 mit reflexionsbasierter `CanRegistry` (Register×Entry-Pipeline). Ziel: L2–L4 setzen auf denselben Registry-Mechanismus (`IIsoTpRegister` etc.). |
 | Q1 Erweiterbarkeit | **Einheitliches Adapter-Muster** | Ist: `<Vendor>Bus/Transceiver/Options/Native/Register`; neuer Vendor = neues Projekt + `[CanRegistryEntry]`-Klasse. |
 | Q3 Echtzeit / Q5 Ressourcen | **Zero-Alloc / Pooling** | Ist: `CanFrame` = `readonly record struct` mit optionalem `IMemoryOwner<byte>`; `IBufferAllocator` (Array-Pool). Ziel: durchgängiger Ownership-Vertrag, damit Pooling gefahrlos über Schichten reicht. |
-| Q3 Echtzeit | **Plattformabhängiges High-Res-Timing** | Ist: `SoftwarePeriodicTx` (Win Waitable-Timer / POSIX `clock_nanosleep`), `PreciseDelay`, hardware-`BCMPeriodicTx` (SocketCAN). Ziel: macOS-Fallback ergänzen. |
+| Q3 Echtzeit | **Plattformabhängiges High-Res-Timing** | Ist: `SoftwarePeriodicTx` (Win Waitable-Timer / Linux `clock_nanosleep` / macOS `Thread.Sleep`-Fallback), `PreciseDelay`, hardware-`BCMPeriodicTx` (SocketCAN). |
 | Q4 Testbarkeit | **Fake-Native + Virtual-Loopback** | Ist: `*.Fake.cs` je Adapter (`-c Fake`), `Virtual`-In-Memory-Hub, xUnit-Matrix. Ziel: ISO-TP-Loopback-Tests gegen Virtual. |
 | Q2 Portabilität | **API auf kleinstem TFM, P/Invoke gekapselt** | Ist: netstandard2.0-kompatible API, `#if`-Weichen. |
 | L2–L4 (Ziel) | **Aktor-Modell pro Protokollinstanz** | Ziel: jede Protokollinstanz (ISO-TP-Kanal, UDS-Session) besitzt genau einen Bearbeitungs-„Aktor" (Mailbox/Loop), keine geteilten mutablen States über Thread-Grenzen. |
@@ -803,8 +803,8 @@ flowchart TB
 | Aspekt | Windows (`net8.0-windows`) | Linux (`net8.0`) | netstandard2.0 (.NET Framework) | macOS |
 |--------|-----------------------------|-------------------|----------------------------------|-------|
 | Bevorzugter Adapter | PCAN/Kvaser/Vector/ZLG/ControlCAN | SocketCAN | vendor-abhängig | USB-Vendor-Adapter |
-| Periodisches TX | Software (Waitable Timer) / Vendor-AutoSend | Hardware-BCM oder Software | Software | Software (Fallback fehlt, §11) |
-| High-Res-Delay | `Win_PreWait` (Waitable/Spin) | `clock_nanosleep` | plattformabhängig | **Busy-Loop-Bug** (§11) |
+| Periodisches TX | Software (Waitable Timer) / Vendor-AutoSend | Hardware-BCM oder Software | Software | Software (`Thread.Sleep`-Fallback) |
+| High-Res-Delay | `Win_PreWait` (Waitable/Spin) | `clock_nanosleep` | plattformabhängig | `SleepCoarse` |
 | `Queue.TryPeek` | vorhanden | vorhanden | via `#if`-Weiche (heute invertiert, §11) | vorhanden |
 
 ---
@@ -957,11 +957,12 @@ Zeitbasis (`DateTime.Now` vs. `UtcNow`) erschwert Korrelation (Review §2.5).
 ## 8.7 High-Res-Timing (plattformabhängig)
 
 `SoftwarePeriodicTx` wählt zur Laufzeit den Timing-Pfad: Windows → Waitable Timer +
-Spin-Endspurt (`Win_PreWait`), POSIX → `clock_nanosleep`. `PreciseDelay` und der
+Spin-Endspurt (`Win_PreWait`), Linux/POSIX → `clock_nanosleep`, macOS →
+`SleepCoarse`/`Thread.Sleep` statt fehlendem `clock_nanosleep`. `PreciseDelay` und der
 `BitTimingSolver` (Sample-Point → BRP/TSEG) ergänzen. SocketCAN nutzt zusätzlich den
-Kernel-**BCM** für hardwarenahes periodisches TX. Schuld: macOS besitzt kein
-`clock_nanosleep`; der Fehler wird verschluckt → Busy-Loop (Review §2.3). Ziel:
-`OperatingSystem.IsMacOS()`-Fallback auf `Thread.Sleep`.
+Kernel-**BCM** für hardwarenahes periodisches TX. Die macOS-Busy-Loop-Schuld aus Review
+§2.3 ist behoben; `Completed`-Callbacks verlassen außerdem vor dem Event `_gate`, damit
+Handler `Update`/`Stop` reentrant aufrufen können.
 
 ## 8.8 Erweiterbarkeit via SPI (Registry-Pipeline)
 
@@ -1228,12 +1229,12 @@ Priorisierung: **K** = kritisch, **W** = wichtig, **G** = gering.
 | K | ✅ *Behoben.* **`QueuedCanBus`-Retry-Stau**: Batch-Reste blieben bis zum nächsten `Enqueue` liegen (blockierte in `WaitToReadAsync`). | Frames wurden verspätet oder nie gesendet; Backoff wirkungslos. | `WaitToReadAsync` nur bei `index==0`; sonst direkter Retry mit Backoff; nur die gültige Batch-Teilmenge wird an `Transmit` übergeben. | §1.2 |
 | K | ✅ *Behoben.* **SocketCAN/ZLG Stopwatch nie gestartet**: `remainingTime` blieb konstant. | Sende-`poll()`-Endlosschleife bei nicht-annehmendem, schreibbarem Bus; unbegrenzte Wartezeit. | `Stopwatch.StartNew()` in `SocketCanBus.Transmit` (2×) und 3 ZLG-Transceivern. | §1.3 |
 | K | ✅ *Behoben.* **BCMPeriodicTx `Update()` FD-Zweig**: `Can20` doppelt (Copy-Paste) statt `CanFd`. | Jedes `Update(fdFrame)` warf `NotSupportedException`; `RemainingCount` unzuverlässig (EAGAIN, weiterhin offen). | FD-Zweig auf `CanFd` korrigiert; `RemainingCount`-Robustheit per `poll` bleibt offen. | §1.4 |
-| W | **macOS-Timing-Busy-Loop**: `clock_nanosleep` fehlt auf macOS, Exception verschluckt. | `PreWait` kehrt sofort zurück → sendet Frames maximal schnell (Bus-Flut). | `OperatingSystem.IsMacOS()` → `Thread.Sleep`-Fallback. | §2.3 |
+| W | ✅ *Behoben.* **SoftwarePeriodicTx macOS/Reentrancy**: `clock_nanosleep` fehlt auf macOS, Exception wurde verschluckt; `Completed` lief innerhalb von `_gate`. | `PreWait` kehrte sofort zurück → Bus-Flut; Handler mit `Update`/`Stop` konnten reentrant hängen. | Statische macOS-Delegate-Route auf `SleepCoarse`/`Thread.Sleep`; `Completed` wird erst nach Verlassen von `_gate` ausgelöst. | §2.3 |
 | W | **AsyncFramePipe Fehlerpfade**: verwaister Reader konsumiert später Frame; Nutzer-Cancellation wird geschluckt. | Frame-Verlust nach Hintergrundfehlern; inkonsistenter Cancellation-Kontrakt. | Reader-Lebenszyklus an `WhenAny` binden; Cancellation-Kontrakt vereinheitlichen + dokumentieren. | §2.2 |
 | W | **Nebenläufigkeit im ISO-TP**: `_tx`, `_pendingOperations`, `Router._channels` (List) ohne Sync; `SetResult`/`SetException` statt `Try*`; Scheduler-Busy-Loop (100 % CPU), `RunAsync` nirgends aufgerufen. | Datenrennen (`InvalidOperationException`), CPU-Last, Nichtfunktion. | Aktor-Modell (ADR-6): 1 Mailbox/Loop je Instanz; `TrySet*`; ereignisgetriebenes Warten. | §1.1/9,14 |
 | W | ✅ *Behoben.* **Virtual-Hub-Leak & Ownership**: `VirtualBusHub._hubs` (static) entfernte leere Hubs nie; Broadcast ohne Kopie. | Speicher-Leak über Sessions; Use-after-free zwischen Empfängern/Sender. | Leere Hubs werden beim Verlassen des letzten Mitglieds entfernt (`Join`/`Detach`, atomar); `Broadcast` kopiert je Empfänger via `CanFrame.Duplicate(...)` (Lease-Semantik). | §2.4 |
-| W | **`CanBus.Open<..>(DeviceType)` Device-Leak**: bei Wurf nach `CreateDevice` wird Device nie disposed. | Natives Handle-Leak. | `try/finally` um `Open(device,…)`; Device bei Fehler disposen. | §2.5 |
-| W | **`BitTimingSolver.FromSamplePoint`**: `Clamp` wirft statt `continue` bei kleinen NTQ. | Gesamte Timing-Suche crasht für bestimmte Limits. | ungültige NTQ überspringen (`continue`). | §2.5 |
+| W | ✅ *Behoben.* **`CanBus.Open<..>(DeviceType)` Device-Leak**: bei Wurf nach `CreateDevice` wurde Device nicht disposed. | Natives Handle-Leak. | `try/catch` um `Open(device,…)`; Device bei Fehler disposen. | §2.5 |
+| W | ✅ *Behoben.* **`BitTimingSolver.FromSamplePoint`**: `Clamp` warf statt `continue` bei kleinen NTQ. | Gesamte Timing-Suche crashte für bestimmte Limits. | Ungültige NTQ/TSEG-Kandidaten werden übersprungen (`continue`). | §2.5 |
 | W | **`CanEndpoint.Parse` lowercased Host**: `zlg://USBCANFD-200U` → `usbcanfd-200u`; Sonderzeichen werfen. | Adapter müssen case-insensitiv sein (nicht garantiert); Namen mit Leerzeichen scheitern. | Host case-preserving parsen; Namensregeln dokumentieren. | §2.5 |
 | G | **Typos in öffentlicher API**: Namespace `Excpetions`, `ReadTImeOutMs`, `ExceptionOccured`. | Nach 1.0 nur als Breaking Change korrigierbar. | Vor 1.0 bereinigen. | §3 |
 | G | **ISO-TP-Packaging-Release-Schutz**: `IsPackable=false` ist gesetzt, `Peak.PCANBasic.NET` ist entfernt, und die Metadaten kennzeichnen das Projekt als experimentell; gemischte Namespaces bleiben unverändert. | Der unfertige Prototyp wird nicht als NuGet-Paket veröffentlicht und zieht das PEAK-SDK nicht mehr transitiv ein. | Projekt bis zur Ablösung durch das künftige produktionsreife ISO-TP-Paket nicht packbar halten; Namespace-Bereinigung bleibt eine separate Breaking-Change-Entscheidung. | §1.1/16, §3 |

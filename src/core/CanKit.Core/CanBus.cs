@@ -149,7 +149,23 @@ public static class CanBus
             throw new CanFactoryException(CanKitErrorCode.DeviceCreationFailed, $"Factory '{provider.Factory.GetType().FullName}' returned null device.");
         }
 
-        return Open<TBus, TBusOptions, TInitCfg>(device, typedChOptions, typedInitCfg);
+        try
+        {
+            return Open<TBus, TBusOptions, TInitCfg>(device, typedChOptions, typedInitCfg);
+        }
+        catch
+        {
+            try
+            {
+                device.Dispose();
+            }
+            catch
+            {
+                // Preserve the original open failure; disposal is best-effort cleanup here.
+            }
+
+            throw;
+        }
     }
 
 
