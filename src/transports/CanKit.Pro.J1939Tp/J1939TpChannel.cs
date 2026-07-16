@@ -456,20 +456,25 @@ internal sealed class J1939TpChannel : IJ1939TpChannel
         byte sn = payload[0];
         if (sn != match.NextExpectedSn)
         {
-            // For BAM: silently drop the malformed stream and let T1 clean up.
-            // For CM: abort with code 5.
+            // Unexpected SN means the transfer cannot complete. Tear the session down immediately
+            // (do not leave a half-built RX session alive for T1 — Cancel() disposes that timer)
+            // and surface the failure on BackgroundExceptionOccurred so a caller blocked on
+            // ReceiveAsync / ReceiveAllAsync is not left waiting forever with no signal.
+            // CM: abort on the wire with code 5 (closest standard reason for sequence mismatch).
+            // BAM: no ack channel, so local notify only.
+            byte expected = match.NextExpectedSn;
+            uint pgn = match.Pgn;
             if (match.Kind == J1939TpKind.Cm)
             {
-                SendTpCm(J1939TpFrames.BuildAbort(J1939TpAbortReason.UnexpectedCtsSequenceNumber, match.Pgn),
+                SendTpCm(J1939TpFrames.BuildAbort(J1939TpAbortReason.UnexpectedCtsSequenceNumber, pgn),
                     destinationAddress: sa);
-                match.Cancel();
-                _rxSessions.Remove(matchKey);
             }
-            else
-            {
-                match.Cancel();
-                _rxSessions.Remove(matchKey);
-            }
+            match.Cancel();
+            _rxSessions.Remove(matchKey);
+            RaiseBackgroundException(new J1939TpAbortException(
+                J1939TpAbortReason.UnexpectedCtsSequenceNumber, pgn,
+                $"J1939-TP {match.Kind} RX session aborted: unexpected TP.DT sequence number {sn} " +
+                $"(expected {expected}) from 0x{sa:X2}."));
             return;
         }
 
