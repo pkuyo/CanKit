@@ -51,10 +51,16 @@ public sealed class AsyncFramePipe<T>
         }
     }
 
+    /// <summary>
+    /// Reads up to <paramref name="count"/> frames. Timeout cancellation returns the frames already
+    /// read, while caller-provided cancellation propagates as <see cref="OperationCanceledException"/>.
+    /// </summary>
     public async Task<IReadOnlyList<T>> ReceiveBatchAsync(
         int count, int timeoutMs, CancellationToken cancellationToken)
     {
         if (count < 0) throw new ArgumentOutOfRangeException(nameof(count));
+        cancellationToken.ThrowIfCancellationRequested();
+
         var list = new List<T>((int)Math.Max(1, Math.Min(count, 256)));
 
         if (timeoutMs == 0)
@@ -77,20 +83,26 @@ public sealed class AsyncFramePipe<T>
 
             while (count == 0 || list.Count < count)
             {
-                var readTask = _channel.Reader.ReadAsync(token).AsTask();
+                cancellationToken.ThrowIfCancellationRequested();
+
+                using var waitCts = CancellationTokenSource.CreateLinkedTokenSource(token);
+                var waitTask = _channel.Reader.WaitToReadAsync(waitCts.Token).AsTask();
                 var bgException = _exceptionPulse;
 
-                var completed = await Task.WhenAny(readTask, bgException.Task).ConfigureAwait(false);
-                if (completed == readTask)
+                var completed = await Task.WhenAny(waitTask, bgException.Task).ConfigureAwait(false);
+                if (completed == waitTask)
                 {
                     try
                     {
-                        var item = await readTask.ConfigureAwait(false);
-                        list.Add(item);
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        return list;
+                        if (!await waitTask.ConfigureAwait(false))
+                        {
+                            break;
+                        }
+
+                        if (_channel.Reader.TryRead(out var item))
+                        {
+                            list.Add(item);
+                        }
                     }
                     catch (ChannelClosedException cce)
                     {
@@ -100,6 +112,15 @@ public sealed class AsyncFramePipe<T>
                 }
                 else
                 {
+                    waitCts.Cancel();
+                    try
+                    {
+                        _ = await waitTask.ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                    }
+
                     var ex = await bgException.Task.ConfigureAwait(false);
                     throw ex ?? new InvalidOperationException("Exception signalled.");
                 }
@@ -151,6 +172,10 @@ public sealed class AsyncFramePipe<T>
     }
 
 
+    /// <summary>
+    /// Wakes readers currently waiting on this pipe with <paramref name="ex"/>. The pulse is not
+    /// sticky: readers that start after this call wait for the next frame or next exception pulse.
+    /// </summary>
     public void ExceptionOccured(Exception ex)
     {
         var old = Interlocked.Exchange(
