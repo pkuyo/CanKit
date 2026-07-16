@@ -45,6 +45,23 @@ public class AsyncFramePipeTests
     }
 
     [Fact]
+    public async Task ReceiveBatchAsync_User_Cancellation_Preferred_Over_Background_Fault()
+    {
+        var pipe = new AsyncFramePipe<int>();
+        using var cts = new CancellationTokenSource();
+
+        var waitingRead = pipe.ReceiveBatchAsync(1, Timeout.Infinite, cts.Token);
+        await Task.Delay(20);
+
+        // Both signals race the wait; caller cancellation must not be masked by the pulse.
+        cts.Cancel();
+        pipe.ExceptionOccured(new InvalidOperationException("background"));
+
+        var act = async () => await waitingRead;
+        await act.Should().ThrowAsync<OperationCanceledException>();
+    }
+
+    [Fact]
     public async Task ReceiveBatchAsync_Timeout_Returns_Partial_Batch()
     {
         var pipe = new AsyncFramePipe<int>();

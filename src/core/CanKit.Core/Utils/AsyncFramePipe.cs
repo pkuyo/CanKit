@@ -100,8 +100,11 @@ public sealed class AsyncFramePipe<T>
                     }
                     catch (OperationCanceledException)
                     {
-                        // Losing wait canceled for cleanup; surface the background fault below.
+                        // Losing wait canceled for cleanup; prefer caller cancellation below.
                     }
+
+                    // Caller cancel must win over a raced background pulse (method contract).
+                    cancellationToken.ThrowIfCancellationRequested();
 
                     // Propagate pulsed faults as-is (including OCE/TCE). There is intentionally no
                     // outer timeout catch that could disguise these as a partial-batch timeout.
