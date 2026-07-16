@@ -1,0 +1,47 @@
+name: CI-transports
+
+on:
+  push:
+    paths:
+      - 'src/core/CanKit.Core/**'
+      - 'src/core/CanKit.Abstractions/**'
+      - 'src/transports/**'
+      - 'CanKitTransports.slnf'
+      - '.github/workflows/transports-ci.yml'
+  pull_request:
+    paths:
+      - 'src/core/CanKit.Core/**'
+      - 'src/core/CanKit.Abstractions/**'
+      - 'src/transports/**'
+      - 'CanKitTransports.slnf'
+      - '.github/workflows/transports-ci.yml'
+
+jobs:
+  build:
+    name: Transports (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_CLI_TELEMETRY_OPTOUT: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore
+        run: dotnet restore CanKitTransports.slnf
+
+      - name: Build (Release, net8.0)
+        run: dotnet build CanKitTransports.slnf -c Release -f net8.0 --no-restore
+
+      - name: Build (Release, net8.0-windows)
+        if: runner.os == 'Windows'
+        run: dotnet build CanKitTransports.slnf -c Release -f net8.0-windows --no-restore

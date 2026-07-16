@@ -197,6 +197,15 @@ public class AddressingTests
         groupExtension.Should().Be(0xAA);
     }
 
+    [Fact]
+    public void J1939Pgn_Rejects_Pgn_Above_18_Bits()
+    {
+        Action act = () => J1939Pgn.GetPduFormat(J1939Pgn.MaxValue + 1);
+
+        act.Should().Throw<ArgumentOutOfRangeException>()
+            .WithMessage("*Reserved|DataPage|PF|PS/GE*");
+    }
+
     // Grenzwerte (SRS FR-RAW-040 verification criterion): the maximum possible 29-bit ID.
     [Fact]
     public void J1939_Decompose_Handles_The_Maximum_29_Bit_Id()

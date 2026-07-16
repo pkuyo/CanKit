@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <Nullable>enable</Nullable>
+        <LangVersion>12</LangVersion>
+        <RootNamespace>CanKit.Pro.IsoTp</RootNamespace>
+        <AssemblyName>CanKit.Pro.IsoTp</AssemblyName>
+        <Version>$(CanKitProIsoTpVersion)</Version>
+        <Description>Experimental, specification-compliant codec foundation for ISO 15765-2 (ISO-TP) inside CanKit.Pro: deterministic Single-/First-/Consecutive-/Flow-Control-frame builders, bounds-checked PCI parser and STmin encode/decode helpers. Ships without any scheduler, channel or vendor SDK dependency — the runtime layer will be added in a follow-up release.</Description>
+        <PackageTags>CAN;can bus;CANFD;ISO-TP;ISO 15765-2;codec;CanKit;CanKit.Pro</PackageTags>
+        <AssemblyVersion>1.0.0.0</AssemblyVersion>
+        <FileVersion>$(CanKitSharedFileVersion)</FileVersion>
+        <Authors>Pkuyo</Authors>
+        <RepositoryUrl>https://github.com/pkuyo/CanKit</RepositoryUrl>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
+        <Configurations>Debug;Release;Fake</Configurations>
+        <Platforms>AnyCPU</Platforms>
+        <!-- Codec-only pre-release; runtime (scheduler + IIsoTpChannel) not yet in this assembly. -->
+        <IsPackable>false</IsPackable>
+    </PropertyGroup>
+
+    <ItemGroup Condition="'$(TargetFramework)'=='netstandard2.0'">
+        <PackageReference Include="System.Memory" Version="4.5.4" />
+    </ItemGroup>
+
+    <ItemGroup Condition="'$(UseLocalProjectReferences)'=='true'">
+        <ProjectReference Include="..\..\core\CanKit.Abstractions\CanKit.Abstractions.csproj" />
+        <ProjectReference Include="..\..\core\CanKit.Core\CanKit.Core.csproj" />
+    </ItemGroup>
+
+    <ItemGroup Condition="'$(UseLocalProjectReferences)'!='true'">
+        <PackageReference Include="CanKit.Abstractions" Version="$(CanKitAbstractionsDependencyVersion)" />
+        <PackageReference Include="CanKit.Core" Version="$(CanKitCoreDependencyVersion)" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <None Include="README.md" Pack="true" PackagePath="" />
+    </ItemGroup>
+</Project>
