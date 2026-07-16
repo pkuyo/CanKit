@@ -13,6 +13,7 @@
     <CanKitProActorVersion>0.1.0</CanKitProActorVersion>
     <CanKitProAddressingVersion>0.1.0</CanKitProAddressingVersion>
     <CanKitProReliabilityVersion>0.1.0</CanKitProReliabilityVersion>
+    <CanKitProJ1939TpVersion>0.1.0</CanKitProJ1939TpVersion>
     <CanKitAdapterControlCANVersion>0.5.5</CanKitAdapterControlCANVersion>
     <CanKitAdapterKvaserVersion>0.5.5</CanKitAdapterKvaserVersion>
     <CanKitAdapterPCANVersion>0.5.5</CanKitAdapterPCANVersion>

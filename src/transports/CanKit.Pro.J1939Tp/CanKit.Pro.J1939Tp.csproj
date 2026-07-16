@@ -1,0 +1,48 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <Nullable>enable</Nullable>
+        <LangVersion>12</LangVersion>
+        <RootNamespace>CanKit.Pro.J1939Tp</RootNamespace>
+        <AssemblyName>CanKit.Pro.J1939Tp</AssemblyName>
+        <Version>$(CanKitProJ1939TpVersion)</Version>
+        <Description>SAE J1939-21 Transport Protocol (TP.BAM broadcast + TP.CM connection-mode RTS/CTS/EndOfMsgAck) for CanKit.Pro: an actor-driven multi-session channel that composes on top of the CanKit.Pro L2 services (RawCan demux, TX-confirm, Actor, Reliability deadlines) and the CanKit.Pro.Addressing J1939 PGN helpers -- no vendor-SDK dependency.</Description>
+        <PackageTags>CAN;can bus;J1939;J1939-21;TP.BAM;TP.CM;transport;CanKit;CanKit.Pro</PackageTags>
+        <AssemblyVersion>1.0.0.0</AssemblyVersion>
+        <FileVersion>$(CanKitSharedFileVersion)</FileVersion>
+        <Authors>Pkuyo</Authors>
+        <RepositoryUrl>https://github.com/pkuyo/CanKit</RepositoryUrl>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
+        <Configurations>Debug;Release;Fake</Configurations>
+        <Platforms>AnyCPU</Platforms>
+        <!-- Pre-release MVP; not yet published to NuGet. -->
+        <IsPackable>false</IsPackable>
+    </PropertyGroup>
+
+    <ItemGroup Condition="'$(TargetFramework)'=='netstandard2.0'">
+        <PackageReference Include="System.Memory" Version="4.5.4" />
+        <PackageReference Include="System.Threading.Channels" Version="9.0.10" />
+        <PackageReference Include="Microsoft.Bcl.AsyncInterfaces" Version="9.0.10" />
+    </ItemGroup>
+
+    <ItemGroup Condition="'$(UseLocalProjectReferences)'=='true'">
+        <ProjectReference Include="..\..\core\CanKit.Abstractions\CanKit.Abstractions.csproj" />
+        <ProjectReference Include="..\..\core\CanKit.Core\CanKit.Core.csproj" />
+        <ProjectReference Include="..\..\core\CanKit.Pro.Actor\CanKit.Pro.Actor.csproj" />
+        <ProjectReference Include="..\..\core\CanKit.Pro.Addressing\CanKit.Pro.Addressing.csproj" />
+        <ProjectReference Include="..\..\core\CanKit.Pro.RawCan\CanKit.Pro.RawCan.csproj" />
+        <ProjectReference Include="..\..\core\CanKit.Pro.Reliability\CanKit.Pro.Reliability.csproj" />
+    </ItemGroup>
+
+    <ItemGroup Condition="'$(UseLocalProjectReferences)'!='true'">
+        <PackageReference Include="CanKit.Abstractions" Version="$(CanKitAbstractionsDependencyVersion)" />
+        <PackageReference Include="CanKit.Core" Version="$(CanKitCoreDependencyVersion)" />
+        <PackageReference Include="CanKit.Pro.Actor" Version="$(CanKitProActorVersion)" />
+        <PackageReference Include="CanKit.Pro.Addressing" Version="$(CanKitProAddressingVersion)" />
+        <PackageReference Include="CanKit.Pro.RawCan" Version="$(CanKitProRawCanVersion)" />
+        <PackageReference Include="CanKit.Pro.Reliability" Version="$(CanKitProReliabilityVersion)" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <None Include="README.md" Pack="true" PackagePath="" />
+    </ItemGroup>
+</Project>
