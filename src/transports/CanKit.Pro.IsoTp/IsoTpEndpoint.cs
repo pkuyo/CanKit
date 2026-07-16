@@ -27,12 +27,9 @@ public readonly struct IsoTpEndpoint : IEquatable<IsoTpEndpoint>
     /// Only meaningful when <see cref="UsesAddressExtension"/> is <c>true</c>.
     /// </summary>
     /// <remarks>
-    /// For <see cref="IsoTpAddressingMode.Extended"/> this carries the <em>target</em> address
-    /// (N_TA) — the peer's address — because ISO 15765-2 §5.3.2.4 puts N_TA in the first payload
-    /// byte of outbound frames. For <see cref="IsoTpAddressingMode.Mixed"/> the TX and RX
-    /// extension bytes are the same value. Inbound frames are filtered against
-    /// <see cref="RxAddressExtension"/>, which for Extended addressing is a different value
-    /// (the source address / N_SA that the peer put in *its* outbound frames).
+    /// For <see cref="IsoTpAddressingMode.Extended"/> this is the peer's target address (the
+    /// N_TA we address the remote node with). For <see cref="IsoTpAddressingMode.Mixed"/> it is
+    /// the shared address-extension byte, which is the same on both directions.
     /// </remarks>
     public byte AddressExtension { get; }
 
@@ -41,11 +38,13 @@ public readonly struct IsoTpEndpoint : IEquatable<IsoTpEndpoint>
     /// Only meaningful when <see cref="UsesAddressExtension"/> is <c>true</c>.
     /// </summary>
     /// <remarks>
-    /// For <see cref="IsoTpAddressingMode.Extended"/> this is the <em>source</em> address
-    /// (N_SA / this node's own address) because the peer places its target address — which is
-    /// us — in its outbound N_TA byte. For <see cref="IsoTpAddressingMode.Mixed"/> this is the
-    /// same value as <see cref="AddressExtension"/>. For normal / normal-fixed modes this
-    /// property is unused (<see cref="UsesAddressExtension"/> is <c>false</c>).
+    /// For <see cref="IsoTpAddressingMode.Extended"/> this is the local node's own source
+    /// address (from the peer's perspective, we are the target of frames they send back, so
+    /// they write our source address into the AE byte). Storing this separately from the
+    /// outbound <see cref="AddressExtension"/> is required for correct RX filtering when the
+    /// two differ (Bugbot 3594960802). For <see cref="IsoTpAddressingMode.Mixed"/> and
+    /// <see cref="IsoTpAddressingMode.Normal"/>/<see cref="IsoTpAddressingMode.NormalFixed"/>
+    /// this equals <see cref="AddressExtension"/>.
     /// </remarks>
     public byte RxAddressExtension { get; }
 
@@ -82,12 +81,10 @@ public readonly struct IsoTpEndpoint : IEquatable<IsoTpEndpoint>
         => new(txCanId, rxCanId, isExtendedCanId: true, IsoTpAddressingMode.NormalFixed, 0, 0);
 
     /// <summary>
-    /// Creates an endpoint using ISO 15765-2 <em>Extended</em> addressing.
-    /// <paramref name="targetAddress"/> is written as the first byte of every outbound frame
-    /// (the peer's address, N_TA); <paramref name="sourceAddress"/> is the value expected as the
-    /// first byte of every inbound frame (this node's own address, N_SA — which appears in the
-    /// peer's outbound N_TA byte). Passing the two backwards causes the RX filter to drop every
-    /// inbound frame.
+    /// Creates an endpoint using ISO 15765-2 <em>Extended</em> addressing. The
+    /// <paramref name="targetAddress"/> is placed as the first byte of every outbound frame (the
+    /// peer's N_TA); the runtime filters inbound frames on <paramref name="sourceAddress"/>, which
+    /// is what the peer writes into the AE byte when addressing us.
     /// </summary>
     public static IsoTpEndpoint Extended(uint txCanId, uint rxCanId, byte sourceAddress,
         byte targetAddress, bool isExtendedCanId = false)
@@ -97,7 +94,7 @@ public readonly struct IsoTpEndpoint : IEquatable<IsoTpEndpoint>
     /// <summary>
     /// Creates an endpoint using ISO 15765-2 <em>Mixed</em> addressing. The
     /// <paramref name="addressExtension"/> byte is written as the first byte of every outbound
-    /// frame and is expected as the first byte of every inbound frame (same value both ways).
+    /// frame and is expected as the first byte of every inbound frame.
     /// </summary>
     public static IsoTpEndpoint Mixed(uint txCanId, uint rxCanId, byte addressExtension,
         bool isExtendedCanId = false)

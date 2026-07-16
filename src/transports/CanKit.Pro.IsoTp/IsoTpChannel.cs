@@ -143,7 +143,7 @@ internal sealed class IsoTpChannel : IIsoTpChannel
 
             try
             {
-                _actor.Post(() => BeginSendOnLoop(pduBytes, tcs));
+                _actor.Post(() => BeginSendOnLoop(pduBytes, tcs, cancellationToken));
             }
             catch (Exception ex)
             {
@@ -248,10 +248,10 @@ internal sealed class IsoTpChannel : IIsoTpChannel
                 // skip this frame silently (matches ISO 15765-2 §5.2.4.4 semantics for a foreign
                 // address-extension on the same CAN-ID).
                 //
-                // The RX filter uses RxAddressExtension, not AddressExtension: for Extended
-                // addressing the two differ (TX = target address, RX = source address per ISO
-                // 15765-2 §5.3.2.4). Comparing inbound frames against the TX byte would have
-                // silently dropped every valid inbound frame under Extended addressing.
+                // Fix (Bugbot 3594960802): filter on the *RX* address extension. For Extended
+                // addressing that is the local node's source address (which the peer writes into
+                // the AE byte when it addresses us), NOT our outbound target-address byte.
+                // For Mixed addressing the two are the same, so this is unchanged there.
                 if (addrExt && (payload.Length == 0 || payload[0] != _endpoint.RxAddressExtension))
                     continue;
 
@@ -292,8 +292,19 @@ internal sealed class IsoTpChannel : IIsoTpChannel
     // TX side (all methods run on the actor loop unless noted)
     // -----------------------------------------------------------------------------------------
 
-    private void BeginSendOnLoop(byte[] pdu, TaskCompletionSource<object?> tcs)
+    private void BeginSendOnLoop(byte[] pdu, TaskCompletionSource<object?> tcs, CancellationToken ct)
     {
+        // Fix (Bugbot 3594960794): the send may have been canceled between when the caller
+        // posted us and when the actor got around to running us -- CancelInFlightSend may have
+        // even already run (it saw _tx==null so it just canceled `tcs`). In either case the
+        // outbound frame must never hit the wire; TrySetCanceled is a no-op if the TCS is
+        // already completed.
+        if (tcs.Task.IsCompleted || ct.IsCancellationRequested)
+        {
+            tcs.TrySetCanceled(ct);
+            return;
+        }
+
         if (_tx is not null)
         {
             // Sender gate already serializes SendAsync, so _tx must be null when we get here.
@@ -306,10 +317,11 @@ internal sealed class IsoTpChannel : IIsoTpChannel
 
         _tx = new TxState(pdu, tcs);
 
-        // Any exception raised while composing the outbound frame (e.g. IsoTpFrameCodec throwing
-        // on an oversized PDU) must not escape the actor: it would surface only on
-        // BackgroundExceptionOccurred and leave the SendAsync TCS pending forever. Catch it here
-        // and fail the TCS so the awaiting caller unblocks.
+        // Fix (Bugbot 3594960783): any synchronous throw from the codec (bad endpoint / bad
+        // length / etc.) must clear _tx and fail the TCS. Otherwise the actor's own
+        // BackgroundException handler swallows the throw, the awaiting SendAsync never
+        // completes, and _tx stays pinned to the dead operation -- so the next SendAsync
+        // sees the "gate leaked" branch above forever.
         try
         {
             int sfMax = IsoTpFrameCodec.SingleFrameMaxDataLength(_options.UseCanFd, _endpoint.UsesAddressExtension);
@@ -340,17 +352,6 @@ internal sealed class IsoTpChannel : IIsoTpChannel
     {
         var tx = _tx!;
         bool useLong = tx.Pdu.Length > IsoTpFrameCodec.MaxClassicFirstFrameLength;
-        // Classic-CAN First Frames only carry a 12-bit length field; the 32-bit escape form is
-        // CAN-FD-only per ISO 15765-2 §9.6. Reject the PDU up front instead of letting the codec
-        // throw ArgumentOutOfRangeException — which used to escape the actor uncaught and hang
-        // the awaiting SendAsync forever.
-        if (useLong && !_options.UseCanFd)
-        {
-            FailTx(new IsoTpException(
-                $"ISO-TP classic-CAN PDUs cannot exceed {IsoTpFrameCodec.MaxClassicFirstFrameLength} bytes "
-                + $"(requested {tx.Pdu.Length}); enable CAN-FD to send larger transfers."));
-            return;
-        }
         int ffData = IsoTpFrameCodec.FirstFrameMaxDataLength(_options.UseCanFd,
             _endpoint.UsesAddressExtension, useLong);
         if (ffData <= 0)

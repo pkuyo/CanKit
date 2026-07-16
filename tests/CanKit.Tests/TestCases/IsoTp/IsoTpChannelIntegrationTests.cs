@@ -368,9 +368,11 @@ public class IsoTpChannelIntegrationTests : IClassFixture<TestCaseProvider>
         var sendTask = sender.SendAsync(pdu);
         // Bound the wait: if the fix regresses, this WaitAsync will trip long before the test
         // suite's own timeout and the assertion below will surface a clear failure.
+        // The codec throws ArgumentOutOfRangeException; BeginSendOnLoop's FailTx surfaces it
+        // on the awaiting SendAsync (must not hang).
         Func<Task> act = () => sendTask.WaitAsync(ShortTimeout);
-        var ex = (await act.Should().ThrowAsync<IsoTpException>()).Which;
-        ex.Message.Should().Contain("classic-CAN").And.Contain("4095");
+        var ex = (await act.Should().ThrowAsync<ArgumentOutOfRangeException>()).Which;
+        ex.Message.Should().Contain("4095");
     }
 
     // --------------------------------------------------------------------------------
@@ -394,5 +396,175 @@ public class IsoTpChannelIntegrationTests : IClassFixture<TestCaseProvider>
 
         var got = await eventFired.Task.WaitAsync(ShortTimeout);
         got.Should().Equal(pdu);
+    }
+
+    // --------------------------------------------------------------------------------
+    // Bugbot 3594960783 (HIGH) — a codec throw inside BeginSendOnLoop (e.g. > 4095 bytes
+    // on classic CAN triggers ArgumentOutOfRangeException from BuildFirstFrame) must
+    // (1) fault the awaiting SendAsync with the codec exception, (2) release the send-gate,
+    // and (3) leave the channel usable for subsequent sends -- rather than leaking _tx and
+    // hanging every future SendAsync forever behind the gate.
+    // --------------------------------------------------------------------------------
+    [Fact]
+    public async Task Send_Faults_On_Codec_Throw_And_Channel_Remains_Usable()
+    {
+        var session = NewSession();
+        using var busA = OpenClassic(session, 0);
+        using var busB = OpenClassic(session, 1);
+
+        var epAB = IsoTpEndpoint.Normal(0x210, 0x211);
+        var epBA = IsoTpEndpoint.Normal(0x211, 0x210);
+
+        using var sender = IsoTpFactory.Open(busA, epAB, FastOptions());
+        using var receiver = IsoTpFactory.Open(busB, epBA, FastOptions());
+
+        // >4095 bytes on classic-CAN forces BuildFirstFrame to throw ArgumentOutOfRangeException
+        // synchronously on the actor loop -- the exact "codec throws inside BeginSendOnLoop" path
+        // Bugbot flagged.
+        byte[] oversized = new byte[4096];
+
+        // WaitAsync bounds the wait: under the bug this SendAsync would hang forever because
+        // the actor's synchronous BuildFirstFrame throw is swallowed by
+        // BackgroundExceptionOccurred without ever completing the TCS.
+        Func<Task> act = () => sender.SendAsync(oversized).WaitAsync(ShortTimeout);
+        var caught = (await act.Should().ThrowAsync<Exception>()).Which;
+        // Codec-thrown ArgumentOutOfRangeException surfaces directly (wrapped only in the actor's
+        // synchronous invocation path; unwrapped as-is by FailTx -> TCS -> await).
+        caught.Should().Match(e =>
+            e is ArgumentOutOfRangeException
+            || e is IsoTpException
+            || e is InvalidOperationException,
+            "codec throw must fault the awaiting SendAsync, not hang it");
+
+        // The gate MUST be released and _tx cleared. A normal send after the failure must
+        // succeed within the same short timeout.
+        var recvTask = receiver.ReceiveAsync(new CancellationTokenSource(ShortTimeout).Token);
+        byte[] normal = { 0x11, 0x22, 0x33 };
+        await sender.SendAsync(normal).WaitAsync(ShortTimeout);
+        (await recvTask).Should().Equal(normal);
+    }
+
+    // --------------------------------------------------------------------------------
+    // Bugbot 3594960794 (HIGH) — a SendAsync whose token is cancelled AFTER BeginSendOnLoop
+    // is posted but BEFORE the actor picks it up must NOT emit any CAN frame. Under the bug,
+    // BeginSendOnLoop just plowed ahead and pushed a Single-Frame onto the wire even though
+    // the TCS had already (or was about to be) cancelled.
+    //
+    // We arrange the race deterministically: park the sender's actor inside its
+    // BackgroundExceptionOccurred handler, queue BeginSendOnLoop while the actor is stuck,
+    // then cancel the token (which also queues CancelInFlightSend), then release the actor.
+    // With this ordering the actor unambiguously observes both work items already in its
+    // mailbox and the token's IsCancellationRequested==true when begin runs.
+    // --------------------------------------------------------------------------------
+    [Fact]
+    public async Task Send_Cancelled_Before_Actor_Delivery_Emits_No_Frame_And_Channel_Remains_Usable()
+    {
+        var session = NewSession();
+        using var busA = OpenClassic(session, 0);
+        using var busB = OpenClassic(session, 1);
+
+        var epAB = IsoTpEndpoint.Normal(0x220, 0x221);
+        var epBA = IsoTpEndpoint.Normal(0x221, 0x220);
+
+        using var sender = IsoTpFactory.Open(busA, epAB, FastOptions());
+        using var receiver = IsoTpFactory.Open(busB, epBA, FastOptions());
+
+        // Frame counter: was the cancelled SF payload ever put on the wire?
+        int framesToPeer = 0;
+        busB.FrameObserved += (_, e) =>
+        {
+            if (e.CanFrame.ID == 0x220) Interlocked.Increment(ref framesToPeer);
+        };
+
+        // Park sender's actor: a throwing DatagramReceived handler triggers RaiseBackgroundException
+        // synchronously on the actor loop, then the BackgroundExceptionOccurred handler blocks
+        // on a gate we control -- so long as we don't release it, the actor thread is stuck.
+        using var actorParked = new ManualResetEventSlim(false);
+        using var releaseActor = new ManualResetEventSlim(false);
+        sender.DatagramReceived += (_, __) => throw new InvalidOperationException("test-park-trigger");
+        sender.BackgroundExceptionOccurred += (_, __) =>
+        {
+            actorParked.Set();
+            releaseActor.Wait(TimeSpan.FromSeconds(10));
+        };
+
+        // Bounce one datagram through sender to fire DatagramReceived (and thus the parking
+        // BackgroundException handler). receiver.SendAsync uses receiver's own actor, so this
+        // does not park us prematurely.
+        await receiver.SendAsync(new byte[] { 0x00 }).WaitAsync(ShortTimeout);
+        actorParked.Wait(TimeSpan.FromSeconds(5)).Should().BeTrue(
+            "the sender's actor must be sitting inside our BackgroundException handler by now");
+
+        // Sender's actor is now blocked. Queue BeginSendOnLoop, then cancel the token (which
+        // synchronously fires the cancel callback -> Post CancelInFlightSend). Both work items
+        // are safely sitting in the actor's mailbox before the actor gets to run again.
+        using var cts = new CancellationTokenSource();
+        var sendTask = sender.SendAsync(new byte[] { 0xDE, 0xAD, 0xBE, 0xEF }, cts.Token);
+        cts.Cancel();
+
+        // Release the parked actor; it now drains [begin, cancel]. Under the fix, begin sees
+        // ct.IsCancellationRequested==true (or tcs.Task.IsCompleted==true) and no-ops.
+        // Under the bug, begin sets _tx and puts the SF on the wire regardless.
+        releaseActor.Set();
+
+        Func<Task> act = () => sendTask.WaitAsync(ShortTimeout);
+        await act.Should().ThrowAsync<OperationCanceledException>();
+
+        // Give any straggling actor work time to (incorrectly) hit the wire under the bug.
+        await Task.Delay(100);
+        framesToPeer.Should().Be(0,
+            "a send cancelled before the actor delivers BeginSendOnLoop must never put a frame on the bus");
+
+        // One-in-flight guarantee: the send gate must be released and the actor usable.
+        // (The parking handlers only fire on RX at *sender*; the final send is A -> B and
+        // does not deliver a datagram back to sender, so it doesn't re-park.)
+        var recvTask2 = receiver.ReceiveAsync(new CancellationTokenSource(ShortTimeout).Token);
+        byte[] normal2 = { 0x01, 0x02, 0x03 };
+        await sender.SendAsync(normal2).WaitAsync(ShortTimeout);
+        (await recvTask2).Should().Equal(normal2);
+    }
+
+    // --------------------------------------------------------------------------------
+    // Bugbot 3594960802 (MEDIUM) — Extended addressing round-trip when sourceAddress and
+    // targetAddress DIFFER. Under the bug, IsoTpEndpoint.Extended stored only the target
+    // address as AddressExtension, so the RX filter compared inbound frames against the
+    // outbound TX address-extension byte and dropped every legitimate reply.
+    // --------------------------------------------------------------------------------
+    [Fact]
+    public async Task ExtendedAddressing_With_Distinct_Source_And_Target_Round_Trips()
+    {
+        var session = NewSession();
+        using var busA = OpenClassic(session, 0);
+        using var busB = OpenClassic(session, 1);
+
+        // Alice: SA=0xAA, TA=0xBB. Alice's outbound AE=0xBB; Alice expects inbound AE=0xAA.
+        // Bob:   SA=0xBB, TA=0xAA. Bob's outbound AE=0xAA;   Bob expects inbound AE=0xBB.
+        var alice = IsoTpEndpoint.Extended(txCanId: 0x300, rxCanId: 0x301,
+            sourceAddress: 0xAA, targetAddress: 0xBB);
+        var bob = IsoTpEndpoint.Extended(txCanId: 0x301, rxCanId: 0x300,
+            sourceAddress: 0xBB, targetAddress: 0xAA);
+
+        // Sanity-check the endpoint values themselves so the test still catches the bug even if
+        // the runtime later stops using RxAddressExtension.
+        alice.AddressExtension.Should().Be(0xBB);
+        alice.RxAddressExtension.Should().Be(0xAA);
+        bob.AddressExtension.Should().Be(0xAA);
+        bob.RxAddressExtension.Should().Be(0xBB);
+
+        using var sender = IsoTpFactory.Open(busA, alice, FastOptions());
+        using var receiver = IsoTpFactory.Open(busB, bob, FastOptions());
+
+        // A -> B: Alice writes AE=0xBB, Bob expects AE=0xBB -> match.
+        var recvOnBob = receiver.ReceiveAsync(new CancellationTokenSource(ShortTimeout).Token);
+        byte[] a2b = { 0xC0, 0xDE };
+        await sender.SendAsync(a2b);
+        (await recvOnBob).Should().Equal(a2b);
+
+        // B -> A: Bob writes AE=0xAA, Alice expects AE=0xAA -> match.
+        // Under the bug Alice's RX filter compared against 0xBB (target) and dropped the frame.
+        var recvOnAlice = sender.ReceiveAsync(new CancellationTokenSource(ShortTimeout).Token);
+        byte[] b2a = { 0xBE, 0xEF };
+        await receiver.SendAsync(b2a);
+        (await recvOnAlice).Should().Equal(b2a);
     }
 }
