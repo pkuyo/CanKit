@@ -1,3 +1,4 @@
+using System.Threading;
 using CanKit.Pro.Actor;
 
 namespace CanKit.Pro.Hawe
@@ -21,6 +22,21 @@ namespace CanKit.Pro.Hawe
         /// is <see cref="ActorExecutionMode.DedicatedThread"/>, matching every other protocol
         /// instance in CanKit.
         /// </summary>
+        /// <remarks>
+        /// When set to <see cref="ActorExecutionMode.SynchronizationContext"/>, the channel
+        /// constructs its <see cref="ProtocolActor"/> with
+        /// <see cref="SynchronizationContext"/> (or <see cref="System.Threading.SynchronizationContext.Current"/>
+        /// when that property is null). Both must resolve to a non-null context; otherwise
+        /// construction fails with <see cref="System.ArgumentNullException"/>.
+        /// </remarks>
         public ActorExecutionMode ActorMode { get; set; } = ActorExecutionMode.DedicatedThread;
+
+        /// <summary>
+        /// Optional <see cref="System.Threading.SynchronizationContext"/> used when
+        /// <see cref="ActorMode"/> is <see cref="ActorExecutionMode.SynchronizationContext"/>.
+        /// When null in that mode, <see cref="System.Threading.SynchronizationContext.Current"/>
+        /// is used instead. Ignored for every other <see cref="ActorMode"/>.
+        /// </summary>
+        public SynchronizationContext? SynchronizationContext { get; set; }
     }
 }

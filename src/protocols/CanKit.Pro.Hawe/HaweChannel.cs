@@ -88,21 +88,46 @@ namespace CanKit.Pro.Hawe
             _codec = codec ?? throw new ArgumentNullException(nameof(codec));
             var opts = options ?? new HaweChannelOptions();
 
-            _subscription = _busService.Subscribe(codec.FramePattern.Filter, opts.SubscriptionBufferCapacity);
-            _actor = new ProtocolActor(opts.ActorMode);
-            _deadlines = new DeadlineScheduler(_actor);
-            _host = new Host(this);
+            // Locals until construction succeeds: if anything below throws after Subscribe / actor
+            // start, the catch path disposes those partial resources. Calling Dispose() is not
+            // safe here -- _pumpTask may not be assigned yet, and OnAttached may never have run.
+            ISubscription? subscription = null;
+            ProtocolActor? actor = null;
+            try
+            {
+                subscription = _busService.Subscribe(codec.FramePattern.Filter, opts.SubscriptionBufferCapacity);
 
-            // Attach on the actor loop before starting the pump: the OnAttached callback is
-            // guaranteed to see zero frames delivered, matching every other protocol instance's
-            // "attach first, then receive" ordering. Wait synchronously so the constructor's
-            // contract ("codec attached before this returns") is a hard guarantee, not a race.
-            // Safe from the SetSessionState-style deadlock: the constructor is by definition not
-            // running on the actor loop yet, so PostAsync().GetAwaiter().GetResult() here cannot
-            // be a reentrant self-wait.
-            _actor.PostAsync(WrapOnLoop(() => _codec.OnAttached(_host))).GetAwaiter().GetResult();
+                // SynchronizationContext mode needs a non-null context (ProtocolActor ctor). Prefer
+                // an explicit options value; otherwise fall back to SynchronizationContext.Current
+                // so UI / ASP.NET-style callers can select the mode without plumbing the context.
+                var syncContext = opts.ActorMode == ActorExecutionMode.SynchronizationContext
+                    ? opts.SynchronizationContext ?? SynchronizationContext.Current
+                    : null;
+                actor = new ProtocolActor(opts.ActorMode, syncContext);
 
-            _pumpTask = Task.Run(PumpAsync);
+                _subscription = subscription;
+                _actor = actor;
+                _deadlines = new DeadlineScheduler(_actor);
+                _host = new Host(this);
+
+                // Attach on the actor loop before starting the pump: the OnAttached callback is
+                // guaranteed to see zero frames delivered, matching every other protocol instance's
+                // "attach first, then receive" ordering. Wait synchronously so the constructor's
+                // contract ("codec attached before this returns") is a hard guarantee, not a race.
+                // Safe from the SetSessionState-style deadlock: the constructor is by definition not
+                // running on the actor loop yet, so PostAsync().GetAwaiter().GetResult() here cannot
+                // be a reentrant self-wait.
+                _actor.PostAsync(WrapOnLoop(() => _codec.OnAttached(_host))).GetAwaiter().GetResult();
+
+                _pumpTask = Task.Run(PumpAsync);
+            }
+            catch
+            {
+                try { subscription?.Dispose(); } catch { /* best-effort teardown */ }
+                try { actor?.Dispose(); } catch { /* best-effort teardown */ }
+                _pumpCts.Dispose();
+                throw;
+            }
         }
 
         /// <inheritdoc />

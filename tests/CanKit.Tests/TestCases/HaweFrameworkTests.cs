@@ -9,6 +9,7 @@ using CanKit.Abstractions.API.Can.Definitions;
 using CanKit.Abstractions.API.Common.Definitions;
 using CanKit.Core;
 using CanKit.Core.Definitions;
+using CanKit.Pro.Actor;
 using CanKit.Pro.Hawe;
 using CanKit.Pro.RawCan;
 using FluentAssertions;
@@ -482,6 +483,74 @@ public class HaweFrameworkTests : IClassFixture<TestCaseProvider>
         };
         nullService.Should().Throw<ArgumentNullException>();
         nullCodec.Should().Throw<ArgumentNullException>();
+    }
+
+    // ActorExecutionMode.SynchronizationContext is exposed on HaweChannelOptions; the channel must
+    // pass a real context through to ProtocolActor (options value, else SynchronizationContext.Current).
+    [Fact]
+    public void HaweChannel_SynchronizationContext_Mode_Uses_Options_Context()
+    {
+        var session = NewSession();
+        using var bus = Open(session, 0);
+        using var service = new CanBusService(bus);
+        var codec = new FakePatternCodec(HaweFramePattern.Range(0x100, 0x100));
+        var context = new InlineSynchronizationContext();
+
+        using var channel = new HaweChannel(service, codec, new HaweChannelOptions
+        {
+            ActorMode = ActorExecutionMode.SynchronizationContext,
+            SynchronizationContext = context,
+        });
+
+        codec.Attached.Status.Should().Be(TaskStatus.RanToCompletion);
+        codec.Host.Should().NotBeNull();
+        context.SendCount.Should().BeGreaterThan(0,
+            "OnAttached must be marshaled through the SynchronizationContext supplied via options");
+    }
+
+    // If OnAttached fails after Subscribe + actor start, the demux subscription must not leak.
+    [Fact]
+    public void HaweChannel_Failed_Construction_Disposes_Partial_Resources()
+    {
+        var session = NewSession();
+        using var bus = Open(session, 0);
+        using var service = new CanBusService(bus);
+        var codec = new ThrowingOnAttachCodec(HaweFramePattern.Range(0x200, 0x200));
+
+        Action act = () => _ = new HaweChannel(service, codec);
+        act.Should().Throw<InvalidOperationException>().WithMessage("attach failed");
+
+        service.SubscriptionCount.Should().Be(0,
+            "a failed HaweChannel constructor must dispose the demux subscription it already created");
+    }
+
+    private sealed class ThrowingOnAttachCodec : IHaweCodec
+    {
+        public ThrowingOnAttachCodec(HaweFramePattern pattern) => FramePattern = pattern;
+        public string Name => "throwing-on-attach-codec";
+        public HaweFramePattern FramePattern { get; }
+        public void OnAttached(IHaweCodecHost host) => throw new InvalidOperationException("attach failed");
+        public void OnFrameReceived(in CanFrameView frame) { }
+        public void OnSessionStateChanged(HaweSessionState previous, HaweSessionState current) { }
+        public void OnDetached() { }
+    }
+
+    /// <summary>
+    /// Runs <see cref="Send"/> inline (like many test / console contexts) and counts invocations
+    /// so we can assert marshaling happened.
+    /// </summary>
+    private sealed class InlineSynchronizationContext : SynchronizationContext
+    {
+        private int _sendCount;
+        public int SendCount => Volatile.Read(ref _sendCount);
+
+        public override void Send(SendOrPostCallback d, object? state)
+        {
+            Interlocked.Increment(ref _sendCount);
+            d(state);
+        }
+
+        public override void Post(SendOrPostCallback d, object? state) => Send(d, state);
     }
 
     // Calls Host.SetSessionState from inside OnFrameReceived (i.e. from the actor loop).
