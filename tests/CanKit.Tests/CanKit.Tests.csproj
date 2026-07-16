@@ -30,6 +30,7 @@
     <ProjectReference Include="..\..\src\core\CanKit.Pro.Actor\CanKit.Pro.Actor.csproj" />
     <ProjectReference Include="..\..\src\core\CanKit.Pro.Addressing\CanKit.Pro.Addressing.csproj" />
     <ProjectReference Include="..\..\src\core\CanKit.Pro.Reliability\CanKit.Pro.Reliability.csproj" />
+    <ProjectReference Include="..\..\src\transports\CanKit.Pro.J1939Tp\CanKit.Pro.J1939Tp.csproj" />
   </ItemGroup>
 </Project>
 
