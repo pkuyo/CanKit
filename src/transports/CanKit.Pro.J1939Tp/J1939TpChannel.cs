@@ -408,15 +408,19 @@ internal sealed class J1939TpChannel : IJ1939TpChannel
 
                     // Send CTS for the first block, capping at our advertised max-packets-per-CTS
                     // and at the peer's own RTS cap (0xFF = "no limit" per §5.10.3.1).
+                    // Build the CTS *before* registering the RX session so a validation failure
+                    // cannot leave a timerless orphan that blocks further CM from this source
+                    // (§5.10.3).
                     byte cap = _options.MaxPacketsPerCts;
                     if (maxCts != 0xFF && maxCts > 0 && maxCts < cap) cap = maxCts;
                     byte block = (byte)Math.Min(cap, totalPackets);
+                    var cts = J1939TpFrames.BuildCts(block, 1, dataPgn);
                     var session = RxSession.NewCm(sa, dataPgn, totalBytes, totalPackets, cap,
                         _deadlines, _options, OnRxT1Expired, OnRxTrExpired);
                     session.NextExpectedSn = 1;
                     session.BlockRemaining = block;
                     _rxSessions[cmKey] = session;
-                    SendTpCm(J1939TpFrames.BuildCts(block, 1, dataPgn), destinationAddress: sa);
+                    SendTpCm(cts, destinationAddress: sa);
                     // Tr covers the gap from CTS → first DT of the block (FR-TP-032 / §5.10.2.4).
                     session.ArmTr();
                     break;

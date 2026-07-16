@@ -163,12 +163,15 @@ internal static class J1939TpFrames
     }
 
     /// <summary>
-    /// Reads the little-endian 24-bit PGN field that TP.CM control frames carry in bytes 5..7.
+    /// Reads the little-endian PGN field that TP.CM control frames carry in bytes 5..7.
+    /// Only the lower 18 bits are significant (J1939-21); reserved bits in byte 7 are masked off
+    /// so non-zero padding cannot produce a value above <see cref="J1939Pgn.MaxValue"/>.
     /// </summary>
     public static uint ReadDataPgn(ReadOnlySpan<byte> tpCmPayload)
     {
         if (tpCmPayload.Length < 8) throw new ArgumentException("TP.CM payload must be 8 bytes.", nameof(tpCmPayload));
-        return (uint)tpCmPayload[5] | ((uint)tpCmPayload[6] << 8) | ((uint)tpCmPayload[7] << 16);
+        return ((uint)tpCmPayload[5] | ((uint)tpCmPayload[6] << 8) | ((uint)tpCmPayload[7] << 16))
+               & J1939Pgn.MaxValue;
     }
 
     private static void WriteDataPgn(byte[] payload, uint dataPgn)

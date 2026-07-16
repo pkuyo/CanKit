@@ -672,6 +672,64 @@ public class J1939TpTests : IClassFixture<TestCaseProvider>
         datagram.Payload.Should().Equal(okPayload);
     }
 
+    // Bugbot 3596475712: ReadDataPgn must mask reserved bits in TP.CM byte 7 (18-bit PGN).
+    // Without the mask, BuildCts throws after the RX session is registered and ArmTr never runs,
+    // leaving a timerless orphan that blocks further CM from that source (§5.10.3).
+    [Fact]
+    public void ReadDataPgn_MasksReservedBitsInByte7()
+    {
+        const uint pgn = 0x12345u; // fits in 18 bits
+        var rts = J1939TpFrames.BuildRts(totalBytes: 14, totalPackets: 2, maxPacketsPerCts: 0xFF, dataPgn: pgn);
+        rts[7] |= 0xFC; // set reserved upper 6 bits (would yield > MaxValue if unmasked)
+
+        J1939TpFrames.ReadDataPgn(rts).Should().Be(pgn);
+        Action act = () => J1939TpFrames.BuildCts(numPackets: 1, nextPacketSn: 1, dataPgn: J1939TpFrames.ReadDataPgn(rts));
+        act.Should().NotThrow();
+    }
+
+    [Fact]
+    public async Task Cm_Receiver_RtsWithReservedPgnBits_RepliesCtsAndArmsTr()
+    {
+        var session = NewSession();
+        using var receiverBus = Open(session, 0);
+        using var peerBus = Open(session, 1);
+
+        const byte receiverSa = 0x88;
+        const byte peerSa = 0x89;
+        const uint pgn = 0xEE88u;
+
+        var opts = new J1939TpOptions().With(
+            tr: TimeSpan.FromMilliseconds(80),
+            t1: TimeSpan.FromSeconds(5));
+
+        using var receiver = J1939Tp.Open(receiverBus, sourceAddress: receiverSa, options: opts);
+
+        var ctsSeen = new TaskCompletionSource<byte[]>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var abortSeen = new TaskCompletionSource<byte[]>(TaskCreationOptions.RunContinuationsAsynchronously);
+        peerBus.FrameObserved += (_, e) =>
+        {
+            if (!e.CanFrame.IsExtendedFrame) return;
+            var fields = J1939Id.Decompose((uint)e.CanFrame.ID);
+            if (fields.SourceAddress != receiverSa || !J1939Pgn.IsTransportCm(fields.Pgn)) return;
+            var data = e.CanFrame.Data.ToArray();
+            if (data.Length < 8 || J1939TpFrames.ReadDataPgn(data) != pgn) return;
+            if (data[0] == J1939TpFrames.ControlCts) ctsSeen.TrySetResult(data);
+            else if (data[0] == J1939TpFrames.ControlAbort) abortSeen.TrySetResult(data);
+        };
+
+        var rts = J1939TpFrames.BuildRts(totalBytes: 14, totalPackets: 2, maxPacketsPerCts: 0xFF, dataPgn: pgn);
+        rts[7] |= 0xFC; // reserved bits set — must not orphan the CM RX session
+        var rtsId = J1939Id.ComposePgn(7, J1939Pgn.TpCm, peerSa, receiverSa);
+        peerBus.Transmit(CanFrame.Classic((int)rtsId, rts, isExtendedFrame: true));
+
+        var cts = await ctsSeen.Task.AsTaskWithTimeout(ShortTimeout);
+        J1939TpFrames.ReadDataPgn(cts).Should().Be(pgn);
+
+        // Tr must be armed: with no DT, the receiver aborts for timeout (not a timerless orphan).
+        var abortFrame = await abortSeen.Task.AsTaskWithTimeout(ShortTimeout);
+        abortFrame[1].Should().Be((byte)J1939TpAbortReason.Timeout);
+    }
+
     // Bugbot 3596396508 (BAM path): bad SN must fault a blocked ReceiveAsync (not only raise
     // BackgroundExceptionOccurred). Cancel() disposes T1, so inbox fault is the unblock path.
     [Fact]
