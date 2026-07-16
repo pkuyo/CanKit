@@ -585,7 +585,7 @@ public class IsoTpChannelIntegrationTests : IClassFixture<TestCaseProvider>
     }
 
     [Fact]
-    public async Task MultiFrame_Receive_Faults_When_Superseded_By_FirstFrame_Then_Overflow()
+    public async Task MultiFrame_Receive_Faults_When_Superseded_By_FirstFrame()
     {
         var session = NewSession();
         using var busA = OpenClassic(session, 0);
@@ -597,17 +597,15 @@ public class IsoTpChannelIntegrationTests : IClassFixture<TestCaseProvider>
         using var receiver = IsoTpFactory.Open(busB, epRecv, FastOptions());
 
         var fcSeen = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        int overflowFc = 0;
+        int fcCount = 0;
         busA.FrameObserved += (_, e) =>
         {
             if (e.CanFrame.ID != unchecked((int)epRecv.TxCanId)) return;
             var data = e.CanFrame.Data.ToArray();
             if (data.Length == 0) return;
-            if ((data[0] >> 4) == 0x3)
+            if ((data[0] >> 4) == 0x3 && (data[0] & 0x0F) == (byte)FlowStatus.ClearToSend)
             {
-                if ((data[0] & 0x0F) == (byte)FlowStatus.Overflow)
-                    Interlocked.Increment(ref overflowFc);
-                else
+                if (Interlocked.Increment(ref fcCount) == 1)
                     fcSeen.TrySetResult(true);
             }
         };
@@ -621,30 +619,41 @@ public class IsoTpChannelIntegrationTests : IClassFixture<TestCaseProvider>
         busA.Transmit(CanFrame.Classic(unchecked((int)epPeer.TxCanId), ff));
         await fcSeen.Task.WaitAsync(ShortTimeout);
 
-        // Oversized FF supersedes then refuses with OVFLW — no replacement session. Without
-        // AbortRx this left ReceiveAsync hung forever.
-        byte[] hugeFf =
-        {
-            0x10, 0x00,
-            0x01, 0x00, 0x00, 0x00, // length = 16_777_216
-            0x00, 0x00,
-        };
-        busA.Transmit(CanFrame.Classic(unchecked((int)epPeer.TxCanId), hugeFf));
+        // A second valid FF supersedes the in-flight reassembly. Without AbortRx this left
+        // ReceiveAsync hung forever (Bugbot 3596527680). CAN-FD escape FFs are no longer
+        // accepted on classic channels (bugbot 3594958445), so the supersede must be a
+        // classic-legal First Frame that starts a replacement session.
+        byte[] supersedePayload = Enumerable.Range(0, 20).Select(i => (byte)(0xA0 + i)).ToArray();
+        var supersedeFf = IsoTpFrameCodec.BuildFirstFrame(
+            epPeer, supersedePayload.Length, supersedePayload.AsSpan(0, ffData), isCanFd: false);
+        busA.Transmit(CanFrame.Classic(unchecked((int)epPeer.TxCanId), supersedeFf));
 
         Func<Task> act = () => recvTask;
         (await act.Should().ThrowAsync<IsoTpException>())
             .WithMessage("*First Frame aborted in-flight*");
 
-        for (int i = 0; i < 50 && Volatile.Read(ref overflowFc) == 0; i++)
+        // Finish the replacement multi-frame and confirm the channel stays usable.
+        for (int i = 0; i < 50 && Volatile.Read(ref fcCount) < 2; i++)
             await Task.Delay(20);
-        overflowFc.Should().Be(1, "superseding oversized FF must still reply FC(OVFLW)");
+        fcCount.Should().BeGreaterThanOrEqualTo(2, "replacement FF must receive its own FC(CTS)");
 
-        // Channel remains usable for a subsequent SF.
         var recv2 = receiver.ReceiveAsync(new CancellationTokenSource(ShortTimeout).Token);
-        var okSf = IsoTpFrameCodec.BuildSingleFrame(epPeer, new byte[] { 0x55 },
-            isCanFd: false, padding: true);
-        busA.Transmit(CanFrame.Classic(unchecked((int)epPeer.TxCanId), okSf));
-        (await recv2).Should().Equal(0x55);
+        int offset = ffData;
+        byte sn = IsoTpFrameCodec.FirstConsecutiveSequenceNumber;
+        while (offset < supersedePayload.Length)
+        {
+            int cfCap = IsoTpFrameCodec.ConsecutiveFrameMaxDataLength(
+                isCanFd: false, usesAddressExtension: false);
+            int chunk = Math.Min(cfCap, supersedePayload.Length - offset);
+            var cf = IsoTpFrameCodec.BuildConsecutiveFrame(
+                epPeer, sn, supersedePayload.AsSpan(offset, chunk),
+                isCanFd: false, padding: true);
+            busA.Transmit(CanFrame.Classic(unchecked((int)epPeer.TxCanId), cf));
+            offset += chunk;
+            sn = (byte)((sn + 1) & 0x0F);
+        }
+
+        (await recv2).Should().Equal(supersedePayload);
     }
 
     // --------------------------------------------------------------------------------
@@ -974,12 +983,13 @@ public class IsoTpChannelIntegrationTests : IClassFixture<TestCaseProvider>
     }
 
     // --------------------------------------------------------------------------------
-    // Bugbot 3596212802 (MEDIUM) — HandleRxFirstFrame must not allocate new byte[pci.Length]
-    // from an uncapped FF length. Classic channels reject announced lengths above 4095 with
-    // FC(OVFLW) and stay usable (same max outbound SendAsync enforces via BuildFirstFrame).
+    // Bugbot 3594958445 / 3596212802 — on classic CAN the CAN-FD First-Frame escape form
+    // (0x10 0x00 + 4-byte length) is invalid and must be rejected in TryParsePci, not
+    // mis-parsed as a huge FF_DL that would allocate before FC(OVFLW). Silent drop keeps
+    // the channel usable.
     // --------------------------------------------------------------------------------
     [Fact]
-    public async Task Rx_FirstFrame_Above_Classic_Max_Sends_Overflow_And_Does_Not_Allocate()
+    public async Task Rx_Classic_Rejects_CanFd_Escape_FirstFrame_Without_Allocating()
     {
         var session = NewSession();
         using var busA = OpenClassic(session, 0);
@@ -988,20 +998,17 @@ public class IsoTpChannelIntegrationTests : IClassFixture<TestCaseProvider>
         var epRecv = IsoTpEndpoint.Normal(txCanId: 0x7E0, rxCanId: 0x7E8);
         using var receiver = IsoTpFactory.Open(busA, epRecv, FastOptions());
 
-        int overflowFc = 0;
+        int anyFc = 0;
         busB.FrameObserved += (_, e) =>
         {
             if (e.CanFrame.ID != 0x7E0) return;
             var payload = e.CanFrame.Data.ToArray();
-            if (payload.Length >= 1 && (payload[0] >> 4) == 0x3
-                && (payload[0] & 0x0F) == (byte)FlowStatus.Overflow)
-            {
-                Interlocked.Increment(ref overflowFc);
-            }
+            if (payload.Length >= 1 && (payload[0] >> 4) == 0x3)
+                Interlocked.Increment(ref anyFc);
         };
 
-        // CAN-FD escape FF announcing 0x01000000 bytes — far above classic MaxClassicFirstFrameLength.
-        // Under the bug this would attempt new byte[0x01000000] (or worse with int.MaxValue).
+        // CAN-FD escape FF announcing 0x01000000 bytes. Classic TryParsePci must reject it
+        // (isCanFd: false) so HandleRxFirstFrame never sees pci.Length = 16_777_216.
         byte[] hugeFf =
         {
             0x10, 0x00,
@@ -1010,9 +1017,8 @@ public class IsoTpChannelIntegrationTests : IClassFixture<TestCaseProvider>
         };
         busB.Transmit(CanFrame.Classic(0x7E8, hugeFf));
 
-        for (int i = 0; i < 50 && Volatile.Read(ref overflowFc) == 0; i++)
-            await Task.Delay(20);
-        overflowFc.Should().Be(1, "receiver must reply FC(OVFLW) without allocating the announced buffer");
+        await Task.Delay(100);
+        anyFc.Should().Be(0, "classic channels must drop CAN-FD escape FFs without FC reply");
 
         // Channel remains usable for a normal SF afterwards.
         var recvTask = receiver.ReceiveAsync(new CancellationTokenSource(ShortTimeout).Token);

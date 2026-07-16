@@ -787,7 +787,7 @@ internal sealed class IsoTpChannel : IIsoTpChannel
 
     private void HandleReceivedFrame(byte[] payload)
     {
-        if (!IsoTpFrameCodec.TryParsePci(payload, _endpoint, out var pci))
+        if (!IsoTpFrameCodec.TryParsePci(payload, _endpoint, _options.UseCanFd, out var pci))
             return; // truncated / reserved: drop silently (bounds-safe per FR-TP-007)
 
         switch (pci.Type)
