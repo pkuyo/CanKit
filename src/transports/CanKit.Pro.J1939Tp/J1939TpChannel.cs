@@ -636,8 +636,9 @@ internal sealed class J1939TpChannel : IJ1939TpChannel
         {
             byte numPackets = payload[1];
             byte nextSn = payload[2];
-            // §5.10.3.1: numPackets=0 with SN=0 is a "hold connection open" (wait). We arm T4
-            // and stay in WaitCts.
+            // §5.10.3.1 / §5.10.2.4: numPackets=0 is "hold connection open". The originator must
+            // abort if no follow-up CTS arrives within T4 (not T2 — T2 is the post-block CTS gap).
+            // Stay in WaitCts until a non-zero CTS resumes the transfer.
             if (numPackets == 0)
             {
                 session.Deadline?.Dispose();
