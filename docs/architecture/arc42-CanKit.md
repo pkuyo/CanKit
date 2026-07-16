@@ -529,17 +529,29 @@ classDiagram
 | `FrameCodec` | Bau/Parsing von SF/FF/CF/FC + STmin-En/Decode. | `BuildSF/FF/CF/FC`, `TryParsePci`, `Encode/DecodeStmin`. | Prototyp, mehrere Bugs. **Wird abgelöst durch `CanKit.Pro.IsoTp.IsoTpFrameCodec`** (siehe Kasten unten). |
 | `Deadline`/`QueuedDeadline` | N_As/N_Bs/N_Cs/N_Ar/N_Br/N_Cr. | Gepflegt, aber nie ausgewertet. | Prototyp. |
 
-**Neu (in Arbeit): Paket `CanKit.Pro.IsoTp` (Codec-Grundlage).** Eigenständiges, adapterfreies
-Assembly, das den defekten Prototyp-Codec Schritt für Schritt ablösen soll (siehe ADR-Notiz weiter
-unten). Enthält ausschließlich die deterministische Hälfte des ISO-TP-Rewrite:
+**Neu (in Arbeit): Paket `CanKit.Pro.IsoTp` (Codec + Runtime).** Eigenständiges, adapterfreies
+Assembly, das den defekten Prototyp Schritt für Schritt ablösen soll (siehe ADR-Notiz weiter
+unten). Enthält beide Hälften des ISO-TP-Rewrite:
 `IsoTpFrameCodec` mit `BuildSingleFrame`/`BuildFirstFrame`/`BuildConsecutiveFrame`/
 `BuildFlowControl`, `TryParsePci` (bounds-safe, wirft nie `IndexOutOfRangeException` bei kurzen
 Frames), `EncodeStMin`/`DecodeStMin` inklusive korrekter Behandlung reservierter Werte
 (FR-TP-007 / FR-RAW-052), sowie die Wertetypen `IsoTpEndpoint`, `Pci`, `PciType`, `FlowStatus`,
 `IsoTpAddressingMode`. Behebt die in §11 gelisteten Codec-Defekte 1..6 sowie den Klassik-CAN
-SF-Kapazitäts-Fehler (Punkt 13) und ist als **Baustein-Status: Codec-Foundation** deklariert.
-`IsPackable=false` bis der Laufzeit-Teil (Scheduler + `IIsoTpChannel`) im selben Paket landet
-(CON-004). Kein `IIsoTpChannel`, kein Scheduler, keine Vendor-SDK-Abhängigkeiten. Adressiert die
+SF-Kapazitäts-Fehler (Punkt 13).
+Zusätzlich enthält es den **aktorgetriebenen Laufzeit-Teil**
+(`IIsoTpChannel`/`IsoTpChannel`/`IsoTpChannelOptions`/`IsoTp.Open(...)`): ein Kanal pro
+`IsoTpEndpoint`, der auf den bestehenden L2-Bausteinen aufsetzt statt einen eigenen Scheduler zu
+implementieren — RX über `CanKit.Pro.RawCan`-Subscription mit `CanIdFilter` auf `RxCanId`,
+TX-Bestätigung über `ICanBusService.SendConfirmed`, ein `ProtocolActor` als Single-Writer-Loop
+für alle Zustandsmaschinen (kein Busy-Loop, FR-RAW-022; keine Locks im State, FR-RAW-020..021),
+und `DeadlineScheduler` für N_As/N_Bs/N_Cr (FR-TP-010). SendConfirmed-Fehler landen auf demselben
+Loop zurück (Post-back), Wait-FC/Overflow-FC werden gemäß ISO 15765-2 §6.3/§6.5 behandelt
+(FR-TP-011/012). Ein `SemaphoreSlim`-Send-Gate serialisiert konkurrierende `SendAsync`-Aufrufe pro
+Kanal — genau ein N-USData PDU „on the wire" gleichzeitig; die Legacy-`TryPeek`-Polyfill-Falle
+(FR-TP-013) existiert damit im neuen Paket nicht mehr. Backgroundfehler laufen über die
+existierende `BackgroundExceptionOccurred`-Konvention (FR-RAW-023 / FR-TP-016).
+`IsPackable=false` bis der CAN-FD-Langpayload-Pfad zusätzlich integrationstestabgedeckt ist
+(CON-004). Keine Vendor-SDK-Abhängigkeiten. Adressiert die
 SRS-Anforderungen FR-TP-003 (CAN/CAN-FD-Kind wird nicht mehr invertiert), FR-TP-004 (FC-PCI 0x3
 und Padding nach BS/STmin), FR-TP-005 (FF > 255), FR-TP-006 (STmin 0 ms/1 ms), FR-TP-007 /
 FR-RAW-052 (reservierte STmin-Werte → 127 ms) und FR-TP-015 (Classic-CAN SF ≤ 8 Byte).
@@ -1239,7 +1251,7 @@ Priorisierung: **K** = kritisch, **W** = wichtig, **G** = gering.
 
 | Prio | Risiko / Schuld | Auswirkung | Gegenmaßnahme | Review § |
 |------|------------------|-----------|---------------|----------|
-| K | **ISO-TP funktional defekt (WIP)**: `IsoTp.Open` wirft `NotImplementedException`; invertiertes `canfd` in allen 4 Buildern; FC trägt FF-PCI; FC-Padding nullt BS/STmin; FF-Längenparsing verliert High-Nibble; `EncodeStmin` wirft bei 0/1 ms; CF-Segmentierung (Byte 6 verloren, SN=0 statt 1); Multi-Frame-TX startet nie (`WaitFc`+`IsReadyToSendData=false`). | Jede ISO-TP-Übertragung schlägt fehl bzw. hängt; Paket nicht funktionsfähig. | Protokollfehler beheben; Scheduler ereignisgetrieben (`AsyncAutoResetEvent`) + Deadline-Prüfung; Virtual-Loopback-Tests; **bis dahin `IsPackable=false`/„experimental"**. *Hinweis (Teil-Baustein Review §1.1 Punkt 10 „Deadlines werden gepflegt, aber nie geprüft"):* die wiederverwendbare, aktorgetriebene Deadline-Primitive `CanKit.Pro.Reliability.Deadline` (FR-RAW-050) samt `BusStateMonitor` (FR-RAW-051) existiert nun als L2-Infrastruktur (ADR-11) und steht zur Übernahme durch ISO-TP/L3 bereit — der ISO-TP-Scheduler selbst ist von diesem PR jedoch **unverändert** und bleibt eigener Must-Fix. | §1.1 |
+| K | **ISO-TP funktional defekt (WIP)**: `IsoTp.Open` wirft `NotImplementedException`; invertiertes `canfd` in allen 4 Buildern; FC trägt FF-PCI; FC-Padding nullt BS/STmin; FF-Längenparsing verliert High-Nibble; `EncodeStmin` wirft bei 0/1 ms; CF-Segmentierung (Byte 6 verloren, SN=0 statt 1); Multi-Frame-TX startet nie (`WaitFc`+`IsReadyToSendData=false`). | Jede ISO-TP-Übertragung schlägt fehl bzw. hängt; Paket nicht funktionsfähig. | Protokollfehler beheben; Scheduler ereignisgetrieben (`AsyncAutoResetEvent`) + Deadline-Prüfung; Virtual-Loopback-Tests; **bis dahin `IsPackable=false`/„experimental"**. *Update:* Codec-Fix als Paket `CanKit.Pro.IsoTp` (PR §Codec-Foundation). *Update 2:* aktorgetriebener Laufzeit-Teil (`IIsoTpChannel`/`IsoTp.Open(...)`) im selben Paket ergänzt: nutzt `CanKit.Pro.RawCan` (Demux + `SendConfirmed`), `CanKit.Pro.Actor` (Single-Writer-Loop, ereignisgetrieben) und `CanKit.Pro.Reliability` (N_As/N_Bs/N_Cr-Deadlines) — deckt FR-TP-001/002/008/009/010/011/012/016..018 über Virtual-Loopback-Integrationstests ab; SendConfirmed-basiertes Confirm-Tracking macht FR-TP-013 (`TryPeek`-Polyfill) im neuen Paket gegenstandslos. Der **Legacy-Prototyp `CanKit.Transport.IsoTp` selbst bleibt in diesem PR unverändert** und wird in einem eigenen Folge-PR entfernt. | §1.1 |
 | K | ✅ *Behoben.* **Frame-Ownership**: `CanFrame.Dispose()` ignorierte `OwnMemory` (gab Owner immer frei). | Use-after-free / Double-Dispose bei gepoolten Buffern über Events/Pipe/Virtual-Hub. | `Dispose()` → `if (OwnMemory) _memoryOwner?.Dispose();`; `CanFrame.Duplicate(IBufferAllocator)` ergänzt; Ownership-Vertrag (8.1/ADR-9) durchgesetzt. | §1.5, §2.1 |
 | K | ✅ *Behoben.* **`QueuedCanBus`-Retry-Stau**: Batch-Reste blieben bis zum nächsten `Enqueue` liegen (blockierte in `WaitToReadAsync`). | Frames wurden verspätet oder nie gesendet; Backoff wirkungslos. | `WaitToReadAsync` nur bei `index==0`; sonst direkter Retry mit Backoff; nur die gültige Batch-Teilmenge wird an `Transmit` übergeben. | §1.2 |
 | K | ✅ *Behoben.* **SocketCAN/ZLG Stopwatch nie gestartet**: `remainingTime` blieb konstant. | Sende-`poll()`-Endlosschleife bei nicht-annehmendem, schreibbarem Bus; unbegrenzte Wartezeit. | `Stopwatch.StartNew()` in `SocketCanBus.Transmit` (2×) und 3 ZLG-Transceivern. | §1.3 |

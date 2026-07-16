@@ -1,11 +1,17 @@
 # CanKit.Pro.IsoTp
 
-Experimental **codec foundation** for ISO 15765-2 (ISO-TP) inside [CanKit](https://github.com/pkuyo/CanKit)
-(CanKit.Pro). Deterministic, side-effect-free builders and parsers for the four ISO-TP PCI frame
-types (Single Frame, First Frame, Consecutive Frame, Flow Control) on classic CAN and CAN-FD.
+Experimental ISO 15765-2 (ISO-TP) implementation for [CanKit](https://github.com/pkuyo/CanKit)
+(CanKit.Pro). The package now ships **two halves**:
 
-This is the **pure protocol half** of the ISO-TP rewrite; a scheduler, channel and runtime will
-follow in a later release and will build on top of this codec. `IsPackable=false` for now.
+1. **Codec** — deterministic, side-effect-free builders and parsers for the four ISO-TP PCI frame
+   types (Single Frame, First Frame, Consecutive Frame, Flow Control) on classic CAN and CAN-FD.
+2. **Runtime (`IIsoTpChannel`)** — an actor-driven channel that composes on top of the CanKit.Pro
+   L2 services (`CanKit.Pro.RawCan` demux + `SendConfirmed`, `CanKit.Pro.Actor`, `CanKit.Pro.Reliability`
+   deadlines). Segments outbound PDUs into SF/FF/CFs, honors peer Flow Control (BS/STmin/Wait/
+   Overflow) and enforces N_As/N_Bs/N_Cr timers, reassembles inbound PDUs (SN-checked), and delivers
+   them via `ReceiveAsync` / `ReceiveAllAsync` / `DatagramReceived`.
+
+`IsPackable=false` while the surface stabilizes and CAN-FD long-payload cases get more coverage.
 
 ## Scope
 
@@ -22,12 +28,30 @@ follow in a later release and will build on top of this codec. `IsPackable=false
 - `IsoTpEndpoint` / `IsoTpAddressingMode` — minimal addressing value type covering `Normal`,
   `NormalFixed`, `Extended` and `Mixed` addressing for codec purposes only.
 
+## Runtime — `IIsoTpChannel`
+
+- `IsoTp.Open(ICanBus, IsoTpEndpoint, IsoTpChannelOptions?)` — opens a channel that owns a private
+  `CanBusService` around the supplied bus.
+- `IsoTp.Open(ICanBusService, IsoTpEndpoint, IsoTpChannelOptions?, leaveOpen)` — opens a channel on
+  an existing service (allows multiple ISO-TP endpoints to multiplex over the same physical bus,
+  SRS FR-TP-018).
+- `SendAsync(ReadOnlyMemory<byte>, CancellationToken)` — sends one PDU; task completes on TX-confirm
+  of the last frame. Faults with `IsoTpTimeoutException`, `IsoTpOverflowException`,
+  `IsoTpWaitFrameLimitExceededException`, or `IsoTpSendRejectedException` on the corresponding
+  ISO 15765-2 error cases.
+- `ReceiveAsync` / `ReceiveAllAsync` / `DatagramReceived` — three surfaces onto the same bounded,
+  drop-oldest PDU inbox (bounded to `IsoTpChannelOptions.ReceiveBufferCapacity`, default 64).
+- Timings: `IsoTpChannelOptions.NAs` (TX-confirm), `NBs` (peer-FC wait), `NCr` (next CF wait) and
+  `WftMax` (max consecutive `Wait` FCs) are configurable; defaults are conservative 1 s / 10.
+
 ## Non-scope (yet)
 
-- No `IIsoTpChannel`, no `SendAsync`, no scheduler, no actor wiring.
-- No adapter or vendor-SDK references.
-- Existing prototype `CanKit.Transport.IsoTp` is left untouched; this assembly is intended to
-  supersede its codec once the runtime layer lands here.
+- Full CAN-FD long-payload TX (>4095 bytes with the escape header) is codec-supported but not yet
+  in the integration-test matrix.
+- Functional (1:n) addressing (SRS FR-TP-019, Could).
+- No vendor-SDK references, ever.
+- Legacy `CanKit.Transport.IsoTp` remains in the tree as historical reference; new work should
+  target this package.
 
 ## Fixes over the prototype (see review §1.1)
 

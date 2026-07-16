@@ -6,16 +6,24 @@ on:
       - 'src/transports/CanKit.Pro.IsoTp/**'
       - 'src/core/CanKit.Abstractions/**'
       - 'src/core/CanKit.Core/**'
+      - 'src/core/CanKit.Pro.Actor/**'
+      - 'src/core/CanKit.Pro.RawCan/**'
+      - 'src/core/CanKit.Pro.Reliability/**'
       - 'src/adapters/CanKit.Adapter.Virtual/**'
       - 'tests/CanKit.Tests/**'
+      - 'CanKitProIsoTp.slnf'
       - '.github/workflows/pro-isotp-ci.yml'
   pull_request:
     paths:
       - 'src/transports/CanKit.Pro.IsoTp/**'
       - 'src/core/CanKit.Abstractions/**'
       - 'src/core/CanKit.Core/**'
+      - 'src/core/CanKit.Pro.Actor/**'
+      - 'src/core/CanKit.Pro.RawCan/**'
+      - 'src/core/CanKit.Pro.Reliability/**'
       - 'src/adapters/CanKit.Adapter.Virtual/**'
       - 'tests/CanKit.Tests/**'
+      - 'CanKitProIsoTp.slnf'
       - '.github/workflows/pro-isotp-ci.yml'
 jobs:
   windows:

@@ -210,11 +210,23 @@ Ist-Zustand: unfertiger, funktional defekter Prototyp (`CanKit.Transport.IsoTp`)
 
 > **Fortschritt (in Arbeit):** Die deterministische Codec-Grundlage (SF/FF/CF/FC-Bau,
 > `TryParsePci`, `EncodeStMin`/`DecodeStMin` inkl. reservierter Bänder) wird als eigenständiges
-> Paket `CanKit.Pro.IsoTp` (`IsPackable=false`, 0.1.x) aufgebaut und soll den defekten Codec des
-> Prototyps ablösen. Damit werden aktuell die Anforderungen **FR-TP-003, FR-TP-004, FR-TP-005,
-> FR-TP-006, FR-TP-007, FR-TP-015 und FR-RAW-052** unit-testabgedeckt (Codec-Anteil). Scheduler,
-> `IIsoTpChannel`, Actor-Wiring, `SendAsync`-Laufzeit und die TX-Queue-Semantik nach FR-TP-013
-> sind weiterhin offen und werden in einem Folge-Increment im selben Paket ergänzt.
+> Paket `CanKit.Pro.IsoTp` (`IsPackable=false`, 0.1.x/0.2.x) aufgebaut und soll den defekten Codec
+> des Prototyps ablösen. Damit sind aktuell die Anforderungen **FR-TP-003, FR-TP-004, FR-TP-005,
+> FR-TP-006, FR-TP-007, FR-TP-015 und FR-RAW-052** unit-testabgedeckt (Codec-Anteil).
+>
+> **Runtime-Increment (in Arbeit):** In derselben Assembly wurden zusätzlich `IIsoTpChannel` /
+> `IsoTpChannelOptions` / `IsoTp.Open(...)` sowie der aktorgetriebene Laufzeit-Scheduler ergänzt.
+> Der Scheduler setzt auf den bestehenden L2-Bausteinen auf (RawCan-Demux/Subscription für RX,
+> `ICanBusService.SendConfirmed` für die TX-Bestätigung, `IProtocolActor` für den Single-Writer-
+> Loop, `IDeadlineScheduler` für N_As/N_Bs/N_Cr). Damit sind über Virtual-Loopback-Integrationstests
+> zusätzlich **FR-TP-001, FR-TP-002, FR-TP-008, FR-TP-009, FR-TP-010, FR-TP-011, FR-TP-012,
+> FR-TP-016, FR-TP-017 und FR-TP-018** abgedeckt. **FR-TP-013** (netstandard2.0-`TryPeek`-Polyfill
+> im TX-Queue-Ablauf) bleibt formal offen — das neue Paket verwendet keine solche Queue, sondern
+> `SendConfirmed` + einen `SemaphoreSlim`-Send-Gate, und trägt daher die Anforderung nicht mehr. Der
+> Bug im Legacy-Prototypen (`CanKit.Transport.IsoTp`) ist nicht adressiert; das Legacy-Paket wird in
+> einem separaten PR entfernt. **FR-TP-014** (mehrere inhaltsgleiche Frames im Confirm-Tracking) ist
+> durch die L2-Implementierung von `SendConfirmed` (FIFO-Matching je (ID, Payload)) bereits im
+> Framework gewährleistet.
 
 | ID | Anforderung | Priorität | Verifikation | Quelle |
 |---|---|---|---|---|
