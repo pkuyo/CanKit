@@ -463,9 +463,11 @@ internal sealed class IsoTpChannel : IIsoTpChannel
 
         tx.Offset = firstChunk.Length;
         tx.NextSn = IsoTpFrameCodec.FirstConsecutiveSequenceNumber;
-        tx.State = TxStage.WaitFcInitial;
+        // Stay in SingleOrFirstInFlight until FF is TX-confirmed. N_Bs is armed only after that
+        // confirmation (Bugbot 3596580056), matching block-FC waits that arm N_Bs after the last
+        // CF of a block is confirmed. Early peer FC is deferred until confirm (see OnSendConfirmed).
+        tx.State = TxStage.SingleOrFirstInFlight;
         tx.WaitFramesReceived = 0;
-        ArmNBs();
         SendFrameOnBus(payload, expectTx: TxExpect.FirstFrameConfirm);
     }
 
@@ -642,10 +644,23 @@ internal sealed class IsoTpChannel : IIsoTpChannel
                 break;
 
             case TxExpect.FirstFrameConfirm:
-                // We're already in WaitFcInitial with N_Bs armed; nothing else to do here. The
-                // next event is either FC arriving on the actor via HandleReceivedFrame or N_Bs
-                // expiring via OnNBsExpired.
-                break;
+                {
+                    var tx = expected;
+                    // Fix (Bugbot 3596580056): N_Bs starts after FF TX-confirm, not when FF is
+                    // handed to the driver. Apply any FC that arrived during the confirm wait
+                    // only now so CF cannot race ahead of FF on the wire.
+                    tx.State = TxStage.WaitFcInitial;
+                    if (tx.DeferredFc is { } deferred)
+                    {
+                        tx.DeferredFc = null;
+                        HandleRxFlowControl(deferred);
+                    }
+                    else
+                    {
+                        ArmNBs();
+                    }
+                    break;
+                }
 
             case TxExpect.ConsecutiveFrameConfirm:
                 {
@@ -913,8 +928,19 @@ internal sealed class IsoTpChannel : IIsoTpChannel
     private void HandleRxFlowControl(Pci pci)
     {
         var tx = _tx;
-        if (tx is null || tx.State is not (TxStage.WaitFcInitial or TxStage.WaitFcBlock))
+        if (tx is null)
             return; // FC with no matching pending TX: drop (matches ISO 15765-2 §6.5.5.2).
+
+        // FF handed to the driver but not yet TX-confirmed: defer FC until FirstFrameConfirm so
+        // we neither arm N_Bs early nor emit CF before FF confirm (Bugbot 3596580056).
+        if (tx.State == TxStage.SingleOrFirstInFlight && tx.Offset > 0)
+        {
+            tx.DeferredFc = pci;
+            return;
+        }
+
+        if (tx.State is not (TxStage.WaitFcInitial or TxStage.WaitFcBlock))
+            return;
 
         // Peer FC responded within N_Bs -> stop that timer.
         tx.NBsDeadline?.Complete();
@@ -1098,6 +1124,12 @@ internal sealed class IsoTpChannel : IIsoTpChannel
         public int CfsInCurrentBlock { get; set; }
 
         public IDeadline? NBsDeadline { get; set; }
+
+        /// <summary>
+        /// FC that arrived while the First Frame was still awaiting TX confirmation
+        /// (Bugbot 3596580056).
+        /// </summary>
+        public Pci? DeferredFc { get; set; }
 
         public void Fail(Exception ex)
         {
