@@ -30,7 +30,7 @@ Diese Nomenklatur ist identisch zur SRS und wird im gesamten Dokument verwendet:
 | **L1** | Raw-CAN-Kern | vorhanden | `ICanBus`, `CanFrame`, Registry, Utilities, Diagnostics |
 | **L2** | Raw-CAN-Dienstebene | **NEU / Ziel** | Multi-Consumer-Demux, Ownership-Vertrag, TX-Confirm, Adressierung, Aktor-Modell, Fehler-/Timeout-Infrastruktur |
 | **L3** | Transport-Ebene | Prototyp (ISO-TP) / Ziel (J1939-TP) | ISO-TP (ISO 15765-2), J1939-TP (BAM/CM) |
-| **L4** | Anwendungsprotokoll-Ebene | **NEU / Ziel** | UDS, CANopen, J1939-App, HAWE-Privatprotokoll |
+| **L4** | Anwendungsprotokoll-Ebene | **NEU / Ziel** (HAWE-Rahmen vorhanden, generisch – kein Protokolldetail; CON-006) | UDS, CANopen, J1939-App, HAWE-Privatprotokoll |
 
 ### Auflösung der Requirement-Referenzen (arc42 ↔ SRS)
 
@@ -114,7 +114,7 @@ Zero-Copy) erhöhen den Aufwand für Q4 und für einen sicheren **Frame-Ownershi
 |----|---------------|-----------|
 | CON-TFM | Multi-Target `netstandard2.0; net8.0; net8.0-windows` (`src/Directory.Build.props`). | API muss auf dem kleinsten gemeinsamen Nenner (netstandard2.0) verfügbar sein; TFM-Weichen via `#if NET5_0_OR_GREATER` (z. B. `Queue.TryPeek`). |
 | CON-PINV | Vendor-Zugriff via **P/Invoke** in `Native/*.cs`, je Adapter eine `*.Fake.cs`-Spiegelung. | Native-Schicht ist plattform- und bitness-abhängig; Fake ermöglicht hardwarelose Builds (`-c Fake` → `DefineConstants=FAKE`). |
-| CON-SDK | Externe Vendor-SDKs (z. B. `Peak.PCANBasic.NET`, Kvaser `canlib`, ZLG, Vector XL). | NuGet-Abhängigkeiten pro Adapter; müssen aus dem ISO-TP-Paket entfernt werden (Review §1.1/16). |
+| CON-SDK | Externe Vendor-SDKs (z. B. `Peak.PCANBasic.NET`, Kvaser `canlib`, ZLG, Vector XL). | Vendor-SDK-Abhängigkeiten bleiben adapterbezogen; der ISO-TP-Prototyp referenziert `Peak.PCANBasic.NET` nicht mehr (Review §1.1/16). |
 | CON-LANG | `LangVersion=12`, `Nullable=enable`, Analyzer aktiv (`EnableNETAnalyzers`, `EnforceCodeStyleInBuild`). | Moderne C#-Sprachfeatures (record struct, primary ctors, collection expressions); netstandard2.0 braucht `IsExternalInit`-Shims. |
 | CON-UNSAFE | `AllowUnsafeBlocks` in Codec/Transport (`FrameCodec` nutzt `Unsafe.CopyBlockUnaligned`). | Performante Frame-Erzeugung, aber erhöhter Review-Bedarf (Bounds-Sicherheit). |
 | CON-DOC | `GenerateDocumentationFile=true`, zweisprachige (EN/ZH) XML-Doku. | Öffentliche API ist doppelt dokumentiert; Typos in der API sind Breaking Changes nach 1.0 (Review §3). |
@@ -212,7 +212,7 @@ flowchart TB
 | Q1 Erweiterbarkeit | **Schichtenmodell L0–L4** + **SPI/Registry** | Ist: L0/L1 mit reflexionsbasierter `CanRegistry` (Register×Entry-Pipeline). Ziel: L2–L4 setzen auf denselben Registry-Mechanismus (`IIsoTpRegister` etc.). |
 | Q1 Erweiterbarkeit | **Einheitliches Adapter-Muster** | Ist: `<Vendor>Bus/Transceiver/Options/Native/Register`; neuer Vendor = neues Projekt + `[CanRegistryEntry]`-Klasse. |
 | Q3 Echtzeit / Q5 Ressourcen | **Zero-Alloc / Pooling** | Ist: `CanFrame` = `readonly record struct` mit optionalem `IMemoryOwner<byte>`; `IBufferAllocator` (Array-Pool). Ziel: durchgängiger Ownership-Vertrag, damit Pooling gefahrlos über Schichten reicht. |
-| Q3 Echtzeit | **Plattformabhängiges High-Res-Timing** | Ist: `SoftwarePeriodicTx` (Win Waitable-Timer / POSIX `clock_nanosleep`), `PreciseDelay`, hardware-`BCMPeriodicTx` (SocketCAN). Ziel: macOS-Fallback ergänzen. |
+| Q3 Echtzeit | **Plattformabhängiges High-Res-Timing** | Ist: `SoftwarePeriodicTx` (Win Waitable-Timer / Linux `clock_nanosleep` / macOS `Thread.Sleep`-Fallback), `PreciseDelay`, hardware-`BCMPeriodicTx` (SocketCAN). |
 | Q4 Testbarkeit | **Fake-Native + Virtual-Loopback** | Ist: `*.Fake.cs` je Adapter (`-c Fake`), `Virtual`-In-Memory-Hub, xUnit-Matrix. Ziel: ISO-TP-Loopback-Tests gegen Virtual. |
 | Q2 Portabilität | **API auf kleinstem TFM, P/Invoke gekapselt** | Ist: netstandard2.0-kompatible API, `#if`-Weichen. |
 | L2–L4 (Ziel) | **Aktor-Modell pro Protokollinstanz** | Ziel: jede Protokollinstanz (ISO-TP-Kanal, UDS-Session) besitzt genau einen Bearbeitungs-„Aktor" (Mailbox/Loop), keine geteilten mutablen States über Thread-Grenzen. |
@@ -302,7 +302,7 @@ flowchart TB
 | L1 Raw-CAN-Kern | vorhanden | Herstellerneutraler Frame-Zugriff, Discovery, Utilities, Diagnostics. | `ICanBus`, `CanBus.Open`, `CanRegistry` | `FR-RAW-*` |
 | L2 Raw-CAN-Dienste | NEU | Ein RX-Strom → N unabhängige gefilterte Consumer; Ownership-Vertrag; TX-Confirm; Aktor-Modell. | (neu) `ICanBusService` / `ISubscription` | `FR-RAW-DEMUX-*`, `FR-RAW-OWN-*`, `FR-RAW-TXC-*` |
 | L3 Transport | Prototyp/Ziel | Segmentierung/Reassemblierung (ISO-TP), Sessions (J1939-TP). | `IIsoTpChannel`, `IIsoTpScheduler` | `FR-TP-*` |
-| L4 Anwendungsprotokolle | NEU | Diagnose-/Applikationssemantik auf L3/L2. | (neu) protokollspezifisch | `FR-UDS-*`, `FR-CO-*`, `FR-J1939-*`, `FR-HAWE-*` |
+| L4 Anwendungsprotokolle | NEU | Diagnose-/Applikationssemantik auf L3/L2. | (neu) protokollspezifisch; HAWE-Rahmen vorhanden: `IHaweCodec`/`IHaweCodecRegistry`/`HaweChannel` in `CanKit.Pro.Hawe` (generisch, kein Protokolldetail; CON-006) | `FR-UDS-*`, `FR-CO-*`, `FR-J1939-*`, `FR-HAWE-*` |
 
 ## 5.2 Ebene 2 – Zoom L1 (Raw-CAN-Kern, vorhanden)
 
@@ -412,7 +412,7 @@ flowchart TB
 | Multi-Protokoll-Demux | (2) | Ein RX-Strom → N unabhängige gefilterte Consumer, **ohne** konkurrierendes `ReceiveAsync`. **Umgesetzt** im neuen Paket `CanKit.Pro.RawCan` (`ICanBusService`/`CanBusService` + `ISubscription`): je Subscription ein eigener bounded Drop-Oldest-Channel (FR-RAW-011), Fast-Path `CanIdFilter` (ID-Range/Maske) neben generischem `Func<CanFrameView,bool>` (FR-RAW-010/013), deterministisches Dispose (FR-RAW-012). Baut ausschließlich auf `ICanBus.FrameObserved`, kein Adapter-Eingriff. | `ICanBusService.Subscribe(filter) → ISubscription { IAsyncEnumerable<CanFrameView> Frames; }` | `FR-RAW-010..013` |
 | Frame-Ownership-Vertrag | (1) | Verbindliche Lease-Regeln (siehe 8.1); verhindert Use-after-free/Double-Dispose. **Kernmechanik umgesetzt** (`OwnMemory`-Fix, `CanFrame.Duplicate`, Virtual-Hub-Broadcast per Kopie); ausstehend: TX-Lease für übrige L0-Adapter/ISO-TP-Scheduler. | Vertragsdoku + `OwnMemory`-Fix (Review §1.5) | `FR-RAW-OWN-*` |
 | TX-Confirm | (4) | Einheitliche „gesendet"-Bestätigung, egal ob Hardware-Echo vorhanden. **Umgesetzt** in `CanKit.Pro.RawCan` (`ICanBusService.SendConfirmed`): FIFO-Echo-Matching je (ID, Payload) für gleichzeitige inhaltsgleiche Sendevorgänge (FR-RAW-031), dokumentierte Treiber-Akzeptanz-Approximation ohne Echo (FR-RAW-032), beobachtbare Fehlschläge statt Hängen bei Timeout/BusOff/Ablehnung (FR-RAW-033), konfigurierbarer Timeout je Aufruf (FR-RAW-034). | `TxConfirmation { Confirmed; Timestamp; IsApproximated; FailureReason; }` | `FR-RAW-030..034` |
-| Adressierungs-Helfer | – | 11/29-bit, Extended/Mixed/NormalFixed (bislang nur als Einzelfall in `IsoTpEndpoint` vorhanden). **Umgesetzt** als eigenständiges, abhängigkeitsfreies Paket `CanKit.Pro.Addressing`: validierte 11-/29-Bit-ID-Prüfung (`CanIdRange`), allgemeine J1939-PGN/Priorität/PDU-Format/Quelladresse-Komposition/-Dekomposition (`J1939Id`/`J1939Fields`, FR-RAW-040) — verallgemeinert die zuvor auf eine feste Diagnose-PGN beschränkte 29-Bit-Konstruktion aus `IsoTpEndpoint.CreateNormalFixed`. Zusätzlich `CanIdFilter.Overlaps` sowie `ICanBusService.FindOverlappingFilterSubscriptions()` in `CanKit.Pro.RawCan` zur Erkennung überlappender Subscription-Filter (FR-RAW-041, Should). | ID-Bau/-Zerlegung, PGN/Prio-Helfer | `FR-RAW-ADDR-*` |
+| Adressierungs-Helfer | – | 11/29-bit, Extended/Mixed/NormalFixed (bislang nur als Einzelfall in `IsoTpEndpoint` vorhanden). **Umgesetzt** als eigenständiges, abhängigkeitsfreies Paket `CanKit.Pro.Addressing`: validierte 11-/29-Bit-ID-Prüfung (`CanIdRange`), allgemeine J1939-PGN/Priorität/PDU-Format/Quelladresse-Komposition/-Dekomposition (`J1939Id`/`J1939Fields`, FR-RAW-040), J1939-NAME-Feldzugriff und Address-Claim-Prioritätsvergleich (`J1939Name`) sowie PGN-Klassifikatoren für Request/TP/Address-Claim/BAM-Grundlagen (`J1939Pgn`) als Vorarbeit für FR-J1939-001/003 — verallgemeinert die zuvor auf eine feste Diagnose-PGN beschränkte 29-Bit-Konstruktion aus `IsoTpEndpoint.CreateNormalFixed`. Zusätzlich `CanIdFilter.Overlaps` sowie `ICanBusService.FindOverlappingFilterSubscriptions()` in `CanKit.Pro.RawCan` zur Erkennung überlappender Subscription-Filter (FR-RAW-041, Should). | ID-Bau/-Zerlegung, PGN/Prio/NAME-Helfer | `FR-RAW-ADDR-*` |
 | Aktor-/Threading-Modell | (3) | Genau ein Bearbeitungs-Thread/Mailbox pro Protokollinstanz; kein geteilter mutabler State. **Umgesetzt** als eigenständiges, abhängigkeitsfreies Paket `CanKit.Pro.Actor` (siehe ADR-6): ereignisgetriebener Loop (kein Busy-Loop, FR-RAW-022), je Instanz wählbarer Ausführungskontext (`ActorExecutionMode`: `DedicatedThread`/`ThreadPool`/`SynchronizationContext`, FR-RAW-024), `BackgroundExceptionOccurred` als einziger Kanal für Hintergrundfehler (FR-RAW-023). Vom ISO-TP-Prototyp noch nicht genutzt. | `IProtocolActor { Post(msg); PostAsync(msg); Schedule(delay, cb); }` | `FR-RAW-ACTOR-*` |
 | Fehler-/Timeout-Infrastruktur | – | Einheitliche Deadline-Verwaltung (ersetzt verstreute ISO-TP-`Deadline`s) und gepushte Bus-Fehlerzustände. **Umgesetzt** als eigenständiges Paket `CanKit.Pro.Reliability` (siehe ADR-11), aufbauend auf `CanKit.Pro.Actor`: `IDeadlineScheduler`/`DeadlineScheduler`/`Deadline` ist eine wiederverwendbare Deadline-Primitive, deren Ablauf über `IProtocolActor.Schedule` auf dem Aktor-Loop tatsächlich eingeplant, geprüft und gemeldet wird — behebt die Klasse „Deadlines werden gepflegt, aber nie geprüft" (Review §1.1 Punkt 10, FR-RAW-050); die Pending→{Expired\|Completed\|Cancelled}-Auflösung ist per `Interlocked`-CAS genau einmal entscheidbar, Ausnahmen aus `onExpired` laufen über den bestehenden `BackgroundExceptionOccurred`-Kanal (kein zweiter Fehlerkanal). `BusStateMonitor`/`BusStateChangedEventArgs`/`BusStateExtensions` pusht `ICanBus.BusState`-Übergänge (ErrWarning/ErrPassive/BusOff sowie Erholung) an Protokollinstanzen — zuverlässig über einen selbst-rearmenden Poll auf dem Aktor-`Schedule` (Standard 50 ms) statt eines freilaufenden Timers, ergänzt um `ErrorFrameReceived`/`FaultOccurred` als Latenz-Hinweise (FR-RAW-051). FR-RAW-052 (reservierte/ungültige Protokollwerte) ist bewusst **zurückgestellt** und dem ISO-TP-Codec-Fix FR-TP-007 zugeordnet, nicht als generische L2-Primitive gebaut. | `IDeadlineScheduler`, `DeadlineScheduler`/`Deadline`, `BusStateMonitor`, `BusStateExtensions` | `FR-RAW-050..051` |
 
@@ -543,6 +543,86 @@ SF-Kapazitäts-Fehler (Punkt 13) und ist als **Baustein-Status: Codec-Foundation
 SRS-Anforderungen FR-TP-003 (CAN/CAN-FD-Kind wird nicht mehr invertiert), FR-TP-004 (FC-PCI 0x3
 und Padding nach BS/STmin), FR-TP-005 (FF > 255), FR-TP-006 (STmin 0 ms/1 ms), FR-TP-007 /
 FR-RAW-052 (reservierte STmin-Werte → 127 ms) und FR-TP-015 (Classic-CAN SF ≤ 8 Byte).
+
+## 5.5 Ebene 2 – Zoom L4: HAWE-Erweiterungsrahmen (generisch)
+
+Baustein: `src/protocols/CanKit.Pro.Hawe` (Assembly `CanKit.Pro.Hawe`).
+Umsetzt FR-HAWE-001..004 als **generisches, protokoll-agnostisches** L4-Framework
+(kein HAWE-Protokolldetail; siehe CON-006 / A-6). Konkrete HAWE-Codecs werden ausschließlich
+in einem separaten, nicht-öffentlichen Modul gegen die hier veröffentlichte SPI implementiert.
+
+```mermaid
+classDiagram
+    class IHaweCodec {
+        <<interface>>
+        +string Name
+        +HaweFramePattern FramePattern
+        +OnAttached(host)
+        +OnFrameReceived(frame)
+        +OnSessionStateChanged(prev, curr)
+        +OnDetached()
+    }
+    class IHaweCodecHost {
+        <<interface>>
+        +ICanBusService BusService
+        +HaweSessionState SessionState
+        +SendConfirmedAsync(frame, timeout, ct) Task~TxConfirmation~
+        +SetSessionState(state) bool
+        +ArmDeadline(timeout, onExpired) IDisposable
+        +Post(work)
+    }
+    class IHaweCodecRegistry {
+        <<interface>>
+        +Register(name, factory)
+        +Unregister(name) bool
+        +Create(name) IHaweCodec
+        +IsRegistered(name) bool
+        +RegisteredNames
+    }
+    class HaweCodecRegistry {
+        -Dictionary~string, Func~IHaweCodec~~ _factories
+    }
+    class HaweChannel {
+        -ICanBusService _busService
+        -ProtocolActor _actor
+        -DeadlineScheduler _deadlines
+        -ISubscription _subscription
+        +HaweSessionState SessionState
+    }
+    class HaweFramePattern {
+        <<readonly struct>>
+        +CanIdFilter Filter
+        +Range(from, to, idType)
+        +Mask(accCode, accMask, idType)
+    }
+    class HaweSessionState {
+        <<enum>>
+        Idle
+        Active
+        Fault
+    }
+
+    IHaweCodecRegistry <|.. HaweCodecRegistry
+    HaweChannel ..> IHaweCodec : besitzt einen Codec
+    HaweChannel ..> IHaweCodecHost : stellt bereit
+    HaweChannel ..> HaweFramePattern : liest
+    HaweChannel ..> HaweSessionState : verwaltet
+```
+
+**Bausteine L4/HAWE (Ist, generisch):**
+
+| Baustein | Zweck | Kernmethoden | Status |
+|----------|-------|--------------|--------|
+| `IHaweCodec` | Öffentlicher Erweiterungspunkt (SPI) für ein privates HAWE-Modul (FR-HAWE-001). | `OnAttached/OnFrameReceived/OnSessionStateChanged/OnDetached`. | vorhanden, generisch. |
+| `IHaweCodecHost` | Framework-Seite des Vertrags: L2-Dienste (Sende-/Confirm-/Deadline-/Zustandssteuerung) für den Codec (FR-HAWE-003). | `SendConfirmedAsync`, `SetSessionState`, `ArmDeadline`, `Post`. | vorhanden. |
+| `HaweCodecRegistry` | Prozess-lokale, namensbasierte Registrierung von Codec-Factories, analog `IIsoTpRegister` (FR-HAWE-001). | `Register/Unregister/Create/IsRegistered`. | vorhanden. |
+| `HaweChannel` | Laufender Verbund `Codec` + `ICanBusService` + `ProtocolActor` + `DeadlineScheduler` + Subskription (FR-HAWE-002/003). | ctor, `Dispose`. | vorhanden. |
+| `HaweFramePattern` | Nur ID-Bereich/Maske (via `CanIdFilter`) – kein Payload-Layout, kein Serviceverzeichnis (FR-HAWE-002, CON-006). | `Range/Mask`. | vorhanden. |
+| `HaweSessionState` | Platzhalter-Sitzungsautomat `Idle`/`Active`/`Fault` (FR-HAWE-004). | (Enum). | vorhanden, generisch. |
+
+Verifikation: `tests/CanKit.Tests/TestCases/HaweFrameworkTests.cs` mit generischem `FakePatternCodec`
+über den Virtual-Adapter. Das Paket ist `IsPackable=false`, bis ein privates HAWE-Modul es
+konsumiert (CON-004).
 
 ---
 
@@ -818,8 +898,8 @@ flowchart TB
 | Aspekt | Windows (`net8.0-windows`) | Linux (`net8.0`) | netstandard2.0 (.NET Framework) | macOS |
 |--------|-----------------------------|-------------------|----------------------------------|-------|
 | Bevorzugter Adapter | PCAN/Kvaser/Vector/ZLG/ControlCAN | SocketCAN | vendor-abhängig | USB-Vendor-Adapter |
-| Periodisches TX | Software (Waitable Timer) / Vendor-AutoSend | Hardware-BCM oder Software | Software | Software (Fallback fehlt, §11) |
-| High-Res-Delay | `Win_PreWait` (Waitable/Spin) | `clock_nanosleep` | plattformabhängig | **Busy-Loop-Bug** (§11) |
+| Periodisches TX | Software (Waitable Timer) / Vendor-AutoSend | Hardware-BCM oder Software | Software | Software (`Thread.Sleep`-Fallback) |
+| High-Res-Delay | `Win_PreWait` (Waitable/Spin) | `clock_nanosleep` | plattformabhängig | `SleepCoarse` |
 | `Queue.TryPeek` | vorhanden | vorhanden | via `#if`-Weiche (heute invertiert, §11) | vorhanden |
 
 ---
@@ -972,11 +1052,12 @@ Zeitbasis (`DateTime.Now` vs. `UtcNow`) erschwert Korrelation (Review §2.5).
 ## 8.7 High-Res-Timing (plattformabhängig)
 
 `SoftwarePeriodicTx` wählt zur Laufzeit den Timing-Pfad: Windows → Waitable Timer +
-Spin-Endspurt (`Win_PreWait`), POSIX → `clock_nanosleep`. `PreciseDelay` und der
+Spin-Endspurt (`Win_PreWait`), Linux/POSIX → `clock_nanosleep`, macOS →
+`SleepCoarse`/`Thread.Sleep` statt fehlendem `clock_nanosleep`. `PreciseDelay` und der
 `BitTimingSolver` (Sample-Point → BRP/TSEG) ergänzen. SocketCAN nutzt zusätzlich den
-Kernel-**BCM** für hardwarenahes periodisches TX. Schuld: macOS besitzt kein
-`clock_nanosleep`; der Fehler wird verschluckt → Busy-Loop (Review §2.3). Ziel:
-`OperatingSystem.IsMacOS()`-Fallback auf `Thread.Sleep`.
+Kernel-**BCM** für hardwarenahes periodisches TX. Die macOS-Busy-Loop-Schuld aus Review
+§2.3 ist behoben; `Completed`-Callbacks verlassen außerdem vor dem Event `_gate`, damit
+Handler `Update`/`Stop` reentrant aufrufen können.
 
 ## 8.8 Erweiterbarkeit via SPI (Registry-Pipeline)
 
@@ -1041,8 +1122,7 @@ STmin-Grenzwerte, SN-Folge, N_Bs/N_Cr-Timeouts gegen Virtual.
 ### ADR-4: ISO-TP als separates Transportpaket
 - **Kontext:** ISO-TP ist optional und reifer als der Kern werden muss; Vendor-SDK-Kopplung vermeiden.
 - **Entscheidung:** eigenes Paket `CanKit.Transport.IsoTp` (L3), unabhängig versioniert.
-- **Konsequenzen:** + Kern bleibt schlank, unabhängige Release-Kadenz. − heute fälschliche
-  `Peak.PCANBasic.NET`-Referenz und `Description=TODO` (§11); Paket muss `IsPackable=false`/„experimental".
+- **Konsequenzen:** + Kern bleibt schlank, unabhängige Release-Kadenz. + Release-Schutz setzt nun `IsPackable=false`, entfernt die versehentliche `Peak.PCANBasic.NET`-Abhängigkeit und kennzeichnet den Prototyp als experimentell. − Funktionale ISO-TP-Defekte blockieren weiterhin den Produktionseinsatz (§11).
 
 ### ADR-5 (umgesetzt): L2-Demux statt konkurrierendem `ReceiveAsync`
 - **Kontext:** Mehrere Protokolle wollen denselben RX-Strom sehen; heute konkurrieren
@@ -1146,8 +1226,10 @@ STmin-Grenzwerte, SN-Folge, N_Bs/N_Cr-Timeouts gegen Virtual.
   ein weiteres kleines Paket in der Solution.
 - **Status:** Umgesetzt: `CanIdRange` (validierte 11-/29-Bit-Prüfung, FR-RAW-040) sowie
   `J1939Id`/`J1939Fields` (allgemeine PGN/Priorität/PDU-Format/PDU-Specific/Quelladresse-
-  Komposition und -Dekomposition inkl. PDU1/PDU2-Unterscheidung und abgeleiteter Zieladresse,
-  FR-RAW-040) — verallgemeinert `IsoTpEndpoint.Build29`, das weiterhin unverändert besteht (kein
+  Komposition und -Dekomposition inkl. PDU1/PDU2-Unterscheidung und abgeleiteter Zieladresse),
+  `J1939Name` (64-Bit-NAME-Felder und SAE-J1939-81-Address-Claim-Priorität) und `J1939Pgn`
+  (Request/TP/Address-Claim-Klassifikation inkl. BAM-Control-Byte-Grundlage, FR-RAW-040 plus
+  Vorbereitung für FR-J1939-001/003) — verallgemeinert `IsoTpEndpoint.Build29`, das weiterhin unverändert besteht (kein
   Umbau bestehender Adapter/Transporte in dieser Umsetzung). Zusätzlich `CanIdFilter.Overlaps`
   und `ICanBusService.FindOverlappingFilterSubscriptions()` in `CanKit.Pro.RawCan` (FR-RAW-041,
   Should): erkennt überlappende Range/Mask-Filter unter den aktuell registrierten Subscriptions
@@ -1244,17 +1326,17 @@ Priorisierung: **K** = kritisch, **W** = wichtig, **G** = gering.
 | K | ✅ *Behoben.* **`QueuedCanBus`-Retry-Stau**: Batch-Reste blieben bis zum nächsten `Enqueue` liegen (blockierte in `WaitToReadAsync`). | Frames wurden verspätet oder nie gesendet; Backoff wirkungslos. | `WaitToReadAsync` nur bei `index==0`; sonst direkter Retry mit Backoff; nur die gültige Batch-Teilmenge wird an `Transmit` übergeben. | §1.2 |
 | K | ✅ *Behoben.* **SocketCAN/ZLG Stopwatch nie gestartet**: `remainingTime` blieb konstant. | Sende-`poll()`-Endlosschleife bei nicht-annehmendem, schreibbarem Bus; unbegrenzte Wartezeit. | `Stopwatch.StartNew()` in `SocketCanBus.Transmit` (2×) und 3 ZLG-Transceivern. | §1.3 |
 | K | ✅ *Behoben.* **BCMPeriodicTx `Update()` FD-Zweig**: `Can20` doppelt (Copy-Paste) statt `CanFd`. | Jedes `Update(fdFrame)` warf `NotSupportedException`; `RemainingCount` unzuverlässig (EAGAIN, weiterhin offen). | FD-Zweig auf `CanFd` korrigiert; `RemainingCount`-Robustheit per `poll` bleibt offen. | §1.4 |
-| W | **macOS-Timing-Busy-Loop**: `clock_nanosleep` fehlt auf macOS, Exception verschluckt. | `PreWait` kehrt sofort zurück → sendet Frames maximal schnell (Bus-Flut). | `OperatingSystem.IsMacOS()` → `Thread.Sleep`-Fallback. | §2.3 |
+| W | ✅ *Behoben.* **SoftwarePeriodicTx macOS/Reentrancy**: `clock_nanosleep` fehlt auf macOS, Exception wurde verschluckt; `Completed` lief innerhalb von `_gate`. | `PreWait` kehrte sofort zurück → Bus-Flut; Handler mit `Update`/`Stop` konnten reentrant hängen. | Statische macOS-Delegate-Route auf `SleepCoarse`/`Thread.Sleep`; `Completed` wird erst nach Verlassen von `_gate` ausgelöst. | §2.3 |
 | W | **AsyncFramePipe Fehlerpfade**: verwaister Reader konsumiert später Frame; Nutzer-Cancellation wird geschluckt. | Frame-Verlust nach Hintergrundfehlern; inkonsistenter Cancellation-Kontrakt. | Reader-Lebenszyklus an `WhenAny` binden; Cancellation-Kontrakt vereinheitlichen + dokumentieren. | §2.2 |
 | W | **Nebenläufigkeit im ISO-TP**: `_tx`, `_pendingOperations`, `Router._channels` (List) ohne Sync; `SetResult`/`SetException` statt `Try*`; Scheduler-Busy-Loop (100 % CPU), `RunAsync` nirgends aufgerufen. | Datenrennen (`InvalidOperationException`), CPU-Last, Nichtfunktion. | Aktor-Modell (ADR-6): 1 Mailbox/Loop je Instanz; `TrySet*`; ereignisgetriebenes Warten. | §1.1/9,14 |
 | W | ✅ *Behoben.* **Virtual-Hub-Leak & Ownership**: `VirtualBusHub._hubs` (static) entfernte leere Hubs nie; Broadcast ohne Kopie. | Speicher-Leak über Sessions; Use-after-free zwischen Empfängern/Sender. | Leere Hubs werden beim Verlassen des letzten Mitglieds entfernt (`Join`/`Detach`, atomar); `Broadcast` kopiert je Empfänger via `CanFrame.Duplicate(...)` (Lease-Semantik). | §2.4 |
-| W | **`CanBus.Open<..>(DeviceType)` Device-Leak**: bei Wurf nach `CreateDevice` wird Device nie disposed. | Natives Handle-Leak. | `try/finally` um `Open(device,…)`; Device bei Fehler disposen. | §2.5 |
-| W | **`BitTimingSolver.FromSamplePoint`**: `Clamp` wirft statt `continue` bei kleinen NTQ. | Gesamte Timing-Suche crasht für bestimmte Limits. | ungültige NTQ überspringen (`continue`). | §2.5 |
+| W | ✅ *Behoben.* **`CanBus.Open<..>(DeviceType)` Device-Leak**: bei Wurf nach `CreateDevice` wurde Device nicht disposed. | Natives Handle-Leak. | `try/catch` um `Open(device,…)`; Device bei Fehler disposen. | §2.5 |
+| W | ✅ *Behoben.* **`BitTimingSolver.FromSamplePoint`**: `Clamp` warf statt `continue` bei kleinen NTQ. | Gesamte Timing-Suche crashte für bestimmte Limits. | Ungültige NTQ/TSEG-Kandidaten werden übersprungen (`continue`). | §2.5 |
 | W | **`CanEndpoint.Parse` lowercased Host**: `zlg://USBCANFD-200U` → `usbcanfd-200u`; Sonderzeichen werfen. | Adapter müssen case-insensitiv sein (nicht garantiert); Namen mit Leerzeichen scheitern. | Host case-preserving parsen; Namensregeln dokumentieren. | §2.5 |
 | G | **Typos in öffentlicher API**: Namespace `Excpetions`, `ReadTImeOutMs`, `ExceptionOccured`. | Nach 1.0 nur als Breaking Change korrigierbar. | Vor 1.0 bereinigen. | §3 |
-| G | **ISO-TP-Packaging**: `Peak.PCANBasic.NET`-Referenz + `Description=TODO`; gemischte Namespaces. | ISO-TP-NuGet zieht grundlos PEAK-Paket; Namespaces inkonsistent. | Referenz entfernen; Namespaces vereinheitlichen; Description setzen. | §1.1/16, §3 |
+| G | **ISO-TP-Packaging-Release-Schutz**: `IsPackable=false` ist gesetzt, `Peak.PCANBasic.NET` ist entfernt, und die Metadaten kennzeichnen das Projekt als experimentell; gemischte Namespaces bleiben unverändert. | Der unfertige Prototyp wird nicht als NuGet-Paket veröffentlicht und zieht das PEAK-SDK nicht mehr transitiv ein. | Projekt bis zur Ablösung durch das künftige produktionsreife ISO-TP-Paket nicht packbar halten; Namespace-Bereinigung bleibt eine separate Breaking-Change-Entscheidung. | §1.1/16, §3 |
 | G | **Zeitbasis gemischt** (`DateTime.Now` vs. `UtcNow`) und Copy-Paste-Logtexte („Vector CAN bus", „ControlCAN poll loop"). | Korrelation erschwert; irreführende Logs. | Einheitlich UTC; Logtexte korrigieren. | §2.4, §2.5 |
-| G | **CI-Trigger tot** (`branches:[main]`, Default `master`); kein ISO-TP-Workflow. | Push-Trigger feuert nicht; Transport ungetestet. | Trigger auf `master`; ISO-TP-Workflow ergänzen. | §3, §4 |
+| G | **CI-Transportabdeckung**: Adapter-/Core-Workflows haben weiterhin Altlasten bei Triggern, aber `CanKitTransports.slnf` besitzt jetzt einen reinen Build-Transport-Workflow. | Transport-Änderungen erhalten einen hardwarefreien Release-Build auf Ubuntu und Windows (inkl. `net8.0-windows`). | Transport-CI bis zur Existenz von ISO-TP-Verhaltenstests build-only lassen. | §3, §4 |
 
 **Gesamtbewertung:** L0/L1 sind produktionsnah; die punktuellen kritischen Bugs
 (Stopwatch, BCM, QueuedCanBus, Frame-Ownership, Virtual-Hub) sind behoben (siehe ✅-Markierungen

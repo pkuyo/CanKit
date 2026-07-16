@@ -1,9 +1,10 @@
 # CanKit.Pro.Addressing
 
 CAN-ID addressing helpers for [CanKit](https://github.com/pkuyo/CanKit) (arc42 "Adressierungs-
-Helfer"; SRS FR-RAW-040/041): validated 11-bit/29-bit CAN ID construction and J1939 PGN/Priority/
-PDU-Format/Source-Address composition and decomposition, as pure, dependency-free helper
-functions — no dependency on any other CanKit package.
+Helfer"; SRS FR-RAW-040/041): validated 11-bit/29-bit CAN ID construction, J1939 PGN/Priority/
+PDU-Format/Source-Address composition and decomposition, J1939 NAME field accessors, and PGN
+classification helpers, as pure, dependency-free helper functions — no dependency on any other
+CanKit package.
 
 This generalizes logic that previously only existed as one hard-coded case inside
 `IsoTpEndpoint.CreateNormalFixed` (a single fixed diagnostics PGN) into reusable helpers any
@@ -26,6 +27,26 @@ fields.Pgn;                 // 0xFED9
 fields.SourceAddress;       // 0x17
 fields.IsPdu1;               // whether PS is a destination address or a Group Extension
 fields.DestinationAddress;  // null for PDU2 (broadcast-only) PGNs
+
+// J1939: classify common PGNs and TP.CM BAM control bytes
+J1939Pgn.IsRequest(0xEA00);                   // true
+J1939Pgn.IsTransportCm(J1939Pgn.TpCm);        // true
+J1939Pgn.IsBam(J1939Pgn.TpCm, 0x20);          // true; BAM is a TP.CM payload control byte
+
+// J1939: compose/decompose a 64-bit NAME and compare address-claim priority
+var name = new J1939Name(
+    identityNumber: 0x155555,
+    manufacturerCode: 0x5AA,
+    ecuInstance: 0x5,
+    functionInstance: 0x12,
+    function: 0xAB,
+    reserved: false,
+    vehicleSystem: 0x35,
+    vehicleSystemInstance: 0xA,
+    industryGroup: 0x3,
+    arbitraryAddressCapable: true);
+var sameName = J1939Name.Decompose(name.Value);
+J1939Name.CompareClaimPriority(name, sameName); // 0; lower unsigned NAME wins address claiming
 ```
 
 `CanKit.Pro.RawCan`'s `CanIdFilter` also gained an `Overlaps(CanIdFilter other)` method and

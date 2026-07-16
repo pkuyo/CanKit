@@ -57,9 +57,15 @@ namespace CanKit.Core.Utils
         public int RemainingCount => _remaining;
         public event EventHandler? Completed;
 
+        /// <summary>
+        /// Create a stopped handle so callers can subscribe to <see cref="Completed"/> before starting.
+        /// </summary>
+        public static SoftwarePeriodicTx Create(ICanBus bus, CanFrame frame, PeriodicTxOptions options)
+            => new SoftwarePeriodicTx(bus, frame, options);
+
         public static IPeriodicTx Start(ICanBus bus, CanFrame frame, PeriodicTxOptions options)
         {
-            var h = new SoftwarePeriodicTx(bus, frame, options);
+            var h = Create(bus, frame, options);
             h.Start();
             return h;
         }
@@ -195,18 +201,28 @@ namespace CanKit.Core.Utils
             lock (_gate)
             {
                 if (_remaining == 0) return false;
-                if (_remaining > 0)
-                {
-                    _remaining--;
-                    if (_remaining == 0)
-                    {
-                        try { Completed?.Invoke(this, EventArgs.Empty); } catch { /*Ignore*/ }
-                        Stop();
-                        return true;
-                    }
-                }
+                if (_remaining < 0) return false; // infinite
+                _remaining--;
+                if (_remaining != 0) return false;
             }
-            return false;
+
+            // Completed/Stop stay outside _gate for handler reentrancy. A concurrent Update
+            // (or one from the Completed handler) may extend repeats after we hit zero —
+            // re-check under the lock and keep the loop alive instead of finishing.
+            lock (_gate)
+            {
+                if (_remaining != 0) return false;
+            }
+
+            try { Completed?.Invoke(this, EventArgs.Empty); } catch { /*Ignore*/ }
+
+            lock (_gate)
+            {
+                if (_remaining != 0) return false;
+            }
+
+            Stop();
+            return true;
         }
 
         // ========= 抖动统计 =========
@@ -319,12 +335,13 @@ namespace CanKit.Core.Utils
         private delegate void ResetAnchorDelegate(ref PlatformContext ctx);
 
         private static readonly bool _sIsWindows = IsWindows();
-        private static readonly InitDelegate _sInit = _sIsWindows ? Win_Init : Posix_Init;
-        private static readonly DisposeDelegate _sDispose = _sIsWindows ? Win_Dispose : Posix_Dispose;
-        private static readonly UpdatePolicyDelegate _sUpdatePolicy = _sIsWindows ? Win_UpdatePolicy : Posix_UpdatePolicy;
-        private static readonly PreWaitDelegate _sPreWait = _sIsWindows ? Win_PreWait : Posix_PreWait;
+        private static readonly bool _sIsMacOS = IsMacOS();
+        private static readonly InitDelegate _sInit = _sIsWindows ? Win_Init : _sIsMacOS ? Sleep_Init : Posix_Init;
+        private static readonly DisposeDelegate _sDispose = _sIsWindows ? Win_Dispose : _sIsMacOS ? Sleep_Dispose : Posix_Dispose;
+        private static readonly UpdatePolicyDelegate _sUpdatePolicy = _sIsWindows ? Win_UpdatePolicy : _sIsMacOS ? Sleep_UpdatePolicy : Posix_UpdatePolicy;
+        private static readonly PreWaitDelegate _sPreWait = _sIsWindows ? Win_PreWait : _sIsMacOS ? Sleep_PreWait : Posix_PreWait;
         private static readonly ResetAnchorDelegate _sResetAnchor =
-            _sIsWindows ? ((ref PlatformContext _) => { }) : Posix_ResetAnchor;
+            _sIsWindows || _sIsMacOS ? ((ref PlatformContext _) => { }) : Posix_ResetAnchor;
 
         private static bool IsWindows()
         {
@@ -332,6 +349,15 @@ namespace CanKit.Core.Utils
             return OperatingSystem.IsWindows();
 #else
             return RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
+#endif
+        }
+
+        private static bool IsMacOS()
+        {
+#if NET5_0_OR_GREATER
+            return OperatingSystem.IsMacOS();
+#else
+            return RuntimeInformation.IsOSPlatform(OSPlatform.OSX);
 #endif
         }
 
@@ -523,6 +549,26 @@ namespace CanKit.Core.Utils
             internal const uint CREATE_WAITABLE_TIMER_HIGH_RESOLUTION = 0x2; // Win10+
             internal const uint TIMER_ALL_ACCESS = 0x001F0003;
             internal const uint INFINITE = 0xFFFFFFFF;
+        }
+
+        // ===== Thread.Sleep fallback for platforms without clock_nanosleep, such as macOS =====
+        private static void Sleep_Init(ref PlatformContext ctx)
+        {
+        }
+
+        private static void Sleep_UpdatePolicy(ref PlatformContext ctx, TimeSpan period)
+        {
+            ctx.policy = BuildPolicy(period);
+            ctx.lastPeriodApplied = period;
+        }
+
+        private static void Sleep_Dispose(ref PlatformContext ctx)
+        {
+        }
+
+        private static void Sleep_PreWait(ref PlatformContext ctx, Stopwatch sw, TimeSpan target, CancellationToken token)
+        {
+            SleepCoarse(sw, target, token, ctx.policy.GuardMs);
         }
 
         // ===== Linux 实现 =====
