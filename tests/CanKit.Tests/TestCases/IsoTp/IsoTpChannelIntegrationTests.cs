@@ -243,6 +243,72 @@ public class IsoTpChannelIntegrationTests : IClassFixture<TestCaseProvider>
     }
 
     // --------------------------------------------------------------------------------
+    // First-Frame that already carries the full announced length must complete without
+    // waiting for a Consecutive Frame (otherwise N_Cr fires and the PDU is never emitted).
+    // Classic CAN: inject FF with DL=6 so the 6 data bytes fill the frame.
+    // --------------------------------------------------------------------------------
+    [Fact]
+    public async Task FirstFrame_With_Full_Payload_Completes_Without_ConsecutiveFrame()
+    {
+        var session = NewSession();
+        using var busA = OpenClassic(session, 0);
+        using var busB = OpenClassic(session, 1);
+
+        var epRecv = IsoTpEndpoint.Normal(txCanId: 0x7E0, rxCanId: 0x7E8);
+        using var receiver = IsoTpFactory.Open(busA, epRecv,
+            FastOptions(nCr: TimeSpan.FromMilliseconds(300)));
+
+        var receiveTask = receiver.ReceiveAsync(new CancellationTokenSource(ShortTimeout).Token);
+
+        // FF PCI 0x10 0x06 + 6 data bytes — announced length equals FF data capacity.
+        byte[] ff = { 0x10, 0x06, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66 };
+        busB.Transmit(CanFrame.Classic(0x7E8, ff));
+
+        var got = await receiveTask;
+        got.Should().Equal(0x11, 0x22, 0x33, 0x44, 0x55, 0x66);
+    }
+
+    // --------------------------------------------------------------------------------
+    // DiscardPendingPdus drains completed PDUs and AbortRx faults so a later ReceiveAsync
+    // is not poisoned by leftover inbox items after a higher-layer cancel/timeout.
+    // --------------------------------------------------------------------------------
+    [Fact]
+    public async Task DiscardPendingPdus_Drains_Completed_Pdus_And_Abort_Faults()
+    {
+        var session = NewSession();
+        using var busA = OpenClassic(session, 0);
+        using var busB = OpenClassic(session, 1);
+
+        var epRecv = IsoTpEndpoint.Normal(txCanId: 0x7E8, rxCanId: 0x7E0);
+        var epPeer = IsoTpEndpoint.Normal(txCanId: 0x7E0, rxCanId: 0x7E8);
+
+        using var receiver = IsoTpFactory.Open(busB, epRecv,
+            FastOptions(nCr: TimeSpan.FromMilliseconds(80)));
+        using var sender = IsoTpFactory.Open(busA, epPeer, FastOptions());
+
+        // Buffer a completed SF without a waiter.
+        await sender.SendAsync(new byte[] { 0x22, 0xF1, 0x90 });
+        await Task.Delay(50);
+
+        // Queue an AbortRx fault via N_Cr (FF then silence).
+        byte[] ffPayload = Enumerable.Range(0, 20).Select(i => (byte)i).ToArray();
+        int ffData = IsoTpFrameCodec.FirstFrameMaxDataLength(isCanFd: false, usesAddressExtension: false, useLongLength: false);
+        var ff = IsoTpFrameCodec.BuildFirstFrame(epPeer, ffPayload.Length, ffPayload.AsSpan(0, ffData), isCanFd: false);
+        busA.Transmit(CanFrame.Classic(unchecked((int)epPeer.TxCanId), ff));
+        await Task.Delay(200); // > N_Cr
+
+        int discarded = receiver.DiscardPendingPdus();
+        discarded.Should().BeGreaterThanOrEqualTo(2,
+            "at least the SF PDU and the N_Cr abort fault must be drained");
+
+        // Fresh receive after drain must succeed (not throw the discarded N_Cr fault).
+        var recv = receiver.ReceiveAsync(new CancellationTokenSource(ShortTimeout).Token);
+        byte[] ok = { 0x3E, 0x00 };
+        await sender.SendAsync(ok);
+        (await recv).Should().Equal(ok);
+    }
+
+    // --------------------------------------------------------------------------------
     // FR-TP-018 — Two ISO-TP channels on the *same* bus with disjoint endpoints work
     // independently.
     // --------------------------------------------------------------------------------
