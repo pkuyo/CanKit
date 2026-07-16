@@ -72,5 +72,12 @@ and deliberately avoids the following defects:
 8. `TryParsePci` is bounds-safe and never throws `IndexOutOfRangeException`, even for a 1-byte
    frame or a truncated Flow-Control frame (FR-TP-007).
 9. Classic-CAN single frames are always ≤ 8 bytes (FR-TP-015).
+10. `BuildSingleFrame` rejects a zero-length payload at build time: ISO 15765-2 does not define a
+    Single Frame with `SF_DL == 0`, so producing such a frame would yield bytes no conformant peer
+    could parse (bugbot 3594958440).
+11. `TryParsePci` requires an `isCanFd` argument so the Single-Frame escape header (`0x00 LEN …`)
+    and the First-Frame escape header (`0x10 0x00 LEN[4] …`) are only accepted on CAN-FD frames;
+    on classic CAN those bit-patterns are invalid and are rejected instead of being mis-parsed as
+    escape headers (bugbot 3594958440 / 3594958445).
 
 Status: pre-release (0.1.x), codec-only.

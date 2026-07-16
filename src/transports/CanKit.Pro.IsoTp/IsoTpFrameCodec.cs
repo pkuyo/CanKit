@@ -183,9 +183,18 @@ public static class IsoTpFrameCodec
     /// buffer must be at least <see cref="ClassicCanMaxData"/> (or <see cref="CanFdMaxData"/> for
     /// CAN-FD) bytes long.
     /// </summary>
-    /// <exception cref="ArgumentOutOfRangeException">The user data does not fit in a Single Frame
-    /// for the requested frame-kind/addressing combination, or <paramref name="destination"/> is
-    /// too small.</exception>
+    /// <remarks>
+    /// <para>
+    /// ISO 15765-2 does not define an empty Single Frame: on classic CAN the SF_DL low-nibble range
+    /// is <c>1..7</c>, and on CAN-FD the escape-form <c>LEN</c> byte likewise starts at <c>1</c>.
+    /// A zero-length SF is therefore rejected at build time to prevent producing an on-wire frame
+    /// that no conformant peer could parse (fixes bugbot 3594958440).
+    /// </para>
+    /// </remarks>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// <paramref name="userData"/> is empty, exceeds the Single-Frame capacity for the requested
+    /// frame-kind/addressing combination, or <paramref name="destination"/> is too small.
+    /// </exception>
     public static int BuildSingleFrame(Span<byte> destination, in IsoTpEndpoint endpoint,
         ReadOnlySpan<byte> userData, bool isCanFd, bool padding,
         byte paddingByte = DefaultPaddingByte)
@@ -195,9 +204,9 @@ public static class IsoTpFrameCodec
         int shortMax = SingleFrameShortFormMaxDataLength(endpoint.UsesAddressExtension);
         int longMax = SingleFrameMaxDataLength(isCanFd, endpoint.UsesAddressExtension);
 
-        if (userData.Length < 0 || userData.Length > longMax)
+        if (userData.Length < 1 || userData.Length > longMax)
             throw new ArgumentOutOfRangeException(nameof(userData), userData.Length,
-                $"Single-Frame user data length must be in [0, {longMax}] for this endpoint/frame kind.");
+                $"Single-Frame user data length must be in [1, {longMax}] for this endpoint/frame kind.");
         if (destination.Length < maxFrame)
             throw new ArgumentOutOfRangeException(nameof(destination), destination.Length,
                 $"Destination buffer must be at least {maxFrame} bytes for the requested frame kind.");
@@ -250,6 +259,11 @@ public static class IsoTpFrameCodec
     /// Writes a First-Frame CAN payload into <paramref name="destination"/>. First Frames never
     /// use padding — they always fill the underlying CAN frame completely.
     /// </summary>
+    /// <remarks>
+    /// User bytes copied from <paramref name="firstChunk"/> are capped to
+    /// <c>min(firstChunk.Length, frame capacity, totalLength)</c> so the on-wire data never
+    /// exceeds the PDU size announced in the FF_DL field (fixes bugbot 3596393504).
+    /// </remarks>
     /// <exception cref="ArgumentOutOfRangeException">
     /// <paramref name="totalLength"/> is negative or exceeds the addressable range for the
     /// requested frame kind; classic-CAN cannot address totals &gt; 4095 (FF escape form is
@@ -274,7 +288,10 @@ public static class IsoTpFrameCodec
 
         int pciBytes = useLongLength ? 6 : 2;
         int dataCapacity = maxFrame - addrExt - pciBytes;
-        int dataLen = Math.Min(firstChunk.Length, dataCapacity);
+        // Cap to totalLength as well: otherwise a long firstChunk would place more user bytes in
+        // the frame than FF_DL announces, so peers / TryParsePci disagree on how much of the
+        // payload is real data vs trailing fill (fixes bugbot 3596393504).
+        int dataLen = Math.Min(firstChunk.Length, Math.Min(dataCapacity, totalLength));
 
         if (endpoint.UsesAddressExtension)
             destination[0] = endpoint.AddressExtension;
@@ -427,13 +444,24 @@ public static class IsoTpFrameCodec
     /// bytes for CAN-FD).</param>
     /// <param name="endpoint">Endpoint whose addressing mode decides whether the first payload
     /// byte is the address-extension byte.</param>
+    /// <param name="isCanFd">
+    /// <c>true</c> when the caller knows the frame was received as a CAN-FD frame, <c>false</c> for
+    /// classic CAN. The Single-Frame and First-Frame escape forms (<c>PCI 0x00 LEN …</c> and
+    /// <c>PCI 0x10 0x00 LEN[4] …</c>) are only defined on CAN-FD per ISO 15765-2, so this flag is
+    /// required to distinguish a legitimate escape header from a malformed classic-CAN PCI whose
+    /// SF_DL / FF_DL is zero (fixes review §1.1 point 8 / bugbot 3594958440 / 3594958445).
+    /// </param>
     /// <param name="pci">On success, the parsed PCI view.</param>
     /// <returns>
     /// <c>true</c> when the frame has enough bytes and a valid PCI nibble; <c>false</c> for
-    /// truncated frames, reserved PCI nibbles (&gt; 3) or reserved Flow-Status values (&gt; 2).
+    /// truncated frames, reserved PCI nibbles (&gt; 3), reserved Flow-Status values (&gt; 2),
+    /// escape-form PCIs on classic CAN, or CAN-FD Single-Frame short-form SF_DL values above
+    /// <see cref="SingleFrameShortFormMaxDataLength"/> for the endpoint's addressing mode
+    /// (those lengths must use the <c>0x00 LEN</c> escape — 8..15 without address extension,
+    /// 7..15 with extended/mixed addressing).
     /// </returns>
     public static bool TryParsePci(ReadOnlySpan<byte> canPayload, in IsoTpEndpoint endpoint,
-        out Pci pci)
+        bool isCanFd, out Pci pci)
     {
         pci = default;
         int addrExt = endpoint.AddressExtensionSize;
@@ -454,7 +482,11 @@ public static class IsoTpFrameCodec
                     int shortLen = first & 0x0F;
                     if (shortLen == 0)
                     {
-                        // CAN-FD SF escape form: 0x00 LEN, then user data
+                        // CAN-FD SF escape form: 0x00 LEN, then user data. On classic CAN a zero
+                        // SF_DL nibble is reserved/invalid — reject rather than mis-parsing it as
+                        // an escape header (fixes bugbot 3594958440).
+                        if (!isCanFd)
+                            return false;
                         int lenIndex = pciIndex + 1;
                         if (canPayload.Length <= lenIndex)
                             return false;
@@ -467,6 +499,16 @@ public static class IsoTpFrameCodec
                     }
                     else
                     {
+                        // ISO 15765-2: on CAN-FD the one-byte SF PCI (SF_DL in the low nibble) is
+                        // only valid up to SingleFrameShortFormMaxDataLength for the endpoint's
+                        // addressing mode (1..7 normal, 1..6 with address extension). Longer
+                        // payloads must use the 0x00/LEN escape that BuildSingleFrame already
+                        // emits (fixes bugbot 3596033572 / 3596165656). Classic CAN keeps
+                        // accepting the low-nibble length when the payload is long enough
+                        // (in practice still within the short-form cap inside an 8-byte frame).
+                        if (isCanFd &&
+                            shortLen > SingleFrameShortFormMaxDataLength(endpoint.UsesAddressExtension))
+                            return false;
                         int dataOffset = pciIndex + 1;
                         if (canPayload.Length < dataOffset + shortLen)
                             return false;
@@ -484,7 +526,13 @@ public static class IsoTpFrameCodec
                     int lowByte = canPayload[secondIndex];
                     if (highNibble == 0 && lowByte == 0)
                     {
-                        // CAN-FD FF escape form: 0x10 0x00 followed by 4-byte length
+                        // CAN-FD FF escape form: 0x10 0x00 followed by a 4-byte length. On classic
+                        // CAN this bit-pattern would announce an FF_DL of zero, which ISO 15765-2
+                        // does not permit and which cannot be an escape header either (the escape
+                        // form is CAN-FD-only). Reject to avoid conflating the two encodings
+                        // (fixes bugbot 3594958445).
+                        if (!isCanFd)
+                            return false;
                         int lenStart = pciIndex + 2;
                         if (canPayload.Length < lenStart + 4)
                             return false;

@@ -31,6 +31,7 @@
     <ProjectReference Include="..\..\src\core\CanKit.Pro.Addressing\CanKit.Pro.Addressing.csproj" />
     <ProjectReference Include="..\..\src\core\CanKit.Pro.Reliability\CanKit.Pro.Reliability.csproj" />
     <ProjectReference Include="..\..\src\transports\CanKit.Pro.IsoTp\CanKit.Pro.IsoTp.csproj" />
+    <ProjectReference Include="..\..\src\protocols\CanKit.Pro.Hawe\CanKit.Pro.Hawe.csproj" />
   </ItemGroup>
 </Project>
 
