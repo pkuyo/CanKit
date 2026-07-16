@@ -52,8 +52,9 @@ public sealed class AsyncFramePipe<T>
     }
 
     /// <summary>
-    /// Reads up to <paramref name="count"/> frames. Timeout cancellation returns the frames already
-    /// read, while caller-provided cancellation propagates as <see cref="OperationCanceledException"/>.
+    /// Reads up to <paramref name="count"/> frames, or until timeout/channel completion when
+    /// <paramref name="count"/> is 0. Timeout cancellation returns the frames already read, while
+    /// caller-provided cancellation propagates as <see cref="OperationCanceledException"/>.
     /// </summary>
     public async Task<IReadOnlyList<T>> ReceiveBatchAsync(
         int count, int timeoutMs, CancellationToken cancellationToken)
@@ -119,6 +120,7 @@ public sealed class AsyncFramePipe<T>
                     }
                     catch (OperationCanceledException)
                     {
+                        // The wait was intentionally canceled so the losing waitTask can finish cleanup.
                     }
 
                     var ex = await bgException.Task.ConfigureAwait(false);
