@@ -263,7 +263,12 @@ public class J1939TpTests : IClassFixture<TestCaseProvider>
         // 14-byte payload = exactly 2 TP.DT frames -> minimal, deterministic size.
         var payload = RandomPayload(14, seed: 314);
 
-        using var receiver = J1939Tp.Open(receiverBus, sourceAddress: receiverSa);
+        // Long Tr: after CTS the receiver arms Tr waiting for the first DT. This test intentionally
+        // injects a second RTS and asserts the Abort *before* sending DTs; default Tr (200 ms) can
+        // expire on a slow Windows/net48 runner and emit Abort(Timeout) for the active PGN, which
+        // is correct protocol behavior but unrelated to the intruder-RTS rejection under test.
+        var opts = new J1939TpOptions().With(tr: TimeSpan.FromSeconds(5));
+        using var receiver = J1939Tp.Open(receiverBus, sourceAddress: receiverSa, options: opts);
 
         // Observe every TP.CM frame the receiver emits so we can inspect CTS / EOM / Abort.
         var observed = new List<(uint canId, byte[] data)>();
