@@ -534,6 +534,39 @@ public class UdsClientTests : IClassFixture<TestCaseProvider>
         }
     }
 
+    // -----------------------------------------------------------------------------------
+    // Bugbot 3596444327 — Dispose must cancel the lifetime token and wait for an in-flight
+    // ExecuteAsync to Release _requestLock before disposing the semaphore.
+    // -----------------------------------------------------------------------------------
+    [Fact]
+    public async Task Dispose_During_InFlight_Request_Does_Not_Race_RequestLock()
+    {
+        var (client, _, dispose) = BuildPair(
+            e => e.On(0x22, _ => throw new EcuSilent()),
+            options: new UdsClientOptions
+            {
+                P2ClientMax = TimeSpan.FromSeconds(5),
+                P2StarClientMax = TimeSpan.FromSeconds(5),
+            });
+        try
+        {
+            var inFlight = client.ReadDataByIdentifierAsync(0xF190,
+                new CancellationTokenSource(ShortTimeout).Token);
+            await Task.Delay(50); // enter ReceiveWithTimeout under the request lock
+
+            Action act = () => client.Dispose();
+            act.Should().NotThrow(
+                "Dispose must wait for the in-flight request to Release before disposing _requestLock");
+
+            Func<Task> wait = () => inFlight;
+            await wait.Should().ThrowAsync<OperationCanceledException>();
+        }
+        finally
+        {
+            dispose.Dispose();
+        }
+    }
+
     private sealed class CompositeDisposable : IDisposable
     {
         private readonly IDisposable[] _items;

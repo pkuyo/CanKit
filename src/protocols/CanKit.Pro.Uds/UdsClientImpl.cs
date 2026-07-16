@@ -556,7 +556,21 @@ internal sealed class UdsClientImpl : IUdsClient
 
         Interlocked.Exchange(ref _keepAlive, null)?.Dispose();
 
+        // Cancel in-flight ExecuteAsync / SecurityAccessAsync first, then wait for the request
+        // lock so their finally blocks can Release before we dispose the semaphore
+        // (Bugbot 3596444327). Disposing while a waiter still holds the lock races WaitAsync/Release.
         try { _lifetimeCts.Cancel(); } catch { /* already disposed */ }
+
+        try
+        {
+            if (_requestLock.Wait(TimeSpan.FromSeconds(5)))
+                _requestLock.Release();
+        }
+        catch (ObjectDisposedException)
+        {
+            // Already torn down on another path.
+        }
+
         _lifetimeCts.Dispose();
         _requestLock.Dispose();
 
