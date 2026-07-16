@@ -9,6 +9,7 @@ using CanKit.Abstractions.API.Common.Definitions;
 using CanKit.Core;
 using CanKit.Pro.Addressing;
 using CanKit.Pro.J1939Tp;
+using CanKit.Pro.RawCan;
 using FluentAssertions;
 using Xunit;
 
@@ -413,6 +414,42 @@ public class J1939TpTests : IClassFixture<TestCaseProvider>
         fromB.Payload.Should().Equal(payloadB);
     }
 
+    // Bugbot 3596183535: BAM announce TX rejection must fail SendBamAsync (not only raise
+    // BackgroundExceptionOccurred) and must not proceed to TP.DT after Th.
+    [Fact]
+    public async Task Bam_AnnounceTxRejected_FailsSendAndDoesNotEmitDt()
+    {
+        var session = NewSession();
+        using var busA = Open(session, 0);
+        using var busB = Open(session, 1);
+
+        using var inner = new CanBusService(busA);
+        using var rejecting = new RejectTpCmBusService(inner);
+        var opts = new J1939TpOptions().With(th: TimeSpan.FromMilliseconds(5));
+        using var sender = J1939Tp.Open(rejecting, sourceAddress: 0x51, options: opts, leaveOpen: true);
+
+        var dtSeen = 0;
+        busB.FrameObserved += (_, e) =>
+        {
+            if (!e.CanFrame.IsExtendedFrame) return;
+            var fields = J1939Id.Decompose((uint)e.CanFrame.ID);
+            if (fields.SourceAddress == 0x51 && J1939Pgn.IsTransportDt(fields.Pgn))
+                Interlocked.Increment(ref dtSeen);
+        };
+
+        var bgSeen = 0;
+        sender.BackgroundExceptionOccurred += (_, _) => Interlocked.Increment(ref bgSeen);
+
+        Func<Task> act = async () => await sender.SendBamAsync(0xFE51, RandomPayload(20, seed: 51))
+            .WithTimeout(ShortTimeout);
+        await act.Should().ThrowAsync<J1939TpSendRejectedException>();
+
+        // Give Th a chance to fire if DT were incorrectly scheduled after a rejected BAM.
+        await Task.Delay(80);
+        Volatile.Read(ref dtSeen).Should().Be(0, "rejected BAM announce must not schedule TP.DT");
+        Volatile.Read(ref bgSeen).Should().Be(0, "CM TX failure must fail the send TCS, not only BackgroundExceptionOccurred");
+    }
+
     // Bugbot 3596025915: canceling before BeginTxOnLoop runs must not emit TP.CM/TP.DT.
     [Fact]
     public async Task SendCm_CanceledBeforeStart_DoesNotTransmit()
@@ -574,6 +611,52 @@ public class J1939TpTests : IClassFixture<TestCaseProvider>
         }
         return list;
     }
+}
+
+/// <summary>
+/// Test double: rejects every TP.CM frame at SendConfirmed, forwards everything else.
+/// Used to prove BAM/RTS TX failure fails the send TCS (Bugbot 3596183535).
+/// </summary>
+internal sealed class RejectTpCmBusService : ICanBusService
+{
+    private readonly ICanBusService _inner;
+
+    public RejectTpCmBusService(ICanBusService inner) => _inner = inner;
+
+    public ICanBus Bus => _inner.Bus;
+    public int SubscriptionCount => _inner.SubscriptionCount;
+
+    public ISubscription Subscribe(Func<CanFrameView, bool>? predicate = null, int? bufferCapacity = null)
+        => _inner.Subscribe(predicate, bufferCapacity);
+
+    public ISubscription Subscribe(CanIdFilter filter, int? bufferCapacity = null)
+        => _inner.Subscribe(filter, bufferCapacity);
+
+    public IReadOnlyList<(ISubscription First, ISubscription Second)> FindOverlappingFilterSubscriptions()
+        => _inner.FindOverlappingFilterSubscriptions();
+
+    public Task<TxConfirmation> SendConfirmed(CanFrame frame, TimeSpan? timeout = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (frame.IsExtendedFrame)
+        {
+            var fields = J1939Id.Decompose((uint)frame.ID);
+            if (J1939Pgn.IsTransportCm(fields.Pgn))
+            {
+                return Task.FromResult(new TxConfirmation
+                {
+                    Confirmed = false,
+                    IsApproximated = false,
+                    Timestamp = DateTime.UtcNow,
+                    FailureReason = TxConfirmFailureReason.Rejected,
+                });
+            }
+        }
+
+        return _inner.SendConfirmed(frame, timeout, cancellationToken);
+    }
+
+    public void Dispose() { /* leaveOpen wrappers do not own the inner service */ }
 }
 
 internal static class J1939TpTestExtensions

@@ -576,20 +576,31 @@ internal sealed class J1939TpChannel : IJ1939TpChannel
         if (isCm)
         {
             var rts = J1939TpFrames.BuildRts(pdu.Length, totalPackets, _options.MaxPacketsPerCts, key.Pgn);
-            SendTpCm(rts, destinationAddress: key.DestinationAddress);
-            // Now wait for CTS with T3 (initial), per §5.10.2.4.
+            // Bind the TX session so an RTS TX rejection/timeout fails the send TCS instead of
+            // only raising BackgroundExceptionOccurred while leaving the session registered.
+            SendTpCm(rts, destinationAddress: key.DestinationAddress, session);
+            // Now wait for CTS with T3 (initial), per §5.10.2.4. Armed immediately: a fast peer
+            // may already have CTS'd before the RTS SendConfirmed continuation runs.
             session.State = TxStage.WaitCts;
             session.Deadline = _deadlines.Arm(_options.T3, () => OnTxT3Expired(key));
         }
         else
         {
             var bam = J1939TpFrames.BuildBam(pdu.Length, totalPackets, key.Pgn);
-            SendTpCm(bam, destinationAddress: J1939TpFrames.GlobalDestinationAddress);
-            // BAM sender: hold-off Th between BAM and first DT, then Th between subsequent DTs.
-            session.State = TxStage.SendingDt;
-            session.NextSn = 1;
-            _actor.Schedule(_options.Th, () => TrySendNextBamDt(key));
+            // Do not schedule TP.DT until the BAM announce is TX-confirmed. Otherwise a rejected
+            // BAM can still complete SendBamAsync after Th once DTs finish (Bugbot 3596183535).
+            SendTpCm(bam, destinationAddress: J1939TpFrames.GlobalDestinationAddress, session,
+                onConfirmed: () => OnBamAnnounceConfirmed(key));
         }
+    }
+
+    private void OnBamAnnounceConfirmed(TxSessionKey key)
+    {
+        if (!_txSessions.TryGetValue(key, out var session) || session.IsCm) return;
+        // BAM sender: hold-off Th between BAM and first DT, then Th between subsequent DTs.
+        session.State = TxStage.SendingDt;
+        session.NextSn = 1;
+        _actor.Schedule(_options.Th, () => TrySendNextBamDt(key));
     }
 
     private void HandleRxTxSideResponse(byte sa, uint dataPgn, byte[] payload)
@@ -816,8 +827,24 @@ internal sealed class J1939TpChannel : IJ1939TpChannel
     // =========================================================================================
     // Wire helpers
     // =========================================================================================
-    private void SendTpCm(byte[] payload, byte destinationAddress)
-        => SendControlFrame(J1939Pgn.TpCm, payload, destinationAddress, session: null, onConfirmed: null);
+    private void SendTpCm(byte[] payload, byte destinationAddress, TxSession? session = null,
+        Action? onConfirmed = null)
+        => SendControlFrame(J1939Pgn.TpCm, payload, destinationAddress, session, onConfirmed);
+
+    private void FailOrRaiseTx(TxSession? session, Exception ex)
+    {
+        if (session is not null && _txSessions.TryGetValue(session.Key, out var current) && ReferenceEquals(current, session))
+        {
+            _txSessions.Remove(session.Key);
+            session.Deadline?.Dispose();
+            session.Deadline = null;
+            session.Tcs.TrySetException(ex);
+        }
+        else
+        {
+            RaiseBackgroundException(ex);
+        }
+    }
 
     private void SendControlFrame(uint pgn, byte[] payload, byte destinationAddress,
         TxSession? session, Action? onConfirmed)
@@ -842,20 +869,7 @@ internal sealed class J1939TpChannel : IJ1939TpChannel
                         TxConfirmFailureReason.BusOff => new J1939TpException("CAN bus went BusOff during J1939-TP transmission."),
                         _ => new J1939TpException($"J1939-TP frame TX confirmation failed: {confirmation.FailureReason}."),
                     };
-                    _actor.Post(() =>
-                    {
-                        if (session is not null && _txSessions.TryGetValue(session.Key, out var current) && ReferenceEquals(current, session))
-                        {
-                            _txSessions.Remove(session.Key);
-                            session.Deadline?.Dispose();
-                            session.Deadline = null;
-                            session.Tcs.TrySetException(ex);
-                        }
-                        else
-                        {
-                            RaiseBackgroundException(ex);
-                        }
-                    });
+                    _actor.Post(() => FailOrRaiseTx(session, ex));
                     return;
                 }
 
@@ -869,7 +883,7 @@ internal sealed class J1939TpChannel : IJ1939TpChannel
             }
             catch (Exception ex)
             {
-                try { _actor.Post(() => RaiseBackgroundException(ex)); }
+                try { _actor.Post(() => FailOrRaiseTx(session, ex)); }
                 catch (ObjectDisposedException) { /* actor gone; nothing to do */ }
             }
         });
