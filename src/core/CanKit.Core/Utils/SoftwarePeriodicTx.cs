@@ -192,24 +192,29 @@ namespace CanKit.Core.Utils
 
         private bool DecreaseAndMaybeFinish()
         {
-            bool finished = false;
-
             lock (_gate)
             {
                 if (_remaining == 0) return false;
-                if (_remaining > 0)
-                {
-                    _remaining--;
-                    if (_remaining == 0)
-                    {
-                        finished = true;
-                    }
-                }
+                if (_remaining < 0) return false; // infinite
+                _remaining--;
+                if (_remaining != 0) return false;
             }
 
-            if (!finished) return false;
+            // Completed/Stop stay outside _gate for handler reentrancy. A concurrent Update
+            // (or one from the Completed handler) may extend repeats after we hit zero —
+            // re-check under the lock and keep the loop alive instead of finishing.
+            lock (_gate)
+            {
+                if (_remaining != 0) return false;
+            }
 
             try { Completed?.Invoke(this, EventArgs.Empty); } catch { /*Ignore*/ }
+
+            lock (_gate)
+            {
+                if (_remaining != 0) return false;
+            }
+
             Stop();
             return true;
         }
