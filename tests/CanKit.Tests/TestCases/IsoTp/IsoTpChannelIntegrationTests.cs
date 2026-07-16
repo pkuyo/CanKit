@@ -343,6 +343,37 @@ public class IsoTpChannelIntegrationTests : IClassFixture<TestCaseProvider>
     }
 
     // --------------------------------------------------------------------------------
+    // Regression: Oversized classic-CAN PDU send must not hang.
+    //
+    // Classic-CAN First Frames encode the total length in 12 bits (max 4095 bytes); the 32-bit
+    // escape form is CAN-FD-only. Previously BeginSendOnLoop let the codec's
+    // ArgumentOutOfRangeException escape uncaught into the actor's background exception channel
+    // while the awaiting SendAsync TCS was never completed -- the caller hung forever. The fix
+    // both (a) rejects the PDU up front with a domain-specific IsoTpException, and (b) wraps the
+    // send setup in a try/catch that fails the TCS on any leaked exception.
+    // --------------------------------------------------------------------------------
+    [Fact]
+    public async Task Oversized_Classic_Pdu_Send_Fails_Cleanly_Instead_Of_Hanging()
+    {
+        var session = NewSession();
+        using var busA = OpenClassic(session, 0);
+        using var busB = OpenClassic(session, 1); // peer just so the hub has a subscriber
+
+        using var sender = IsoTpFactory.Open(busA, IsoTpEndpoint.Normal(0x600, 0x601),
+            FastOptions());
+
+        // 5000 bytes > MaxClassicFirstFrameLength (4095) -- would previously hang forever.
+        byte[] pdu = new byte[5000];
+
+        var sendTask = sender.SendAsync(pdu);
+        // Bound the wait: if the fix regresses, this WaitAsync will trip long before the test
+        // suite's own timeout and the assertion below will surface a clear failure.
+        Func<Task> act = () => sendTask.WaitAsync(ShortTimeout);
+        var ex = (await act.Should().ThrowAsync<IsoTpException>()).Which;
+        ex.Message.Should().Contain("classic-CAN").And.Contain("4095");
+    }
+
+    // --------------------------------------------------------------------------------
     // FR-TP-016 — DatagramReceived event fires for a SF PDU.
     // --------------------------------------------------------------------------------
     [Fact]

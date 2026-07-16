@@ -306,14 +306,25 @@ internal sealed class IsoTpChannel : IIsoTpChannel
 
         _tx = new TxState(pdu, tcs);
 
-        int sfMax = IsoTpFrameCodec.SingleFrameMaxDataLength(_options.UseCanFd, _endpoint.UsesAddressExtension);
-        if (pdu.Length <= sfMax)
+        // Any exception raised while composing the outbound frame (e.g. IsoTpFrameCodec throwing
+        // on an oversized PDU) must not escape the actor: it would surface only on
+        // BackgroundExceptionOccurred and leave the SendAsync TCS pending forever. Catch it here
+        // and fail the TCS so the awaiting caller unblocks.
+        try
         {
-            SendSingleFrame();
+            int sfMax = IsoTpFrameCodec.SingleFrameMaxDataLength(_options.UseCanFd, _endpoint.UsesAddressExtension);
+            if (pdu.Length <= sfMax)
+            {
+                SendSingleFrame();
+            }
+            else
+            {
+                SendFirstFrame();
+            }
         }
-        else
+        catch (Exception ex)
         {
-            SendFirstFrame();
+            FailTx(ex);
         }
     }
 
@@ -329,6 +340,17 @@ internal sealed class IsoTpChannel : IIsoTpChannel
     {
         var tx = _tx!;
         bool useLong = tx.Pdu.Length > IsoTpFrameCodec.MaxClassicFirstFrameLength;
+        // Classic-CAN First Frames only carry a 12-bit length field; the 32-bit escape form is
+        // CAN-FD-only per ISO 15765-2 §9.6. Reject the PDU up front instead of letting the codec
+        // throw ArgumentOutOfRangeException — which used to escape the actor uncaught and hang
+        // the awaiting SendAsync forever.
+        if (useLong && !_options.UseCanFd)
+        {
+            FailTx(new IsoTpException(
+                $"ISO-TP classic-CAN PDUs cannot exceed {IsoTpFrameCodec.MaxClassicFirstFrameLength} bytes "
+                + $"(requested {tx.Pdu.Length}); enable CAN-FD to send larger transfers."));
+            return;
+        }
         int ffData = IsoTpFrameCodec.FirstFrameMaxDataLength(_options.UseCanFd,
             _endpoint.UsesAddressExtension, useLong);
         if (ffData <= 0)
