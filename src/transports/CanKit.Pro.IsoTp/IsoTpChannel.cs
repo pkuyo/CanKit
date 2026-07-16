@@ -54,8 +54,9 @@ internal sealed class IsoTpChannel : IIsoTpChannel
 
     // Bounded receive inbox for consumers. Drop-oldest so a stalled reader never stalls the RX
     // state machine (mirrors the L2 Subscription policy). Items are either a fully reassembled
-    // PDU or a reassembly-abort fault (N_Cr / SN mismatch) so a blocked ReceiveAsync completes
-    // instead of hanging (Bugbot 3596134684 / FR-TP-010) — the FailTx analogue on the RX side.
+    // PDU or a reassembly-abort fault (N_Cr / SN mismatch / SF·FF supersede) so a blocked
+    // ReceiveAsync completes instead of hanging (Bugbot 3596134684 / 3596527680 / FR-TP-010) —
+    // the FailTx analogue on the RX side.
     private readonly Channel<RxInboxItem> _pduInbox;
 
     // Serializes SendAsync callers: one outbound PDU on the wire at a time, per ISO 15765-2's
@@ -792,9 +793,14 @@ internal sealed class IsoTpChannel : IIsoTpChannel
     private void HandleRxSingleFrame(byte[] payload, Pci pci)
     {
         // A racing SF starts a fresh PDU: abort any in-flight reassembly (matches ISO 15765-2
-        // §6.5.2's "an unexpected N_PCI type shall abort reception").
-        _rx?.CancelDeadline();
-        _rx = null;
+        // §6.5.2's "an unexpected N_PCI type shall abort reception"). Must go through AbortRx —
+        // a silent _rx clear leaves ReceiveAsync parked on an empty inbox (Bugbot 3596527680).
+        if (_rx is not null)
+        {
+            AbortRx(new IsoTpException(
+                "ISO-TP Single Frame aborted in-flight multi-frame reception (unexpected N_PCI)."));
+        }
+
         if (pci.DataOffset + pci.Length > payload.Length) return; // codec already validates but guard again
         var pdu = new byte[pci.Length];
         Array.Copy(payload, pci.DataOffset, pdu, 0, pci.Length);
@@ -803,9 +809,14 @@ internal sealed class IsoTpChannel : IIsoTpChannel
 
     private void HandleRxFirstFrame(byte[] payload, Pci pci)
     {
-        // Discard any half-built reassembly -- ISO 15765-2 §6.5.5 says a new FF aborts.
-        _rx?.CancelDeadline();
-        _rx = null;
+        // A new FF aborts any half-built reassembly (ISO 15765-2 §6.5.5). AbortRx so a blocked
+        // ReceiveAsync observes the drop — including when the new FF is then refused with
+        // FC(OVFLW) and no replacement session is started (Bugbot 3596527680).
+        if (_rx is not null)
+        {
+            AbortRx(new IsoTpException(
+                "ISO-TP First Frame aborted in-flight multi-frame reception."));
+        }
 
         // Cap reassembly allocation to the same outbound SendAsync / codec limit for this
         // frame kind (Bugbot 3596212802). A CAN-FD escape FF can announce up to int.MaxValue;
@@ -985,9 +996,11 @@ internal sealed class IsoTpChannel : IIsoTpChannel
     /// Aborts in-flight multi-frame reassembly. Mirrors <see cref="FailTx"/> on the receive side:
     /// clears RX state, raises <see cref="BackgroundExceptionOccurred"/>, and enqueues the fault
     /// into the PDU inbox so a blocked <see cref="ReceiveAsync"/>/<see cref="ReceiveAllAsync"/>
-    /// completes with the same exception instead of waiting indefinitely (Bugbot 3596134684).
-    /// Successful PDUs already in the inbox are unaffected (FIFO); exactly one waiter consumes
-    /// the fault item, preserving multi-receive inbox semantics for subsequent PDUs.
+    /// completes with the same exception instead of waiting indefinitely (Bugbot 3596134684 /
+    /// 3596527680 — also covers SF/FF supersede and FF→OVFLW that would otherwise clear
+    /// <c>_rx</c> silently). Successful PDUs already in the inbox are unaffected (FIFO); exactly
+    /// one waiter consumes the fault item, preserving multi-receive inbox semantics for
+    /// subsequent PDUs.
     /// </summary>
     private void AbortRx(Exception ex)
     {
