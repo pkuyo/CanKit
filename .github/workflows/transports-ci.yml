@@ -37,3 +37,7 @@ jobs:
 
       - name: Build (Release, net8.0)
         run: dotnet build CanKitTransports.slnf -c Release -f net8.0 --no-restore
+
+      - name: Build (Release, net8.0-windows)
+        if: runner.os == 'Windows'
+        run: dotnet build CanKitTransports.slnf -c Release -f net8.0-windows --no-restore

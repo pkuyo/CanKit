@@ -114,7 +114,7 @@ Zero-Copy) erhöhen den Aufwand für Q4 und für einen sicheren **Frame-Ownershi
 |----|---------------|-----------|
 | CON-TFM | Multi-Target `netstandard2.0; net8.0; net8.0-windows` (`src/Directory.Build.props`). | API muss auf dem kleinsten gemeinsamen Nenner (netstandard2.0) verfügbar sein; TFM-Weichen via `#if NET5_0_OR_GREATER` (z. B. `Queue.TryPeek`). |
 | CON-PINV | Vendor-Zugriff via **P/Invoke** in `Native/*.cs`, je Adapter eine `*.Fake.cs`-Spiegelung. | Native-Schicht ist plattform- und bitness-abhängig; Fake ermöglicht hardwarelose Builds (`-c Fake` → `DefineConstants=FAKE`). |
-| CON-SDK | Externe Vendor-SDKs (z. B. `Peak.PCANBasic.NET`, Kvaser `canlib`, ZLG, Vector XL). | Vendor SDK dependencies stay adapter-scoped; the ISO-TP prototype no longer references `Peak.PCANBasic.NET` (Review §1.1/16). |
+| CON-SDK | Externe Vendor-SDKs (z. B. `Peak.PCANBasic.NET`, Kvaser `canlib`, ZLG, Vector XL). | Vendor-SDK-Abhängigkeiten bleiben adapterbezogen; der ISO-TP-Prototyp referenziert `Peak.PCANBasic.NET` nicht mehr (Review §1.1/16). |
 | CON-LANG | `LangVersion=12`, `Nullable=enable`, Analyzer aktiv (`EnableNETAnalyzers`, `EnforceCodeStyleInBuild`). | Moderne C#-Sprachfeatures (record struct, primary ctors, collection expressions); netstandard2.0 braucht `IsExternalInit`-Shims. |
 | CON-UNSAFE | `AllowUnsafeBlocks` in Codec/Transport (`FrameCodec` nutzt `Unsafe.CopyBlockUnaligned`). | Performante Frame-Erzeugung, aber erhöhter Review-Bedarf (Bounds-Sicherheit). |
 | CON-DOC | `GenerateDocumentationFile=true`, zweisprachige (EN/ZH) XML-Doku. | Öffentliche API ist doppelt dokumentiert; Typos in der API sind Breaking Changes nach 1.0 (Review §3). |
@@ -1026,7 +1026,7 @@ STmin-Grenzwerte, SN-Folge, N_Bs/N_Cr-Timeouts gegen Virtual.
 ### ADR-4: ISO-TP als separates Transportpaket
 - **Kontext:** ISO-TP ist optional und reifer als der Kern werden muss; Vendor-SDK-Kopplung vermeiden.
 - **Entscheidung:** eigenes Paket `CanKit.Transport.IsoTp` (L3), unabhängig versioniert.
-- **Konsequenzen:** + Kern bleibt schlank, unabhängige Release-Kadenz. + Release safety guard now sets `IsPackable=false`, removes the stray `Peak.PCANBasic.NET` dependency, and marks the prototype experimental. − Functional ISO-TP defects still block production use (§11).
+- **Konsequenzen:** + Kern bleibt schlank, unabhängige Release-Kadenz. + Release-Schutz setzt nun `IsPackable=false`, entfernt die versehentliche `Peak.PCANBasic.NET`-Abhängigkeit und kennzeichnet den Prototyp als experimentell. − Funktionale ISO-TP-Defekte blockieren weiterhin den Produktionseinsatz (§11).
 
 ### ADR-5 (umgesetzt): L2-Demux statt konkurrierendem `ReceiveAsync`
 - **Kontext:** Mehrere Protokolle wollen denselben RX-Strom sehen; heute konkurrieren
@@ -1236,9 +1236,9 @@ Priorisierung: **K** = kritisch, **W** = wichtig, **G** = gering.
 | W | **`BitTimingSolver.FromSamplePoint`**: `Clamp` wirft statt `continue` bei kleinen NTQ. | Gesamte Timing-Suche crasht für bestimmte Limits. | ungültige NTQ überspringen (`continue`). | §2.5 |
 | W | **`CanEndpoint.Parse` lowercased Host**: `zlg://USBCANFD-200U` → `usbcanfd-200u`; Sonderzeichen werfen. | Adapter müssen case-insensitiv sein (nicht garantiert); Namen mit Leerzeichen scheitern. | Host case-preserving parsen; Namensregeln dokumentieren. | §2.5 |
 | G | **Typos in öffentlicher API**: Namespace `Excpetions`, `ReadTImeOutMs`, `ExceptionOccured`. | Nach 1.0 nur als Breaking Change korrigierbar. | Vor 1.0 bereinigen. | §3 |
-| G | **ISO-TP packaging release safety**: `IsPackable=false` is set, `Peak.PCANBasic.NET` is removed, and metadata marks the project experimental; mixed namespaces remain unchanged. | The unfinished prototype is not published as a NuGet package and no longer pulls the PEAK SDK transitively. | Keep the project unpackable until the future production ISO-TP package supersedes it; namespace cleanup remains a separate breaking-change decision. | §1.1/16, §3 |
+| G | **ISO-TP-Packaging-Release-Schutz**: `IsPackable=false` ist gesetzt, `Peak.PCANBasic.NET` ist entfernt, und die Metadaten kennzeichnen das Projekt als experimentell; gemischte Namespaces bleiben unverändert. | Der unfertige Prototyp wird nicht als NuGet-Paket veröffentlicht und zieht das PEAK-SDK nicht mehr transitiv ein. | Projekt bis zur Ablösung durch das künftige produktionsreife ISO-TP-Paket nicht packbar halten; Namespace-Bereinigung bleibt eine separate Breaking-Change-Entscheidung. | §1.1/16, §3 |
 | G | **Zeitbasis gemischt** (`DateTime.Now` vs. `UtcNow`) und Copy-Paste-Logtexte („Vector CAN bus", „ControlCAN poll loop"). | Korrelation erschwert; irreführende Logs. | Einheitlich UTC; Logtexte korrigieren. | §2.4, §2.5 |
-| G | **CI transport coverage**: adapter/core workflows still have legacy trigger debt, but `CanKitTransports.slnf` now has a build-only transport workflow. | Transport changes get a hardware-free Release build on Ubuntu and Windows. | Keep transport CI build-only until ISO-TP behavior tests exist. | §3, §4 |
+| G | **CI-Transportabdeckung**: Adapter-/Core-Workflows haben weiterhin Altlasten bei Triggern, aber `CanKitTransports.slnf` besitzt jetzt einen reinen Build-Transport-Workflow. | Transport-Änderungen erhalten einen hardwarefreien Release-Build auf Ubuntu und Windows (inkl. `net8.0-windows`). | Transport-CI bis zur Existenz von ISO-TP-Verhaltenstests build-only lassen. | §3, §4 |
 
 **Gesamtbewertung:** L0/L1 sind produktionsnah; die punktuellen kritischen Bugs
 (Stopwatch, BCM, QueuedCanBus, Frame-Ownership, Virtual-Hub) sind behoben (siehe ✅-Markierungen
