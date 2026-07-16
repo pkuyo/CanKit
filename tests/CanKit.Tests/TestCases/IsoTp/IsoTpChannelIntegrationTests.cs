@@ -479,6 +479,57 @@ public class IsoTpChannelIntegrationTests : IClassFixture<TestCaseProvider>
     }
 
     // --------------------------------------------------------------------------------
+    // Bugbot 3596378393 — an empty CF (PCI only, zero user bytes) must not advance
+    // ExpectedSn / BS / N_Cr; a subsequent valid CF with the same SN must still complete
+    // reassembly instead of mismatch-aborting or stalling until N_Cr.
+    // --------------------------------------------------------------------------------
+    [Fact]
+    public async Task MultiFrame_Receive_Ignores_Empty_ConsecutiveFrame_Without_Advancing_Sn()
+    {
+        var session = NewSession();
+        using var busA = OpenClassic(session, 0);
+        using var busB = OpenClassic(session, 1);
+
+        var epRecv = IsoTpEndpoint.Normal(txCanId: 0x328, rxCanId: 0x320);
+        var epPeer = IsoTpEndpoint.Normal(txCanId: 0x320, rxCanId: 0x328);
+
+        using var receiver = IsoTpFactory.Open(busB, epRecv, FastOptions());
+
+        var fcSeen = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        busA.FrameObserved += (_, e) =>
+        {
+            if (e.CanFrame.ID != unchecked((int)epRecv.TxCanId)) return;
+            var data = e.CanFrame.Data.ToArray();
+            if (data.Length > 0 && (data[0] >> 4) == 0x3)
+                fcSeen.TrySetResult(true);
+        };
+
+        var recvTask = receiver.ReceiveAsync(new CancellationTokenSource(ShortTimeout).Token);
+
+        // 13 bytes => FF carries 6, one CF carries the remaining 7 (classic CAN).
+        byte[] ffPayload = Enumerable.Range(0, 13).Select(i => (byte)(i + 0x40)).ToArray();
+        int ffData = IsoTpFrameCodec.FirstFrameMaxDataLength(isCanFd: false, usesAddressExtension: false, useLongLength: false);
+        var ff = IsoTpFrameCodec.BuildFirstFrame(epPeer, ffPayload.Length, ffPayload.AsSpan(0, ffData), isCanFd: false);
+        busA.Transmit(CanFrame.Classic(unchecked((int)epPeer.TxCanId), ff));
+
+        await fcSeen.Task.WaitAsync(ShortTimeout);
+
+        // PCI-only CF (SN=1) with no user data — previously advanced ExpectedSn to 2.
+        var emptyCf = IsoTpFrameCodec.BuildConsecutiveFrame(epPeer, sequenceNumber: 1,
+            ReadOnlySpan<byte>.Empty, isCanFd: false, padding: false);
+        busA.Transmit(CanFrame.Classic(unchecked((int)epPeer.TxCanId), emptyCf));
+
+        // Valid CF still carrying SN=1 must complete reassembly.
+        byte[] chunk = ffPayload.AsSpan(ffData).ToArray();
+        chunk.Length.Should().Be(7);
+        var goodCf = IsoTpFrameCodec.BuildConsecutiveFrame(epPeer, sequenceNumber: 1, chunk,
+            isCanFd: false, padding: true);
+        busA.Transmit(CanFrame.Classic(unchecked((int)epPeer.TxCanId), goodCf));
+
+        (await recvTask).Should().Equal(ffPayload);
+    }
+
+    // --------------------------------------------------------------------------------
     // Bugbot 3594960783 (HIGH) — a codec throw inside BeginSendOnLoop (e.g. > 4095 bytes
     // on classic CAN triggers ArgumentOutOfRangeException from BuildFirstFrame) must
     // (1) fault the awaiting SendAsync with the codec exception, (2) release the send-gate,

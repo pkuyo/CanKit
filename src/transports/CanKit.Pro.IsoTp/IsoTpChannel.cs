@@ -810,6 +810,12 @@ internal sealed class IsoTpChannel : IIsoTpChannel
         int remaining = rx.Buffer.Length - rx.Received;
         int available = payload.Length - pci.DataOffset;
         int copy = Math.Min(remaining, Math.Max(0, available));
+        // Empty CF (PCI-only / no user data): ignore without advancing SN, BS, or N_Cr.
+        // Advancing ExpectedSn here would desync reassembly so a valid next CF mismatches
+        // or stalls until N_Cr aborts (Bugbot 3596378393).
+        if (copy == 0)
+            return;
+
         Array.Copy(payload, pci.DataOffset, rx.Buffer, rx.Received, copy);
         rx.Received += copy;
         rx.ExpectedSn = IsoTpFrameCodec.NextConsecutiveSequenceNumber(rx.ExpectedSn);
