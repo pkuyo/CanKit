@@ -49,6 +49,14 @@ namespace CanKit.Pro.Hawe
         // state, so a Dispose racing with a codec callback is fully deterministic.
         private int _disposed;
 
+        // Set by Dispose *before* it starts awaiting the pump: read by PumpAsync and by Post-time
+        // helpers to stop enqueuing new codec callbacks once teardown is in progress. Ordering rule
+        // is "no OnFrameReceived after OnDetached"; Dispose enforces that by (1) cancelling the
+        // pump, (2) awaiting the pump task so no further OnFrameReceived can be posted, and only
+        // then (3) posting OnDetached. This flag is the belt-and-braces defense against a frame
+        // slipping through between (1) and (2) -- the pump checks it before each Post.
+        private int _detachStarted;
+
         // Codec-driven generic session state (FR-HAWE-004). Kept as an int for lock-free reads
         // from any thread via Volatile.Read; writes are serialized on the actor loop by
         // Host.SetSessionState, which is the only mutator.
@@ -109,6 +117,12 @@ namespace CanKit.Pro.Hawe
             {
                 await foreach (var frame in _subscription.Frames.WithCancellation(_pumpCts.Token).ConfigureAwait(false))
                 {
+                    // Stop enqueuing new frames the instant Dispose signals detach: keeps the
+                    // "no OnFrameReceived after OnDetached" ordering intact even against the
+                    // narrow window between _pumpCts.Cancel() and the enumerator actually
+                    // observing the cancellation on its next MoveNext.
+                    if (Volatile.Read(ref _detachStarted) != 0) break;
+
                     // Capture-by-value into the closure: CanFrameView is a struct, and the reference
                     // captured here is the buffered copy the subscription already owns (see
                     // Subscription.TryDeliver's payload-copy comment), so posting it to the actor
@@ -135,15 +149,28 @@ namespace CanKit.Pro.Hawe
         {
             if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
 
-            // Cancel the frame pump first so no new OnFrameReceived posts land after we start
-            // tearing the codec down. The subscription itself is disposed below.
+            // Signal detach-in-progress to the pump *before* cancelling: the pump checks this
+            // flag between iterations and stops enqueuing further OnFrameReceived posts, so a
+            // frame that arrived just before Cancel() cannot slip past into the mailbox behind
+            // the OnDetached we post below.
+            Volatile.Write(ref _detachStarted, 1);
             _pumpCts.Cancel();
 
-            // Post OnDetached onto the actor loop and wait for it (best effort): the codec is
-            // guaranteed exactly-once OnDetached on the same single-writer loop as every other
-            // callback, closing out any codec-owned resources safely. If the actor is already
-            // torn down for some reason, swallow the exception and continue -- Dispose must not
-            // throw for an already-broken channel.
+            // Wait for the pump task to end BEFORE posting OnDetached. This is the core of the
+            // "no OnFrameReceived after OnDetached" guarantee: once _pumpTask has completed no
+            // further _actor.Post(() => OnFrameReceived(...)) can ever be issued, so posting
+            // OnDetached here places it strictly after every OnFrameReceived that will ever run
+            // on the single-writer actor loop. Doing this in the opposite order (post OnDetached
+            // first, then await pump) let the pump enqueue late frames behind OnDetached and
+            // fire them after the codec had already been told the channel was detached.
+            try { _pumpTask.Wait(TimeSpan.FromSeconds(5)); }
+            catch { /* pump exits on cancel; ignore any residual AggregateException */ }
+
+            // Now, and only now, hand OnDetached to the actor loop. The codec is guaranteed
+            // exactly-once OnDetached on the same single-writer loop as every other callback,
+            // closing out any codec-owned resources safely. If the actor is already torn down
+            // for some reason, swallow the exception and continue -- Dispose must not throw for
+            // an already-broken channel.
             try
             {
                 _actor.PostAsync(WrapOnLoop(() => _codec.OnDetached())).Wait(TimeSpan.FromSeconds(5));
@@ -152,9 +179,6 @@ namespace CanKit.Pro.Hawe
             {
                 // See remark above: teardown is best-effort past this point.
             }
-
-            try { _pumpTask.Wait(TimeSpan.FromSeconds(5)); }
-            catch { /* pump exits on cancel; ignore any residual AggregateException */ }
 
             _subscription.Dispose();
             _actor.Dispose();

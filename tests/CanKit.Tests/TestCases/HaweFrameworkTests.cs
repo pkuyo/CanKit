@@ -403,6 +403,70 @@ public class HaweFrameworkTests : IClassFixture<TestCaseProvider>
         channel.SessionState.Should().Be(HaweSessionState.Fault);
     }
 
+    // Regression for the Dispose ordering race: prior to the fix, Dispose posted OnDetached
+    // BEFORE awaiting the pump task, so the pump could still Post OnFrameReceived items behind
+    // OnDetached in the mailbox and fire them after the codec had been told the channel was
+    // detached. The fix must guarantee no OnFrameReceived fires after OnDetached, even under
+    // constant traffic during Dispose. We give the race the widest possible window: a slow codec
+    // (so the actor mailbox visibly accumulates work behind OnDetached) plus a large burst of
+    // frames still resident in the subscription buffer at the moment Dispose runs.
+    [Fact]
+    public async Task No_OnFrameReceived_Fires_After_OnDetached_During_Dispose()
+    {
+        var session = NewSession();
+        using var sender = Open(session, 0);
+        using var receiver = Open(session, 1);
+        using var service = new CanBusService(receiver);
+
+        // A modest per-frame delay in the codec keeps enough work in the actor mailbox at any
+        // given instant that the OnDetached post lands somewhere in the middle rather than at
+        // the very tail -- so any pre-fix late post from the pump is a genuine post-OnDetached
+        // fire, not a timing artifact. Small enough that the whole test drains well under the
+        // 5 s Dispose timeout.
+        var codec = new OrderCapturingCodec(HaweFramePattern.Range(0x100, 0x1FF), perFrameDelayMs: 1);
+        var channel = new HaweChannel(service, codec, new HaweChannelOptions { SubscriptionBufferCapacity = 4096 });
+        codec.Attached.Status.Should().Be(TaskStatus.RanToCompletion);
+
+        // Continuous background flood: keeps the subscription buffer refilling so the pump is
+        // repeatedly inside its "TryRead + Post" hot loop rather than parked at
+        // WaitToReadAsync (which would cancel cleanly with no late posts). Bounded by both
+        // the flood cancellation and the total frame budget -- we want the race window open
+        // during Dispose, not runaway traffic for the whole test.
+        using var floodCts = new CancellationTokenSource();
+        var flooder = Task.Run(async () =>
+        {
+            for (var i = 0; i < 200 && !floodCts.IsCancellationRequested; i++)
+            {
+                try { sender.Transmit(CanFrame.Classic(0x100, new byte[] { (byte)(i & 0xFF) })); }
+                catch { break; }
+                // Yield often enough that the pump can interleave TryRead/Post iterations with
+                // new frames arriving; without this the sender bursts to completion before the
+                // pump ever starts and Dispose sees an empty subscription.
+                if ((i % 20) == 19) await Task.Delay(1).ConfigureAwait(false);
+            }
+        });
+
+        // Give the pump time to actually start moving those frames onto the actor loop, so at
+        // least a few OnFrameReceived have fired before Dispose runs (proves the pump is
+        // active and the subscription buffer is populated).
+        var deadline = DateTime.UtcNow + ShortTimeout;
+        while (codec.ReceivedCount < 5 && DateTime.UtcNow < deadline)
+            await Task.Delay(1);
+        codec.ReceivedCount.Should().BeGreaterThan(0, "the pump must be actively delivering frames before Dispose");
+
+        channel.Dispose();
+        floodCts.Cancel();
+        try { await flooder; } catch { /* transmit may throw once the bus goes away; that is fine */ }
+
+        // The channel is disposed. Give the actor loop one more moment to publish any late
+        // post to _framesAfterDetach the pre-fix ordering would have queued behind OnDetached.
+        await Task.Delay(50);
+
+        codec.DetachedCount.Should().Be(1);
+        codec.FramesAfterDetach.Should().Be(0,
+            "OnFrameReceived must never be dispatched after OnDetached on the single-writer loop");
+    }
+
     // Constructor guards.
     [Fact]
     public void HaweChannel_Rejects_Null_Args()
@@ -489,4 +553,44 @@ public class HaweFrameworkTests : IClassFixture<TestCaseProvider>
         public void OnDetached() { }
     }
 
+    // Records the order of callbacks: any OnFrameReceived that runs after OnDetached is a
+    // regression of the Dispose ordering fix. All bookkeeping happens on the single-writer actor
+    // loop, so plain (non-volatile) counters are fine.
+    private sealed class OrderCapturingCodec : IHaweCodec
+    {
+        private readonly TaskCompletionSource<bool> _attachedTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly int _perFrameDelayMs;
+        private int _received;
+        private int _detached;
+        private int _framesAfterDetach;
+        public OrderCapturingCodec(HaweFramePattern pattern, int perFrameDelayMs = 0)
+        {
+            FramePattern = pattern;
+            _perFrameDelayMs = perFrameDelayMs;
+        }
+        public string Name => "order-capturing-codec";
+        public HaweFramePattern FramePattern { get; }
+        public Task Attached => _attachedTcs.Task;
+        public int ReceivedCount => Volatile.Read(ref _received);
+        public int DetachedCount => Volatile.Read(ref _detached);
+        public int FramesAfterDetach => Volatile.Read(ref _framesAfterDetach);
+
+        public void OnAttached(IHaweCodecHost host) => _attachedTcs.TrySetResult(true);
+
+        public void OnFrameReceived(in CanFrameView frame)
+        {
+            // Ordering check is on the actor loop, so a plain read of _detached is authoritative:
+            // any nonzero value here means OnDetached already ran and this OnFrameReceived is a
+            // regression.
+            if (_detached != 0) Interlocked.Increment(ref _framesAfterDetach);
+            Interlocked.Increment(ref _received);
+            // Slow the actor loop's frame consumption so the mailbox visibly backs up behind any
+            // work Dispose posts, giving the pre-fix race the widest possible window to lose.
+            if (_perFrameDelayMs > 0) Thread.Sleep(_perFrameDelayMs);
+        }
+
+        public void OnSessionStateChanged(HaweSessionState previous, HaweSessionState current) { }
+
+        public void OnDetached() => Interlocked.Increment(ref _detached);
+    }
 }
