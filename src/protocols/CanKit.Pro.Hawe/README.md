@@ -32,7 +32,7 @@ any knowledge of the HAWE protocol (SRS FR-HAWE-001..005, arc42 §5 L4).
   layout, no service catalogue, no HAWE-specific semantics.
 - `HaweSessionState` — placeholder three-state alphabet for `FR-HAWE-004`.
 - `IHaweCodecRegistry` / `HaweCodecRegistry` — in-process, name-keyed factory registry
-  analogous to `IIsoTpRegister` (`FR-HAWE-001`).
+  for pluggable codecs (`FR-HAWE-001`).
 - `IHaweChannel` / `HaweChannel` — the running attachment of one codec to one bus service.
 
 ## Example
@@ -76,4 +76,4 @@ dotnet test CanKitProHawe.slnf -c Release -f net8.0
 - SRS: `docs/requirements/SRS-CanKit.md`, §4.3.4 (`FR-HAWE-001..005`), §5 `CON-006`,
   §6 `A-6`.
 - arc42: `docs/architecture/arc42-CanKit.md`, §3 L4 building blocks / §5 zoom L2.
-- Analogous SPI shape: `src/core/CanKit.Abstractions/SPI/Registry/Transports/IIsoTpRegister.cs`.
+- SPI pattern: name-keyed in-process factory registry (see `HaweCodecRegistry`).

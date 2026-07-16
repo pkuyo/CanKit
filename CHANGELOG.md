@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+### Removed
+
+* Legacy `CanKit.Transport.IsoTp` prototype (functionally defective; superseded by `CanKit.Pro.IsoTp`).
+* Abstractions ISO-TP surface `CanKit.Abstractions.API.Transport.*` (including the `Excpetions`
+  typo namespace) and `IIsoTpRegister`.
+* PCAN native ISO-TP register path (`PcanIsoTp*`, `PcanIsoTpRegister`) that depended on the
+  removed Abstractions transport API.
+* `CanKitTransports.slnf` and `.github/workflows/transports-ci.yml` (replaced by Pro IsoTp CI).
+
+### Changed
+
+* ISO-TP is exclusively provided by `CanKit.Pro.IsoTp` on the L2 services.
+
 ## 0.5.5
 
 Published packages:
