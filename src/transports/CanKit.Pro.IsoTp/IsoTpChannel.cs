@@ -45,6 +45,9 @@ internal sealed class IsoTpChannel : IIsoTpChannel
     private readonly bool _ownsService;
     private readonly IsoTpEndpoint _endpoint;
     private readonly IsoTpChannelOptions _options;
+    // Cached at construction so a negative / unencodable LocalStMin fails Open instead of
+    // throwing on the actor loop mid-FF (which left ReceiveAsync hung — Bugbot 3597312227).
+    private readonly byte _localStMinRaw;
 
     private readonly ProtocolActor _actor;
     private readonly DeadlineScheduler _deadlines;
@@ -110,6 +113,9 @@ internal sealed class IsoTpChannel : IIsoTpChannel
         _endpoint = endpoint;
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _ownsService = ownsService;
+        // Encode once: EncodeStMin throws on negative values; surfacing at Open keeps the RX
+        // path free of codec throws that ProtocolActor would only raise as BackgroundException.
+        _localStMinRaw = IsoTpFrameCodec.EncodeStMin(_options.LocalStMin);
 
         var inboxOptions = new BoundedChannelOptions(Math.Max(1, _options.ReceiveBufferCapacity))
         {
@@ -665,15 +671,7 @@ internal sealed class IsoTpChannel : IIsoTpChannel
                     // handed to the driver. Apply any FC that arrived during the confirm wait
                     // only now so CF cannot race ahead of FF on the wire.
                     tx.State = TxStage.WaitFcInitial;
-                    if (tx.DeferredFc is { } deferred)
-                    {
-                        tx.DeferredFc = null;
-                        HandleRxFlowControl(deferred);
-                    }
-                    else
-                    {
-                        ArmNBs();
-                    }
+                    ApplyDeferredFlowControlsOrArmNBs(tx);
                     break;
                 }
 
@@ -695,13 +693,20 @@ internal sealed class IsoTpChannel : IIsoTpChannel
                         tx.CfsInCurrentBlock++;
                         if (tx.CfsInCurrentBlock >= tx.BlockSize)
                         {
+                            // Fix (Bugbot 3597408323): peer may answer FC after the last CF of
+                            // the block is on the wire but before our TX-confirm completes.
+                            // Those FCs were deferred while State==SendingCf; apply them now
+                            // instead of arming N_Bs and timing out on an already-received FC.
                             tx.State = TxStage.WaitFcBlock;
                             tx.CfsInCurrentBlock = 0;
-                            ArmNBs();
+                            ApplyDeferredFlowControlsOrArmNBs(tx);
                             break;
                         }
                     }
 
+                    // Mid-block CF confirm: any FC deferred during SendingCf was unexpected for
+                    // a conforming peer; drop it so it cannot be applied at a later WaitFcBlock.
+                    tx.DeferredFcs?.Clear();
                     ScheduleNextCf(tx);
                     break;
                 }
@@ -866,7 +871,7 @@ internal sealed class IsoTpChannel : IIsoTpChannel
         // ISO 15765-2 still expects an FC after FF even when the FF already carried the full
         // announced length (defensive path for peers that finish in one FF).
         var fc = IsoTpFrameCodec.BuildFlowControl(_endpoint, FlowStatus.ClearToSend,
-            _options.LocalBlockSize, IsoTpFrameCodec.EncodeStMin(_options.LocalStMin),
+            _options.LocalBlockSize, _localStMinRaw,
             _options.UseCanFd, _options.UsePadding, _options.PaddingByte);
         SendUnsequencedFrame(fc);
 
@@ -931,7 +936,7 @@ internal sealed class IsoTpChannel : IIsoTpChannel
             if (rx.BlockCounter <= 0)
             {
                 var fc = IsoTpFrameCodec.BuildFlowControl(_endpoint, FlowStatus.ClearToSend,
-                    _options.LocalBlockSize, IsoTpFrameCodec.EncodeStMin(_options.LocalStMin),
+                    _options.LocalBlockSize, _localStMinRaw,
                     _options.UseCanFd, _options.UsePadding, _options.PaddingByte);
                 SendUnsequencedFrame(fc);
                 rx.BlockCounter = _options.LocalBlockSize;
@@ -942,7 +947,9 @@ internal sealed class IsoTpChannel : IIsoTpChannel
         rx.RearmDeadline(_deadlines, _options.NCr, OnNCrExpired);
     }
 
-    private void HandleRxFlowControl(Pci pci)
+    private void HandleRxFlowControl(Pci pci) => HandleRxFlowControl(pci, deferIfBusy: true);
+
+    private void HandleRxFlowControl(Pci pci, bool deferIfBusy)
     {
         var tx = _tx;
         if (tx is null)
@@ -950,9 +957,20 @@ internal sealed class IsoTpChannel : IIsoTpChannel
 
         // FF handed to the driver but not yet TX-confirmed: defer FC until FirstFrameConfirm so
         // we neither arm N_Bs early nor emit CF before FF confirm (Bugbot 3596580056).
-        if (tx.State == TxStage.SingleOrFirstInFlight && tx.Offset > 0)
+        // Queue (not overwrite) so multiple Wait FCs in this window still count toward WftMax
+        // (Bugbot 3597408331).
+        if (deferIfBusy && tx.State == TxStage.SingleOrFirstInFlight && tx.Offset > 0)
         {
-            tx.DeferredFc = pci;
+            (tx.DeferredFcs ??= new List<Pci>()).Add(pci);
+            return;
+        }
+
+        // Last CF of a block may still be awaiting TX-confirm (State==SendingCf) when the peer
+        // already answers with FC. Defer until ConsecutiveFrameConfirm enters WaitFcBlock
+        // (Bugbot 3597408323); also queue so Wait counting is preserved (Bugbot 3597408331).
+        if (deferIfBusy && tx.State == TxStage.SendingCf)
+        {
+            (tx.DeferredFcs ??= new List<Pci>()).Add(pci);
             return;
         }
 
@@ -990,6 +1008,40 @@ internal sealed class IsoTpChannel : IIsoTpChannel
                 FailTx(new IsoTpOverflowException(
                     "Peer indicated Flow-Control Overflow (FS=OVFLW); PDU too large for the receiver."));
                 break;
+        }
+    }
+
+    /// <summary>
+    /// Applies Flow-Control frames that arrived while FF/CF TX-confirm was still outstanding,
+    /// in arrival order so Wait counting toward <see cref="IsoTpChannelOptions.WftMax"/> is
+    /// preserved (Bugbot 3597408331). Arms N_Bs when nothing was deferred.
+    /// </summary>
+    private void ApplyDeferredFlowControlsOrArmNBs(TxState tx)
+    {
+        var deferred = tx.DeferredFcs;
+        tx.DeferredFcs = null;
+        if (deferred is null || deferred.Count == 0)
+        {
+            ArmNBs();
+            return;
+        }
+
+        foreach (var pci in deferred)
+        {
+            if (!ReferenceEquals(_tx, tx))
+                return; // FailTx / CompleteTx already cleared this operation
+            // deferIfBusy: false — we are already in WaitFc*; do not re-queue into DeferredFcs
+            // if a prior CTS in this batch moved State to SendingCf.
+            HandleRxFlowControl(pci, deferIfBusy: false);
+        }
+
+        // If every deferred FC was ignored (unexpected status / state) and we are still waiting
+        // for peer FC without a live N_Bs deadline, arm it now.
+        if (ReferenceEquals(_tx, tx)
+            && tx.State is (TxStage.WaitFcInitial or TxStage.WaitFcBlock)
+            && tx.NBsDeadline is null)
+        {
+            ArmNBs();
         }
     }
 
@@ -1154,10 +1206,11 @@ internal sealed class IsoTpChannel : IIsoTpChannel
         public IDeadline? NBsDeadline { get; set; }
 
         /// <summary>
-        /// FC that arrived while the First Frame was still awaiting TX confirmation
-        /// (Bugbot 3596580056).
+        /// Flow-Control frames that arrived while FF/last-CF-of-block TX confirmation was still
+        /// outstanding (Bugbot 3596580056 / 3597408323). Kept as a list so multiple Wait FCs in
+        /// that window still count toward WftMax (Bugbot 3597408331).
         /// </summary>
-        public Pci? DeferredFc { get; set; }
+        public List<Pci>? DeferredFcs { get; set; }
 
         public void Fail(Exception ex)
         {

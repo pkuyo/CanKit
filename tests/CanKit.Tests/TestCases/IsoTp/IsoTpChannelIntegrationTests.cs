@@ -876,7 +876,7 @@ public class IsoTpChannelIntegrationTests : IClassFixture<TestCaseProvider>
         var epAB = IsoTpEndpoint.Normal(0x240, 0x241);
 
         using var inner = new CanBusService(busA);
-        using var holdConfirm = new ManualResetEventSlim(false);
+        using var holdConfirm = new SemaphoreSlim(0, 1);
         using var confirmStarted = new ManualResetEventSlim(false);
         var delaying = new DelayingConfirmService(inner, holdConfirm, confirmStarted);
         var sender = IsoTpFactory.Open(delaying, epAB, FastOptions(), leaveOpen: true);
@@ -889,7 +889,7 @@ public class IsoTpChannelIntegrationTests : IClassFixture<TestCaseProvider>
         Action dispose = () => sender.Dispose();
         dispose.Should().NotThrow("Dispose must wait out the send-gate holder before disposing it");
 
-        holdConfirm.Set();
+        holdConfirm.Release();
 
         Func<Task> send = () => sendTask.WaitAsync(ShortTimeout);
         // Clean shutdown: FailTx's ObjectDisposedException, not a secondary ODE from Release.
@@ -917,7 +917,7 @@ public class IsoTpChannelIntegrationTests : IClassFixture<TestCaseProvider>
         var epBA = IsoTpEndpoint.Normal(0x231, 0x230);
 
         using var inner = new CanBusService(busA);
-        using var holdFirstConfirm = new ManualResetEventSlim(false);
+        using var holdFirstConfirm = new SemaphoreSlim(0, 1);
         using var firstConfirmStarted = new ManualResetEventSlim(false);
         var delaying = new DelayingConfirmService(inner, holdFirstConfirm, firstConfirmStarted);
         using var sender = IsoTpFactory.Open(delaying, epAB, FastOptions(), leaveOpen: true);
@@ -960,7 +960,7 @@ public class IsoTpChannelIntegrationTests : IClassFixture<TestCaseProvider>
         framesToPeer.Should().Be(0,
             "no SF may hit the peer while the aborted send's SendConfirmed is still parked");
 
-        holdFirstConfirm.Set();
+        holdFirstConfirm.Release();
 
         Func<Task> cancelled = () => cancelledSend.WaitAsync(ShortTimeout);
         await cancelled.Should().ThrowAsync<OperationCanceledException>();
@@ -971,6 +971,129 @@ public class IsoTpChannelIntegrationTests : IClassFixture<TestCaseProvider>
             await Task.Delay(20);
         framesToPeer.Should().Be(2, "follow-up SendAsync must TX only after the aborted bus TX drains");
         lastSfDl.Should().Be(3);
+    }
+
+    // --------------------------------------------------------------------------------
+    // Bugbot 3597312227 (HIGH) — negative LocalStMin used to throw EncodeStMin on the actor
+    // loop when building FC after FF, so _rx/N_Cr never started and ReceiveAsync hung. Open
+    // must now reject the options up front.
+    // --------------------------------------------------------------------------------
+    [Fact]
+    public void Open_With_Negative_LocalStMin_Throws()
+    {
+        var session = NewSession();
+        using var busA = OpenClassic(session, 0);
+
+        var opts = FastOptions(localStMin: TimeSpan.FromMilliseconds(-1));
+        Action act = () => IsoTpFactory.Open(busA, IsoTpEndpoint.Normal(0x250, 0x251), opts);
+        act.Should().Throw<ArgumentOutOfRangeException>()
+            .WithParameterName("value");
+    }
+
+    // --------------------------------------------------------------------------------
+    // Bugbot 3597408323 (HIGH) — FC arriving while the last CF of a block awaits TX-confirm
+    // (State==SendingCf) must not be dropped. Under the bug the sender entered WaitFcBlock,
+    // armed N_Bs, and timed out even though the peer had already answered.
+    // --------------------------------------------------------------------------------
+    [Fact]
+    public async Task MultiFrame_Send_Accepts_FlowControl_Arriving_During_Last_Cf_Confirm()
+    {
+        var session = NewSession();
+        using var busA = OpenClassic(session, 0);
+        using var busB = OpenClassic(session, 1);
+
+        var epAB = IsoTpEndpoint.Normal(0x260, 0x261);
+        var epBA = IsoTpEndpoint.Normal(0x261, 0x260);
+
+        using var inner = new CanBusService(busA);
+        // Hold every SendConfirmed so peer FC can race into SendingCf before confirm.
+        using var holdConfirm = new SemaphoreSlim(0, 32);
+        using var confirmStarted = new ManualResetEventSlim(false);
+        var delaying = new DelayingConfirmService(inner, holdConfirm, confirmStarted,
+            holdEveryConfirm: true, holdAfterTransmit: true);
+        using var sender = IsoTpFactory.Open(delaying, epAB,
+            FastOptions(nBs: TimeSpan.FromMilliseconds(400)), leaveOpen: true);
+        using var receiver = IsoTpFactory.Open(busB, epBA,
+            FastOptions(localBs: 1)); // BS=1 => FC after every CF
+
+        // 20 bytes classic: FF(6) + CF1(7) + CF2(7). With peer BS=1, sender waits for FC after
+        // FF, after CF1, and completes after CF2.
+        byte[] pdu = Enumerable.Range(0, 20).Select(i => (byte)(i + 1)).ToArray();
+        var recvTask = receiver.ReceiveAsync(new CancellationTokenSource(ShortTimeout).Token);
+        var sendTask = sender.SendAsync(pdu);
+
+        // Release confirms one-by-one. holdAfterTransmit puts the frame on the wire first so the
+        // peer can answer FC while our SendConfirmed is still parked (SendingCf window).
+        for (int i = 0; i < 10 && !sendTask.IsCompleted; i++)
+        {
+            confirmStarted.Wait(TimeSpan.FromSeconds(2)).Should().BeTrue(
+                "next SendConfirmed should park after transmitting");
+            confirmStarted.Reset();
+            // Give the peer a moment to observe the frame and emit FC before we complete confirm.
+            await Task.Delay(40);
+            holdConfirm.Release();
+        }
+
+        holdConfirm.Release(8); // drain any straggler confirms
+        await sendTask.WaitAsync(ShortTimeout);
+        (await recvTask).Should().Equal(pdu);
+    }
+
+    // --------------------------------------------------------------------------------
+    // Bugbot 3597408331 (HIGH) — multiple Wait FCs during FF TX-confirm must each count
+    // toward WftMax. A single DeferredFc slot used to keep only the last Wait.
+    // --------------------------------------------------------------------------------
+    [Fact]
+    public async Task MultiFrame_Send_Counts_Wait_FlowControls_Deferred_During_Ff_Confirm()
+    {
+        var session = NewSession();
+        using var busA = OpenClassic(session, 0);
+        using var busB = OpenClassic(session, 1);
+
+        var epAB = IsoTpEndpoint.Normal(0x270, 0x271);
+        var epBA = IsoTpEndpoint.Normal(0x271, 0x270);
+
+        int wftMax = 2;
+        using var inner = new CanBusService(busA);
+        using var holdConfirm = new SemaphoreSlim(0, 1);
+        using var confirmStarted = new ManualResetEventSlim(false);
+        var delaying = new DelayingConfirmService(inner, holdConfirm, confirmStarted,
+            holdAfterTransmit: true);
+        using var sender = IsoTpFactory.Open(delaying, epAB,
+            FastOptions(nBs: TimeSpan.FromSeconds(2), wftMax: wftMax), leaveOpen: true);
+
+        var ffSeen = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        busB.FrameObserved += (_, e) =>
+        {
+            if (e.CanFrame.ID != 0x270) return;
+            var payload = e.CanFrame.Data.ToArray();
+            if (payload.Length > 0 && (payload[0] >> 4) == 0x1)
+                ffSeen.TrySetResult(true);
+        };
+
+        byte[] pdu = Enumerable.Range(0, 30).Select(i => (byte)i).ToArray();
+        var sendTask = sender.SendAsync(pdu);
+
+        confirmStarted.Wait(TimeSpan.FromSeconds(5)).Should().BeTrue(
+            "FF SendConfirmed must be parked so Wait FCs arrive during SingleOrFirstInFlight");
+        await ffSeen.Task.WaitAsync(ShortTimeout);
+
+        // Pump WftMax+1 Wait FCs while FF confirm is still held — all must be queued and
+        // counted when confirm completes (under the bug only the last Wait survived).
+        for (int i = 0; i < wftMax + 1; i++)
+        {
+            var fc = IsoTpFrameCodec.BuildFlowControl(epBA, FlowStatus.Wait,
+                blockSize: 0, stMinRaw: 0, isCanFd: false, padding: true);
+            busB.Transmit(CanFrame.Classic(0x271, fc));
+            await Task.Delay(20);
+        }
+
+        holdConfirm.Release();
+
+        Func<Task> act = () => sendTask.WaitAsync(ShortTimeout);
+        var ex = (await act.Should().ThrowAsync<IsoTpWaitFrameLimitExceededException>()).Which;
+        ex.Limit.Should().Be(wftMax);
+        ex.WaitFramesReceived.Should().BeGreaterThan(wftMax);
     }
 
     // --------------------------------------------------------------------------------
@@ -1023,22 +1146,36 @@ public class IsoTpChannelIntegrationTests : IClassFixture<TestCaseProvider>
 
     /// <summary>
     /// Test double: forwards every <see cref="ICanBusService"/> call to an inner service, but
-    /// parks the first <see cref="ICanBusService.SendConfirmed"/> until
-    /// <paramref name="release"/> is signaled so cancel/gate races are deterministic.
+    /// parks <see cref="ICanBusService.SendConfirmed"/> until <paramref name="release"/> is
+    /// signaled so cancel/gate / deferred-FC races are deterministic.
     /// </summary>
+    /// <remarks>
+    /// <list type="bullet">
+    /// <item><description>Default: hold only the first confirm <em>before</em> transmitting
+    /// (cancel/gate tests need the frame off the wire until release).</description></item>
+    /// <item><description><paramref name="holdAfterTransmit"/>: transmit first, then park — so
+    /// peers can answer FC while TX-confirm is still outstanding (deferred-FC tests).</description></item>
+    /// <item><description><paramref name="holdEveryConfirm"/>: park every confirm, not just the
+    /// first (block-FC races across multiple CFs).</description></item>
+    /// </list>
+    /// </remarks>
     private sealed class DelayingConfirmService : ICanBusService
     {
         private readonly ICanBusService _inner;
-        private readonly ManualResetEventSlim _release;
+        private readonly SemaphoreSlim _release;
         private readonly ManualResetEventSlim _started;
+        private readonly bool _holdEveryConfirm;
+        private readonly bool _holdAfterTransmit;
         private int _confirmCount;
 
-        public DelayingConfirmService(ICanBusService inner, ManualResetEventSlim release,
-            ManualResetEventSlim started)
+        public DelayingConfirmService(ICanBusService inner, SemaphoreSlim release,
+            ManualResetEventSlim started, bool holdEveryConfirm = false, bool holdAfterTransmit = false)
         {
             _inner = inner;
             _release = release;
             _started = started;
+            _holdEveryConfirm = holdEveryConfirm;
+            _holdAfterTransmit = holdAfterTransmit;
         }
 
         public ICanBus Bus => _inner.Bus;
@@ -1056,7 +1193,10 @@ public class IsoTpChannelIntegrationTests : IClassFixture<TestCaseProvider>
         public async Task<TxConfirmation> SendConfirmed(CanFrame frame, TimeSpan? timeout = null,
             CancellationToken cancellationToken = default)
         {
-            if (Interlocked.Increment(ref _confirmCount) == 1)
+            int n = Interlocked.Increment(ref _confirmCount);
+            bool hold = _holdEveryConfirm || n == 1;
+
+            if (hold && !_holdAfterTransmit)
             {
                 _started.Set();
                 // Do not honor cancellationToken here: the point of the test is that IsoTpChannel
@@ -1064,7 +1204,17 @@ public class IsoTpChannelIntegrationTests : IClassFixture<TestCaseProvider>
                 if (!_release.Wait(TimeSpan.FromSeconds(10)))
                     throw new TimeoutException("test release gate was never signaled");
             }
-            return await _inner.SendConfirmed(frame, timeout, cancellationToken).ConfigureAwait(false);
+
+            var result = await _inner.SendConfirmed(frame, timeout, cancellationToken).ConfigureAwait(false);
+
+            if (hold && _holdAfterTransmit)
+            {
+                _started.Set();
+                if (!_release.Wait(TimeSpan.FromSeconds(10)))
+                    throw new TimeoutException("test release gate was never signaled");
+            }
+
+            return result;
         }
 
         public void Dispose() { /* leaveOpen: inner disposed by test */ }

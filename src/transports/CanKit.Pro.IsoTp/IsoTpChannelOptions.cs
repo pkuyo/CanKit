@@ -48,6 +48,8 @@ public sealed class IsoTpChannelOptions
     /// STmin advertised on Flow-Control frames sent by this channel while receiving multi-frame
     /// PDUs. Encoded per ISO 15765-2 (0..127 ms in 1-ms steps, 100..900 µs in 100-µs steps).
     /// Defaults to <see cref="TimeSpan.Zero"/> (no minimum separation requested).
+    /// Must be non-negative — a negative value fails channel open via
+    /// <see cref="IsoTpFrameCodec.EncodeStMin"/>.
     /// </summary>
     public TimeSpan LocalStMin { get; init; } = TimeSpan.Zero;
 
