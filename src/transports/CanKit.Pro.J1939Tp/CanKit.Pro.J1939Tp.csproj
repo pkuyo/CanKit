@@ -45,4 +45,13 @@
     <ItemGroup>
         <None Include="README.md" Pack="true" PackagePath="" />
     </ItemGroup>
+
+    <!-- Expose internal wire-format helpers (J1939TpFrames, control-byte constants) to the
+         test assembly so J1939TpTests can inject synthetic RTS/CTS/DT/Abort frames on the bus
+         via CanKit.Pro.RawCan without duplicating the SAE J1939-21 §5.10 codec. -->
+    <ItemGroup>
+        <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+            <_Parameter1>CanKit.Tests</_Parameter1>
+        </AssemblyAttribute>
+    </ItemGroup>
 </Project>

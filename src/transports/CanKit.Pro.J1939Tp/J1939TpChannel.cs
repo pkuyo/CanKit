@@ -19,9 +19,28 @@ namespace CanKit.Pro.J1939Tp;
 /// services: <see cref="ICanBusService"/> for RX demux and TX confirmation,
 /// <see cref="IProtocolActor"/> for single-writer per-session state, and
 /// <see cref="DeadlineScheduler"/> for the J1939-21 §5.10.2.4 timers T1..T4/Tr/Th (SRS
-/// FR-TP-032/034). Every RX session is keyed by (source address, PGN) and every TX session by
-/// (destination address, PGN), so any number of concurrent BAM / TP.CM sessions can run in
-/// parallel without interfering (FR-TP-034/035).
+/// FR-TP-032/034).
+///
+/// <para>
+/// Session keying follows what the wire can actually distinguish, not just what an initiator
+/// might wish for. J1939-21 §5.10.3 explicitly restricts a receiver to a single active TP.CM
+/// connection per (source, destination) pair and treats BAM as a per-source broadcast: a
+/// second concurrent connection of the same kind from the same peer is a protocol error to be
+/// refused (RTS → Abort, code 1/7), and a new BAM implicitly supersedes any previous BAM from
+/// the same source per §5.10.3 ("new BAM aborts previous"). TP.DT frames carry no PGN, so we
+/// literally cannot demultiplex two overlapping RX sessions from one source even if we wanted
+/// to -- the DT frame's only routing keys are (SA, DA), and DA==0xFF vs SA distinguishes
+/// broadcast (BAM) from directed (CM). We therefore key <see cref="_rxSessions"/> on
+/// <c>(source address, kind)</c>: at most one BAM and one CM RX session per peer at any time.
+/// </para>
+/// <para>
+/// TX sessions are keyed by <c>(destination address, PGN)</c>: we are the initiator, so we
+/// only allow one outbound TP.CM per (dst, PGN) but do not restrict *ourselves* from opening
+/// two TP.CM sessions to two different destinations -- the peer at each destination sees only
+/// one connection from us and remains within its own §5.10.3 quota. Any number of concurrent
+/// TX sessions with distinct (dst, PGN) tuples therefore runs in parallel without interfering
+/// (FR-TP-034/035).
+/// </para>
 /// </summary>
 internal sealed class J1939TpChannel : IJ1939TpChannel
 {
@@ -309,18 +328,19 @@ internal sealed class J1939TpChannel : IJ1939TpChannel
     {
         byte control = payload[0];
         uint dataPgn = J1939TpFrames.ReadDataPgn(payload);
-        var key = new RxSessionKey(sa, dataPgn);
 
         switch (control)
         {
             case J1939TpFrames.ControlBam:
                 {
-                    // BAM starts a fresh RX session for (sa, pgn). Any earlier half-built BAM
-                    // for the same pair is discarded per J1939-21 §5.10.3 "new BAM aborts".
-                    if (_rxSessions.TryGetValue(key, out var existing))
+                    // §5.10.3: at most one BAM per source at any time. A fresh BAM from the same
+                    // sender implicitly supersedes any previous (possibly half-built) one --
+                    // there is no ack channel to reject the new one on.
+                    var bamKey = new RxSessionKey(sa, J1939TpKind.Bam);
+                    if (_rxSessions.TryGetValue(bamKey, out var existing))
                     {
                         existing.Cancel();
-                        _rxSessions.Remove(key);
+                        _rxSessions.Remove(bamKey);
                     }
                     int totalBytes = payload[1] | (payload[2] << 8);
                     int totalPackets = payload[3];
@@ -330,20 +350,21 @@ internal sealed class J1939TpChannel : IJ1939TpChannel
                         return;
                     }
                     var session = RxSession.NewBam(sa, dataPgn, totalBytes, totalPackets, _deadlines, _options, OnRxT1Expired);
-                    _rxSessions[key] = session;
+                    _rxSessions[bamKey] = session;
                     break;
                 }
 
             case J1939TpFrames.ControlRts:
                 {
-                    // If a session is already in progress for the same (sa, pgn), abort per
-                    // §5.10.5 code 7 (SessionAlreadyOpen).
-                    if (_rxSessions.TryGetValue(key, out var existing))
+                    // §5.10.3: only one CM connection per (SA, DA) pair, so if a CM session with
+                    // this source is already in progress -- even for a *different* PGN -- refuse
+                    // the new one and leave the ongoing one intact. Emit the abort against the
+                    // new RTS's PGN so the peer can correlate the rejection.
+                    var cmKey = new RxSessionKey(sa, J1939TpKind.Cm);
+                    if (_rxSessions.ContainsKey(cmKey))
                     {
                         SendTpCm(J1939TpFrames.BuildAbort(J1939TpAbortReason.SessionAlreadyOpen, dataPgn),
                             destinationAddress: sa);
-                        existing.Cancel();
-                        _rxSessions.Remove(key);
                         return;
                     }
 
@@ -366,7 +387,7 @@ internal sealed class J1939TpChannel : IJ1939TpChannel
                         _deadlines, _options, OnRxT1Expired);
                     session.NextExpectedSn = 1;
                     session.BlockRemaining = block;
-                    _rxSessions[key] = session;
+                    _rxSessions[cmKey] = session;
                     SendTpCm(J1939TpFrames.BuildCts(block, 1, dataPgn), destinationAddress: sa);
                     // Now waiting for the peer to actually send the DTs; T1 covers that gap.
                     break;
@@ -374,10 +395,15 @@ internal sealed class J1939TpChannel : IJ1939TpChannel
 
             case J1939TpFrames.ControlAbort:
                 {
-                    if (_rxSessions.TryGetValue(key, out var existing))
+                    // Aborts are per-CM-session; only cancel the session if the peer aborted the
+                    // PGN we're actually reassembling. A stray abort for a different PGN (e.g.
+                    // late-arriving frame from a previous, already-torn-down session) must not
+                    // kill the current transfer.
+                    var cmKey = new RxSessionKey(sa, J1939TpKind.Cm);
+                    if (_rxSessions.TryGetValue(cmKey, out var existing) && existing.Pgn == dataPgn)
                     {
                         existing.Cancel();
-                        _rxSessions.Remove(key);
+                        _rxSessions.Remove(cmKey);
                         RaiseBackgroundException(new J1939TpAbortException(
                             (J1939TpAbortReason)payload[1], dataPgn,
                             $"Peer 0x{sa:X2} aborted TP.CM RX session for PGN 0x{dataPgn:X}."));
@@ -397,23 +423,15 @@ internal sealed class J1939TpChannel : IJ1939TpChannel
 
     private void HandleRxTpDt(byte sa, byte da, byte[] payload)
     {
-        // TP.DT carries no PGN of its own, so we cannot select a session by PGN. But the DT
-        // frame's destination byte tells us BAM (da==0xFF) apart from TP.CM directed at us
-        // (da==our SA): key on (sa, isBam) which -- combined with §5.10.3's "only one connection
-        // per (source, destination) pair" rule -- uniquely identifies the receiving session.
-        bool isBamDt = da == J1939Pgn.GlobalAddress;
-        RxSession? match = null;
-        RxSessionKey matchKey = default;
-        foreach (var kv in _rxSessions)
-        {
-            if (kv.Key.SourceAddress != sa) continue;
-            bool sessionIsBam = kv.Value.Kind == J1939TpKind.Bam;
-            if (sessionIsBam != isBamDt) continue;
-            match = kv.Value;
-            matchKey = kv.Key;
-            break;
-        }
-        if (match is null) return;
+        // TP.DT carries no PGN of its own, so we route strictly by the two identifiers the DT
+        // frame *does* carry: source address, and destination (broadcast 0xFF => BAM; our SA
+        // => CM). Combined with J1939-21 §5.10.3's "one connection per (SA, DA) pair" rule,
+        // this maps 1:1 to a single active RX session, so we can look it up in O(1) with no
+        // ambiguity even when concurrent transfers of *different* PGNs from different peers
+        // are in flight.
+        var kind = da == J1939Pgn.GlobalAddress ? J1939TpKind.Bam : J1939TpKind.Cm;
+        var matchKey = new RxSessionKey(sa, kind);
+        if (!_rxSessions.TryGetValue(matchKey, out var match)) return;
 
         byte sn = payload[0];
         if (sn != match.NextExpectedSn)
@@ -480,15 +498,12 @@ internal sealed class J1939TpChannel : IJ1939TpChannel
 
     private void OnRxT1Expired(RxSession session)
     {
-        // Locate this session in the map (it may already be removed if we lost a race).
-        RxSessionKey? found = null;
-        foreach (var kv in _rxSessions)
-        {
-            if (ReferenceEquals(kv.Value, session)) { found = kv.Key; break; }
-        }
-        if (found is null) return;
-
-        _rxSessions.Remove(found.Value);
+        // Look up in O(1) via the (peer, kind) key; guard against races where the session was
+        // already removed (e.g. finished / aborted / superseded) before the timer fired.
+        var key = new RxSessionKey(session.PeerAddress, session.Kind);
+        if (!_rxSessions.TryGetValue(key, out var current) || !ReferenceEquals(current, session))
+            return;
+        _rxSessions.Remove(key);
         if (session.Kind == J1939TpKind.Cm)
         {
             SendTpCm(J1939TpFrames.BuildAbort(J1939TpAbortReason.Timeout, session.Pgn),
@@ -883,20 +898,23 @@ internal sealed class J1939TpChannel : IJ1939TpChannel
         public override int GetHashCode() => unchecked((DestinationAddress * 397) ^ (int)Pgn);
     }
 
+    // (peer SA, kind) uniquely identifies an inbound TP session per J1939-21 §5.10.3: at most
+    // one CM connection and one BAM per source. This is the *only* keying TP.DT can honor since
+    // DT frames carry no PGN -- see class remarks.
     private readonly struct RxSessionKey : IEquatable<RxSessionKey>
     {
-        public RxSessionKey(byte sourceAddress, uint pgn)
+        public RxSessionKey(byte sourceAddress, J1939TpKind kind)
         {
             SourceAddress = sourceAddress;
-            Pgn = pgn;
+            Kind = kind;
         }
 
         public byte SourceAddress { get; }
-        public uint Pgn { get; }
+        public J1939TpKind Kind { get; }
 
-        public bool Equals(RxSessionKey other) => SourceAddress == other.SourceAddress && Pgn == other.Pgn;
+        public bool Equals(RxSessionKey other) => SourceAddress == other.SourceAddress && Kind == other.Kind;
         public override bool Equals(object? obj) => obj is RxSessionKey k && Equals(k);
-        public override int GetHashCode() => unchecked((SourceAddress * 397) ^ (int)Pgn);
+        public override int GetHashCode() => unchecked((SourceAddress * 397) ^ (int)Kind);
     }
 
     private enum TxStage : byte { WaitCts, SendingDt, WaitEom }

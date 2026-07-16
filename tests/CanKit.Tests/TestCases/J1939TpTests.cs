@@ -7,6 +7,7 @@ using CanKit.Abstractions.API.Can;
 using CanKit.Abstractions.API.Can.Definitions;
 using CanKit.Abstractions.API.Common.Definitions;
 using CanKit.Core;
+using CanKit.Pro.Addressing;
 using CanKit.Pro.J1939Tp;
 using FluentAssertions;
 using Xunit;
@@ -238,6 +239,178 @@ public class J1939TpTests : IClassFixture<TestCaseProvider>
 
         var datagram = await receiveTask;
         datagram.Payload.Should().Equal(payload);
+    }
+
+    // Bugbot 3595010737 (PR #25): TP.DT frames carry no PGN, so an RX-session map keyed by
+    // (SA, PGN) forces the DT handler to guess a session by (SA, kind) alone, which corrupts
+    // reassembly if two overlapping CM sessions from the same source (different PGNs) coexist.
+    // J1939-21 §5.10.3 requires exactly one CM connection per (SA, DA) pair, so the fix is to
+    // refuse the second RTS with SessionAlreadyOpen and keep the first session's DT stream
+    // running to completion. This test replays that scenario end-to-end via raw frame injection.
+    [Fact]
+    public async Task SecondRtsFromSamePeer_DifferentPgn_IsAbortedAndDtRoutesToActiveSession()
+    {
+        var session = NewSession();
+        using var receiverBus = Open(session, 0);
+        using var peerBus = Open(session, 1);
+
+        const byte receiverSa = 0x22;
+        const byte peerSa = 0x11;
+        const uint activePgn = 0xABCDu;
+        const uint intruderPgn = 0x9876u;
+
+        // 14-byte payload = exactly 2 TP.DT frames -> minimal, deterministic size.
+        var payload = RandomPayload(14, seed: 314);
+
+        using var receiver = J1939Tp.Open(receiverBus, sourceAddress: receiverSa);
+
+        // Observe every TP.CM frame the receiver emits so we can inspect CTS / EOM / Abort.
+        var observed = new List<(uint canId, byte[] data)>();
+        var cmFrames = new List<(uint canId, byte[] data)>();
+        var frameReady = new SemaphoreSlim(0);
+        peerBus.FrameObserved += (_, e) =>
+        {
+            var frame = e.CanFrame;
+            if (!frame.IsExtendedFrame) return;
+            var fields = J1939Id.Decompose((uint)frame.ID);
+            if (fields.SourceAddress != receiverSa) return; // only interested in what the SUT emits
+            var data = frame.Data.ToArray();
+            lock (observed)
+            {
+                observed.Add(((uint)frame.ID, data));
+                if (J1939Pgn.IsTransportCm(fields.Pgn))
+                    cmFrames.Add(((uint)frame.ID, data));
+            }
+            frameReady.Release();
+        };
+
+        async Task<byte[]> WaitForCmFrameAsync(Func<byte[], bool> predicate, TimeSpan timeout)
+        {
+            using var cts = new CancellationTokenSource(timeout);
+            while (true)
+            {
+                lock (cmFrames)
+                {
+                    foreach (var (_, data) in cmFrames)
+                        if (predicate(data)) return data;
+                }
+                await frameReady.WaitAsync(cts.Token).ConfigureAwait(false);
+            }
+        }
+
+        static byte[] BuildFrame(byte[] payload) => payload; // clarity alias
+
+        // --- 1. Send RTS #1 from peer for activePgn (2 packets, 14 bytes) ---
+        var rts1 = J1939TpFrames.BuildRts(totalBytes: 14, totalPackets: 2, maxPacketsPerCts: 0xFF, dataPgn: activePgn);
+        var rts1Id = J1939Id.ComposePgn(priority: 7, pgn: J1939Pgn.TpCm, sourceAddress: peerSa, destinationAddress: receiverSa);
+        peerBus.Transmit(CanFrame.Classic((int)rts1Id, BuildFrame(rts1), isExtendedFrame: true));
+
+        // --- 2. Wait for CTS from the receiver for activePgn ---
+        var cts1 = await WaitForCmFrameAsync(
+            d => d.Length >= 8 && d[0] == J1939TpFrames.ControlCts
+                 && J1939TpFrames.ReadDataPgn(d) == activePgn,
+            ShortTimeout);
+        cts1[1].Should().BeGreaterThan(0, "receiver must grant at least one packet");
+        cts1[2].Should().Be(1, "next expected SN is 1");
+
+        // --- 3. Inject RTS #2 from *same* peer SA but for a *different* PGN ---
+        var rts2 = J1939TpFrames.BuildRts(totalBytes: 14, totalPackets: 2, maxPacketsPerCts: 0xFF, dataPgn: intruderPgn);
+        peerBus.Transmit(CanFrame.Classic((int)rts1Id, BuildFrame(rts2), isExtendedFrame: true));
+
+        // --- 4. Assert receiver refuses the intruder with SessionAlreadyOpen tagged with the
+        //         intruder's PGN, without disturbing the active session ---
+        var abort = await WaitForCmFrameAsync(
+            d => d.Length >= 8 && d[0] == J1939TpFrames.ControlAbort
+                 && J1939TpFrames.ReadDataPgn(d) == intruderPgn,
+            ShortTimeout);
+        abort[1].Should().Be((byte)J1939TpAbortReason.SessionAlreadyOpen);
+
+        // Receiver must not have started tearing down / re-CTSing the active session.
+        lock (cmFrames)
+        {
+            cmFrames.Should().NotContain(t =>
+                t.data[0] == J1939TpFrames.ControlAbort && J1939TpFrames.ReadDataPgn(t.data) == activePgn,
+                "the active session must remain untouched by the rejected intruder");
+        }
+
+        // --- 5. Send the two TP.DT frames for the *active* session and verify they route
+        //         correctly (and not to the just-rejected intruder). ---
+        var dtId = J1939Id.ComposePgn(priority: 7, pgn: J1939Pgn.TpDt, sourceAddress: peerSa, destinationAddress: receiverSa);
+        var dt1 = J1939TpFrames.BuildDt(sn: 1, pdu: payload, offset: 0);
+        var dt2 = J1939TpFrames.BuildDt(sn: 2, pdu: payload, offset: 7);
+        peerBus.Transmit(CanFrame.Classic((int)dtId, BuildFrame(dt1), isExtendedFrame: true));
+        peerBus.Transmit(CanFrame.Classic((int)dtId, BuildFrame(dt2), isExtendedFrame: true));
+
+        // --- 6. Receiver must produce an EndOfMsgAck for the *active* PGN and hand up the PDU ---
+        var eom = await WaitForCmFrameAsync(
+            d => d.Length >= 8 && d[0] == J1939TpFrames.ControlEomAck
+                 && J1939TpFrames.ReadDataPgn(d) == activePgn,
+            ShortTimeout);
+        (eom[1] | (eom[2] << 8)).Should().Be(14);
+        eom[3].Should().Be(2);
+
+        var datagram = await receiver.ReceiveAsync().AsTaskWithTimeout(ShortTimeout);
+        datagram.Kind.Should().Be(J1939TpKind.Cm);
+        datagram.SourceAddress.Should().Be(peerSa);
+        datagram.DestinationAddress.Should().Be(receiverSa);
+        datagram.Pgn.Should().Be(activePgn);
+        datagram.Payload.Should().Equal(payload);
+    }
+
+    // Companion coverage for the DT-routing invariant: two peers sending concurrent CM sessions
+    // for *different* PGNs each get their DTs routed to *their own* session, even though the
+    // second peer's PGN differs from the first peer's PGN. This directly exercises the
+    // (SA, kind)-keyed rxSessions map (pre-fix, the DT handler picked the first (SA,*) match --
+    // which happened to work by accident when only one peer is active, but broke reassembly
+    // for concurrent transfers).
+    [Fact]
+    public async Task TwoPeers_ConcurrentCm_DifferentPgns_EachReassembledByPeerSa()
+    {
+        var session = NewSession();
+        using var receiverBus = Open(session, 0);
+        using var peerABus = Open(session, 1);
+        using var peerBBus = Open(session, 2);
+
+        const byte receiverSa = 0x22;
+        const byte peerASa = 0x11;
+        const byte peerBSa = 0x33;
+        const uint pgnA = 0xEE10u;
+        const uint pgnB = 0xEE20u;
+
+        var payloadA = RandomPayload(14, seed: 1);
+        var payloadB = RandomPayload(14, seed: 2);
+
+        using var receiver = J1939Tp.Open(receiverBus, sourceAddress: receiverSa);
+
+        // Interleave DTs from the two peers to force the (SA, kind) routing to demux correctly.
+        async Task DriveAsync(ICanBus bus, byte peerSa, uint pgn, byte[] pdu)
+        {
+            var rts = J1939TpFrames.BuildRts(pdu.Length, J1939TpFrames.TotalPackets(pdu.Length), 0xFF, pgn);
+            var cmId = J1939Id.ComposePgn(7, J1939Pgn.TpCm, peerSa, receiverSa);
+            var dtId = J1939Id.ComposePgn(7, J1939Pgn.TpDt, peerSa, receiverSa);
+            bus.Transmit(CanFrame.Classic((int)cmId, rts, isExtendedFrame: true));
+            // Small gap so both RTSs land before either DT stream begins.
+            await Task.Delay(20).ConfigureAwait(false);
+            for (byte sn = 1; sn <= J1939TpFrames.TotalPackets(pdu.Length); sn++)
+            {
+                var dt = J1939TpFrames.BuildDt(sn, pdu, (sn - 1) * J1939TpFrames.DtDataBytes);
+                bus.Transmit(CanFrame.Classic((int)dtId, dt, isExtendedFrame: true));
+                await Task.Delay(5).ConfigureAwait(false);
+            }
+        }
+
+        var driveA = DriveAsync(peerABus, peerASa, pgnA, payloadA);
+        var driveB = DriveAsync(peerBBus, peerBSa, pgnB, payloadB);
+        await Task.WhenAll(driveA, driveB).WithTimeout(ShortTimeout);
+
+        var received = await CollectAsync(receiver, count: 2, ShortTimeout);
+        received.Should().HaveCount(2);
+        var fromA = received.Single(d => d.SourceAddress == peerASa);
+        var fromB = received.Single(d => d.SourceAddress == peerBSa);
+        fromA.Pgn.Should().Be(pgnA);
+        fromA.Payload.Should().Equal(payloadA);
+        fromB.Pgn.Should().Be(pgnB);
+        fromB.Payload.Should().Equal(payloadB);
     }
 
     private static async Task<List<J1939TpDatagram>> CollectAsync(IJ1939TpChannel channel, int count, TimeSpan timeout)
