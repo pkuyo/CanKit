@@ -367,4 +367,83 @@ public class IsoTpChannelIntegrationTests : IClassFixture<TestCaseProvider>
         (await recvTask).Should().Equal(normal);
     }
 
+    // --------------------------------------------------------------------------------
+    // Bugbot 3594960794 (HIGH) — a SendAsync whose token is cancelled AFTER BeginSendOnLoop
+    // is posted but BEFORE the actor picks it up must NOT emit any CAN frame. Under the bug,
+    // BeginSendOnLoop just plowed ahead and pushed a Single-Frame onto the wire even though
+    // the TCS had already (or was about to be) cancelled.
+    //
+    // We arrange the race deterministically: park the sender's actor inside its
+    // BackgroundExceptionOccurred handler, queue BeginSendOnLoop while the actor is stuck,
+    // then cancel the token (which also queues CancelInFlightSend), then release the actor.
+    // With this ordering the actor unambiguously observes both work items already in its
+    // mailbox and the token's IsCancellationRequested==true when begin runs.
+    // --------------------------------------------------------------------------------
+    [Fact]
+    public async Task Send_Cancelled_Before_Actor_Delivery_Emits_No_Frame_And_Channel_Remains_Usable()
+    {
+        var session = NewSession();
+        using var busA = OpenClassic(session, 0);
+        using var busB = OpenClassic(session, 1);
+
+        var epAB = IsoTpEndpoint.Normal(0x220, 0x221);
+        var epBA = IsoTpEndpoint.Normal(0x221, 0x220);
+
+        using var sender = IsoTpFactory.Open(busA, epAB, FastOptions());
+        using var receiver = IsoTpFactory.Open(busB, epBA, FastOptions());
+
+        // Frame counter: was the cancelled SF payload ever put on the wire?
+        int framesToPeer = 0;
+        busB.FrameObserved += (_, e) =>
+        {
+            if (e.CanFrame.ID == 0x220) Interlocked.Increment(ref framesToPeer);
+        };
+
+        // Park sender's actor: a throwing DatagramReceived handler triggers RaiseBackgroundException
+        // synchronously on the actor loop, then the BackgroundExceptionOccurred handler blocks
+        // on a gate we control -- so long as we don't release it, the actor thread is stuck.
+        using var actorParked = new ManualResetEventSlim(false);
+        using var releaseActor = new ManualResetEventSlim(false);
+        sender.DatagramReceived += (_, __) => throw new InvalidOperationException("test-park-trigger");
+        sender.BackgroundExceptionOccurred += (_, __) =>
+        {
+            actorParked.Set();
+            releaseActor.Wait(TimeSpan.FromSeconds(10));
+        };
+
+        // Bounce one datagram through sender to fire DatagramReceived (and thus the parking
+        // BackgroundException handler). receiver.SendAsync uses receiver's own actor, so this
+        // does not park us prematurely.
+        await receiver.SendAsync(new byte[] { 0x00 }).WaitAsync(ShortTimeout);
+        actorParked.Wait(TimeSpan.FromSeconds(5)).Should().BeTrue(
+            "the sender's actor must be sitting inside our BackgroundException handler by now");
+
+        // Sender's actor is now blocked. Queue BeginSendOnLoop, then cancel the token (which
+        // synchronously fires the cancel callback -> Post CancelInFlightSend). Both work items
+        // are safely sitting in the actor's mailbox before the actor gets to run again.
+        using var cts = new CancellationTokenSource();
+        var sendTask = sender.SendAsync(new byte[] { 0xDE, 0xAD, 0xBE, 0xEF }, cts.Token);
+        cts.Cancel();
+
+        // Release the parked actor; it now drains [begin, cancel]. Under the fix, begin sees
+        // ct.IsCancellationRequested==true (or tcs.Task.IsCompleted==true) and no-ops.
+        // Under the bug, begin sets _tx and puts the SF on the wire regardless.
+        releaseActor.Set();
+
+        Func<Task> act = () => sendTask.WaitAsync(ShortTimeout);
+        await act.Should().ThrowAsync<OperationCanceledException>();
+
+        // Give any straggling actor work time to (incorrectly) hit the wire under the bug.
+        await Task.Delay(100);
+        framesToPeer.Should().Be(0,
+            "a send cancelled before the actor delivers BeginSendOnLoop must never put a frame on the bus");
+
+        // One-in-flight guarantee: the send gate must be released and the actor usable.
+        // (The parking handlers only fire on RX at *sender*; the final send is A -> B and
+        // does not deliver a datagram back to sender, so it doesn't re-park.)
+        var recvTask2 = receiver.ReceiveAsync(new CancellationTokenSource(ShortTimeout).Token);
+        byte[] normal2 = { 0x01, 0x02, 0x03 };
+        await sender.SendAsync(normal2).WaitAsync(ShortTimeout);
+        (await recvTask2).Should().Equal(normal2);
+    }
 }

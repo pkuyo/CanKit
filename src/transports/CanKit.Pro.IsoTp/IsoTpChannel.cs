@@ -143,7 +143,7 @@ internal sealed class IsoTpChannel : IIsoTpChannel
 
             try
             {
-                _actor.Post(() => BeginSendOnLoop(pduBytes, tcs));
+                _actor.Post(() => BeginSendOnLoop(pduBytes, tcs, cancellationToken));
             }
             catch (Exception ex)
             {
@@ -287,8 +287,19 @@ internal sealed class IsoTpChannel : IIsoTpChannel
     // TX side (all methods run on the actor loop unless noted)
     // -----------------------------------------------------------------------------------------
 
-    private void BeginSendOnLoop(byte[] pdu, TaskCompletionSource<object?> tcs)
+    private void BeginSendOnLoop(byte[] pdu, TaskCompletionSource<object?> tcs, CancellationToken ct)
     {
+        // Fix (Bugbot 3594960794): the send may have been canceled between when the caller
+        // posted us and when the actor got around to running us -- CancelInFlightSend may have
+        // even already run (it saw _tx==null so it just canceled `tcs`). In either case the
+        // outbound frame must never hit the wire; TrySetCanceled is a no-op if the TCS is
+        // already completed.
+        if (tcs.Task.IsCompleted || ct.IsCancellationRequested)
+        {
+            tcs.TrySetCanceled(ct);
+            return;
+        }
+
         if (_tx is not null)
         {
             // Sender gate already serializes SendAsync, so _tx must be null when we get here.
