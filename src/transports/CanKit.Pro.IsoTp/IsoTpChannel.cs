@@ -184,13 +184,19 @@ internal sealed class IsoTpChannel : IIsoTpChannel
                 ctr.Dispose();
                 // Hold the gate until any SendConfirmed already submitted for this PDU finishes.
                 // CancelInFlightSend completes the TCS immediately but must not let the next
-                // SendAsync race frames onto the bus (Bugbot 3596212788).
-                await WaitForBusTxIdleAsync().ConfigureAwait(false);
+                // SendAsync race frames onto the bus (Bugbot 3596212788). Skip on dispose:
+                // no subsequent SendAsync can run, and bus-TX confirmations may never post
+                // back onto a torn-down actor (Bugbot 3596468541).
+                if (Volatile.Read(ref _disposed) == 0)
+                    await WaitForBusTxIdleAsync().ConfigureAwait(false);
             }
         }
         finally
         {
-            _sendGate.Release();
+            // Dispose may tear down the gate after FailTx unblocks us but before Release runs
+            // (Bugbot 3596468541). Swallow ODE so shutdown stays clean.
+            try { _sendGate.Release(); }
+            catch (ObjectDisposedException) { /* channel disposed */ }
         }
     }
 
@@ -300,9 +306,19 @@ internal sealed class IsoTpChannel : IIsoTpChannel
         try { _readerTask.Wait(TimeSpan.FromSeconds(2)); } catch { /* observed via task; not fatal */ }
 
         _subscription.Dispose();
+        // Actor.Dispose drains the FailTx/idle-waiter post above (FinalDrain), so the in-flight
+        // SendAsync can leave its await and enter WaitForBusTxIdleAsync / Release.
         _actor.Dispose();
         _readerCts.Dispose();
-        _sendGate.Dispose();
+
+        // Do not dispose _sendGate while an in-flight SendAsync still holds it — Release would
+        // then throw ObjectDisposedException (Bugbot 3596468541). Wait briefly for that caller
+        // to finish its finally path; timed-out Wait leaves the gate held and Dispose still
+        // proceeds (Release then no-ops via the catch in SendAsync).
+        try { _sendGate.Wait(TimeSpan.FromSeconds(2)); }
+        catch (ObjectDisposedException) { /* already disposed */ }
+        try { _sendGate.Dispose(); }
+        catch (ObjectDisposedException) { /* already disposed */ }
 
         if (_ownsService)
             _service.Dispose();
@@ -551,16 +567,21 @@ internal sealed class IsoTpChannel : IIsoTpChannel
 
     /// <summary>
     /// Completes when every <see cref="SendFrameOnBus"/> started for the current send has had
-    /// its confirmation posted back onto the actor (or the actor is already disposed).
+    /// its confirmation posted back onto the actor (or the channel/actor is already disposed).
     /// </summary>
     private Task WaitForBusTxIdleAsync()
     {
+        if (Volatile.Read(ref _disposed) != 0)
+            return Task.CompletedTask;
+
         var waiter = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
         try
         {
             _actor.Post(() =>
             {
-                if (_busTxInFlight == 0)
+                // Channel dispose may have raced past the Volatile check above; do not arm a
+                // waiter that Dispose's FailTx post already missed (Bugbot 3596468541).
+                if (Volatile.Read(ref _disposed) != 0 || _busTxInFlight == 0)
                 {
                     waiter.TrySetResult(null);
                 }

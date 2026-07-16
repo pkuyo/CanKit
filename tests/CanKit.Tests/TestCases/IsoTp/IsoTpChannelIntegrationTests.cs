@@ -751,6 +751,42 @@ public class IsoTpChannelIntegrationTests : IClassFixture<TestCaseProvider>
     }
 
     // --------------------------------------------------------------------------------
+    // Bugbot 3596468541 (MEDIUM) — Dispose must not tear down _sendGate while an in-flight
+    // SendAsync still holds it. Otherwise Release in SendAsync's finally throws
+    // ObjectDisposedException (or worse) instead of a clean ObjectDisposedException from FailTx.
+    // --------------------------------------------------------------------------------
+    [Fact]
+    public async Task Dispose_During_InFlight_Send_Does_Not_Race_SendGate_Release()
+    {
+        var session = NewSession();
+        using var busA = OpenClassic(session, 0);
+        using var busB = OpenClassic(session, 1);
+
+        var epAB = IsoTpEndpoint.Normal(0x240, 0x241);
+
+        using var inner = new CanBusService(busA);
+        using var holdConfirm = new ManualResetEventSlim(false);
+        using var confirmStarted = new ManualResetEventSlim(false);
+        var delaying = new DelayingConfirmService(inner, holdConfirm, confirmStarted);
+        var sender = IsoTpFactory.Open(delaying, epAB, FastOptions(), leaveOpen: true);
+
+        var sendTask = sender.SendAsync(new byte[] { 0xAA, 0xBB });
+        confirmStarted.Wait(TimeSpan.FromSeconds(5)).Should().BeTrue(
+            "SendConfirmed must be parked so Dispose races an in-flight SendAsync");
+
+        // Dispose while SendAsync still holds _sendGate (awaiting confirmation / idle drain).
+        Action dispose = () => sender.Dispose();
+        dispose.Should().NotThrow("Dispose must wait out the send-gate holder before disposing it");
+
+        holdConfirm.Set();
+
+        Func<Task> send = () => sendTask.WaitAsync(ShortTimeout);
+        // Clean shutdown: FailTx's ObjectDisposedException, not a secondary ODE from Release.
+        (await send.Should().ThrowAsync<ObjectDisposedException>())
+            .Which.ObjectName.Should().Be("IsoTpChannel");
+    }
+
+    // --------------------------------------------------------------------------------
     // Bugbot 3596212788 (HIGH) — cancelling SendAsync must not release _sendGate while a
     // SendConfirmed started by SendFrameOnBus is still outstanding. Otherwise a subsequent
     // SendAsync can put a new PDU on the wire while the aborted PDU's frame is still TX'ing.
