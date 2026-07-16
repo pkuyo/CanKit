@@ -55,10 +55,12 @@ internal sealed class J1939TpChannel : IJ1939TpChannel
     private readonly Task _readerTask;
     private readonly CancellationTokenSource _readerCts = new();
 
-    // Bounded PDU inbox (one entry per fully reassembled datagram). Written only from the actor
-    // loop; consumers may read concurrently. Drop-oldest so a slow reader never stalls the RX
-    // state machine (mirrors the L2 subscription policy).
-    private readonly Channel<J1939TpDatagram> _pduInbox;
+    // Bounded receive inbox for consumers. Drop-oldest so a stalled reader never stalls the RX
+    // state machine (mirrors the L2 subscription policy). Items are either a fully reassembled
+    // datagram or a reassembly-abort fault (bad DT SN / T1·Tr timeout / peer Abort) so a blocked
+    // ReceiveAsync completes instead of hanging — the FailTx analogue on the RX side (mirrors
+    // IsoTpChannel.AbortRx / Bugbot 3596396508).
+    private readonly Channel<RxInboxItem> _pduInbox;
 
     // Per-session state -- keyed differently for TX and RX because the two directions have
     // different identifiers on the wire (TX is per-destination, RX is per-source). Both maps are
@@ -97,7 +99,7 @@ internal sealed class J1939TpChannel : IJ1939TpChannel
             SingleWriter = true, // written only from the actor loop
             FullMode = BoundedChannelFullMode.DropOldest,
         };
-        _pduInbox = Channel.CreateBounded<J1939TpDatagram>(inboxOptions);
+        _pduInbox = Channel.CreateBounded<RxInboxItem>(inboxOptions);
 
         _actor = new ProtocolActor();
         _actor.BackgroundExceptionOccurred += OnActorBackgroundException;
@@ -221,8 +223,8 @@ internal sealed class J1939TpChannel : IJ1939TpChannel
     {
         while (await _pduInbox.Reader.WaitToReadAsync(cancellationToken).ConfigureAwait(false))
         {
-            if (_pduInbox.Reader.TryRead(out var pdu))
-                return pdu;
+            if (_pduInbox.Reader.TryRead(out var item))
+                return UnwrapInboxItem(item);
         }
         throw new InvalidOperationException("Channel is disposed; no more datagrams will arrive.");
     }
@@ -237,9 +239,16 @@ internal sealed class J1939TpChannel : IJ1939TpChannel
         var reader = _pduInbox.Reader;
         while (await reader.WaitToReadAsync(cancellationToken).ConfigureAwait(false))
         {
-            while (reader.TryRead(out var pdu))
-                yield return pdu;
+            while (reader.TryRead(out var item))
+                yield return UnwrapInboxItem(item);
         }
+    }
+
+    private static J1939TpDatagram UnwrapInboxItem(RxInboxItem item)
+    {
+        if (item.Error is not null)
+            throw item.Error;
+        return item.Datagram ?? throw new InvalidOperationException("RX inbox item had neither datagram nor error.");
     }
 
     /// <inheritdoc />
@@ -424,7 +433,7 @@ internal sealed class J1939TpChannel : IJ1939TpChannel
                     {
                         existing.Cancel();
                         _rxSessions.Remove(cmKey);
-                        RaiseBackgroundException(new J1939TpAbortException(
+                        AbortRx(new J1939TpAbortException(
                             (J1939TpAbortReason)payload[1], dataPgn,
                             $"Peer 0x{sa:X2} aborted TP.CM RX session for PGN 0x{dataPgn:X}."));
                     }
@@ -457,9 +466,8 @@ internal sealed class J1939TpChannel : IJ1939TpChannel
         if (sn != match.NextExpectedSn)
         {
             // Unexpected SN means the transfer cannot complete. Tear the session down immediately
-            // (do not leave a half-built RX session alive for T1 — Cancel() disposes that timer)
-            // and surface the failure on BackgroundExceptionOccurred so a caller blocked on
-            // ReceiveAsync / ReceiveAllAsync is not left waiting forever with no signal.
+            // (Cancel() disposes T1/Tr) and AbortRx so a blocked ReceiveAsync / ReceiveAllAsync
+            // completes with the same exception observers see on BackgroundExceptionOccurred.
             // CM: abort on the wire with code 5 (closest standard reason for sequence mismatch).
             // BAM: no ack channel, so local notify only.
             byte expected = match.NextExpectedSn;
@@ -471,7 +479,7 @@ internal sealed class J1939TpChannel : IJ1939TpChannel
             }
             match.Cancel();
             _rxSessions.Remove(matchKey);
-            RaiseBackgroundException(new J1939TpAbortException(
+            AbortRx(new J1939TpAbortException(
                 J1939TpAbortReason.UnexpectedCtsSequenceNumber, pgn,
                 $"J1939-TP {match.Kind} RX session aborted: unexpected TP.DT sequence number {sn} " +
                 $"(expected {expected}) from 0x{sa:X2}."));
@@ -537,12 +545,14 @@ internal sealed class J1939TpChannel : IJ1939TpChannel
         if (!_rxSessions.TryGetValue(key, out var current) || !ReferenceEquals(current, session))
             return;
         _rxSessions.Remove(key);
+        session.Cancel();
         if (session.Kind == J1939TpKind.Cm)
         {
             SendTpCm(J1939TpFrames.BuildAbort(J1939TpAbortReason.Timeout, session.Pgn),
                 destinationAddress: session.PeerAddress);
         }
-        RaiseBackgroundException(new J1939TpAbortException(J1939TpAbortReason.Timeout, session.Pgn,
+        // Fault blocked ReceiveAsync as well as BackgroundExceptionOccurred (Bugbot 3596396508).
+        AbortRx(new J1939TpAbortException(J1939TpAbortReason.Timeout, session.Pgn,
             $"J1939-TP {session.Kind} RX session timed out ({timerName}) {waitingFor} from 0x{session.PeerAddress:X2}."));
     }
 
@@ -907,7 +917,22 @@ internal sealed class J1939TpChannel : IJ1939TpChannel
         {
             RaiseBackgroundException(ex);
         }
-        _pduInbox.Writer.TryWrite(datagram);
+        _pduInbox.Writer.TryWrite(RxInboxItem.FromDatagram(datagram));
+    }
+
+    /// <summary>
+    /// Aborts in-flight reassembly notification. Mirrors IsoTpChannel.AbortRx / FailTx on the
+    /// receive side: raises <see cref="BackgroundExceptionOccurred"/> and enqueues the fault
+    /// into the PDU inbox so a blocked <see cref="ReceiveAsync"/>/<see cref="ReceiveAllAsync"/>
+    /// completes with the same exception instead of waiting indefinitely (Bugbot 3596396508).
+    /// Successful datagrams already in the inbox are unaffected (FIFO); exactly one waiter
+    /// consumes the fault item, preserving multi-receive inbox semantics for subsequent PDUs.
+    /// Caller is responsible for cancelling/removing the <see cref="RxSession"/> first.
+    /// </summary>
+    private void AbortRx(Exception ex)
+    {
+        RaiseBackgroundException(ex);
+        _pduInbox.Writer.TryWrite(RxInboxItem.FromError(ex));
     }
 
     private void RaiseBackgroundException(Exception ex)
@@ -933,6 +958,25 @@ internal sealed class J1939TpChannel : IJ1939TpChannel
     // =========================================================================================
     // Nested types
     // =========================================================================================
+
+    /// <summary>
+    /// One inbox delivery: either a reassembled datagram or a reassembly-abort fault.
+    /// </summary>
+    private readonly struct RxInboxItem
+    {
+        private RxInboxItem(J1939TpDatagram? datagram, Exception? error)
+        {
+            Datagram = datagram;
+            Error = error;
+        }
+
+        public J1939TpDatagram? Datagram { get; }
+        public Exception? Error { get; }
+
+        public static RxInboxItem FromDatagram(J1939TpDatagram datagram) => new(datagram, null);
+        public static RxInboxItem FromError(Exception error) => new(null, error);
+    }
+
     private readonly struct TxSessionKey : IEquatable<TxSessionKey>
     {
         public TxSessionKey(byte destinationAddress, uint pgn)

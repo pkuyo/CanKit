@@ -59,10 +59,19 @@ public interface IJ1939TpChannel : IDisposable
     Task SendCmAsync(uint pgn, byte destinationAddress, ReadOnlyMemory<byte> payload,
         CancellationToken cancellationToken = default);
 
-    /// <summary>Awaits the next fully reassembled inbound TP.BAM or TP.CM datagram.</summary>
+    /// <summary>
+    /// Awaits the next fully reassembled inbound TP.BAM or TP.CM datagram, or faults with
+    /// <see cref="J1939TpAbortException"/> when an in-flight reassembly is aborted (bad TP.DT
+    /// sequence number, T1/Tr timeout, or peer Connection Abort). One waiter consumes the fault;
+    /// subsequent receives remain available for later successful datagrams.
+    /// </summary>
     Task<J1939TpDatagram> ReceiveAsync(CancellationToken cancellationToken = default);
 
-    /// <summary>Enumerates every reassembled inbound datagram until the channel is disposed.</summary>
+    /// <summary>
+    /// Enumerates every reassembled inbound datagram until the channel is disposed. Reassembly
+    /// aborts surface as <see cref="J1939TpAbortException"/> on the enumerating waiter (same
+    /// semantics as <see cref="ReceiveAsync"/>).
+    /// </summary>
     IAsyncEnumerable<J1939TpDatagram> ReceiveAllAsync(CancellationToken cancellationToken = default);
 
     /// <summary>

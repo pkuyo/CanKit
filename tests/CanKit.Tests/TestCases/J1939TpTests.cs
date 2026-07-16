@@ -545,7 +545,8 @@ public class J1939TpTests : IClassFixture<TestCaseProvider>
             .Which.ParamName.Should().Be("maxPacketsPerCts");
     }
 
-    // Bugbot 3596025934: Tr (CTS → first DT) must be enforced; idle peer after CTS → Abort(Timeout).
+    // Bugbot 3596025934 / 3596396508: Tr (CTS → first DT) must abort on the wire, raise
+    // BackgroundExceptionOccurred, and fault a blocked ReceiveAsync (IsoTp AbortRx pattern).
     [Fact]
     public async Task Cm_Receiver_TrTimeout_AbortsWhenNoDtAfterCts()
     {
@@ -580,6 +581,8 @@ public class J1939TpTests : IClassFixture<TestCaseProvider>
                 abortSeen.TrySetResult(data);
         };
 
+        var recvTask = receiver.ReceiveAsync().AsTaskWithTimeout(ShortTimeout);
+
         var rts = J1939TpFrames.BuildRts(totalBytes: 14, totalPackets: 2, maxPacketsPerCts: 0xFF, dataPgn: pgn);
         var rtsId = J1939Id.ComposePgn(7, J1939Pgn.TpCm, peerSa, receiverSa);
         peerBus.Transmit(CanFrame.Classic((int)rtsId, rts, isExtendedFrame: true));
@@ -588,16 +591,20 @@ public class J1939TpTests : IClassFixture<TestCaseProvider>
         var abortFrame = await abortSeen.Task.AsTaskWithTimeout(ShortTimeout);
         abortFrame[1].Should().Be((byte)J1939TpAbortReason.Timeout);
 
+        Func<Task> act = () => recvTask;
+        var recvEx = (await act.Should().ThrowAsync<J1939TpAbortException>()).Which;
+        recvEx.Reason.Should().Be(J1939TpAbortReason.Timeout);
+        recvEx.Message.Should().Contain("Tr");
+
         var ex = await bgAbort.Task.AsTaskWithTimeout(ShortTimeout);
         ex.Reason.Should().Be(J1939TpAbortReason.Timeout);
         ex.Message.Should().Contain("Tr");
     }
 
-    // Bugbot 3596396508: a mismatched TP.DT SN must tear down the RX session and raise
-    // BackgroundExceptionOccurred (Abort on the wire for CM). Cancel() disposes T1, so without
-    // an explicit notify a ReceiveAsync waiter would hang forever with no signal.
+    // Bugbot 3596396508: mismatched TP.DT SN must AbortRx — fault blocked ReceiveAsync and raise
+    // BackgroundExceptionOccurred (wire Abort for CM). Channel stays usable afterward.
     [Fact]
-    public async Task Cm_Receiver_BadDtSequence_AbortsAndRaisesBackgroundException()
+    public async Task Cm_Receiver_BadDtSequence_FaultsReceiveAsync()
     {
         var session = NewSession();
         using var receiverBus = Open(session, 0);
@@ -628,6 +635,8 @@ public class J1939TpTests : IClassFixture<TestCaseProvider>
             else if (data[0] == J1939TpFrames.ControlAbort) abortSeen.TrySetResult(data);
         };
 
+        var recvTask = receiver.ReceiveAsync().AsTaskWithTimeout(ShortTimeout);
+
         var rts = J1939TpFrames.BuildRts(totalBytes: 14, totalPackets: 2, maxPacketsPerCts: 0xFF, dataPgn: pgn);
         var rtsId = J1939Id.ComposePgn(7, J1939Pgn.TpCm, peerSa, receiverSa);
         peerBus.Transmit(CanFrame.Classic((int)rtsId, rts, isExtendedFrame: true));
@@ -642,21 +651,31 @@ public class J1939TpTests : IClassFixture<TestCaseProvider>
         var abortFrame = await abortSeen.Task.AsTaskWithTimeout(ShortTimeout);
         abortFrame[1].Should().Be((byte)J1939TpAbortReason.UnexpectedCtsSequenceNumber);
 
-        var ex = await bgAbort.Task.AsTaskWithTimeout(ShortTimeout);
-        ex.Reason.Should().Be(J1939TpAbortReason.UnexpectedCtsSequenceNumber);
-        ex.Pgn.Should().Be(pgn);
-        ex.Message.Should().Contain("unexpected TP.DT sequence number");
+        Func<Task> act = () => recvTask;
+        var recvEx = (await act.Should().ThrowAsync<J1939TpAbortException>()).Which;
+        recvEx.Reason.Should().Be(J1939TpAbortReason.UnexpectedCtsSequenceNumber);
+        recvEx.Pgn.Should().Be(pgn);
+        recvEx.Message.Should().Contain("unexpected TP.DT sequence number");
 
-        // Session must be gone: ReceiveAsync must not deliver a ghost datagram.
-        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(200));
-        Func<Task> receiveAct = async () => await receiver.ReceiveAsync(cts.Token);
-        await receiveAct.Should().ThrowAsync<OperationCanceledException>();
+        var bgEx = await bgAbort.Task.AsTaskWithTimeout(ShortTimeout);
+        bgEx.Reason.Should().Be(J1939TpAbortReason.UnexpectedCtsSequenceNumber);
+
+        // Channel remains usable for a subsequent BAM after the abort (fault consumed once).
+        var opts = new J1939TpOptions().With(th: TimeSpan.FromMilliseconds(5));
+        using var senderBus = Open(session, 2);
+        using var sender = J1939Tp.Open(senderBus, sourceAddress: 0x11, options: opts);
+        var okPayload = RandomPayload(14, seed: 123);
+        var recv2 = receiver.ReceiveAsync().AsTaskWithTimeout(ShortTimeout);
+        await sender.SendBamAsync(0xFECAu, okPayload).WithTimeout(ShortTimeout);
+        var datagram = await recv2;
+        datagram.Kind.Should().Be(J1939TpKind.Bam);
+        datagram.Payload.Should().Equal(okPayload);
     }
 
-    // Bugbot 3596396508 (BAM path): same silent hang — bad SN cancelled the session (and T1)
-    // without raising BackgroundExceptionOccurred.
+    // Bugbot 3596396508 (BAM path): bad SN must fault a blocked ReceiveAsync (not only raise
+    // BackgroundExceptionOccurred). Cancel() disposes T1, so inbox fault is the unblock path.
     [Fact]
-    public async Task Bam_Receiver_BadDtSequence_RaisesBackgroundException()
+    public async Task Bam_Receiver_BadDtSequence_FaultsReceiveAsync()
     {
         var session = NewSession();
         using var receiverBus = Open(session, 0);
@@ -677,6 +696,8 @@ public class J1939TpTests : IClassFixture<TestCaseProvider>
             if (ex is J1939TpAbortException abort) bgAbort.TrySetResult(abort);
         };
 
+        var recvTask = receiver.ReceiveAsync().AsTaskWithTimeout(ShortTimeout);
+
         var bam = J1939TpFrames.BuildBam(totalBytes: 14, totalPackets: 2, dataPgn: pgn);
         var bamId = J1939Id.ComposePgn(7, J1939Pgn.TpCm, peerSa, J1939Pgn.GlobalAddress);
         peerBus.Transmit(CanFrame.Classic((int)bamId, bam, isExtendedFrame: true));
@@ -686,11 +707,15 @@ public class J1939TpTests : IClassFixture<TestCaseProvider>
         var badDt = J1939TpFrames.BuildDt(sn: 2, pdu: payload, offset: 7);
         peerBus.Transmit(CanFrame.Classic((int)dtId, badDt, isExtendedFrame: true));
 
-        var ex = await bgAbort.Task.AsTaskWithTimeout(ShortTimeout);
-        ex.Reason.Should().Be(J1939TpAbortReason.UnexpectedCtsSequenceNumber);
-        ex.Pgn.Should().Be(pgn);
-        ex.Message.Should().Contain("Bam");
-        ex.Message.Should().Contain("unexpected TP.DT sequence number");
+        Func<Task> act = () => recvTask;
+        var recvEx = (await act.Should().ThrowAsync<J1939TpAbortException>()).Which;
+        recvEx.Reason.Should().Be(J1939TpAbortReason.UnexpectedCtsSequenceNumber);
+        recvEx.Pgn.Should().Be(pgn);
+        recvEx.Message.Should().Contain("Bam");
+        recvEx.Message.Should().Contain("unexpected TP.DT sequence number");
+
+        var bgEx = await bgAbort.Task.AsTaskWithTimeout(ShortTimeout);
+        bgEx.Reason.Should().Be(J1939TpAbortReason.UnexpectedCtsSequenceNumber);
     }
 
     private static async Task<List<J1939TpDatagram>> CollectAsync(IJ1939TpChannel channel, int count, TimeSpan timeout)
