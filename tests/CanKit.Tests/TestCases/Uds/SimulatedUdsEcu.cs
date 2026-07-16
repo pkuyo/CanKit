@@ -34,8 +34,10 @@ public sealed class SimulatedUdsEcu : IDisposable
     private int _started;
     private int _disposed;
 
+    private int _requestsHandled;
+
     /// <summary>Number of requests the ECU has fully answered (for assertions).</summary>
-    public int RequestsHandled { get; private set; }
+    public int RequestsHandled => Volatile.Read(ref _requestsHandled);
 
     /// <summary>Last request the ECU saw (or <c>null</c>).</summary>
     public byte[]? LastRequest { get; private set; }
@@ -91,7 +93,7 @@ public sealed class SimulatedUdsEcu : IDisposable
                     var body = handler(pdu);
                     if (suppressPositive)
                     {
-                        RequestsHandled++;
+                        Interlocked.Increment(ref _requestsHandled);
                         continue;
                     }
 
@@ -99,7 +101,7 @@ public sealed class SimulatedUdsEcu : IDisposable
                     response[0] = (byte)(sid + 0x40);
                     if (body.Length > 0) Buffer.BlockCopy(body, 0, response, 1, body.Length);
                     await _channel.SendAsync(response, ct).ConfigureAwait(false);
-                    RequestsHandled++;
+                    Interlocked.Increment(ref _requestsHandled);
                 }
                 catch (EcuSilent)
                 {
@@ -108,7 +110,7 @@ public sealed class SimulatedUdsEcu : IDisposable
                 catch (EcuNegativeResponse nrc)
                 {
                     await SendNrcAsync(sid, nrc.Code, ct).ConfigureAwait(false);
-                    RequestsHandled++;
+                    Interlocked.Increment(ref _requestsHandled);
                 }
                 catch (EcuResponsePending pending)
                 {
@@ -125,7 +127,7 @@ public sealed class SimulatedUdsEcu : IDisposable
                     response[0] = (byte)(sid + 0x40);
                     if (body.Length > 0) Buffer.BlockCopy(body, 0, response, 1, body.Length);
                     await _channel.SendAsync(response, ct).ConfigureAwait(false);
-                    RequestsHandled++;
+                    Interlocked.Increment(ref _requestsHandled);
                 }
             }
         }
