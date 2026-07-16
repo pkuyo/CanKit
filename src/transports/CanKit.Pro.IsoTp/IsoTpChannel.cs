@@ -208,6 +208,35 @@ internal sealed class IsoTpChannel : IIsoTpChannel
     /// <inheritdoc />
     public int DiscardPendingPdus()
     {
+        // Abort actor-side multi-frame reassembly first so leftover CFs cannot finish and enqueue
+        // a stale PDU after a higher-layer timeout/cancel (Bugbot 3596444314). Silent clear —
+        // not AbortRx — so we do not raise BackgroundExceptionOccurred or enqueue a fault that
+        // we would immediately drain. Post+wait so any CF already queued on the actor mailbox
+        // observes _rx == null and drops (HandleRxConsecutiveFrame).
+        var rxCleared = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        try
+        {
+            _actor.Post(() =>
+            {
+                try
+                {
+                    _rx?.CancelDeadline();
+                    _rx = null;
+                }
+                finally
+                {
+                    rxCleared.TrySetResult(null);
+                }
+            });
+        }
+        catch (ObjectDisposedException)
+        {
+            rxCleared.TrySetResult(null);
+        }
+
+        try { rxCleared.Task.GetAwaiter().GetResult(); }
+        catch { /* channel tearing down */ }
+
         // Drain both PDU and AbortRx-fault items. Leaving a fault behind would poison the next
         // ReceiveAsync after a higher-layer timeout/cancel — the opposite of the reset intent.
         int discarded = 0;
