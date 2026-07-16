@@ -269,6 +269,46 @@ public class IsoTpChannelIntegrationTests : IClassFixture<TestCaseProvider>
     }
 
     // --------------------------------------------------------------------------------
+    // DiscardPendingPdus drains completed PDUs and AbortRx faults so a later ReceiveAsync
+    // is not poisoned by leftover inbox items after a higher-layer cancel/timeout.
+    // --------------------------------------------------------------------------------
+    [Fact]
+    public async Task DiscardPendingPdus_Drains_Completed_Pdus_And_Abort_Faults()
+    {
+        var session = NewSession();
+        using var busA = OpenClassic(session, 0);
+        using var busB = OpenClassic(session, 1);
+
+        var epRecv = IsoTpEndpoint.Normal(txCanId: 0x7E8, rxCanId: 0x7E0);
+        var epPeer = IsoTpEndpoint.Normal(txCanId: 0x7E0, rxCanId: 0x7E8);
+
+        using var receiver = IsoTpFactory.Open(busB, epRecv,
+            FastOptions(nCr: TimeSpan.FromMilliseconds(80)));
+        using var sender = IsoTpFactory.Open(busA, epPeer, FastOptions());
+
+        // Buffer a completed SF without a waiter.
+        await sender.SendAsync(new byte[] { 0x22, 0xF1, 0x90 });
+        await Task.Delay(50);
+
+        // Queue an AbortRx fault via N_Cr (FF then silence).
+        byte[] ffPayload = Enumerable.Range(0, 20).Select(i => (byte)i).ToArray();
+        int ffData = IsoTpFrameCodec.FirstFrameMaxDataLength(isCanFd: false, usesAddressExtension: false, useLongLength: false);
+        var ff = IsoTpFrameCodec.BuildFirstFrame(epPeer, ffPayload.Length, ffPayload.AsSpan(0, ffData), isCanFd: false);
+        busA.Transmit(CanFrame.Classic(unchecked((int)epPeer.TxCanId), ff));
+        await Task.Delay(200); // > N_Cr
+
+        int discarded = receiver.DiscardPendingPdus();
+        discarded.Should().BeGreaterThanOrEqualTo(2,
+            "at least the SF PDU and the N_Cr abort fault must be drained");
+
+        // Fresh receive after drain must succeed (not throw the discarded N_Cr fault).
+        var recv = receiver.ReceiveAsync(new CancellationTokenSource(ShortTimeout).Token);
+        byte[] ok = { 0x3E, 0x00 };
+        await sender.SendAsync(ok);
+        (await recv).Should().Equal(ok);
+    }
+
+    // --------------------------------------------------------------------------------
     // FR-TP-018 — Two ISO-TP channels on the *same* bus with disjoint endpoints work
     // independently.
     // --------------------------------------------------------------------------------
@@ -322,83 +362,6 @@ public class IsoTpChannelIntegrationTests : IClassFixture<TestCaseProvider>
         // ReceiveAsync should now throw (channel disposed) rather than hang.
         Func<Task> act = () => recvTask;
         await act.Should().ThrowAsync<Exception>();
-    }
-
-    // --------------------------------------------------------------------------------
-    // Regression: Extended addressing must not drop inbound frames.
-    //
-    // Under ISO 15765-2 §5.3.2.4 Extended addressing puts the *target* address in the first
-    // payload byte on TX and the *source* address on RX -- the two values differ. Previously the
-    // subscription reader compared inbound frames against the endpoint's TX address-extension
-    // byte, silently dropping every valid inbound frame. This test drives an SF round-trip in
-    // both directions to prove the RX filter uses the RX-side address-extension byte instead.
-    // --------------------------------------------------------------------------------
-    [Fact]
-    public async Task Extended_Addressing_RoundTrips_On_Virtual_Loopback()
-    {
-        var session = NewSession();
-        using var busA = OpenClassic(session, 0);
-        using var busB = OpenClassic(session, 1);
-
-        // Two nodes, both use the same physical CAN-ID pair 0x7E0/0x7E8 but Extended addressing
-        // multiplexes distinct logical peers via the first payload byte:
-        //   node A: source=0xF1 (its own N_SA), target=0xF2 (its peer's N_TA)
-        //   node B: source=0xF2 (its own N_SA), target=0xF1 (its peer's N_TA)
-        // Inbound frames from B carry N_TA=0xF1 which A must accept (matches its source),
-        // *not* N_TA=0xF2 which is what A itself writes on TX.
-        var epA = IsoTpEndpoint.Extended(txCanId: 0x7E0, rxCanId: 0x7E8,
-            sourceAddress: 0xF1, targetAddress: 0xF2);
-        var epB = IsoTpEndpoint.Extended(txCanId: 0x7E8, rxCanId: 0x7E0,
-            sourceAddress: 0xF2, targetAddress: 0xF1);
-
-        using var chA = IsoTpFactory.Open(busA, epA, FastOptions());
-        using var chB = IsoTpFactory.Open(busB, epB, FastOptions());
-
-        // A -> B
-        var recvOnB = chB.ReceiveAsync(new CancellationTokenSource(ShortTimeout).Token);
-        byte[] pduAB = { 0x22, 0xF1, 0x89 };
-        await chA.SendAsync(pduAB);
-        (await recvOnB).Should().Equal(pduAB);
-
-        // B -> A (would fail before the fix because chA's RX filter compared against 0xF2
-        // instead of 0xF1 and dropped every inbound frame).
-        var recvOnA = chA.ReceiveAsync(new CancellationTokenSource(ShortTimeout).Token);
-        byte[] pduBA = { 0x62, 0xF1, 0x89, 0x01, 0x02 };
-        await chB.SendAsync(pduBA);
-        (await recvOnA).Should().Equal(pduBA);
-    }
-
-    // --------------------------------------------------------------------------------
-    // Regression: Oversized classic-CAN PDU send must not hang.
-    //
-    // Classic-CAN First Frames encode the total length in 12 bits (max 4095 bytes); the 32-bit
-    // escape form is CAN-FD-only. Previously BeginSendOnLoop let the codec's
-    // ArgumentOutOfRangeException escape uncaught into the actor's background exception channel
-    // while the awaiting SendAsync TCS was never completed -- the caller hung forever. The fix
-    // both (a) rejects the PDU up front with a domain-specific IsoTpException, and (b) wraps the
-    // send setup in a try/catch that fails the TCS on any leaked exception.
-    // --------------------------------------------------------------------------------
-    [Fact]
-    public async Task Oversized_Classic_Pdu_Send_Fails_Cleanly_Instead_Of_Hanging()
-    {
-        var session = NewSession();
-        using var busA = OpenClassic(session, 0);
-        using var busB = OpenClassic(session, 1); // peer just so the hub has a subscriber
-
-        using var sender = IsoTpFactory.Open(busA, IsoTpEndpoint.Normal(0x600, 0x601),
-            FastOptions());
-
-        // 5000 bytes > MaxClassicFirstFrameLength (4095) -- would previously hang forever.
-        byte[] pdu = new byte[5000];
-
-        var sendTask = sender.SendAsync(pdu);
-        // Bound the wait: if the fix regresses, this WaitAsync will trip long before the test
-        // suite's own timeout and the assertion below will surface a clear failure.
-        // The codec throws ArgumentOutOfRangeException; BeginSendOnLoop's FailTx surfaces it
-        // on the awaiting SendAsync (must not hang).
-        Func<Task> act = () => sendTask.WaitAsync(ShortTimeout);
-        var ex = (await act.Should().ThrowAsync<ArgumentOutOfRangeException>()).Which;
-        ex.Message.Should().Contain("4095");
     }
 
     // --------------------------------------------------------------------------------

@@ -61,10 +61,11 @@ public interface IIsoTpChannel : IDisposable
     Task<byte[]> ReceiveAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Non-blocking: discards every buffered inbox item (reassembled PDUs and pending
-    /// reassembly-abort faults) and returns how many were dropped. Higher layers (e.g. UDS)
-    /// call this after an aborted wait so a late ECU reply cannot be consumed as the answer
-    /// to a later request.
+    /// Non-blocking: drains every buffered inbox item — both completed PDUs and pending
+    /// reassembly-abort faults enqueued by <c>AbortRx</c> — and returns how many were dropped.
+    /// Higher layers (e.g. UDS) call this after a cancelled/timed-out wait so a late peer PDU
+    /// or a leftover abort fault cannot be consumed as the answer to a later request.
+    /// Does not affect in-flight reassembly state on the actor; only the consumer inbox.
     /// </summary>
     int DiscardPendingPdus();
 

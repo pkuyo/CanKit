@@ -181,6 +181,8 @@ internal sealed class IsoTpChannel : IIsoTpChannel
     /// <inheritdoc />
     public int DiscardPendingPdus()
     {
+        // Drain both PDU and AbortRx-fault items. Leaving a fault behind would poison the next
+        // ReceiveAsync after a higher-layer timeout/cancel — the opposite of the reset intent.
         int discarded = 0;
         while (_pduInbox.Reader.TryRead(out _))
             discarded++;
