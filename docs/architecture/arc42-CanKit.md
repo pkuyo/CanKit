@@ -29,7 +29,7 @@ Diese Nomenklatur ist identisch zur SRS und wird im gesamten Dokument verwendet:
 | **L0** | Adapter-Ebene | vorhanden | 7 Vendor-Adapter + Virtual + Fake-Native-Schicht |
 | **L1** | Raw-CAN-Kern | vorhanden | `ICanBus`, `CanFrame`, Registry, Utilities, Diagnostics |
 | **L2** | Raw-CAN-Dienstebene | **NEU / Ziel** | Multi-Consumer-Demux, Ownership-Vertrag, TX-Confirm, Adressierung, Aktor-Modell, Fehler-/Timeout-Infrastruktur |
-| **L3** | Transport-Ebene | Prototyp (ISO-TP) / Ziel (J1939-TP) | ISO-TP (ISO 15765-2), J1939-TP (BAM/CM) |
+| **L3** | Transport-Ebene | Prototyp (ISO-TP) / MVP (J1939-TP, Paket `CanKit.Pro.J1939Tp`) | ISO-TP (ISO 15765-2), J1939-TP (BAM/CM) |
 | **L4** | Anwendungsprotokoll-Ebene | **NEU / Ziel** | UDS, CANopen, J1939-App, HAWE-Privatprotokoll |
 
 ### Auflösung der Requirement-Referenzen (arc42 ↔ SRS)
@@ -301,7 +301,7 @@ flowchart TB
 | L0 Adapter | vorhanden | Vendor-Treiber hinter `ICanBus` kapseln, RX-Loop betreiben, TX ausführen. | `ICanBus`, `ITransceiver`, `ICanDevice` | `FR-RAW-ADAPTER-*` |
 | L1 Raw-CAN-Kern | vorhanden | Herstellerneutraler Frame-Zugriff, Discovery, Utilities, Diagnostics. | `ICanBus`, `CanBus.Open`, `CanRegistry` | `FR-RAW-*` |
 | L2 Raw-CAN-Dienste | NEU | Ein RX-Strom → N unabhängige gefilterte Consumer; Ownership-Vertrag; TX-Confirm; Aktor-Modell. | (neu) `ICanBusService` / `ISubscription` | `FR-RAW-DEMUX-*`, `FR-RAW-OWN-*`, `FR-RAW-TXC-*` |
-| L3 Transport | Prototyp/Ziel | Segmentierung/Reassemblierung (ISO-TP), Sessions (J1939-TP). | `IIsoTpChannel`, `IIsoTpScheduler` | `FR-TP-*` |
+| L3 Transport | Prototyp (ISO-TP) / MVP (J1939-TP) | Segmentierung/Reassemblierung (ISO-TP), Sessions (J1939-TP, `CanKit.Pro.J1939Tp`: BAM/CM/DT, T1..T4/Tr/Th, parallele Sessions über gemeinsamen `ICanBusService`). | `IIsoTpChannel`, `IIsoTpScheduler`, `IJ1939TpChannel` | `FR-TP-*` |
 | L4 Anwendungsprotokolle | NEU | Diagnose-/Applikationssemantik auf L3/L2. | (neu) protokollspezifisch | `FR-UDS-*`, `FR-CO-*`, `FR-J1939-*`, `FR-HAWE-*` |
 
 ## 5.2 Ebene 2 – Zoom L1 (Raw-CAN-Kern, vorhanden)

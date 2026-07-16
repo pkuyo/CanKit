@@ -233,7 +233,7 @@ Ist-Zustand: unfertiger, funktional defekter Prototyp (`CanKit.Transport.IsoTp`)
 
 #### 4.2.2 J1939-TP (TP.BAM/TP.CM)
 
-Ist-Zustand: nicht vorhanden, Neubau.
+Ist-Zustand: MVP umgesetzt als eigenständiges Paket `CanKit.Pro.J1939Tp` (`src/transports/CanKit.Pro.J1939Tp`, `IsPackable=false`, Version 0.1.0). Actor-getriebener Kanal (`IJ1939TpChannel`) auf Basis der L2-Dienste (`ICanBusService`, `IProtocolActor`, `IDeadlineScheduler`) sowie der J1939-Adressierungshelfer aus `CanKit.Pro.Addressing`; deckt FR-TP-030..035 gemäß Verifikationsspalte mittels Virtual-Loopback-Integrationstests in `tests/CanKit.Tests/TestCases/J1939TpTests.cs` ab. Weiterhin offen: Feinabstimmung sämtlicher §5.10.2.4-Zeitwerte gegen reale Hardware sowie L4-Applikationsschicht (FR-J1939-*).
 
 | ID | Anforderung | Priorität | Verifikation | Quelle |
 |---|---|---|---|---|
@@ -373,7 +373,7 @@ Verweise auf Architektur-Bausteine nutzen die in Abschnitt 2.1 definierten Schic
 | FR-RAW-040..041 | L2 – *Adressierungs-Helfer* (umgesetzt als eigenständiges `CanKit.Pro.Addressing`: `CanIdRange`, `J1939Id`/`J1939Fields`; FR-RAW-041 als `CanIdFilter.Overlaps`/`ICanBusService.FindOverlappingFilterSubscriptions()` in `CanKit.Pro.RawCan`) | Unit-Test |
 | FR-RAW-050..052 | L2 – *Fehler-/Timeout-Infrastruktur* (FR-RAW-050/051 umgesetzt als eigenständiges `CanKit.Pro.Reliability`: `IDeadlineScheduler`/`DeadlineScheduler`/`Deadline` als aktorgetriebene Deadline-Primitive, deren Ablauf über `IProtocolActor.Schedule` tatsächlich geprüft und gemeldet wird (FR-RAW-050); `BusStateMonitor`/`BusStateChangedEventArgs`/`BusStateExtensions` für gepushte `ICanBus.BusState`-Übergänge (FR-RAW-051), aufbauend auf `CanKit.Pro.Actor` und L1 `ICanBus.BusState`). FR-RAW-052 (reservierte/ungültige Protokollwerte) bleibt **zurückgestellt** und dem künftigen ISO-TP-Codec-Fix FR-TP-007 zugeordnet (Review §1.1 Punkt 6), da protokollspezifisch statt generische L2-Primitive. | Unit-Test, Integrationstest |
 | FR-TP-001..020 | L3 – ISO-TP-Transport, `CanKit.Transport.IsoTp` (`IsoTpChannelCore`, `IsoTpScheduler`, `FrameCodec`, `Router`, `Deadline`/`QueuedDeadline`) | Unit-Test (Codec/Timing), Virtual-Loopback-Integrationstest, HIL-Stichprobe |
-| FR-TP-030..035 | L3 – *J1939-Transport* (geplant, neues Paket `CanKit.Transport.J1939` analog `IIsoTpRegister`-Muster) | Virtual-Loopback-Integrationstest |
+| FR-TP-030..035 | L3 – *J1939-Transport* (umgesetzt als eigenständiges `CanKit.Pro.J1939Tp`: `J1939Tp`/`J1939TpChannel`/`J1939TpOptions`/`J1939TpFrames`/`J1939TpAbortReason`, aufbauend auf `CanKit.Pro.Addressing` (`J1939Id`/`J1939Pgn`) sowie `CanKit.Pro.Actor`/`CanKit.Pro.RawCan`/`CanKit.Pro.Reliability`; MVP, `IsPackable=false`) | Virtual-Loopback-Integrationstest |
 | FR-UDS-001..012 | L4 – *UDS-Client* (geplant, neues Paket auf `IIsoTpChannel`) | Virtual-Loopback-Integrationstest, HIL-Stichprobe |
 | FR-CO-001..012 | L4 – *CANopen-Stack* (geplant, neues Paket auf L2-Demultiplexing + L1 `ICanBus`) | Virtual-Loopback-Integrationstest, HIL-Stichprobe |
 | FR-J1939-001..007 | L4 – *J1939-Applikationsschicht* (geplant, aufbauend auf L3 J1939-TP) | Virtual-Loopback-Integrationstest, HIL-Stichprobe |
@@ -394,6 +394,6 @@ Verweise auf Architektur-Bausteine nutzen die in Abschnitt 2.1 definierten Schic
 ## Anhang: Offene Punkte für die nächste Iteration
 
 1. Konkrete Zielwerte für Jitter/Durchsatz (NFR-001) sind projektspezifisch festzulegen (aktuell als Platzhalter markiert) – abhängig von Zielanwendungen (Diagnose vs. Steuerungs-Echtzeit).
-2. J1939-TP- und CANopen-Pakete existieren im Repository noch nicht; Anforderungen in Abschnitt 4.2.2/4.3.2/4.3.3 sind Neubau-Spezifikationen ohne Ist-Code-Referenz.
+2. J1939-TP ist als MVP-Paket `CanKit.Pro.J1939Tp` umgesetzt (siehe 4.2.2); CANopen-Pakete existieren im Repository noch nicht; Anforderungen in Abschnitt 4.3.2/4.3.3 bleiben Neubau-Spezifikationen ohne Ist-Code-Referenz.
 3. HAWE-Anforderungen (Abschnitt 4.3.4) sind bewusst als Rahmen gehalten und müssen bei Vorliegen der vertraulichen Spezifikation verfeinert werden (Annahme A-6).
 4. Die Traceability-Matrix referenziert `docs/architecture/arc42-CanKit.md`, das zum Zeitpunkt dieser SRS noch nicht vorliegt; Bausteinnamen sind als *geplant* markiert und beim Erscheinen des Architekturdokuments gegenzuprüfen.
