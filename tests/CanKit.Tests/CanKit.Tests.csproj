@@ -34,6 +34,7 @@
     <ProjectReference Include="..\..\src\protocols\CanKit.Pro.Uds\CanKit.Pro.Uds.csproj" />
     <ProjectReference Include="..\..\src\transports\CanKit.Pro.J1939Tp\CanKit.Pro.J1939Tp.csproj" />
     <ProjectReference Include="..\..\src\protocols\CanKit.Pro.Hawe\CanKit.Pro.Hawe.csproj" />
+    <ProjectReference Include="..\..\src\protocols\CanKit.Pro.CANopen\CanKit.Pro.CANopen.csproj" />
   </ItemGroup>
 </Project>
 
