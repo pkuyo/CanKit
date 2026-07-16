@@ -51,8 +51,9 @@ public sealed class J1939TpOptions
 
     /// <summary>
     /// Maximum number of TP.DT packets per CTS this channel advertises when it is the receiver
-    /// of a TP.CM session. Must be &gt; 0. Defaults to 16, well below the 255 hard cap so a slow
-    /// consumer can keep the block short.
+    /// of a TP.CM session. Must be in [1, 255] (0 is illegal: a CTS with numPackets=0 is the
+    /// "hold connection open" form, not a real grant). Defaults to 16, well below the 255 hard
+    /// cap so a slow consumer can keep the block short.
     /// </summary>
     public byte MaxPacketsPerCts { get; init; } = 16;
 
@@ -67,6 +68,9 @@ public sealed class J1939TpOptions
     /// Convenience clone that returns a new instance with the provided overrides. Useful for
     /// tests that want to tweak one field of a shared default template.
     /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// Thrown when <paramref name="maxPacketsPerCts"/> is 0.
+    /// </exception>
     public J1939TpOptions With(
         TimeSpan? t1 = null,
         TimeSpan? t2 = null,
@@ -77,7 +81,12 @@ public sealed class J1939TpOptions
         byte? priority = null,
         byte? maxPacketsPerCts = null,
         int? receiveBufferCapacity = null)
-        => new()
+    {
+        if (maxPacketsPerCts is 0)
+            throw new ArgumentOutOfRangeException(nameof(maxPacketsPerCts), maxPacketsPerCts,
+                "MaxPacketsPerCts must be in [1, 255]; 0 is not a valid CTS grant size.");
+
+        return new()
         {
             T1 = t1 ?? T1,
             T2 = t2 ?? T2,
@@ -89,4 +98,22 @@ public sealed class J1939TpOptions
             MaxPacketsPerCts = maxPacketsPerCts ?? MaxPacketsPerCts,
             ReceiveBufferCapacity = receiveBufferCapacity ?? ReceiveBufferCapacity,
         };
+    }
+
+    /// <summary>
+    /// Validates invariants that must hold for a channel to open safely (called from
+    /// <see cref="J1939TpChannel"/> construction).
+    /// </summary>
+    internal void Validate()
+    {
+        if (MaxPacketsPerCts == 0)
+            throw new ArgumentOutOfRangeException(nameof(MaxPacketsPerCts), MaxPacketsPerCts,
+                "MaxPacketsPerCts must be in [1, 255]; 0 is not a valid CTS grant size.");
+        if (Priority > 7)
+            throw new ArgumentOutOfRangeException(nameof(Priority), Priority,
+                "J1939 priority must be in [0, 7].");
+        if (ReceiveBufferCapacity < 1)
+            throw new ArgumentOutOfRangeException(nameof(ReceiveBufferCapacity), ReceiveBufferCapacity,
+                "ReceiveBufferCapacity must be >= 1.");
+    }
 }

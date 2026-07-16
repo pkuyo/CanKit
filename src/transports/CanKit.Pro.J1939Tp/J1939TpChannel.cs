@@ -88,6 +88,7 @@ internal sealed class J1939TpChannel : IJ1939TpChannel
                 "J1939 source address 0xFF (global) is not a valid channel identity.");
         _sourceAddress = sourceAddress;
         _options = options ?? throw new ArgumentNullException(nameof(options));
+        _options.Validate();
         _ownsService = ownsService;
 
         var inboxOptions = new BoundedChannelOptions(Math.Max(1, _options.ReceiveBufferCapacity))
@@ -180,21 +181,39 @@ internal sealed class J1939TpChannel : IJ1939TpChannel
             var (self, k, t, token) = ((J1939TpChannel, TxSessionKey, TaskCompletionSource<object?>, CancellationToken))state!;
             try
             {
-                self._actor.Post(() =>
-                {
-                    if (self._txSessions.TryGetValue(k, out var session) && ReferenceEquals(session.Tcs, t))
-                    {
-                        self._txSessions.Remove(k);
-                        session.Cancel();
-                    }
-                    t.TrySetCanceled(token);
-                });
+                self._actor.Post(() => self.CancelTxOnLoop(k, t, token));
             }
             catch (ObjectDisposedException)
             {
                 t.TrySetCanceled(token);
             }
         }, (this, key, tcs, ct));
+    }
+
+    /// <summary>
+    /// Actor-loop handler for a caller canceling an in-flight (or not-yet-started) TX. If a CM
+    /// session was already opened with the peer (RTS / DTs on the wire), emit a TP.CM Connection
+    /// Abort so the peer does not keep waiting on T1/T2/T3. BAM has no abort channel.
+    /// </summary>
+    private void CancelTxOnLoop(TxSessionKey key, TaskCompletionSource<object?> tcs, CancellationToken token)
+    {
+        if (_txSessions.TryGetValue(key, out var session) && ReferenceEquals(session.Tcs, tcs))
+        {
+            _txSessions.Remove(key);
+            session.Deadline?.Dispose();
+            session.Deadline = null;
+            if (session.IsCm)
+            {
+                // Peer already has (or is about to have) an open CM session with us — tell it to
+                // tear down. Reason 2 ("resources needed for another task") is the closest
+                // standard code for an application-initiated local cancel.
+                SendTpCm(J1939TpFrames.BuildAbort(J1939TpAbortReason.NoResourcesAvailable, key.Pgn),
+                    destinationAddress: key.DestinationAddress);
+            }
+        }
+        // Complete with the caller's token (do not go through TxSession.Cancel, which would
+        // TrySetCanceled() without the token and win the race against this call).
+        tcs.TrySetCanceled(token);
     }
 
     /// <inheritdoc />
@@ -384,12 +403,13 @@ internal sealed class J1939TpChannel : IJ1939TpChannel
                     if (maxCts != 0xFF && maxCts > 0 && maxCts < cap) cap = maxCts;
                     byte block = (byte)Math.Min(cap, totalPackets);
                     var session = RxSession.NewCm(sa, dataPgn, totalBytes, totalPackets, cap,
-                        _deadlines, _options, OnRxT1Expired);
+                        _deadlines, _options, OnRxT1Expired, OnRxTrExpired);
                     session.NextExpectedSn = 1;
                     session.BlockRemaining = block;
                     _rxSessions[cmKey] = session;
                     SendTpCm(J1939TpFrames.BuildCts(block, 1, dataPgn), destinationAddress: sa);
-                    // Now waiting for the peer to actually send the DTs; T1 covers that gap.
+                    // Tr covers the gap from CTS → first DT of the block (FR-TP-032 / §5.10.2.4).
+                    session.ArmTr();
                     break;
                 }
 
@@ -459,7 +479,8 @@ internal sealed class J1939TpChannel : IJ1939TpChannel
         Buffer.BlockCopy(payload, 1, match.Buffer, offset, copy);
         match.NextExpectedSn = (byte)(sn + 1);
         match.PacketsReceived++;
-        match.RearmT1();
+        // First DT of a CTS block clears Tr and switches to T1; subsequent DTs rearm T1.
+        match.OnDtReceived();
 
         if (match.PacketsReceived >= match.TotalPackets)
         {
@@ -491,12 +512,19 @@ internal sealed class J1939TpChannel : IJ1939TpChannel
                 match.BlockRemaining = block;
                 SendTpCm(J1939TpFrames.BuildCts(block, match.NextExpectedSn, match.Pgn),
                     destinationAddress: sa);
-                // T1 keeps running for the next block.
+                // Fresh Tr for the next block's first DT (T1 only runs inside a block).
+                match.ArmTr();
             }
         }
     }
 
     private void OnRxT1Expired(RxSession session)
+        => ExpireRxSession(session, "T1", "waiting for next TP.DT");
+
+    private void OnRxTrExpired(RxSession session)
+        => ExpireRxSession(session, "Tr", "waiting for first TP.DT after CTS");
+
+    private void ExpireRxSession(RxSession session, string timerName, string waitingFor)
     {
         // Look up in O(1) via the (peer, kind) key; guard against races where the session was
         // already removed (e.g. finished / aborted / superseded) before the timer fired.
@@ -510,7 +538,7 @@ internal sealed class J1939TpChannel : IJ1939TpChannel
                 destinationAddress: session.PeerAddress);
         }
         RaiseBackgroundException(new J1939TpAbortException(J1939TpAbortReason.Timeout, session.Pgn,
-            $"J1939-TP {session.Kind} RX session timed out (T1) waiting for TP.DT from 0x{session.PeerAddress:X2}."));
+            $"J1939-TP {session.Kind} RX session timed out ({timerName}) {waitingFor} from 0x{session.PeerAddress:X2}."));
     }
 
     private static bool IsValidTotals(int totalBytes, int totalPackets)
@@ -530,6 +558,10 @@ internal sealed class J1939TpChannel : IJ1939TpChannel
             tcs.TrySetException(new ObjectDisposedException(nameof(J1939TpChannel)));
             return;
         }
+        // Cancel may have completed the TCS (via CancelTxOnLoop) before this work item ran —
+        // do not register a session or emit TP.CM/TP.DT for an already-canceled send.
+        if (tcs.Task.IsCompleted)
+            return;
         if (_txSessions.ContainsKey(key))
         {
             tcs.TrySetException(new InvalidOperationException(
@@ -967,11 +999,15 @@ internal sealed class J1939TpChannel : IJ1939TpChannel
     private sealed class RxSession
     {
         private readonly Action<RxSession> _onT1;
+        private readonly Action<RxSession>? _onTr;
         private readonly TimeSpan _t1;
+        private readonly TimeSpan _tr;
         private readonly DeadlineScheduler _scheduler;
+        private bool _awaitingFirstDtOfBlock;
 
         private RxSession(byte peer, uint pgn, byte[] buffer, int totalPackets, byte maxPacketsPerCts,
-            J1939TpKind kind, DeadlineScheduler scheduler, TimeSpan t1, Action<RxSession> onT1)
+            J1939TpKind kind, DeadlineScheduler scheduler, TimeSpan t1, TimeSpan tr,
+            Action<RxSession> onT1, Action<RxSession>? onTr, bool armT1Immediately)
         {
             PeerAddress = peer;
             Pgn = pgn;
@@ -981,20 +1017,28 @@ internal sealed class J1939TpChannel : IJ1939TpChannel
             Kind = kind;
             _scheduler = scheduler;
             _t1 = t1;
+            _tr = tr;
             _onT1 = onT1;
-            Deadline = scheduler.Arm(t1, () => onT1(this));
+            _onTr = onTr;
+            if (armT1Immediately)
+                Deadline = scheduler.Arm(t1, () => onT1(this));
         }
 
         public static RxSession NewBam(byte sa, uint pgn, int totalBytes, int totalPackets,
             DeadlineScheduler scheduler, J1939TpOptions options, Action<RxSession> onT1)
             => new(sa, pgn, new byte[totalBytes], totalPackets, options.MaxPacketsPerCts,
-                J1939TpKind.Bam, scheduler, options.T1, onT1)
+                J1939TpKind.Bam, scheduler, options.T1, options.Tr, onT1, onTr: null,
+                armT1Immediately: true)
             { NextExpectedSn = 1 };
 
         public static RxSession NewCm(byte sa, uint pgn, int totalBytes, int totalPackets, byte maxPerCts,
-            DeadlineScheduler scheduler, J1939TpOptions options, Action<RxSession> onT1)
+            DeadlineScheduler scheduler, J1939TpOptions options,
+            Action<RxSession> onT1, Action<RxSession> onTr)
+            // CM does not arm T1 here: the caller sends CTS then calls ArmTr() so Tr covers the
+            // CTS → first-DT gap (options.Tr / FR-TP-032). T1 takes over inside the block.
             => new(sa, pgn, new byte[totalBytes], totalPackets, maxPerCts,
-                J1939TpKind.Cm, scheduler, options.T1, onT1)
+                J1939TpKind.Cm, scheduler, options.T1, options.Tr, onT1, onTr,
+                armT1Immediately: false)
             { NextExpectedSn = 1 };
 
         public byte PeerAddress { get; }
@@ -1007,6 +1051,34 @@ internal sealed class J1939TpChannel : IJ1939TpChannel
         public int BlockRemaining { get; set; }
         public int PacketsReceived { get; set; }
         public IDeadline? Deadline { get; private set; }
+
+        /// <summary>
+        /// Arms Tr after emitting a CTS: peer must deliver the first TP.DT of the granted block
+        /// before Tr elapses (J1939TpOptions.Tr / §5.10.2.4).
+        /// </summary>
+        public void ArmTr()
+        {
+            if (_onTr is null) return;
+            Deadline?.Dispose();
+            _awaitingFirstDtOfBlock = true;
+            Deadline = _scheduler.Arm(_tr, () => _onTr(this));
+        }
+
+        /// <summary>
+        /// Called on every accepted TP.DT. For CM, the first DT of a CTS block clears Tr and
+        /// switches to T1; subsequent DTs rearm T1. BAM always rearms T1.
+        /// </summary>
+        public void OnDtReceived()
+        {
+            if (_awaitingFirstDtOfBlock)
+            {
+                _awaitingFirstDtOfBlock = false;
+                Deadline?.Dispose();
+                Deadline = _scheduler.Arm(_t1, () => _onT1(this));
+                return;
+            }
+            RearmT1();
+        }
 
         public void RearmT1()
         {
@@ -1023,6 +1095,7 @@ internal sealed class J1939TpChannel : IJ1939TpChannel
         {
             Deadline?.Dispose();
             Deadline = null;
+            _awaitingFirstDtOfBlock = false;
         }
     }
 }

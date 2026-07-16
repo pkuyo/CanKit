@@ -413,6 +413,149 @@ public class J1939TpTests : IClassFixture<TestCaseProvider>
         fromB.Payload.Should().Equal(payloadB);
     }
 
+    // Bugbot 3596025915: canceling before BeginTxOnLoop runs must not emit TP.CM/TP.DT.
+    [Fact]
+    public async Task SendCm_CanceledBeforeStart_DoesNotTransmit()
+    {
+        var session = NewSession();
+        using var busA = Open(session, 0);
+        using var busB = Open(session, 1);
+
+        using var sender = J1939Tp.Open(busA, sourceAddress: 0x61);
+        using var _ = J1939Tp.Open(busB, sourceAddress: 0x62);
+
+        var seen = 0;
+        busB.FrameObserved += (_, e) =>
+        {
+            if (!e.CanFrame.IsExtendedFrame) return;
+            var fields = J1939Id.Decompose((uint)e.CanFrame.ID);
+            if (fields.SourceAddress == 0x61 &&
+                (J1939Pgn.IsTransportCm(fields.Pgn) || J1939Pgn.IsTransportDt(fields.Pgn)))
+                Interlocked.Increment(ref seen);
+        };
+
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        Func<Task> act = async () => await sender.SendCmAsync(0xEE61, destinationAddress: 0x62,
+            RandomPayload(50, seed: 61), cts.Token);
+        await act.Should().ThrowAsync<OperationCanceledException>();
+
+        // Give the actor a beat to drain any incorrectly queued BeginTx work.
+        await Task.Delay(100);
+        Volatile.Read(ref seen).Should().Be(0, "canceled send must not emit TP.CM/TP.DT");
+    }
+
+    // Bugbot 3596025922: canceling an in-flight TP.CM after RTS must send Connection Abort.
+    [Fact]
+    public async Task SendCm_CancelInFlight_SendsConnectionAbort()
+    {
+        var session = NewSession();
+        using var senderBus = Open(session, 0);
+        using var peerBus = Open(session, 1);
+
+        const byte senderSa = 0x71;
+        const byte peerSa = 0x72;
+        const uint pgn = 0xEE71u;
+
+        using var sender = J1939Tp.Open(senderBus, sourceAddress: senderSa);
+
+        var abortSeen = new TaskCompletionSource<byte[]>(TaskCreationOptions.RunContinuationsAsynchronously);
+        peerBus.FrameObserved += (_, e) =>
+        {
+            if (!e.CanFrame.IsExtendedFrame) return;
+            var fields = J1939Id.Decompose((uint)e.CanFrame.ID);
+            if (fields.SourceAddress != senderSa || !J1939Pgn.IsTransportCm(fields.Pgn)) return;
+            var data = e.CanFrame.Data.ToArray();
+            if (data.Length >= 8 && data[0] == J1939TpFrames.ControlAbort
+                && J1939TpFrames.ReadDataPgn(data) == pgn)
+                abortSeen.TrySetResult(data);
+        };
+
+        // Peer never replies with CTS, so the session stays open after RTS until we cancel.
+        using var cts = new CancellationTokenSource();
+        var send = sender.SendCmAsync(pgn, destinationAddress: peerSa, RandomPayload(50, seed: 71), cts.Token);
+
+        // Wait until RTS has hit the wire (actor has registered the TX session).
+        await Task.Delay(50);
+        cts.Cancel();
+
+        Func<Task> act = async () => await send.WithTimeout(ShortTimeout);
+        await act.Should().ThrowAsync<OperationCanceledException>();
+
+        var abort = await abortSeen.Task.AsTaskWithTimeout(ShortTimeout);
+        abort[1].Should().Be((byte)J1939TpAbortReason.NoResourcesAvailable);
+    }
+
+    // Bugbot 3596025929: MaxPacketsPerCts=0 must fail fast, not crash later in BuildCts.
+    [Fact]
+    public void Open_MaxPacketsPerCtsZero_Throws()
+    {
+        var session = NewSession();
+        using var bus = Open(session, 0);
+        var opts = new J1939TpOptions { MaxPacketsPerCts = 0 };
+
+        Action act = () => J1939Tp.Open(bus, sourceAddress: 0x81, options: opts);
+        act.Should().Throw<ArgumentOutOfRangeException>()
+            .Which.ParamName.Should().Be(nameof(J1939TpOptions.MaxPacketsPerCts));
+    }
+
+    [Fact]
+    public void Options_With_MaxPacketsPerCtsZero_Throws()
+    {
+        Action act = () => new J1939TpOptions().With(maxPacketsPerCts: 0);
+        act.Should().Throw<ArgumentOutOfRangeException>()
+            .Which.ParamName.Should().Be("maxPacketsPerCts");
+    }
+
+    // Bugbot 3596025934: Tr (CTS → first DT) must be enforced; idle peer after CTS → Abort(Timeout).
+    [Fact]
+    public async Task Cm_Receiver_TrTimeout_AbortsWhenNoDtAfterCts()
+    {
+        var session = NewSession();
+        using var receiverBus = Open(session, 0);
+        using var peerBus = Open(session, 1);
+
+        const byte receiverSa = 0x82;
+        const byte peerSa = 0x83;
+        const uint pgn = 0xEE82u;
+
+        var opts = new J1939TpOptions().With(
+            tr: TimeSpan.FromMilliseconds(80),
+            t1: TimeSpan.FromSeconds(5)); // T1 must not fire first
+
+        using var receiver = J1939Tp.Open(receiverBus, sourceAddress: receiverSa, options: opts);
+
+        var abortSeen = new TaskCompletionSource<byte[]>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var bgAbort = new TaskCompletionSource<J1939TpAbortException>(TaskCreationOptions.RunContinuationsAsynchronously);
+        receiver.BackgroundExceptionOccurred += (_, ex) =>
+        {
+            if (ex is J1939TpAbortException abort) bgAbort.TrySetResult(abort);
+        };
+        peerBus.FrameObserved += (_, e) =>
+        {
+            if (!e.CanFrame.IsExtendedFrame) return;
+            var fields = J1939Id.Decompose((uint)e.CanFrame.ID);
+            if (fields.SourceAddress != receiverSa || !J1939Pgn.IsTransportCm(fields.Pgn)) return;
+            var data = e.CanFrame.Data.ToArray();
+            if (data.Length >= 8 && data[0] == J1939TpFrames.ControlAbort
+                && J1939TpFrames.ReadDataPgn(data) == pgn)
+                abortSeen.TrySetResult(data);
+        };
+
+        var rts = J1939TpFrames.BuildRts(totalBytes: 14, totalPackets: 2, maxPacketsPerCts: 0xFF, dataPgn: pgn);
+        var rtsId = J1939Id.ComposePgn(7, J1939Pgn.TpCm, peerSa, receiverSa);
+        peerBus.Transmit(CanFrame.Classic((int)rtsId, rts, isExtendedFrame: true));
+        // Do not send any TP.DT — Tr must expire and abort.
+
+        var abortFrame = await abortSeen.Task.AsTaskWithTimeout(ShortTimeout);
+        abortFrame[1].Should().Be((byte)J1939TpAbortReason.Timeout);
+
+        var ex = await bgAbort.Task.AsTaskWithTimeout(ShortTimeout);
+        ex.Reason.Should().Be(J1939TpAbortReason.Timeout);
+        ex.Message.Should().Contain("Tr");
+    }
+
     private static async Task<List<J1939TpDatagram>> CollectAsync(IJ1939TpChannel channel, int count, TimeSpan timeout)
     {
         var list = new List<J1939TpDatagram>();
