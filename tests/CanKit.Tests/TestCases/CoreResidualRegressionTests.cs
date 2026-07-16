@@ -95,6 +95,19 @@ public class CoreResidualRegressionTests : IClassFixture<TestCaseProvider>
         OpenFailureRegister.FactoryInstance.LastDevice!.Disposed.Should().BeTrue();
     }
 
+    [Fact]
+    public void CanBus_Open_DeviceType_Preserves_Open_Exception_When_Dispose_Fails()
+    {
+        OpenFailureRegister.FactoryInstance.Reset();
+        OpenFailureRegister.FactoryInstance.ThrowOnDispose = true;
+
+        Action open = () => CanBus.Open(OpenFailureDeviceType.Value);
+
+        open.Should().Throw<InvalidOperationException>().WithMessage("transceiver failed");
+        OpenFailureRegister.FactoryInstance.LastDevice.Should().NotBeNull();
+        OpenFailureRegister.FactoryInstance.LastDevice!.Disposed.Should().BeTrue();
+    }
+
     private static class OpenFailureDeviceType
     {
         public static readonly DeviceType Value = DeviceType.Register("CanKit.Tests.OpenFailure");
@@ -113,15 +126,17 @@ public class CoreResidualRegressionTests : IClassFixture<TestCaseProvider>
     public sealed class OpenFailureFactory : ICanFactory
     {
         public OpenFailureDevice? LastDevice { get; private set; }
+        public bool ThrowOnDispose { get; set; }
 
         public void Reset()
         {
             LastDevice = null;
+            ThrowOnDispose = false;
         }
 
         public ICanDevice CreateDevice(IDeviceOptions options)
         {
-            LastDevice = new OpenFailureDevice((OpenFailureDeviceOptions)options);
+            LastDevice = new OpenFailureDevice((OpenFailureDeviceOptions)options, ThrowOnDispose);
             return LastDevice;
         }
 
@@ -163,8 +178,11 @@ public class CoreResidualRegressionTests : IClassFixture<TestCaseProvider>
 
     public sealed class OpenFailureDevice : ICanDevice<DeviceRTOptionsConfigurator<OpenFailureDeviceOptions>>
     {
-        public OpenFailureDevice(OpenFailureDeviceOptions options)
+        private readonly bool _throwOnDispose;
+
+        public OpenFailureDevice(OpenFailureDeviceOptions options, bool throwOnDispose)
         {
+            _throwOnDispose = throwOnDispose;
             Options = new DeviceRTOptionsConfigurator<OpenFailureDeviceOptions>();
             Options.Init(options);
         }
@@ -178,6 +196,10 @@ public class CoreResidualRegressionTests : IClassFixture<TestCaseProvider>
         public void Dispose()
         {
             Disposed = true;
+            if (_throwOnDispose)
+            {
+                throw new InvalidOperationException("dispose failed");
+            }
         }
     }
 

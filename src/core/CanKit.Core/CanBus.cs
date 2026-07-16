@@ -155,7 +155,15 @@ public static class CanBus
         }
         catch
         {
-            device.Dispose();
+            try
+            {
+                device.Dispose();
+            }
+            catch
+            {
+                // Preserve the original open failure; disposal is best-effort cleanup here.
+            }
+
             throw;
         }
     }
