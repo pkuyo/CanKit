@@ -515,6 +515,29 @@ public class UdsClientTests : IClassFixture<TestCaseProvider>
         }
     }
 
+    // Bugbot 3596522007 — ISO 14229-1 allows empty dataRecord; adjacent DIDs must not throw.
+    [Fact]
+    public async Task ReadDataByIdentifier_Multi_Did_Accepts_Empty_Records()
+    {
+        var (client, _, dispose) = BuildPair(e => e.On(0x22, _ => new byte[]
+        {
+            // DID 0xF190 with empty record, then DID 0xF187 with 2 bytes, then DID 0xF189 empty.
+            0xF1, 0x90,
+            0xF1, 0x87, 0x11, 0x22,
+            0xF1, 0x89,
+        }));
+        using (dispose)
+        {
+            var results = await client.ReadDataByIdentifierAsync(
+                new ushort[] { 0xF190, 0xF187, 0xF189 },
+                new CancellationTokenSource(ShortTimeout).Token);
+
+            results.Should().ContainKey((ushort)0xF190).WhoseValue.Should().BeEmpty();
+            results.Should().ContainKey((ushort)0xF187).WhoseValue.Should().Equal(0x11, 0x22);
+            results.Should().ContainKey((ushort)0xF189).WhoseValue.Should().BeEmpty();
+        }
+    }
+
     // -----------------------------------------------------------------------------------
     // Sanity: unknown service still surfaces the ECU's serviceNotSupported NRC (defense in
     // depth for FR-UDS-010 mapping of arbitrary NRC bytes).

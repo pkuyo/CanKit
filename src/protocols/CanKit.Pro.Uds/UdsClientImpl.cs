@@ -159,9 +159,10 @@ internal sealed class UdsClientImpl : IUdsClient
             cancellationToken).ConfigureAwait(false);
 
         // Multi-DID positive response (ISO 14229-1 §9.3.4.4): [0]=0x62 then
-        // (DID[2 bytes] + dataRecord[len bytes])* for every returned DID. Because record lengths
-        // are implicit, we walk the response by matching each two-byte DID against the request
-        // and treating everything up to the next known DID (or end-of-buffer) as its dataRecord.
+        // (DID[2 bytes] + dataRecord[len bytes])* for every returned DID. dataRecord length may
+        // be zero. Because lengths are implicit, we walk the response by matching each two-byte
+        // DID against the request and treating everything up to the next known DID (or
+        // end-of-buffer) as its dataRecord — including an empty span when DIDs are adjacent.
         var requested = new HashSet<ushort>();
         foreach (var did in dataIdentifiers) requested.Add(did);
 
@@ -182,11 +183,8 @@ internal sealed class UdsClientImpl : IUdsClient
                 if (currentDidStart is int prev)
                 {
                     int recLen = cursor - prev;
-                    if (recLen <= 0)
-                        throw new UdsProtocolException(
-                            $"Multi-DID ReadDataByIdentifier response: zero-length record for DID 0x{currentDid:X4}.");
                     var rec = new byte[recLen];
-                    Buffer.BlockCopy(response, prev, rec, 0, recLen);
+                    if (recLen > 0) Buffer.BlockCopy(response, prev, rec, 0, recLen);
                     result[currentDid] = rec;
                 }
                 currentDid = maybeDid;
@@ -198,11 +196,8 @@ internal sealed class UdsClientImpl : IUdsClient
                 if (currentDidStart is int prev)
                 {
                     int recLen = response.Length - prev;
-                    if (recLen <= 0)
-                        throw new UdsProtocolException(
-                            $"Multi-DID ReadDataByIdentifier response: zero-length record for DID 0x{currentDid:X4}.");
                     var rec = new byte[recLen];
-                    Buffer.BlockCopy(response, prev, rec, 0, recLen);
+                    if (recLen > 0) Buffer.BlockCopy(response, prev, rec, 0, recLen);
                     result[currentDid] = rec;
                 }
                 break;
