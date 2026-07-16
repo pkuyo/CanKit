@@ -387,7 +387,7 @@ Verweise auf Architektur-Bausteine nutzen die in Abschnitt 2.1 definierten Schic
 | FR-UDS-001..010 | L4 – **UDS-Client-MVP umgesetzt** (`CanKit.Pro.Uds`, `IUdsClient`/`UdsClient` auf `IIsoTpChannel`); FR-UDS-011 (Multi-DID) ebenfalls umgesetzt (SHOULD), FR-UDS-012 (Upload/Download) bewusst als COULD zurückgestellt | Virtual-Loopback-Integrationstest (simulierte ECU, `tests/CanKit.Tests/TestCases/Uds/UdsClientTests.cs`), HIL-Stichprobe |
 | FR-CO-001..012 | L4 – *CANopen-Stack* (geplant, neues Paket auf L2-Demultiplexing + L1 `ICanBus`) | Virtual-Loopback-Integrationstest, HIL-Stichprobe |
 | FR-J1939-001..007 | L4 – *J1939-Applikationsschicht* (geplant, aufbauend auf L3 J1939-TP) | Virtual-Loopback-Integrationstest, HIL-Stichprobe |
-| FR-HAWE-001..005 | L4 – *HAWE-Erweiterungsrahmen* (`src/protocols/CanKit.Pro.Hawe`, SPI-Erweiterungspunkt analog `IIsoTpRegister`, `src/core/CanKit.Abstractions/SPI/Registry/Transports/IIsoTpRegister.cs`) | Architekturreview, Virtual-Loopback-Integrationstest (generischer `FakePatternCodec` in `tests/CanKit.Tests/TestCases/HaweFrameworkTests.cs`) |
+| FR-HAWE-001..005 | L4 – *HAWE-Erweiterungsrahmen* (`src/protocols/CanKit.Pro.Hawe`, SPI `IHaweCodecRegistry`/`HaweChannel`) | Architekturreview, Virtual-Loopback-Integrationstest (generischer `FakePatternCodec` in `tests/CanKit.Tests/TestCases/HaweFrameworkTests.cs`) |
 | NFR-001..003 | L2/L3 Timing-Infrastruktur, L1 `SoftwarePeriodicTx`/`PreciseDelay` (`src/core/CanKit.Core/Utils/SoftwarePeriodicTx.cs`) | Performance-/Timing-Test |
 | NFR-004, CON-001 | Alle Ebenen – Multi-Targeting (`src/Directory.Build.props`) | CI-Testmatrix |
 | NFR-005, CON-002, CON-003 | L0 – Vendor-Adapter (`src/adapters/*`) | Buildmatrix, Codereview |
