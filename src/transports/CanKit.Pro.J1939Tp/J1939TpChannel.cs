@@ -361,21 +361,22 @@ internal sealed class J1939TpChannel : IJ1939TpChannel
         {
             case J1939TpFrames.ControlBam:
                 {
-                    // §5.10.3: at most one BAM per source at any time. A fresh BAM from the same
-                    // sender implicitly supersedes any previous (possibly half-built) one --
-                    // there is no ack channel to reject the new one on.
+                    // Validate before superseding: a malformed BAM must not cancel an in-progress
+                    // session and leave ReceiveAsync hung with no replacement and no inbox fault
+                    // (Bugbot 3596489082). Broadcast has no ack channel to report the drop on.
                     var bamKey = new RxSessionKey(sa, J1939TpKind.Bam);
+                    int totalBytes = payload[1] | (payload[2] << 8);
+                    int totalPackets = payload[3];
+                    if (!IsValidTotals(totalBytes, totalPackets))
+                        return;
+
+                    // §5.10.3: at most one BAM per source at any time. A fresh *valid* BAM from
+                    // the same sender implicitly supersedes any previous (possibly half-built)
+                    // one -- there is no ack channel to reject the new one on.
                     if (_rxSessions.TryGetValue(bamKey, out var existing))
                     {
                         existing.Cancel();
                         _rxSessions.Remove(bamKey);
-                    }
-                    int totalBytes = payload[1] | (payload[2] << 8);
-                    int totalPackets = payload[3];
-                    if (!IsValidTotals(totalBytes, totalPackets))
-                    {
-                        // Malformed BAM: silently drop -- broadcast has no ack channel to report on.
-                        return;
                     }
                     var session = RxSession.NewBam(sa, dataPgn, totalBytes, totalPackets, _deadlines, _options, OnRxT1Expired);
                     _rxSessions[bamKey] = session;
@@ -690,18 +691,28 @@ internal sealed class J1939TpChannel : IJ1939TpChannel
         }
         else if (control == J1939TpFrames.ControlEomAck)
         {
-            // EOM matches our totals? If not, still complete -- but log via background exception
-            // since the peer misinterpreted the payload.
+            // Only accept EOM after the last DT was confirmed (WaitEom). A stray/early EOM while
+            // still waiting for CTS or sending DTs must not complete SendCmAsync
+            // (Bugbot 3596489078).
+            if (session.State != TxStage.WaitEom)
+            {
+                AbortTx(session, J1939TpAbortReason.Unknown,
+                    $"Peer sent EndOfMsgAck while TX session was in {session.State} (expected WaitEom).");
+                return;
+            }
+
             int totalBytes = payload[1] | (payload[2] << 8);
             int totalPackets = payload[3];
+            if (totalBytes != session.Pdu.Length || totalPackets != session.TotalPackets)
+            {
+                AbortTx(session, J1939TpAbortReason.Unknown,
+                    $"Peer EOM ack size mismatch (expected {session.Pdu.Length}/{session.TotalPackets}, got {totalBytes}/{totalPackets}).");
+                return;
+            }
+
             _txSessions.Remove(key);
             session.Deadline?.Dispose();
             session.Deadline = null;
-            if (totalBytes != session.Pdu.Length || totalPackets != session.TotalPackets)
-            {
-                RaiseBackgroundException(new J1939TpException(
-                    $"Peer EOM ack size mismatch (expected {session.Pdu.Length}/{session.TotalPackets}, got {totalBytes}/{totalPackets})."));
-            }
             session.Tcs.TrySetResult(null);
         }
         else if (control == J1939TpFrames.ControlAbort)

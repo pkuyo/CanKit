@@ -776,6 +776,147 @@ public class J1939TpTests : IClassFixture<TestCaseProvider>
         bgEx.Reason.Should().Be(J1939TpAbortReason.UnexpectedCtsSequenceNumber);
     }
 
+    // Bugbot 3596489078: a stray/early EndOfMsgAck while still waiting for CTS must abort
+    // SendCmAsync — not complete it successfully before any DT has been sent.
+    [Fact]
+    public async Task Cm_Sender_PrematureEom_FailsSend()
+    {
+        var session = NewSession();
+        using var senderBus = Open(session, 0);
+        using var peerBus = Open(session, 1);
+
+        const byte senderSa = 0x91;
+        const byte peerSa = 0x92;
+        const uint pgn = 0xEE91u;
+        var payload = RandomPayload(14, seed: 91);
+
+        using var sender = J1939Tp.Open(senderBus, sourceAddress: senderSa);
+
+        var rtsSeen = new TaskCompletionSource<byte[]>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var abortSeen = new TaskCompletionSource<byte[]>(TaskCreationOptions.RunContinuationsAsynchronously);
+        peerBus.FrameObserved += (_, e) =>
+        {
+            if (!e.CanFrame.IsExtendedFrame) return;
+            var fields = J1939Id.Decompose((uint)e.CanFrame.ID);
+            if (fields.SourceAddress != senderSa || !J1939Pgn.IsTransportCm(fields.Pgn)) return;
+            var data = e.CanFrame.Data.ToArray();
+            if (data.Length < 8 || J1939TpFrames.ReadDataPgn(data) != pgn) return;
+            if (data[0] == J1939TpFrames.ControlRts) rtsSeen.TrySetResult(data);
+            else if (data[0] == J1939TpFrames.ControlAbort) abortSeen.TrySetResult(data);
+        };
+
+        var sendTask = sender.SendCmAsync(pgn, destinationAddress: peerSa, payload);
+
+        await rtsSeen.Task.AsTaskWithTimeout(ShortTimeout);
+
+        // Inject EOM before any CTS — sender is still in WaitCts.
+        var eom = J1939TpFrames.BuildEomAck(payload.Length, J1939TpFrames.TotalPackets(payload.Length), pgn);
+        var cmId = J1939Id.ComposePgn(7, J1939Pgn.TpCm, peerSa, senderSa);
+        peerBus.Transmit(CanFrame.Classic((int)cmId, eom, isExtendedFrame: true));
+
+        Func<Task> act = () => sendTask.WithTimeout(ShortTimeout);
+        var ex = (await act.Should().ThrowAsync<J1939TpAbortException>()).Which;
+        ex.Reason.Should().Be(J1939TpAbortReason.Unknown);
+        ex.Message.Should().Contain("WaitEom");
+
+        var abortFrame = await abortSeen.Task.AsTaskWithTimeout(ShortTimeout);
+        abortFrame[1].Should().Be((byte)J1939TpAbortReason.Unknown);
+    }
+
+    // Bugbot 3596489078: EOM totals that disagree with the session must fail SendCmAsync
+    // (not complete successfully with only a BackgroundExceptionOccurred).
+    [Fact]
+    public async Task Cm_Sender_EomSizeMismatch_FailsSend()
+    {
+        var session = NewSession();
+        using var senderBus = Open(session, 0);
+        using var peerBus = Open(session, 1);
+
+        const byte senderSa = 0x93;
+        const byte peerSa = 0x94;
+        const uint pgn = 0xEE93u;
+        var payload = RandomPayload(14, seed: 93); // 2 packets
+
+        using var sender = J1939Tp.Open(senderBus, sourceAddress: senderSa);
+
+        var rtsSeen = new TaskCompletionSource<byte[]>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var lastDtSeen = new TaskCompletionSource<byte>(TaskCreationOptions.RunContinuationsAsynchronously);
+        peerBus.FrameObserved += (_, e) =>
+        {
+            if (!e.CanFrame.IsExtendedFrame) return;
+            var fields = J1939Id.Decompose((uint)e.CanFrame.ID);
+            if (fields.SourceAddress != senderSa) return;
+            var data = e.CanFrame.Data.ToArray();
+            if (J1939Pgn.IsTransportCm(fields.Pgn) && data.Length >= 8
+                && data[0] == J1939TpFrames.ControlRts && J1939TpFrames.ReadDataPgn(data) == pgn)
+                rtsSeen.TrySetResult(data);
+            else if (J1939Pgn.IsTransportDt(fields.Pgn) && data.Length >= 1 && data[0] == 2)
+                lastDtSeen.TrySetResult(data[0]);
+        };
+
+        var sendTask = sender.SendCmAsync(pgn, destinationAddress: peerSa, payload);
+
+        await rtsSeen.Task.AsTaskWithTimeout(ShortTimeout);
+
+        // Grant both packets so the sender reaches WaitEom after DT SN=2 is confirmed.
+        var cts = J1939TpFrames.BuildCts(numPackets: 2, nextPacketSn: 1, dataPgn: pgn);
+        var cmId = J1939Id.ComposePgn(7, J1939Pgn.TpCm, peerSa, senderSa);
+        peerBus.Transmit(CanFrame.Classic((int)cmId, cts, isExtendedFrame: true));
+
+        await lastDtSeen.Task.AsTaskWithTimeout(ShortTimeout);
+        // Small settle so OnCmDtConfirmed arms WaitEom before we inject the bad EOM.
+        await Task.Delay(20);
+
+        var badEom = J1939TpFrames.BuildEomAck(payload.Length, J1939TpFrames.TotalPackets(payload.Length), pgn);
+        badEom[1] = (byte)(payload.Length + 1); // mismatch totals vs session
+        peerBus.Transmit(CanFrame.Classic((int)cmId, badEom, isExtendedFrame: true));
+
+        Func<Task> act = () => sendTask.WithTimeout(ShortTimeout);
+        var ex = (await act.Should().ThrowAsync<J1939TpAbortException>()).Which;
+        ex.Reason.Should().Be(J1939TpAbortReason.Unknown);
+        ex.Message.Should().Contain("EOM ack size mismatch");
+    }
+
+    // Bugbot 3596489082: an invalid BAM must not cancel an in-progress BAM from the same source
+    // and leave ReceiveAsync hung with no session and no inbox fault.
+    [Fact]
+    public async Task Bam_Receiver_InvalidBamDoesNotSupersedeInProgress()
+    {
+        var session = NewSession();
+        using var receiverBus = Open(session, 0);
+        using var peerBus = Open(session, 1);
+
+        const byte receiverSa = 0x95;
+        const byte peerSa = 0x96;
+        const uint pgn = 0xFECDu;
+        var payload = RandomPayload(14, seed: 95);
+
+        var opts = new J1939TpOptions().With(t1: TimeSpan.FromSeconds(5));
+        using var receiver = J1939Tp.Open(receiverBus, sourceAddress: receiverSa, options: opts);
+
+        var recvTask = receiver.ReceiveAsync().AsTaskWithTimeout(ShortTimeout);
+
+        var bamId = J1939Id.ComposePgn(7, J1939Pgn.TpCm, peerSa, J1939Pgn.GlobalAddress);
+        var goodBam = J1939TpFrames.BuildBam(totalBytes: 14, totalPackets: 2, dataPgn: pgn);
+        peerBus.Transmit(CanFrame.Classic((int)bamId, goodBam, isExtendedFrame: true));
+
+        // Malformed BAM (bytes/packets disagree) — must not tear down the good session.
+        var badBam = J1939TpFrames.BuildBam(totalBytes: 14, totalPackets: 2, dataPgn: pgn);
+        badBam[3] = 3; // claim 3 packets for 14 bytes
+        peerBus.Transmit(CanFrame.Classic((int)bamId, badBam, isExtendedFrame: true));
+
+        var dtId = J1939Id.ComposePgn(7, J1939Pgn.TpDt, peerSa, J1939Pgn.GlobalAddress);
+        peerBus.Transmit(CanFrame.Classic((int)dtId,
+            J1939TpFrames.BuildDt(sn: 1, pdu: payload, offset: 0), isExtendedFrame: true));
+        peerBus.Transmit(CanFrame.Classic((int)dtId,
+            J1939TpFrames.BuildDt(sn: 2, pdu: payload, offset: 7), isExtendedFrame: true));
+
+        var datagram = await recvTask;
+        datagram.Kind.Should().Be(J1939TpKind.Bam);
+        datagram.Pgn.Should().Be(pgn);
+        datagram.Payload.Should().Equal(payload);
+    }
+
     private static async Task<List<J1939TpDatagram>> CollectAsync(IJ1939TpChannel channel, int count, TimeSpan timeout)
     {
         var list = new List<J1939TpDatagram>();
