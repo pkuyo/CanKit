@@ -301,14 +301,26 @@ internal sealed class IsoTpChannel : IIsoTpChannel
 
         _tx = new TxState(pdu, tcs);
 
-        int sfMax = IsoTpFrameCodec.SingleFrameMaxDataLength(_options.UseCanFd, _endpoint.UsesAddressExtension);
-        if (pdu.Length <= sfMax)
+        // Fix (Bugbot 3594960783): any synchronous throw from the codec (bad endpoint / bad
+        // length / etc.) must clear _tx and fail the TCS. Otherwise the actor's own
+        // BackgroundException handler swallows the throw, the awaiting SendAsync never
+        // completes, and _tx stays pinned to the dead operation -- so the next SendAsync
+        // sees the "gate leaked" branch above forever.
+        try
         {
-            SendSingleFrame();
+            int sfMax = IsoTpFrameCodec.SingleFrameMaxDataLength(_options.UseCanFd, _endpoint.UsesAddressExtension);
+            if (pdu.Length <= sfMax)
+            {
+                SendSingleFrame();
+            }
+            else
+            {
+                SendFirstFrame();
+            }
         }
-        else
+        catch (Exception ex)
         {
-            SendFirstFrame();
+            FailTx(ex);
         }
     }
 

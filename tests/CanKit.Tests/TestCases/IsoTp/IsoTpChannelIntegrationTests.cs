@@ -320,4 +320,51 @@ public class IsoTpChannelIntegrationTests : IClassFixture<TestCaseProvider>
         var got = await eventFired.Task.WaitAsync(ShortTimeout);
         got.Should().Equal(pdu);
     }
+
+    // --------------------------------------------------------------------------------
+    // Bugbot 3594960783 (HIGH) — a codec throw inside BeginSendOnLoop (e.g. > 4095 bytes
+    // on classic CAN triggers ArgumentOutOfRangeException from BuildFirstFrame) must
+    // (1) fault the awaiting SendAsync with the codec exception, (2) release the send-gate,
+    // and (3) leave the channel usable for subsequent sends -- rather than leaking _tx and
+    // hanging every future SendAsync forever behind the gate.
+    // --------------------------------------------------------------------------------
+    [Fact]
+    public async Task Send_Faults_On_Codec_Throw_And_Channel_Remains_Usable()
+    {
+        var session = NewSession();
+        using var busA = OpenClassic(session, 0);
+        using var busB = OpenClassic(session, 1);
+
+        var epAB = IsoTpEndpoint.Normal(0x210, 0x211);
+        var epBA = IsoTpEndpoint.Normal(0x211, 0x210);
+
+        using var sender = IsoTpFactory.Open(busA, epAB, FastOptions());
+        using var receiver = IsoTpFactory.Open(busB, epBA, FastOptions());
+
+        // >4095 bytes on classic-CAN forces BuildFirstFrame to throw ArgumentOutOfRangeException
+        // synchronously on the actor loop -- the exact "codec throws inside BeginSendOnLoop" path
+        // Bugbot flagged.
+        byte[] oversized = new byte[4096];
+
+        // WaitAsync bounds the wait: under the bug this SendAsync would hang forever because
+        // the actor's synchronous BuildFirstFrame throw is swallowed by
+        // BackgroundExceptionOccurred without ever completing the TCS.
+        Func<Task> act = () => sender.SendAsync(oversized).WaitAsync(ShortTimeout);
+        var caught = (await act.Should().ThrowAsync<Exception>()).Which;
+        // Codec-thrown ArgumentOutOfRangeException surfaces directly (wrapped only in the actor's
+        // synchronous invocation path; unwrapped as-is by FailTx -> TCS -> await).
+        caught.Should().Match(e =>
+            e is ArgumentOutOfRangeException
+            || e is IsoTpException
+            || e is InvalidOperationException,
+            "codec throw must fault the awaiting SendAsync, not hang it");
+
+        // The gate MUST be released and _tx cleared. A normal send after the failure must
+        // succeed within the same short timeout.
+        var recvTask = receiver.ReceiveAsync(new CancellationTokenSource(ShortTimeout).Token);
+        byte[] normal = { 0x11, 0x22, 0x33 };
+        await sender.SendAsync(normal).WaitAsync(ShortTimeout);
+        (await recvTask).Should().Equal(normal);
+    }
+
 }
