@@ -48,8 +48,9 @@ public interface IIsoTpChannel : IDisposable
     /// <param name="pdu">User data, 1..4095 bytes for classic CAN, or up to
     /// <see cref="IsoTpFrameCodec.MaxFdFirstFrameLength"/> for CAN-FD. Must not be empty.</param>
     /// <param name="cancellationToken">Cancels the returned task (standard .NET convention); a
-    /// canceled send aborts the in-flight PDU and returns the channel to idle so the next call
-    /// can proceed.</param>
+    /// canceled send aborts the in-flight PDU. The channel keeps the one-PDU-at-a-time send gate
+    /// until any already-submitted bus TX from that PDU completes, so the next call cannot
+    /// interleave frames on the wire with the aborted transfer.</param>
     Task SendAsync(ReadOnlyMemory<byte> pdu, CancellationToken cancellationToken = default);
 
     /// <summary>

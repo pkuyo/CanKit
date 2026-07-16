@@ -647,4 +647,177 @@ public class IsoTpChannelIntegrationTests : IClassFixture<TestCaseProvider>
         await receiver.SendAsync(b2a);
         (await recvOnAlice).Should().Equal(b2a);
     }
+
+    // --------------------------------------------------------------------------------
+    // Bugbot 3596212788 (HIGH) — cancelling SendAsync must not release _sendGate while a
+    // SendConfirmed started by SendFrameOnBus is still outstanding. Otherwise a subsequent
+    // SendAsync can put a new PDU on the wire while the aborted PDU's frame is still TX'ing.
+    //
+    // Arrangement: wrap the bus service so the first SendConfirmed blocks until we release it;
+    // cancel the in-flight SF send, start a second SendAsync concurrently, and assert the
+    // second PDU does not appear on the peer until the first confirmation is released.
+    // --------------------------------------------------------------------------------
+    [Fact]
+    public async Task Cancelled_Send_Holds_Gate_Until_InFlight_Bus_Tx_Completes()
+    {
+        var session = NewSession();
+        using var busA = OpenClassic(session, 0);
+        using var busB = OpenClassic(session, 1);
+
+        var epAB = IsoTpEndpoint.Normal(0x230, 0x231);
+        var epBA = IsoTpEndpoint.Normal(0x231, 0x230);
+
+        using var inner = new CanBusService(busA);
+        using var holdFirstConfirm = new ManualResetEventSlim(false);
+        using var firstConfirmStarted = new ManualResetEventSlim(false);
+        var delaying = new DelayingConfirmService(inner, holdFirstConfirm, firstConfirmStarted);
+        using var sender = IsoTpFactory.Open(delaying, epAB, FastOptions(), leaveOpen: true);
+        using var receiver = IsoTpFactory.Open(busB, epBA, FastOptions());
+
+        int framesToPeer = 0;
+        byte? lastSfDl = null;
+        busB.FrameObserved += (_, e) =>
+        {
+            if (e.CanFrame.ID != 0x230) return;
+            var payload = e.CanFrame.Data.ToArray();
+            if (payload.Length == 0) return;
+            if ((payload[0] >> 4) == 0x0) // SF
+            {
+                Interlocked.Increment(ref framesToPeer);
+                lastSfDl = (byte)(payload[0] & 0x0F);
+            }
+        };
+
+        using var cts = new CancellationTokenSource();
+        var cancelledSend = sender.SendAsync(new byte[] { 0xAA, 0xBB }, cts.Token);
+
+        firstConfirmStarted.Wait(TimeSpan.FromSeconds(5)).Should().BeTrue(
+            "the first SendConfirmed must be parked inside our delaying wrapper");
+
+        cts.Cancel();
+
+        // cancelledSend awaits WaitForBusTxIdleAsync after the OCE, so it must NOT complete while
+        // we still hold the first SendConfirmed — that is the gate-hold under test.
+        var cancelFinished = cancelledSend.WaitAsync(TimeSpan.FromMilliseconds(200));
+        Func<Task> stillHeld = () => cancelFinished;
+        await stillHeld.Should().ThrowAsync<TimeoutException>(
+            "cancelled SendAsync must keep the send gate until its in-flight SendConfirmed finishes");
+
+        // Second send starts while the aborted PDU's SendConfirmed is still held. Under the bug
+        // the gate is already free and this SF (DL=3) hits the bus immediately; under the fix it
+        // must wait until we release the first confirmation.
+        var secondSend = sender.SendAsync(new byte[] { 0x11, 0x22, 0x33 });
+        await Task.Delay(100);
+        framesToPeer.Should().Be(0,
+            "no SF may hit the peer while the aborted send's SendConfirmed is still parked");
+
+        holdFirstConfirm.Set();
+
+        Func<Task> cancelled = () => cancelledSend.WaitAsync(ShortTimeout);
+        await cancelled.Should().ThrowAsync<OperationCanceledException>();
+        await secondSend.WaitAsync(ShortTimeout);
+
+        // Both SFs eventually appear: the already-submitted cancelled frame, then the follow-up.
+        for (int i = 0; i < 50 && Volatile.Read(ref framesToPeer) < 2; i++)
+            await Task.Delay(20);
+        framesToPeer.Should().Be(2, "follow-up SendAsync must TX only after the aborted bus TX drains");
+        lastSfDl.Should().Be(3);
+    }
+
+    // --------------------------------------------------------------------------------
+    // Bugbot 3596212802 (MEDIUM) — HandleRxFirstFrame must not allocate new byte[pci.Length]
+    // from an uncapped FF length. Classic channels reject announced lengths above 4095 with
+    // FC(OVFLW) and stay usable (same max outbound SendAsync enforces via BuildFirstFrame).
+    // --------------------------------------------------------------------------------
+    [Fact]
+    public async Task Rx_FirstFrame_Above_Classic_Max_Sends_Overflow_And_Does_Not_Allocate()
+    {
+        var session = NewSession();
+        using var busA = OpenClassic(session, 0);
+        using var busB = OpenClassic(session, 1);
+
+        var epRecv = IsoTpEndpoint.Normal(txCanId: 0x7E0, rxCanId: 0x7E8);
+        using var receiver = IsoTpFactory.Open(busA, epRecv, FastOptions());
+
+        int overflowFc = 0;
+        busB.FrameObserved += (_, e) =>
+        {
+            if (e.CanFrame.ID != 0x7E0) return;
+            var payload = e.CanFrame.Data.ToArray();
+            if (payload.Length >= 1 && (payload[0] >> 4) == 0x3
+                && (payload[0] & 0x0F) == (byte)FlowStatus.Overflow)
+            {
+                Interlocked.Increment(ref overflowFc);
+            }
+        };
+
+        // CAN-FD escape FF announcing 0x01000000 bytes — far above classic MaxClassicFirstFrameLength.
+        // Under the bug this would attempt new byte[0x01000000] (or worse with int.MaxValue).
+        byte[] hugeFf =
+        {
+            0x10, 0x00,
+            0x01, 0x00, 0x00, 0x00, // length = 16_777_216
+            0x00, 0x00,
+        };
+        busB.Transmit(CanFrame.Classic(0x7E8, hugeFf));
+
+        for (int i = 0; i < 50 && Volatile.Read(ref overflowFc) == 0; i++)
+            await Task.Delay(20);
+        overflowFc.Should().Be(1, "receiver must reply FC(OVFLW) without allocating the announced buffer");
+
+        // Channel remains usable for a normal SF afterwards.
+        var recvTask = receiver.ReceiveAsync(new CancellationTokenSource(ShortTimeout).Token);
+        byte[] okSf = { 0x01, 0x99 }; // SF DL=1, data 0x99 — build via peer transmit
+        busB.Transmit(CanFrame.Classic(0x7E8, okSf));
+        (await recvTask).Should().Equal(0x99);
+    }
+
+    /// <summary>
+    /// Test double: forwards every <see cref="ICanBusService"/> call to an inner service, but
+    /// parks the first <see cref="ICanBusService.SendConfirmed"/> until
+    /// <paramref name="release"/> is signaled so cancel/gate races are deterministic.
+    /// </summary>
+    private sealed class DelayingConfirmService : ICanBusService
+    {
+        private readonly ICanBusService _inner;
+        private readonly ManualResetEventSlim _release;
+        private readonly ManualResetEventSlim _started;
+        private int _confirmCount;
+
+        public DelayingConfirmService(ICanBusService inner, ManualResetEventSlim release,
+            ManualResetEventSlim started)
+        {
+            _inner = inner;
+            _release = release;
+            _started = started;
+        }
+
+        public ICanBus Bus => _inner.Bus;
+        public int SubscriptionCount => _inner.SubscriptionCount;
+
+        public ISubscription Subscribe(Func<CanFrameView, bool>? predicate = null, int? bufferCapacity = null)
+            => _inner.Subscribe(predicate, bufferCapacity);
+
+        public ISubscription Subscribe(CanIdFilter filter, int? bufferCapacity = null)
+            => _inner.Subscribe(filter, bufferCapacity);
+
+        public IReadOnlyList<(ISubscription First, ISubscription Second)> FindOverlappingFilterSubscriptions()
+            => _inner.FindOverlappingFilterSubscriptions();
+
+        public async Task<TxConfirmation> SendConfirmed(CanFrame frame, TimeSpan? timeout = null,
+            CancellationToken cancellationToken = default)
+        {
+            if (Interlocked.Increment(ref _confirmCount) == 1)
+            {
+                _started.Set();
+                // Do not honor cancellationToken here: the point of the test is that IsoTpChannel
+                // still waits for this bus TX even after the caller's SendAsync token is cancelled.
+                if (!_release.Wait(TimeSpan.FromSeconds(10)))
+                    throw new TimeoutException("test release gate was never signaled");
+            }
+            return await _inner.SendConfirmed(frame, timeout, cancellationToken).ConfigureAwait(false);
+        }
+
+        public void Dispose() { /* leaveOpen: inner disposed by test */ }
+    }
 }

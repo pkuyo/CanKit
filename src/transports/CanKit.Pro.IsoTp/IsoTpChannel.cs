@@ -65,10 +65,30 @@ internal sealed class IsoTpChannel : IIsoTpChannel
     // TX state (only accessed on the actor loop). All null/zero while idle.
     private TxState? _tx;
 
+    // Count of SendFrameOnBus → SendConfirmed operations still outstanding (actor-loop only).
+    // Cancelled SendAsync must hold _sendGate until this drains so a subsequent send cannot
+    // interleave frames with an aborted PDU that already submitted work to the bus
+    // (Bugbot 3596212788).
+    private int _busTxInFlight;
+
+    // Set when a SendAsync caller is waiting for _busTxInFlight to reach zero (actor-loop only).
+    private TaskCompletionSource<object?>? _busTxIdleWaiter;
+
     // RX state (only accessed on the actor loop). Null while no multi-frame reassembly in flight.
     private RxState? _rx;
 
     private int _disposed;
+
+    /// <summary>
+    /// Maximum PDU length this channel will transmit or reassemble — the same codec limit
+    /// outbound <see cref="SendAsync"/> enforces via <see cref="IsoTpFrameCodec"/>
+    /// (classic ≤ 4095; CAN-FD ≤ <see cref="IsoTpFrameCodec.MaxFdFirstFrameLength"/> capped to
+    /// <see cref="int.MaxValue"/>).
+    /// </summary>
+    private int MaxPduLength =>
+        _options.UseCanFd
+            ? (int)Math.Min(IsoTpFrameCodec.MaxFdFirstFrameLength, int.MaxValue)
+            : IsoTpFrameCodec.MaxClassicFirstFrameLength;
 
     /// <inheritdoc />
     public IsoTpEndpoint Endpoint => _endpoint;
@@ -123,6 +143,9 @@ internal sealed class IsoTpChannel : IIsoTpChannel
     {
         if (pdu.Length == 0)
             throw new ArgumentException("ISO-TP PDU must be non-empty.", nameof(pdu));
+        if (pdu.Length > MaxPduLength)
+            throw new ArgumentOutOfRangeException(nameof(pdu), pdu.Length,
+                $"ISO-TP PDU length must be at most {MaxPduLength} bytes for this channel's frame kind.");
         ThrowIfDisposed();
 
         // Serialize per-channel: peer state (SN, block, deadlines) is only valid for one PDU at
@@ -159,6 +182,10 @@ internal sealed class IsoTpChannel : IIsoTpChannel
             finally
             {
                 ctr.Dispose();
+                // Hold the gate until any SendConfirmed already submitted for this PDU finishes.
+                // CancelInFlightSend completes the TCS immediately but must not let the next
+                // SendAsync race frames onto the bus (Bugbot 3596212788).
+                await WaitForBusTxIdleAsync().ConfigureAwait(false);
             }
         }
         finally
@@ -229,12 +256,16 @@ internal sealed class IsoTpChannel : IIsoTpChannel
         _pduInbox.Writer.TryComplete();
 
         // Fail any in-flight SendAsync so its caller doesn't hang forever waiting for a TCS the
-        // now-disposed actor will never complete.
+        // now-disposed actor will never complete. Also release any bus-TX idle waiter that would
+        // otherwise block SendAsync's finally path after CancelInFlightSend.
         _actor.Post(() =>
         {
             var tx = _tx;
             _tx = null;
             tx?.Fail(new ObjectDisposedException(nameof(IsoTpChannel)));
+            var idle = _busTxIdleWaiter;
+            _busTxIdleWaiter = null;
+            idle?.TrySetResult(null);
         });
 
         try { _readerTask.Wait(TimeSpan.FromSeconds(2)); } catch { /* observed via task; not fatal */ }
@@ -433,6 +464,10 @@ internal sealed class IsoTpChannel : IIsoTpChannel
         var expected = _tx;
         var timeout = _options.NAs;
 
+        // Increment before leaving the actor so WaitForBusTxIdleAsync never observes a gap
+        // between "frame submitted" and "in-flight count visible".
+        _busTxInFlight++;
+
         _ = Task.Run(async () =>
         {
             TxConfirmation? confirmation = null;
@@ -449,13 +484,69 @@ internal sealed class IsoTpChannel : IIsoTpChannel
 
             try
             {
-                _actor.Post(() => OnSendConfirmed(expected, expectTx, confirmation, failure));
+                _actor.Post(() =>
+                {
+                    try
+                    {
+                        OnSendConfirmed(expected, expectTx, confirmation, failure);
+                    }
+                    finally
+                    {
+                        NoteBusTxCompleted();
+                    }
+                });
             }
             catch (ObjectDisposedException)
             {
-                // Actor is gone; the channel is tearing down. Nothing to do.
+                // Actor is gone; the channel is tearing down. Dispose already releases any idle
+                // waiter, so there is nothing left to synchronize with.
             }
         });
+    }
+
+    /// <summary>
+    /// Actor-loop: one <see cref="SendFrameOnBus"/> confirmation has finished. Unblocks a
+    /// <see cref="WaitForBusTxIdleAsync"/> waiter when the last in-flight bus TX drains.
+    /// </summary>
+    private void NoteBusTxCompleted()
+    {
+        if (_busTxInFlight > 0)
+            _busTxInFlight--;
+        if (_busTxInFlight == 0 && _busTxIdleWaiter is not null)
+        {
+            var waiter = _busTxIdleWaiter;
+            _busTxIdleWaiter = null;
+            waiter.TrySetResult(null);
+        }
+    }
+
+    /// <summary>
+    /// Completes when every <see cref="SendFrameOnBus"/> started for the current send has had
+    /// its confirmation posted back onto the actor (or the actor is already disposed).
+    /// </summary>
+    private Task WaitForBusTxIdleAsync()
+    {
+        var waiter = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        try
+        {
+            _actor.Post(() =>
+            {
+                if (_busTxInFlight == 0)
+                {
+                    waiter.TrySetResult(null);
+                }
+                else
+                {
+                    // Send gate serializes SendAsync, so at most one idle waiter exists.
+                    _busTxIdleWaiter = waiter;
+                }
+            });
+        }
+        catch (ObjectDisposedException)
+        {
+            waiter.TrySetResult(null);
+        }
+        return waiter.Task;
     }
 
     private void OnSendConfirmed(TxState? expected, TxExpect kind, TxConfirmation? confirmation, Exception? failure)
@@ -651,11 +742,31 @@ internal sealed class IsoTpChannel : IIsoTpChannel
         _rx?.CancelDeadline();
         _rx = null;
 
+        // Cap reassembly allocation to the same outbound SendAsync / codec limit for this
+        // frame kind (Bugbot 3596212802). A CAN-FD escape FF can announce up to int.MaxValue;
+        // refuse with FC(OVFLW) and do not allocate.
+        if (pci.Length < 1 || pci.Length > MaxPduLength)
+        {
+            SendOverflowFlowControl();
+            return;
+        }
+
         int firstChunk = payload.Length - pci.DataOffset;
         if (firstChunk < 0) firstChunk = 0;
         if (firstChunk > pci.Length) firstChunk = pci.Length;
 
-        var buffer = new byte[pci.Length];
+        byte[] buffer;
+        try
+        {
+            buffer = new byte[pci.Length];
+        }
+        catch (OutOfMemoryException)
+        {
+            // CAN-FD escape FF can announce up to int.MaxValue; if the process cannot honor the
+            // codec max, refuse with OVFLW rather than faulting the actor loop.
+            SendOverflowFlowControl();
+            return;
+        }
         Array.Copy(payload, pci.DataOffset, buffer, 0, firstChunk);
 
         // Reply with FC(CTS, BS, STmin) advertising our own block size / separation time.
@@ -807,6 +918,14 @@ internal sealed class IsoTpChannel : IIsoTpChannel
 
         RaiseBackgroundException(ex);
         _pduInbox.Writer.TryWrite(RxInboxItem.FromError(ex));
+    }
+
+    private void SendOverflowFlowControl()
+    {
+        var ovflw = IsoTpFrameCodec.BuildFlowControl(_endpoint, FlowStatus.Overflow,
+            blockSize: 0, stMinRaw: 0,
+            _options.UseCanFd, _options.UsePadding, _options.PaddingByte);
+        SendUnsequencedFrame(ovflw);
     }
 
     // Fire-and-forget send of a frame that is NOT part of the current TX PDU (typically a FC we
