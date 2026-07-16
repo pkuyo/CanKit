@@ -338,12 +338,18 @@ internal sealed class UdsClientImpl : IUdsClient
         if (suppressPositiveResponse)
         {
             // Fire-and-forget: acquire the request lock so we don't interleave with a real
-            // request, send the frame, then release. No response is expected.
+            // request, send the frame, then release. No response is expected. Link the
+            // lifetime token so Dispose() cancels a WaitAsync/Send still in progress
+            // (Bugbot 3596586770) — same contract as ExecuteAsync / SecurityAccessAsync.
             ThrowIfDisposed();
-            await _requestLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+            using var linked = CancellationTokenSource.CreateLinkedTokenSource(
+                cancellationToken, _lifetimeCts.Token);
+            var linkedToken = linked.Token;
+
+            await _requestLock.WaitAsync(linkedToken).ConfigureAwait(false);
             try
             {
-                await _channel.SendAsync(request, cancellationToken).ConfigureAwait(false);
+                await _channel.SendAsync(request, linkedToken).ConfigureAwait(false);
             }
             finally
             {
@@ -552,9 +558,10 @@ internal sealed class UdsClientImpl : IUdsClient
 
         Interlocked.Exchange(ref _keepAlive, null)?.Dispose();
 
-        // Cancel in-flight ExecuteAsync / SecurityAccessAsync first, then wait for the request
-        // lock so their finally blocks can Release before we dispose the semaphore
-        // (Bugbot 3596444327). Disposing while a waiter still holds the lock races WaitAsync/Release.
+        // Cancel in-flight ExecuteAsync / SecurityAccessAsync / suppress-TesterPresent first,
+        // then wait for the request lock so their finally blocks can Release before we dispose
+        // the semaphore (Bugbot 3596444327 / 3596586770). Disposing while a waiter still holds
+        // the lock races WaitAsync/Release.
         try { _lifetimeCts.Cancel(); } catch { /* already disposed */ }
 
         try

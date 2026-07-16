@@ -632,6 +632,49 @@ public class UdsClientTests : IClassFixture<TestCaseProvider>
         }
     }
 
+    // -----------------------------------------------------------------------------------
+    // Bugbot 3596586770 — suppress-positive TesterPresentAsync must honor _lifetimeCts so
+    // Dispose cancels a call blocked on _requestLock (or about to Send) instead of letting
+    // it transmit after teardown.
+    // -----------------------------------------------------------------------------------
+    [Fact]
+    public async Task Dispose_Cancels_Suppress_TesterPresent_Blocked_On_RequestLock()
+    {
+        var (client, _, dispose) = BuildPair(
+            e => e.On(0x22, _ => throw new EcuSilent()),
+            options: new UdsClientOptions
+            {
+                P2ClientMax = TimeSpan.FromSeconds(5),
+                P2StarClientMax = TimeSpan.FromSeconds(5),
+            });
+        try
+        {
+            // Hold the request lock with a silent ECU read so suppress TesterPresent blocks
+            // in WaitAsync rather than racing through Send.
+            var inFlight = client.ReadDataByIdentifierAsync(0xF190,
+                new CancellationTokenSource(ShortTimeout).Token);
+            await Task.Delay(50);
+
+            var testerPresent = client.TesterPresentAsync(suppressPositiveResponse: true,
+                new CancellationTokenSource(ShortTimeout).Token);
+            await Task.Delay(30); // park on _requestLock.WaitAsync
+
+            Action act = () => client.Dispose();
+            act.Should().NotThrow();
+
+            Func<Task> waitTp = () => testerPresent;
+            await waitTp.Should().ThrowAsync<OperationCanceledException>(
+                "suppress TesterPresent must link _lifetimeCts so Dispose aborts WaitAsync/Send");
+
+            Func<Task> waitRead = () => inFlight;
+            await waitRead.Should().ThrowAsync<OperationCanceledException>();
+        }
+        finally
+        {
+            dispose.Dispose();
+        }
+    }
+
     private sealed class CompositeDisposable : IDisposable
     {
         private readonly IDisposable[] _items;
