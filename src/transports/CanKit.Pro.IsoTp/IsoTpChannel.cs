@@ -179,6 +179,15 @@ internal sealed class IsoTpChannel : IIsoTpChannel
     }
 
     /// <inheritdoc />
+    public int DiscardPendingPdus()
+    {
+        int discarded = 0;
+        while (_pduInbox.Reader.TryRead(out _))
+            discarded++;
+        return discarded;
+    }
+
+    /// <inheritdoc />
     public IAsyncEnumerable<byte[]> ReceiveAllAsync(CancellationToken cancellationToken = default)
         => ReadAllAsync(cancellationToken);
 
@@ -638,6 +647,7 @@ internal sealed class IsoTpChannel : IIsoTpChannel
     {
         // Discard any half-built reassembly -- ISO 15765-2 §6.5.5 says a new FF aborts.
         _rx?.CancelDeadline();
+        _rx = null;
 
         int firstChunk = payload.Length - pci.DataOffset;
         if (firstChunk < 0) firstChunk = 0;
@@ -645,16 +655,26 @@ internal sealed class IsoTpChannel : IIsoTpChannel
 
         var buffer = new byte[pci.Length];
         Array.Copy(payload, pci.DataOffset, buffer, 0, firstChunk);
-        _rx = new RxState(buffer, received: firstChunk,
-            expectedSn: IsoTpFrameCodec.FirstConsecutiveSequenceNumber,
-            blockCounter: _options.LocalBlockSize);
 
         // Reply with FC(CTS, BS, STmin) advertising our own block size / separation time.
+        // ISO 15765-2 still expects an FC after FF even when the FF already carried the full
+        // announced length (defensive path for peers that finish in one FF).
         var fc = IsoTpFrameCodec.BuildFlowControl(_endpoint, FlowStatus.ClearToSend,
             _options.LocalBlockSize, IsoTpFrameCodec.EncodeStMin(_options.LocalStMin),
             _options.UseCanFd, _options.UsePadding, _options.PaddingByte);
         SendUnsequencedFrame(fc);
 
+        // If the FF already contains the full PDU, complete immediately — do not arm N_Cr
+        // waiting for a CF that will never arrive.
+        if (firstChunk >= pci.Length)
+        {
+            EmitPdu(buffer);
+            return;
+        }
+
+        _rx = new RxState(buffer, received: firstChunk,
+            expectedSn: IsoTpFrameCodec.FirstConsecutiveSequenceNumber,
+            blockCounter: _options.LocalBlockSize);
         ArmNCr();
     }
 

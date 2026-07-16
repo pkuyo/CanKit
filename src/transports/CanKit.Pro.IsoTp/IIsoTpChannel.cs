@@ -61,6 +61,14 @@ public interface IIsoTpChannel : IDisposable
     Task<byte[]> ReceiveAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Non-blocking: discards every buffered inbox item (reassembled PDUs and pending
+    /// reassembly-abort faults) and returns how many were dropped. Higher layers (e.g. UDS)
+    /// call this after an aborted wait so a late ECU reply cannot be consumed as the answer
+    /// to a later request.
+    /// </summary>
+    int DiscardPendingPdus();
+
+    /// <summary>
     /// Enumerates every fully reassembled inbound PDU as it becomes available. The enumeration
     /// ends when the channel is disposed. A reassembly abort (N_Cr / CF sequence mismatch)
     /// faults the enumerator with the same exception <see cref="ReceiveAsync"/> would throw.

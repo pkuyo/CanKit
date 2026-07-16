@@ -235,6 +235,131 @@ public class UdsClientTests : IClassFixture<TestCaseProvider>
     }
 
     // -----------------------------------------------------------------------------------
+    // SecurityAccess must hold the request lock across seed + sendKey so TesterPresent
+    // keep-alive cannot interleave and provoke NRC requestSequenceError on real ECUs.
+    // -----------------------------------------------------------------------------------
+    [Fact]
+    public async Task SecurityAccess_Holds_Lock_Across_Seed_And_Key()
+    {
+        var wireOrder = new List<byte>();
+        var orderGate = new object();
+        byte[] seed = { 0x01, 0x02, 0x03, 0x04 };
+        var keyStarted = new TaskCompletionSource<bool>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        var releaseKey = new TaskCompletionSource<bool>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var (client, _, dispose) = BuildPair(e => e
+            .On(0x27, req =>
+            {
+                lock (orderGate) wireOrder.Add(req[1]);
+                if (req[1] == 0x01)
+                {
+                    var body = new byte[1 + seed.Length];
+                    body[0] = 0x01;
+                    Buffer.BlockCopy(seed, 0, body, 1, seed.Length);
+                    return body;
+                }
+                if (req[1] == 0x02)
+                    return new byte[] { 0x02 };
+                throw new EcuNegativeResponse(0x12);
+            })
+            .On(0x3E, req =>
+            {
+                lock (orderGate) wireOrder.Add(0x3E);
+                return Array.Empty<byte>();
+            }),
+            options: new UdsClientOptions
+            {
+                TesterPresentPeriod = TimeSpan.FromMilliseconds(30),
+                KeepAliveSuppressPositiveResponse = true,
+            });
+
+        using (dispose)
+        {
+            using var keepAlive = client.StartTesterPresentKeepAlive(TimeSpan.FromMilliseconds(30));
+
+            var unlock = client.SecurityAccessAsync(
+                requestSeedLevel: 0x01,
+                computeKey: s =>
+                {
+                    keyStarted.TrySetResult(true);
+                    // Block inside computeKey (still under the request lock) long enough that
+                    // several keep-alive ticks fire; they must not transmit until unlock ends.
+                    releaseKey.Task.Wait(ShortTimeout);
+                    return s.Select(b => (byte)(b ^ 0x55)).ToArray();
+                },
+                cancellationToken: new CancellationTokenSource(ShortTimeout).Token);
+
+            await keyStarted.Task.WaitAsync(ShortTimeout);
+            await Task.Delay(120); // several keep-alive periods while lock is held
+            releaseKey.TrySetResult(true);
+            await unlock;
+
+            lock (orderGate)
+            {
+                // Seed (0x01) then key (0x02) must be adjacent; 0x3E may appear only outside.
+                int seedIdx = wireOrder.IndexOf(0x01);
+                int keyIdx = wireOrder.IndexOf(0x02);
+                seedIdx.Should().BeGreaterThanOrEqualTo(0);
+                keyIdx.Should().Be(seedIdx + 1);
+                wireOrder.Skip(seedIdx).Take(2).Should().Equal((byte)0x01, (byte)0x02);
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------------------------
+    // After P2 timeout, a late ECU reply must not be consumed as the next request's answer
+    // when the next request uses the same service (SID correlation alone is insufficient).
+    // -----------------------------------------------------------------------------------
+    [Fact]
+    public async Task TimedOut_Request_Does_Not_Poison_Next_Same_Service_Transaction()
+    {
+        int calls = 0;
+        var staleEnqueued = new TaskCompletionSource<bool>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        var (client, _, dispose) = BuildPair(
+            e => e.On(0x22, req =>
+            {
+                int n = Interlocked.Increment(ref calls);
+                if (n == 1)
+                {
+                    // Arrive after the client's P2 budget so the first call times out.
+                    Thread.Sleep(250);
+                    return new byte[] { 0xF1, 0x90, 0xAA }; // stale payload
+                }
+
+                return new byte[] { 0xF1, 0x90, 0xBB }; // fresh payload
+            }),
+            options: new UdsClientOptions
+            {
+                P2ClientMax = TimeSpan.FromMilliseconds(80),
+                P2StarClientMax = TimeSpan.FromMilliseconds(80),
+            });
+
+        using (dispose)
+        {
+            client.Channel.DatagramReceived += (_, args) =>
+            {
+                // Positive RDBI response carrying the stale 0xAA data record.
+                if (args.Data.Length >= 4 && args.Data[0] == 0x62 && args.Data[3] == 0xAA)
+                    staleEnqueued.TrySetResult(true);
+            };
+
+            Func<Task> first = () => client.ReadDataByIdentifierAsync(0xF190,
+                new CancellationTokenSource(ShortTimeout).Token);
+            await first.Should().ThrowAsync<UdsTimeoutException>();
+
+            await staleEnqueued.Task.WaitAsync(ShortTimeout);
+
+            var data = await client.ReadDataByIdentifierAsync(0xF190,
+                new CancellationTokenSource(ShortTimeout).Token);
+            data.Should().Equal(0xBB);
+        }
+    }
+
+    // -----------------------------------------------------------------------------------
     // FR-UDS-007 — TesterPresent (0x3E): keep-alive fires periodically without blocking.
     // -----------------------------------------------------------------------------------
     [Fact]

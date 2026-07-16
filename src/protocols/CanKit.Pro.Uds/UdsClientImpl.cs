@@ -19,12 +19,15 @@ namespace CanKit.Pro.Uds;
 /// is a single <see cref="IIsoTpChannel.ReceiveAsync"/>. Because we hold the request lock
 /// across the send + wait, we know the next reassembled PDU on the channel belongs to the
 /// current request (the ECU only speaks in response to a request, ISO 14229-1 §7.3).
+/// Multi-step services such as SecurityAccess keep that same lock across both on-the-wire
+/// exchanges so keep-alive traffic cannot interleave.
 /// </para>
 /// <para>
-/// If a background PDU is ever received while the lock is idle (e.g. an ECU echo unrelated to
-/// UDS), it is silently discarded when the next request drains the channel's input queue. This
-/// is intentional for the MVP — a stricter router that correlates response SIDs is a follow-up
-/// (see arc42 §6.5 (e) note).
+/// Before each send (and on abort paths) the client calls
+/// <see cref="IIsoTpChannel.DiscardPendingPdus"/> so a late ECU reply from a cancelled or
+/// timed-out wait cannot be consumed as the answer to a later request. SID correlation during
+/// the wait loop remains as a second line of defense for stray frames that arrive while a
+/// request is still outstanding.
 /// </para>
 /// </remarks>
 internal sealed class UdsClientImpl : IUdsClient
@@ -283,35 +286,51 @@ internal sealed class UdsClientImpl : IUdsClient
 
         byte sendKeyLevel = (byte)(requestSeedLevel + 1);
 
-        var seedRequest = new byte[] { (byte)UdsServiceId.SecurityAccess, requestSeedLevel };
-        var seedResponse = await ExecuteAsync(UdsServiceId.SecurityAccess, seedRequest,
-            cancellationToken).ConfigureAwait(false);
+        ThrowIfDisposed();
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken, _lifetimeCts.Token);
+        var linkedToken = linked.Token;
 
-        // Positive response: [0]=0x67 [1]=requestSeedLevel [2..]=seed. A zero-length seed means
-        // "already unlocked" per ISO 14229-1 §9.4.5.3 — the client MUST NOT send the key.
-        if (seedResponse.Length < 2 || seedResponse[1] != requestSeedLevel)
-            throw new UdsProtocolException(
-                $"SecurityAccess seed response sub-function mismatch (expected 0x{requestSeedLevel:X2}).");
-        int seedLen = seedResponse.Length - 2;
-        if (seedLen == 0) return;
+        // Hold the request lock across seed + sendKey so TesterPresent keep-alive (or another
+        // UDS call) cannot interleave and break the ISO 14229-1 security-access sequence
+        // (NRC requestSequenceError on real ECUs).
+        await _requestLock.WaitAsync(linkedToken).ConfigureAwait(false);
+        try
+        {
+            var seedRequest = new byte[] { (byte)UdsServiceId.SecurityAccess, requestSeedLevel };
+            var seedResponse = await ExecuteCoreAsync(UdsServiceId.SecurityAccess, seedRequest,
+                linkedToken).ConfigureAwait(false);
 
-        var seed = new byte[seedLen];
-        Buffer.BlockCopy(seedResponse, 2, seed, 0, seedLen);
-        byte[] key = computeKey(seed)
-            ?? throw new UdsProtocolException("SecurityAccess computeKey callback returned null.");
-        if (key.Length == 0)
-            throw new UdsProtocolException("SecurityAccess computeKey callback returned an empty key.");
+            // Positive response: [0]=0x67 [1]=requestSeedLevel [2..]=seed. A zero-length seed means
+            // "already unlocked" per ISO 14229-1 §9.4.5.3 — the client MUST NOT send the key.
+            if (seedResponse.Length < 2 || seedResponse[1] != requestSeedLevel)
+                throw new UdsProtocolException(
+                    $"SecurityAccess seed response sub-function mismatch (expected 0x{requestSeedLevel:X2}).");
+            int seedLen = seedResponse.Length - 2;
+            if (seedLen == 0) return;
 
-        var keyRequest = new byte[2 + key.Length];
-        keyRequest[0] = (byte)UdsServiceId.SecurityAccess;
-        keyRequest[1] = sendKeyLevel;
-        Buffer.BlockCopy(key, 0, keyRequest, 2, key.Length);
+            var seed = new byte[seedLen];
+            Buffer.BlockCopy(seedResponse, 2, seed, 0, seedLen);
+            byte[] key = computeKey(seed)
+                ?? throw new UdsProtocolException("SecurityAccess computeKey callback returned null.");
+            if (key.Length == 0)
+                throw new UdsProtocolException("SecurityAccess computeKey callback returned an empty key.");
 
-        var keyResponse = await ExecuteAsync(UdsServiceId.SecurityAccess, keyRequest,
-            cancellationToken).ConfigureAwait(false);
-        if (keyResponse.Length < 2 || keyResponse[1] != sendKeyLevel)
-            throw new UdsProtocolException(
-                $"SecurityAccess sendKey response sub-function mismatch (expected 0x{sendKeyLevel:X2}).");
+            var keyRequest = new byte[2 + key.Length];
+            keyRequest[0] = (byte)UdsServiceId.SecurityAccess;
+            keyRequest[1] = sendKeyLevel;
+            Buffer.BlockCopy(key, 0, keyRequest, 2, key.Length);
+
+            var keyResponse = await ExecuteCoreAsync(UdsServiceId.SecurityAccess, keyRequest,
+                linkedToken).ConfigureAwait(false);
+            if (keyResponse.Length < 2 || keyResponse[1] != sendKeyLevel)
+                throw new UdsProtocolException(
+                    $"SecurityAccess sendKey response sub-function mismatch (expected 0x{sendKeyLevel:X2}).");
+        }
+        finally
+        {
+            _requestLock.Release();
+        }
     }
 
     public async Task TesterPresentAsync(bool suppressPositiveResponse = true,
@@ -395,13 +414,36 @@ internal sealed class UdsClientImpl : IUdsClient
         await _requestLock.WaitAsync(linkedToken).ConfigureAwait(false);
         try
         {
-            await _channel.SendAsync(request, linkedToken).ConfigureAwait(false);
+            return await ExecuteCoreAsync(serviceId, request, linkedToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _requestLock.Release();
+        }
+    }
 
-            var timer = Stopwatch.StartNew();
-            var timeout = _options.P2ClientMax;
-            var timerKind = UdsTimeoutTimer.P2;
-            int pendingCount = 0;
+    /// <summary>
+    /// Request/response engine that assumes <see cref="_requestLock"/> is already held.
+    /// Used by <see cref="ExecuteAsync"/> and by multi-step services (SecurityAccess) that must
+    /// keep the lock across more than one on-the-wire exchange.
+    /// </summary>
+    private async Task<byte[]> ExecuteCoreAsync(UdsServiceId serviceId, byte[] request,
+        CancellationToken linkedToken)
+    {
+        // Drop any late reply left over from a previous aborted/timed-out wait before we put a
+        // new request on the wire. SID correlation alone is insufficient when the next request
+        // uses the same service (the stale positive response SID would match).
+        DiscardStalePdus();
 
+        await _channel.SendAsync(request, linkedToken).ConfigureAwait(false);
+
+        var timer = Stopwatch.StartNew();
+        var timeout = _options.P2ClientMax;
+        var timerKind = UdsTimeoutTimer.P2;
+        int pendingCount = 0;
+
+        try
+        {
             while (true)
             {
                 byte[] response = await ReceiveWithTimeoutAsync(
@@ -453,9 +495,24 @@ internal sealed class UdsClientImpl : IUdsClient
                 return response;
             }
         }
-        finally
+        catch
         {
-            _requestLock.Release();
+            // Best-effort: if a PDU is already sitting in the inbox when we abort (e.g. cancel
+            // raced with arrival), drop it under the lock so it cannot poison the next caller.
+            DiscardStalePdus();
+            throw;
+        }
+    }
+
+    private void DiscardStalePdus()
+    {
+        try
+        {
+            _channel.DiscardPendingPdus();
+        }
+        catch (ObjectDisposedException)
+        {
+            // Channel is going away; nothing left to drain.
         }
     }
 

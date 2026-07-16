@@ -243,6 +243,32 @@ public class IsoTpChannelIntegrationTests : IClassFixture<TestCaseProvider>
     }
 
     // --------------------------------------------------------------------------------
+    // First-Frame that already carries the full announced length must complete without
+    // waiting for a Consecutive Frame (otherwise N_Cr fires and the PDU is never emitted).
+    // Classic CAN: inject FF with DL=6 so the 6 data bytes fill the frame.
+    // --------------------------------------------------------------------------------
+    [Fact]
+    public async Task FirstFrame_With_Full_Payload_Completes_Without_ConsecutiveFrame()
+    {
+        var session = NewSession();
+        using var busA = OpenClassic(session, 0);
+        using var busB = OpenClassic(session, 1);
+
+        var epRecv = IsoTpEndpoint.Normal(txCanId: 0x7E0, rxCanId: 0x7E8);
+        using var receiver = IsoTpFactory.Open(busA, epRecv,
+            FastOptions(nCr: TimeSpan.FromMilliseconds(300)));
+
+        var receiveTask = receiver.ReceiveAsync(new CancellationTokenSource(ShortTimeout).Token);
+
+        // FF PCI 0x10 0x06 + 6 data bytes — announced length equals FF data capacity.
+        byte[] ff = { 0x10, 0x06, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66 };
+        busB.Transmit(CanFrame.Classic(0x7E8, ff));
+
+        var got = await receiveTask;
+        got.Should().Equal(0x11, 0x22, 0x33, 0x44, 0x55, 0x66);
+    }
+
+    // --------------------------------------------------------------------------------
     // FR-TP-018 — Two ISO-TP channels on the *same* bus with disjoint endpoints work
     // independently.
     // --------------------------------------------------------------------------------
