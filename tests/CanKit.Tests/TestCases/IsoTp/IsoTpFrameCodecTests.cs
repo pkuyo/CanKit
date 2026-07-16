@@ -507,6 +507,57 @@ public class IsoTpFrameCodecTests
         pci.DataOffset.Should().Be(2);
     }
 
+    [Theory]
+    [InlineData(8)]
+    [InlineData(9)]
+    [InlineData(15)]
+    public void TryParsePci_SingleFrame_CanFd_ShortForm_SfDl_Above_Seven_Is_Rejected(int sfDl)
+    {
+        // CAN-FD short-form SF PCI encodes SF_DL in the low nibble only for 1..7; 8..15 must use
+        // the 0x00/LEN escape (bugbot 3596033572). Provide enough payload bytes so rejection is
+        // due to the PCI encoding, not a truncated-frame bounds check.
+        var frame = new byte[1 + sfDl];
+        frame[0] = (byte)sfDl; // PCI type nibble 0, SF_DL = sfDl
+        for (int i = 0; i < sfDl; i++)
+            frame[1 + i] = (byte)(0x10 + i);
+        var ep = IsoTpEndpoint.Normal(0x1, 0x2);
+
+        IsoTpFrameCodec.TryParsePci(frame, ep, isCanFd: true, out _).Should().BeFalse();
+    }
+
+    [Fact]
+    public void TryParsePci_SingleFrame_CanFd_ShortForm_SfDl_Seven_Still_Parses()
+    {
+        // Boundary of the short form: SF_DL=7 remains valid on CAN-FD without the escape header.
+        var frame = new byte[] { 0x07, 1, 2, 3, 4, 5, 6, 7 };
+        var ep = IsoTpEndpoint.Normal(0x1, 0x2);
+
+        IsoTpFrameCodec.TryParsePci(frame, ep, isCanFd: true, out var pci).Should().BeTrue();
+        pci.Type.Should().Be(PciType.SingleFrame);
+        pci.Length.Should().Be(7);
+        pci.DataOffset.Should().Be(1);
+    }
+
+    [Fact]
+    public void TryParsePci_SingleFrame_CanFd_EscapeForm_Length_Eight_Still_Parses()
+    {
+        // Lengths 8+ must use escape; confirm the legal encoding is still accepted.
+        var payload = new byte[8];
+        for (int i = 0; i < payload.Length; i++)
+            payload[i] = (byte)(0xA0 + i);
+        var frame = IsoTpFrameCodec.BuildSingleFrame(IsoTpEndpoint.Normal(0x1, 0x2), payload,
+            isCanFd: true, padding: true);
+
+        frame[0].Should().Be(0x00);
+        frame[1].Should().Be(8);
+
+        IsoTpFrameCodec.TryParsePci(frame, IsoTpEndpoint.Normal(0x1, 0x2), isCanFd: true, out var pci)
+            .Should().BeTrue();
+        pci.Type.Should().Be(PciType.SingleFrame);
+        pci.Length.Should().Be(8);
+        pci.DataOffset.Should().Be(2);
+    }
+
     [Fact]
     public void TryParsePci_FirstFrame_ClassicCan_Escape_Header_Is_Rejected()
     {
