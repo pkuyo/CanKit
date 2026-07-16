@@ -309,6 +309,57 @@ public class IsoTpChannelIntegrationTests : IClassFixture<TestCaseProvider>
     }
 
     // --------------------------------------------------------------------------------
+    // Bugbot 3596444314 — DiscardPendingPdus must also abort in-flight multi-frame
+    // reassembly. Otherwise leftover CFs can finish and enqueue a full PDU that a
+    // higher layer (UDS) may treat as the next response.
+    // --------------------------------------------------------------------------------
+    [Fact]
+    public async Task DiscardPendingPdus_Aborts_InFlight_Reassembly()
+    {
+        var session = NewSession();
+        using var busA = OpenClassic(session, 0);
+        using var busB = OpenClassic(session, 1);
+
+        var epRecv = IsoTpEndpoint.Normal(txCanId: 0x7E8, rxCanId: 0x7E0);
+        var epPeer = IsoTpEndpoint.Normal(txCanId: 0x7E0, rxCanId: 0x7E8);
+
+        using var receiver = IsoTpFactory.Open(busB, epRecv, FastOptions());
+
+        var fcSeen = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        busA.FrameObserved += (_, e) =>
+        {
+            if (e.CanFrame.ID != unchecked((int)epRecv.TxCanId)) return;
+            var data = e.CanFrame.Data.ToArray();
+            if (data.Length > 0 && (data[0] >> 4) == 0x3)
+                fcSeen.TrySetResult(true);
+        };
+
+        // 13 bytes => FF carries 6, one CF carries the remaining 7 (classic CAN).
+        byte[] stalePayload = Enumerable.Range(0, 13).Select(i => (byte)(i + 0xA0)).ToArray();
+        int ffData = IsoTpFrameCodec.FirstFrameMaxDataLength(isCanFd: false, usesAddressExtension: false, useLongLength: false);
+        var ff = IsoTpFrameCodec.BuildFirstFrame(epPeer, stalePayload.Length, stalePayload.AsSpan(0, ffData), isCanFd: false);
+        busA.Transmit(CanFrame.Classic(unchecked((int)epPeer.TxCanId), ff));
+
+        await fcSeen.Task.WaitAsync(ShortTimeout);
+
+        // Mid-reassembly reset — must clear _rx so the trailing CF cannot complete a PDU.
+        receiver.DiscardPendingPdus();
+
+        byte[] chunk = stalePayload.AsSpan(ffData).ToArray();
+        var cf = IsoTpFrameCodec.BuildConsecutiveFrame(epPeer, sequenceNumber: 1, chunk,
+            isCanFd: false, padding: true);
+        busA.Transmit(CanFrame.Classic(unchecked((int)epPeer.TxCanId), cf));
+        await Task.Delay(50);
+
+        // Stale multi-frame must not appear; a fresh SF must be the next ReceiveAsync result.
+        using var sender = IsoTpFactory.Open(busA, epPeer, FastOptions());
+        var recv = receiver.ReceiveAsync(new CancellationTokenSource(ShortTimeout).Token);
+        byte[] fresh = { 0x62, 0xF1, 0x90 };
+        await sender.SendAsync(fresh);
+        (await recv).Should().Equal(fresh);
+    }
+
+    // --------------------------------------------------------------------------------
     // FR-TP-018 — Two ISO-TP channels on the *same* bus with disjoint endpoints work
     // independently.
     // --------------------------------------------------------------------------------
