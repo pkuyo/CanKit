@@ -337,6 +337,72 @@ public class HaweFrameworkTests : IClassFixture<TestCaseProvider>
         codec.Received.Select(f => f.ID).Should().BeEquivalentTo(new[] { 0x001, 0x011 });
     }
 
+    // Regression for the SetSessionState reentrancy deadlock: prior to the fix,
+    // Host.SetSessionState used PostAsync().GetAwaiter().GetResult() unconditionally, which
+    // deadlocked when called from any codec callback already executing on the actor loop --
+    // the very loop the pending PostAsync work needs in order to complete. The fix must detect
+    // the reentrant call and apply the state transition synchronously.
+    [Fact]
+    public async Task SetSessionState_From_Codec_Callback_Does_Not_Deadlock()
+    {
+        var session = NewSession();
+        using var sender = Open(session, 0);
+        using var receiver = Open(session, 1);
+        using var service = new CanBusService(receiver);
+
+        var codec = new ReentrantStateCodec(HaweFramePattern.Range(0x100, 0x1FF));
+        using var channel = new HaweChannel(service, codec);
+        codec.Attached.Status.Should().Be(TaskStatus.RanToCompletion);
+
+        sender.Transmit(CanFrame.Classic(0x100, new byte[] { 1 }));
+
+        // Bounded wait: pre-fix the callback deadlocks and this never completes; the test times
+        // out and fails with a clear "reentrancy deadlock" message.
+        var completed = await Task.WhenAny(codec.CallbackDone.Task, Task.Delay(ShortTimeout));
+        completed.Should().BeSameAs(codec.CallbackDone.Task,
+            "SetSessionState from inside a codec callback must not deadlock the actor loop");
+
+        codec.SetStateReturn.Should().BeTrue("first Idle->Active transition returns true");
+        channel.SessionState.Should().Be(HaweSessionState.Active);
+
+        // OnSessionStateChanged must have fired synchronously on the same loop invocation --
+        // before the reentrant SetSessionState call returned -- preserving in-order single-writer
+        // semantics for state transitions.
+        codec.Transitions.Should().ContainSingle()
+            .Which.Should().Be((HaweSessionState.Idle, HaweSessionState.Active));
+    }
+
+    // Also cover the nested-reentrant case: a codec's OnSessionStateChanged handler itself
+    // calls SetSessionState. Because we're still on the actor loop when OnSessionStateChanged
+    // fires, this nested call must also take the synchronous path.
+    [Fact]
+    public async Task Nested_SetSessionState_From_OnSessionStateChanged_Does_Not_Deadlock()
+    {
+        var session = NewSession();
+        using var receiver = Open(session, 0);
+        using var service = new CanBusService(receiver);
+
+        var codec = new NestedStateCodec(HaweFramePattern.Range(0x600, 0x6FF));
+        using var channel = new HaweChannel(service, codec);
+        codec.Attached.Status.Should().Be(TaskStatus.RanToCompletion);
+
+        // The call originates off-loop, hops onto the actor loop, and its OnSessionStateChanged
+        // callback then calls SetSessionState(Fault) reentrantly on the same loop invocation.
+        var setTask = Task.Run(() => codec.Host!.SetSessionState(HaweSessionState.Active));
+        var completed = await Task.WhenAny(setTask, Task.Delay(ShortTimeout));
+        completed.Should().BeSameAs(setTask, "nested SetSessionState must not deadlock");
+        (await setTask).Should().BeTrue();
+
+        // Both transitions observed, in order.
+        await Task.Delay(50);
+        codec.Transitions.Should().Equal(new[]
+        {
+            (HaweSessionState.Idle, HaweSessionState.Active),
+            (HaweSessionState.Active, HaweSessionState.Fault),
+        });
+        channel.SessionState.Should().Be(HaweSessionState.Fault);
+    }
+
     // Constructor guards.
     [Fact]
     public void HaweChannel_Rejects_Null_Args()
@@ -353,4 +419,74 @@ public class HaweFrameworkTests : IClassFixture<TestCaseProvider>
         nullService.Should().Throw<ArgumentNullException>();
         nullCodec.Should().Throw<ArgumentNullException>();
     }
+
+    // Calls Host.SetSessionState from inside OnFrameReceived (i.e. from the actor loop).
+    // Pre-fix, HaweChannel.Host.SetSessionState always posted+blocked, which deadlocks in this
+    // scenario. Post-fix, the reentrant call must apply the transition synchronously.
+    private sealed class ReentrantStateCodec : IHaweCodec
+    {
+        private readonly TaskCompletionSource<bool> _attachedTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public ReentrantStateCodec(HaweFramePattern pattern) => FramePattern = pattern;
+        public string Name => "reentrant-state-codec";
+        public HaweFramePattern FramePattern { get; }
+        public IHaweCodecHost? Host { get; private set; }
+        public Task Attached => _attachedTcs.Task;
+        public TaskCompletionSource<bool> CallbackDone { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public bool SetStateReturn { get; private set; }
+        public List<(HaweSessionState prev, HaweSessionState curr)> Transitions { get; } = new();
+
+        public void OnAttached(IHaweCodecHost host)
+        {
+            Host = host;
+            _attachedTcs.TrySetResult(true);
+        }
+
+        public void OnFrameReceived(in CanFrameView frame)
+        {
+            // Reentrant SetSessionState from the actor loop -- pre-fix, this deadlocks.
+            SetStateReturn = Host!.SetSessionState(HaweSessionState.Active);
+            CallbackDone.TrySetResult(true);
+        }
+
+        public void OnSessionStateChanged(HaweSessionState previous, HaweSessionState current)
+            => Transitions.Add((previous, current));
+
+        public void OnDetached() { }
+    }
+
+    // A codec whose OnSessionStateChanged handler itself calls SetSessionState. Verifies the
+    // nested reentrant case is also handled synchronously and does not deadlock.
+    private sealed class NestedStateCodec : IHaweCodec
+    {
+        private readonly TaskCompletionSource<bool> _attachedTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private bool _nested;
+        public NestedStateCodec(HaweFramePattern pattern) => FramePattern = pattern;
+        public string Name => "nested-state-codec";
+        public HaweFramePattern FramePattern { get; }
+        public IHaweCodecHost? Host { get; private set; }
+        public Task Attached => _attachedTcs.Task;
+        public List<(HaweSessionState prev, HaweSessionState curr)> Transitions { get; } = new();
+
+        public void OnAttached(IHaweCodecHost host)
+        {
+            Host = host;
+            _attachedTcs.TrySetResult(true);
+        }
+
+        public void OnFrameReceived(in CanFrameView frame) { }
+
+        public void OnSessionStateChanged(HaweSessionState previous, HaweSessionState current)
+        {
+            Transitions.Add((previous, current));
+            if (!_nested && current == HaweSessionState.Active)
+            {
+                _nested = true;
+                // Nested reentrant call from within OnSessionStateChanged -- must not deadlock.
+                Host!.SetSessionState(HaweSessionState.Fault);
+            }
+        }
+
+        public void OnDetached() { }
+    }
+
 }

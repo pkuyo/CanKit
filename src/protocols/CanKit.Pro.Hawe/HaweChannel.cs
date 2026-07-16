@@ -54,6 +54,17 @@ namespace CanKit.Pro.Hawe
         // Host.SetSessionState, which is the only mutator.
         private int _sessionState;
 
+        // True for the duration of a codec callback that this channel itself dispatched to the
+        // actor loop (OnAttached, OnFrameReceived, OnSessionStateChanged, OnDetached, ArmDeadline
+        // fires, Host.Post work). Lets Host.SetSessionState detect reentrant calls from those
+        // callbacks and apply the state transition synchronously instead of
+        // PostAsync().GetAwaiter().GetResult() -- which would deadlock, because the actor loop
+        // that would service that posted work is the very loop currently blocked inside the
+        // callback that just called SetSessionState. AsyncLocal (rather than [ThreadStatic]) so
+        // the flag correctly follows ExecutionContext through any await boundary a callback might
+        // introduce, and is scoped to this channel instance so nested channels don't interfere.
+        private readonly AsyncLocal<bool> _isOnActorLoop = new();
+
         /// <summary>
         /// Attaches <paramref name="codec"/> to <paramref name="busService"/> and starts pumping
         /// matching frames onto the codec's actor loop. Invokes
@@ -78,7 +89,10 @@ namespace CanKit.Pro.Hawe
             // guaranteed to see zero frames delivered, matching every other protocol instance's
             // "attach first, then receive" ordering. Wait synchronously so the constructor's
             // contract ("codec attached before this returns") is a hard guarantee, not a race.
-            _actor.PostAsync(() => _codec.OnAttached(_host)).GetAwaiter().GetResult();
+            // Safe from the SetSessionState-style deadlock: the constructor is by definition not
+            // running on the actor loop yet, so PostAsync().GetAwaiter().GetResult() here cannot
+            // be a reentrant self-wait.
+            _actor.PostAsync(WrapOnLoop(() => _codec.OnAttached(_host))).GetAwaiter().GetResult();
 
             _pumpTask = Task.Run(PumpAsync);
         }
@@ -100,7 +114,7 @@ namespace CanKit.Pro.Hawe
                     // Subscription.TryDeliver's payload-copy comment), so posting it to the actor
                     // loop is safe even after the subscription's async enumerable has moved on.
                     var f = frame;
-                    _actor.Post(() => _codec.OnFrameReceived(in f));
+                    _actor.Post(WrapOnLoop(() => _codec.OnFrameReceived(in f)));
                 }
             }
             catch (OperationCanceledException)
@@ -132,7 +146,7 @@ namespace CanKit.Pro.Hawe
             // throw for an already-broken channel.
             try
             {
-                _actor.PostAsync(() => _codec.OnDetached()).Wait(TimeSpan.FromSeconds(5));
+                _actor.PostAsync(WrapOnLoop(() => _codec.OnDetached())).Wait(TimeSpan.FromSeconds(5));
             }
             catch
             {
@@ -145,6 +159,32 @@ namespace CanKit.Pro.Hawe
             _subscription.Dispose();
             _actor.Dispose();
             _pumpCts.Dispose();
+        }
+
+        // Every codec callback the channel dispatches to the actor loop goes through this wrapper
+        // so _isOnActorLoop is true for the duration of the callback. Host.SetSessionState reads
+        // that flag to route reentrant calls onto the synchronous fast path instead of
+        // PostAsync().GetAwaiter().GetResult() (see the field's own remark for the full rationale).
+        private Action WrapOnLoop(Action work)
+        {
+            return () =>
+            {
+                var previous = _isOnActorLoop.Value;
+                _isOnActorLoop.Value = true;
+                try { work(); }
+                finally { _isOnActorLoop.Value = previous; }
+            };
+        }
+
+        private Func<T> WrapOnLoop<T>(Func<T> work)
+        {
+            return () =>
+            {
+                var previous = _isOnActorLoop.Value;
+                _isOnActorLoop.Value = true;
+                try { return work(); }
+                finally { _isOnActorLoop.Value = previous; }
+            };
         }
 
         // The IHaweCodecHost surface. Kept as a private nested class so the framework's own
@@ -165,23 +205,37 @@ namespace CanKit.Pro.Hawe
 
             public bool SetSessionState(HaweSessionState state)
             {
-                // Serialize state transitions on the actor loop so OnSessionStateChanged fires
-                // single-writer, in-order, before this call returns -- matching the same
-                // "callbacks always on the loop" discipline the rest of the framework enforces.
-                return _channel._actor.PostAsync(() =>
-                {
-                    var previous = (HaweSessionState)Volatile.Read(ref _channel._sessionState);
-                    if (previous == state) return false;
-                    Volatile.Write(ref _channel._sessionState, (int)state);
-                    _channel._codec.OnSessionStateChanged(previous, state);
-                    return true;
-                }).GetAwaiter().GetResult();
+                // Reentrant fast path: if this call is happening from inside a codec callback the
+                // channel dispatched to the actor loop (OnFrameReceived, ArmDeadline fires,
+                // Host.Post work, OnAttached/OnDetached), we are already on the single-writer loop
+                // -- the state mutation and OnSessionStateChanged fire can run synchronously,
+                // preserving the same "callbacks always on the loop, in order" discipline. Going
+                // through PostAsync().GetAwaiter().GetResult() in this case would deadlock: the
+                // loop cannot process the newly posted work while it is blocked inside the very
+                // callback that just called us.
+                if (_channel._isOnActorLoop.Value)
+                    return ApplyStateChange(state);
+
+                // Off-loop caller: hop onto the actor loop and wait for the result. Wrapped so a
+                // nested SetSessionState from inside OnSessionStateChanged is also detected as
+                // reentrant and takes the synchronous path above.
+                return _channel._actor.PostAsync(_channel.WrapOnLoop(() => ApplyStateChange(state)))
+                    .GetAwaiter().GetResult();
+            }
+
+            private bool ApplyStateChange(HaweSessionState state)
+            {
+                var previous = (HaweSessionState)Volatile.Read(ref _channel._sessionState);
+                if (previous == state) return false;
+                Volatile.Write(ref _channel._sessionState, (int)state);
+                _channel._codec.OnSessionStateChanged(previous, state);
+                return true;
             }
 
             public IDisposable ArmDeadline(TimeSpan timeout, Action onExpired)
-                => _channel._deadlines.Arm(timeout, onExpired);
+                => _channel._deadlines.Arm(timeout, _channel.WrapOnLoop(onExpired));
 
-            public void Post(Action work) => _channel._actor.Post(work);
+            public void Post(Action work) => _channel._actor.Post(_channel.WrapOnLoop(work));
         }
     }
 }
