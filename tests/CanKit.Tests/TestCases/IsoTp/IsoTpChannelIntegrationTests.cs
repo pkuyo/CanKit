@@ -46,12 +46,16 @@ public class IsoTpChannelIntegrationTests : IClassFixture<TestCaseProvider>
         $"virtual://{session}/{channel}",
         cfg => cfg.SetProtocolMode(CanProtocolMode.Can20).Baud(TestCaseProvider.AbitRate));
 
+    private static ICanBus OpenCanFd(string session, int channel) => CanBus.Open(
+        $"virtual://{session}/{channel}",
+        cfg => cfg.SetProtocolMode(CanProtocolMode.CanFd).Fd(TestCaseProvider.AbitRate, TestCaseProvider.DbitRate));
+
     // Fast timings so protocol-timeout tests don't spend seconds each. Classic-CAN.
     private static IsoTpChannelOptions FastOptions(byte localBs = 0, TimeSpan? localStMin = null,
-        TimeSpan? nBs = null, TimeSpan? nCr = null, int wftMax = 10)
+        TimeSpan? nBs = null, TimeSpan? nCr = null, int wftMax = 10, bool useCanFd = false)
         => new()
         {
-            UseCanFd = false,
+            UseCanFd = useCanFd,
             UsePadding = true,
             LocalBlockSize = localBs,
             LocalStMin = localStMin ?? TimeSpan.Zero,
@@ -585,11 +589,13 @@ public class IsoTpChannelIntegrationTests : IClassFixture<TestCaseProvider>
     }
 
     [Fact]
-    public async Task MultiFrame_Receive_Faults_When_Superseded_By_FirstFrame()
+    public async Task MultiFrame_Receive_Faults_When_Superseded_By_FirstFrame_Then_Overflow()
     {
         var session = NewSession();
-        using var busA = OpenClassic(session, 0);
-        using var busB = OpenClassic(session, 1);
+        // CAN-FD bus so the escape-form oversized FF is delivered; channel stays classic-capped
+        // (UseCanFd=false → MaxPduLength=4095) so the escape length triggers OVFLW.
+        using var busA = OpenCanFd(session, 0);
+        using var busB = OpenCanFd(session, 1);
 
         var epRecv = IsoTpEndpoint.Normal(txCanId: 0x348, rxCanId: 0x340);
         var epPeer = IsoTpEndpoint.Normal(txCanId: 0x340, rxCanId: 0x348);
@@ -597,63 +603,53 @@ public class IsoTpChannelIntegrationTests : IClassFixture<TestCaseProvider>
         using var receiver = IsoTpFactory.Open(busB, epRecv, FastOptions());
 
         var fcSeen = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        int fcCount = 0;
+        int overflowFc = 0;
         busA.FrameObserved += (_, e) =>
         {
             if (e.CanFrame.ID != unchecked((int)epRecv.TxCanId)) return;
             var data = e.CanFrame.Data.ToArray();
             if (data.Length == 0) return;
-            if ((data[0] >> 4) == 0x3 && (data[0] & 0x0F) == (byte)FlowStatus.ClearToSend)
+            if ((data[0] >> 4) == 0x3)
             {
-                if (Interlocked.Increment(ref fcCount) == 1)
+                if ((data[0] & 0x0F) == (byte)FlowStatus.Overflow)
+                    Interlocked.Increment(ref overflowFc);
+                else
                     fcSeen.TrySetResult(true);
             }
         };
 
         var recvTask = receiver.ReceiveAsync(new CancellationTokenSource(ShortTimeout).Token);
 
-        // Start a valid multi-frame reception so _rx + N_Cr are armed.
+        // Start a valid multi-frame reception so _rx + N_Cr are armed (short-form FF on FD bus).
         byte[] ffPayload = Enumerable.Range(0, 20).Select(i => (byte)(i + 3)).ToArray();
         int ffData = IsoTpFrameCodec.FirstFrameMaxDataLength(isCanFd: false, usesAddressExtension: false, useLongLength: false);
         var ff = IsoTpFrameCodec.BuildFirstFrame(epPeer, ffPayload.Length, ffPayload.AsSpan(0, ffData), isCanFd: false);
-        busA.Transmit(CanFrame.Classic(unchecked((int)epPeer.TxCanId), ff));
+        busA.Transmit(CanFrame.Fd(unchecked((int)epPeer.TxCanId), ff));
         await fcSeen.Task.WaitAsync(ShortTimeout);
 
-        // A second valid FF supersedes the in-flight reassembly. Without AbortRx this left
-        // ReceiveAsync hung forever (Bugbot 3596527680). CAN-FD escape FFs are no longer
-        // accepted on classic channels (bugbot 3594958445), so the supersede must be a
-        // classic-legal First Frame that starts a replacement session.
-        byte[] supersedePayload = Enumerable.Range(0, 20).Select(i => (byte)(0xA0 + i)).ToArray();
-        var supersedeFf = IsoTpFrameCodec.BuildFirstFrame(
-            epPeer, supersedePayload.Length, supersedePayload.AsSpan(0, ffData), isCanFd: false);
-        busA.Transmit(CanFrame.Classic(unchecked((int)epPeer.TxCanId), supersedeFf));
+        // Oversized escape FF supersedes then refuses with OVFLW — no replacement session.
+        byte[] hugeFf =
+        {
+            0x10, 0x00,
+            0x01, 0x00, 0x00, 0x00, // length = 16_777_216
+            0x00, 0x00,
+        };
+        busA.Transmit(CanFrame.Fd(unchecked((int)epPeer.TxCanId), hugeFf));
 
         Func<Task> act = () => recvTask;
         (await act.Should().ThrowAsync<IsoTpException>())
             .WithMessage("*First Frame aborted in-flight*");
 
-        // Finish the replacement multi-frame and confirm the channel stays usable.
-        for (int i = 0; i < 50 && Volatile.Read(ref fcCount) < 2; i++)
+        for (int i = 0; i < 50 && Volatile.Read(ref overflowFc) == 0; i++)
             await Task.Delay(20);
-        fcCount.Should().BeGreaterThanOrEqualTo(2, "replacement FF must receive its own FC(CTS)");
+        overflowFc.Should().Be(1, "superseding oversized FF must still reply FC(OVFLW)");
 
+        // Channel remains usable for a subsequent SF.
         var recv2 = receiver.ReceiveAsync(new CancellationTokenSource(ShortTimeout).Token);
-        int offset = ffData;
-        byte sn = IsoTpFrameCodec.FirstConsecutiveSequenceNumber;
-        while (offset < supersedePayload.Length)
-        {
-            int cfCap = IsoTpFrameCodec.ConsecutiveFrameMaxDataLength(
-                isCanFd: false, usesAddressExtension: false);
-            int chunk = Math.Min(cfCap, supersedePayload.Length - offset);
-            var cf = IsoTpFrameCodec.BuildConsecutiveFrame(
-                epPeer, sn, supersedePayload.AsSpan(offset, chunk),
-                isCanFd: false, padding: true);
-            busA.Transmit(CanFrame.Classic(unchecked((int)epPeer.TxCanId), cf));
-            offset += chunk;
-            sn = (byte)((sn + 1) & 0x0F);
-        }
-
-        (await recv2).Should().Equal(supersedePayload);
+        var okSf = IsoTpFrameCodec.BuildSingleFrame(epPeer, new byte[] { 0x55 },
+            isCanFd: false, padding: true);
+        busA.Transmit(CanFrame.Fd(unchecked((int)epPeer.TxCanId), okSf));
+        (await recv2).Should().Equal(0x55);
     }
 
     // --------------------------------------------------------------------------------
@@ -885,7 +881,7 @@ public class IsoTpChannelIntegrationTests : IClassFixture<TestCaseProvider>
         var epAB = IsoTpEndpoint.Normal(0x240, 0x241);
 
         using var inner = new CanBusService(busA);
-        using var holdConfirm = new ManualResetEventSlim(false);
+        using var holdConfirm = new SemaphoreSlim(0, 1);
         using var confirmStarted = new ManualResetEventSlim(false);
         var delaying = new DelayingConfirmService(inner, holdConfirm, confirmStarted);
         var sender = IsoTpFactory.Open(delaying, epAB, FastOptions(), leaveOpen: true);
@@ -898,7 +894,7 @@ public class IsoTpChannelIntegrationTests : IClassFixture<TestCaseProvider>
         Action dispose = () => sender.Dispose();
         dispose.Should().NotThrow("Dispose must wait out the send-gate holder before disposing it");
 
-        holdConfirm.Set();
+        holdConfirm.Release();
 
         Func<Task> send = () => sendTask.WaitAsync(ShortTimeout);
         // Clean shutdown: FailTx's ObjectDisposedException, not a secondary ODE from Release.
@@ -926,7 +922,7 @@ public class IsoTpChannelIntegrationTests : IClassFixture<TestCaseProvider>
         var epBA = IsoTpEndpoint.Normal(0x231, 0x230);
 
         using var inner = new CanBusService(busA);
-        using var holdFirstConfirm = new ManualResetEventSlim(false);
+        using var holdFirstConfirm = new SemaphoreSlim(0, 1);
         using var firstConfirmStarted = new ManualResetEventSlim(false);
         var delaying = new DelayingConfirmService(inner, holdFirstConfirm, firstConfirmStarted);
         using var sender = IsoTpFactory.Open(delaying, epAB, FastOptions(), leaveOpen: true);
@@ -969,7 +965,7 @@ public class IsoTpChannelIntegrationTests : IClassFixture<TestCaseProvider>
         framesToPeer.Should().Be(0,
             "no SF may hit the peer while the aborted send's SendConfirmed is still parked");
 
-        holdFirstConfirm.Set();
+        holdFirstConfirm.Release();
 
         Func<Task> cancelled = () => cancelledSend.WaitAsync(ShortTimeout);
         await cancelled.Should().ThrowAsync<OperationCanceledException>();
@@ -983,10 +979,193 @@ public class IsoTpChannelIntegrationTests : IClassFixture<TestCaseProvider>
     }
 
     // --------------------------------------------------------------------------------
+    // Bugbot 3597312227 (HIGH) — negative LocalStMin used to throw EncodeStMin on the actor
+    // loop when building FC after FF, so _rx/N_Cr never started and ReceiveAsync hung. Open
+    // must now reject the options up front.
+    // --------------------------------------------------------------------------------
+    [Fact]
+    public void Open_With_Negative_LocalStMin_Throws()
+    {
+        var session = NewSession();
+        using var busA = OpenClassic(session, 0);
+
+        var opts = FastOptions(localStMin: TimeSpan.FromMilliseconds(-1));
+        Action act = () => IsoTpFactory.Open(busA, IsoTpEndpoint.Normal(0x250, 0x251), opts);
+        act.Should().Throw<ArgumentOutOfRangeException>()
+            .WithParameterName("value");
+    }
+
+    // --------------------------------------------------------------------------------
+    // Bugbot 3597408323 (HIGH) — FC arriving while the last CF of a block awaits TX-confirm
+    // (State==SendingCf) must not be dropped. Under the bug the sender entered WaitFcBlock,
+    // armed N_Bs, and timed out even though the peer had already answered.
+    // --------------------------------------------------------------------------------
+    [Fact]
+    public async Task MultiFrame_Send_Accepts_FlowControl_Arriving_During_Last_Cf_Confirm()
+    {
+        var session = NewSession();
+        using var busA = OpenClassic(session, 0);
+        using var busB = OpenClassic(session, 1);
+
+        var epAB = IsoTpEndpoint.Normal(0x260, 0x261);
+        var epBA = IsoTpEndpoint.Normal(0x261, 0x260);
+
+        using var inner = new CanBusService(busA);
+        using var holdCfConfirm = new SemaphoreSlim(0, 8);
+        using var cfConfirmParked = new ManualResetEventSlim(false);
+        // Hold only CF TX-confirms (after the frame is on the wire). FF confirms normally so the
+        // peer can answer the initial FC; the bug window is SendingCf for the last CF of a block.
+        var delaying = new HoldConsecutiveFrameConfirmService(inner, holdCfConfirm, cfConfirmParked);
+        using var sender = IsoTpFactory.Open(delaying, epAB,
+            FastOptions(nBs: TimeSpan.FromMilliseconds(300)), leaveOpen: true);
+
+        // Manual peer: CTS with BS=1 after FF and after each CF. FC is sent while CF confirm is
+        // still parked so it lands in State==SendingCf (the drop window Bugbot flagged).
+        busB.FrameObserved += (_, e) =>
+        {
+            if (e.CanFrame.ID != 0x260) return;
+            var payload = e.CanFrame.Data.ToArray();
+            if (payload.Length == 0) return;
+            int type = payload[0] >> 4;
+            if (type is 0x1 or 0x2) // FF or CF
+            {
+                var fc = IsoTpFrameCodec.BuildFlowControl(epBA, FlowStatus.ClearToSend,
+                    blockSize: 1, stMinRaw: 0, isCanFd: false, padding: true);
+                busB.Transmit(CanFrame.Classic(0x261, fc));
+            }
+        };
+
+        // 20 bytes classic: FF(6) + CF1(7) + CF2(7). BS=1 => wait for FC after FF and after CF1.
+        byte[] pdu = Enumerable.Range(0, 20).Select(i => (byte)(i + 1)).ToArray();
+        var sendTask = sender.SendAsync(pdu);
+
+        // Two block-ending CFs (CF1 then CF2): for each, wait until confirm is parked (FC already
+        // sent by the peer handler above), then release so deferred FC is applied.
+        for (int i = 0; i < 2; i++)
+        {
+            cfConfirmParked.Wait(TimeSpan.FromSeconds(3)).Should().BeTrue(
+                $"CF confirm #{i + 1} must park after transmit so peer FC can defer");
+            cfConfirmParked.Reset();
+            await Task.Delay(30); // ensure peer FC is processed into DeferredFcs
+            holdCfConfirm.Release();
+        }
+
+        // Under the bug this times out on N_Bs; under the fix deferred FC resumes the block.
+        await sendTask.WaitAsync(ShortTimeout);
+    }
+
+    // --------------------------------------------------------------------------------
+    // Bugbot 3597408331 (HIGH) — multiple Wait FCs during FF TX-confirm must each count
+    // toward WftMax. A single DeferredFc slot used to keep only the last Wait.
+    // --------------------------------------------------------------------------------
+    [Fact]
+    public async Task MultiFrame_Send_Counts_Wait_FlowControls_Deferred_During_Ff_Confirm()
+    {
+        var session = NewSession();
+        using var busA = OpenClassic(session, 0);
+        using var busB = OpenClassic(session, 1);
+
+        var epAB = IsoTpEndpoint.Normal(0x270, 0x271);
+        var epBA = IsoTpEndpoint.Normal(0x271, 0x270);
+
+        int wftMax = 2;
+        using var inner = new CanBusService(busA);
+        using var holdConfirm = new SemaphoreSlim(0, 1);
+        using var confirmStarted = new ManualResetEventSlim(false);
+        var delaying = new DelayingConfirmService(inner, holdConfirm, confirmStarted,
+            holdAfterTransmit: true);
+        using var sender = IsoTpFactory.Open(delaying, epAB,
+            FastOptions(nBs: TimeSpan.FromSeconds(2), wftMax: wftMax), leaveOpen: true);
+
+        var ffSeen = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        busB.FrameObserved += (_, e) =>
+        {
+            if (e.CanFrame.ID != 0x270) return;
+            var payload = e.CanFrame.Data.ToArray();
+            if (payload.Length > 0 && (payload[0] >> 4) == 0x1)
+                ffSeen.TrySetResult(true);
+        };
+
+        byte[] pdu = Enumerable.Range(0, 30).Select(i => (byte)i).ToArray();
+        var sendTask = sender.SendAsync(pdu);
+
+        confirmStarted.Wait(TimeSpan.FromSeconds(5)).Should().BeTrue(
+            "FF SendConfirmed must be parked so Wait FCs arrive during SingleOrFirstInFlight");
+        await ffSeen.Task.WaitAsync(ShortTimeout);
+
+        // Pump WftMax+1 Wait FCs while FF confirm is still held — all must be queued and
+        // counted when confirm completes (under the bug only the last Wait survived).
+        for (int i = 0; i < wftMax + 1; i++)
+        {
+            var fc = IsoTpFrameCodec.BuildFlowControl(epBA, FlowStatus.Wait,
+                blockSize: 0, stMinRaw: 0, isCanFd: false, padding: true);
+            busB.Transmit(CanFrame.Classic(0x271, fc));
+            await Task.Delay(20);
+        }
+
+        holdConfirm.Release();
+
+        Func<Task> act = () => sendTask.WaitAsync(ShortTimeout);
+        var ex = (await act.Should().ThrowAsync<IsoTpWaitFrameLimitExceededException>()).Which;
+        ex.Limit.Should().Be(wftMax);
+        ex.WaitFramesReceived.Should().BeGreaterThan(wftMax);
+    }
+
+    // --------------------------------------------------------------------------------
+    // Bugbot 3596212802 (MEDIUM) — HandleRxFirstFrame must not allocate new byte[pci.Length]
+    // from an uncapped FF length. A classic-configured channel (MaxPduLength=4095) must reply
+    // FC(OVFLW) when a CAN-FD escape FF announces a larger PDU. The frame itself must be FD:
+    // TryParsePci rejects the escape header on classic frames (develop codec API).
+    // --------------------------------------------------------------------------------
+    [Fact]
+    public async Task Rx_FirstFrame_Above_Classic_Max_Sends_Overflow_And_Does_Not_Allocate()
+    {
+        var session = NewSession();
+        // FD bus delivers the escape-form FF; classic channel options keep MaxPduLength at 4095.
+        using var busA = OpenCanFd(session, 0);
+        using var busB = OpenCanFd(session, 1);
+
+        var epRecv = IsoTpEndpoint.Normal(txCanId: 0x7E0, rxCanId: 0x7E8);
+        using var receiver = IsoTpFactory.Open(busA, epRecv, FastOptions());
+
+        int overflowFc = 0;
+        busB.FrameObserved += (_, e) =>
+        {
+            if (e.CanFrame.ID != 0x7E0) return;
+            var payload = e.CanFrame.Data.ToArray();
+            if (payload.Length >= 1 && (payload[0] >> 4) == 0x3
+                && (payload[0] & 0x0F) == (byte)FlowStatus.Overflow)
+            {
+                Interlocked.Increment(ref overflowFc);
+            }
+        };
+
+        // CAN-FD escape FF announcing 0x01000000 bytes — far above classic MaxClassicFirstFrameLength.
+        // Under the bug this would attempt new byte[0x01000000] (or worse with int.MaxValue).
+        byte[] hugeFf =
+        {
+            0x10, 0x00,
+            0x01, 0x00, 0x00, 0x00, // length = 16_777_216
+            0x00, 0x00,
+        };
+        busB.Transmit(CanFrame.Fd(0x7E8, hugeFf));
+
+        for (int i = 0; i < 50 && Volatile.Read(ref overflowFc) == 0; i++)
+            await Task.Delay(20);
+        overflowFc.Should().Be(1, "receiver must reply FC(OVFLW) without allocating the announced buffer");
+
+        // Channel remains usable for a normal SF afterwards.
+        var recvTask = receiver.ReceiveAsync(new CancellationTokenSource(ShortTimeout).Token);
+        byte[] okSf = { 0x01, 0x99 }; // SF DL=1, data 0x99 — build via peer transmit
+        busB.Transmit(CanFrame.Fd(0x7E8, okSf));
+        (await recvTask).Should().Equal(0x99);
+    }
+
+    // --------------------------------------------------------------------------------
     // Bugbot 3594958445 / 3596212802 — on classic CAN the CAN-FD First-Frame escape form
     // (0x10 0x00 + 4-byte length) is invalid and must be rejected in TryParsePci, not
     // mis-parsed as a huge FF_DL that would allocate before FC(OVFLW). Silent drop keeps
-    // the channel usable.
+    // the channel usable. Complements the FD-bus OVFLW test above (per-frame isCanFd).
     // --------------------------------------------------------------------------------
     [Fact]
     public async Task Rx_Classic_Rejects_CanFd_Escape_FirstFrame_Without_Allocating()
@@ -1029,22 +1208,29 @@ public class IsoTpChannelIntegrationTests : IClassFixture<TestCaseProvider>
 
     /// <summary>
     /// Test double: forwards every <see cref="ICanBusService"/> call to an inner service, but
-    /// parks the first <see cref="ICanBusService.SendConfirmed"/> until
-    /// <paramref name="release"/> is signaled so cancel/gate races are deterministic.
+    /// parks <see cref="ICanBusService.SendConfirmed"/> until <paramref name="release"/> is
+    /// signaled so cancel/gate / deferred-FC races are deterministic.
     /// </summary>
+    /// <remarks>
+    /// Default holds only the first confirm <em>before</em> transmitting (cancel/gate tests).
+    /// Pass <paramref name="holdAfterTransmit"/> to transmit first, then park — so peers can
+    /// answer FC while TX-confirm is still outstanding (deferred-FC / WftMax tests).
+    /// </remarks>
     private sealed class DelayingConfirmService : ICanBusService
     {
         private readonly ICanBusService _inner;
-        private readonly ManualResetEventSlim _release;
+        private readonly SemaphoreSlim _release;
         private readonly ManualResetEventSlim _started;
+        private readonly bool _holdAfterTransmit;
         private int _confirmCount;
 
-        public DelayingConfirmService(ICanBusService inner, ManualResetEventSlim release,
-            ManualResetEventSlim started)
+        public DelayingConfirmService(ICanBusService inner, SemaphoreSlim release,
+            ManualResetEventSlim started, bool holdAfterTransmit = false)
         {
             _inner = inner;
             _release = release;
             _started = started;
+            _holdAfterTransmit = holdAfterTransmit;
         }
 
         public ICanBus Bus => _inner.Bus;
@@ -1062,7 +1248,9 @@ public class IsoTpChannelIntegrationTests : IClassFixture<TestCaseProvider>
         public async Task<TxConfirmation> SendConfirmed(CanFrame frame, TimeSpan? timeout = null,
             CancellationToken cancellationToken = default)
         {
-            if (Interlocked.Increment(ref _confirmCount) == 1)
+            bool hold = Interlocked.Increment(ref _confirmCount) == 1;
+
+            if (hold && !_holdAfterTransmit)
             {
                 _started.Set();
                 // Do not honor cancellationToken here: the point of the test is that IsoTpChannel
@@ -1070,7 +1258,70 @@ public class IsoTpChannelIntegrationTests : IClassFixture<TestCaseProvider>
                 if (!_release.Wait(TimeSpan.FromSeconds(10)))
                     throw new TimeoutException("test release gate was never signaled");
             }
-            return await _inner.SendConfirmed(frame, timeout, cancellationToken).ConfigureAwait(false);
+
+            var result = await _inner.SendConfirmed(frame, timeout, cancellationToken).ConfigureAwait(false);
+
+            if (hold && _holdAfterTransmit)
+            {
+                _started.Set();
+                if (!_release.Wait(TimeSpan.FromSeconds(10)))
+                    throw new TimeoutException("test release gate was never signaled");
+            }
+
+            return result;
+        }
+
+        public void Dispose() { /* leaveOpen: inner disposed by test */ }
+    }
+
+    /// <summary>
+    /// Parks <see cref="ICanBusService.SendConfirmed"/> only for Consecutive Frames, and only
+    /// after the frame has been transmitted — so a peer FC can arrive while TX state is still
+    /// <c>SendingCf</c> (Bugbot 3597408323).
+    /// </summary>
+    private sealed class HoldConsecutiveFrameConfirmService : ICanBusService
+    {
+        private readonly ICanBusService _inner;
+        private readonly SemaphoreSlim _release;
+        private readonly ManualResetEventSlim _parked;
+
+        public HoldConsecutiveFrameConfirmService(ICanBusService inner, SemaphoreSlim release,
+            ManualResetEventSlim parked)
+        {
+            _inner = inner;
+            _release = release;
+            _parked = parked;
+        }
+
+        public ICanBus Bus => _inner.Bus;
+        public int SubscriptionCount => _inner.SubscriptionCount;
+
+        public ISubscription Subscribe(Func<CanFrameView, bool>? predicate = null, int? bufferCapacity = null)
+            => _inner.Subscribe(predicate, bufferCapacity);
+
+        public ISubscription Subscribe(CanIdFilter filter, int? bufferCapacity = null)
+            => _inner.Subscribe(filter, bufferCapacity);
+
+        public IReadOnlyList<(ISubscription First, ISubscription Second)> FindOverlappingFilterSubscriptions()
+            => _inner.FindOverlappingFilterSubscriptions();
+
+        public async Task<TxConfirmation> SendConfirmed(CanFrame frame, TimeSpan? timeout = null,
+            CancellationToken cancellationToken = default)
+        {
+            // Copy PCI before await — ReadOnlySpan cannot live across await points.
+            byte[] payload = frame.Data.ToArray();
+            bool isCf = payload.Length > 0 && (payload[0] >> 4) == 0x2;
+
+            var result = await _inner.SendConfirmed(frame, timeout, cancellationToken).ConfigureAwait(false);
+
+            if (isCf)
+            {
+                _parked.Set();
+                if (!_release.Wait(TimeSpan.FromSeconds(10)))
+                    throw new TimeoutException("CF confirm release gate was never signaled");
+            }
+
+            return result;
         }
 
         public void Dispose() { /* leaveOpen: inner disposed by test */ }
