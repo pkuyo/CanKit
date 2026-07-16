@@ -538,6 +538,66 @@ public class IsoTpFrameCodecTests
         pci.DataOffset.Should().Be(1);
     }
 
+    [Theory]
+    [InlineData(7)]
+    [InlineData(8)]
+    [InlineData(15)]
+    public void TryParsePci_SingleFrame_CanFd_Extended_ShortForm_SfDl_Above_Six_Is_Rejected(int sfDl)
+    {
+        // With address extension the short-form cap is 6 (bugbot 3596165656). SF_DL=7 must not
+        // be accepted as short-form — BuildSingleFrame emits the 0x00/LEN escape for 7 bytes.
+        var frame = new byte[1 + 1 + sfDl]; // AE + PCI + data
+        frame[0] = 0xF1; // address extension
+        frame[1] = (byte)sfDl; // PCI type nibble 0, SF_DL = sfDl
+        for (int i = 0; i < sfDl; i++)
+            frame[2 + i] = (byte)(0x10 + i);
+        var ep = IsoTpEndpoint.Extended(0x1, 0x2, sourceAddress: 0x10, targetAddress: 0xF1);
+
+        IsoTpFrameCodec.TryParsePci(frame, ep, isCanFd: true, out _).Should().BeFalse();
+    }
+
+    [Fact]
+    public void TryParsePci_SingleFrame_CanFd_Extended_ShortForm_SfDl_Six_Still_Parses()
+    {
+        // Boundary with address extension: SF_DL=6 remains valid short-form on CAN-FD.
+        var frame = new byte[] { 0xF1, 0x06, 1, 2, 3, 4, 5, 6 };
+        var ep = IsoTpEndpoint.Extended(0x1, 0x2, sourceAddress: 0x10, targetAddress: 0xF1);
+
+        IsoTpFrameCodec.TryParsePci(frame, ep, isCanFd: true, out var pci).Should().BeTrue();
+        pci.Type.Should().Be(PciType.SingleFrame);
+        pci.Length.Should().Be(6);
+        pci.DataOffset.Should().Be(2);
+    }
+
+    [Fact]
+    public void TryParsePci_SingleFrame_CanFd_Mixed_ShortForm_SfDl_Seven_Is_Rejected()
+    {
+        // Mixed addressing also consumes an AE byte; short-form max is 6 (bugbot 3596165656).
+        var frame = new byte[] { 0xAA, 0x07, 1, 2, 3, 4, 5, 6, 7 };
+        var ep = IsoTpEndpoint.Mixed(0x1, 0x2, addressExtension: 0xAA);
+
+        IsoTpFrameCodec.TryParsePci(frame, ep, isCanFd: true, out _).Should().BeFalse();
+    }
+
+    [Fact]
+    public void TryParsePci_SingleFrame_CanFd_Extended_EscapeForm_Length_Seven_Still_Parses()
+    {
+        // BuildSingleFrame uses escape for a 7-byte payload under extended addressing; parse
+        // must accept that encoding (and reject the short-form SF_DL=7 path above).
+        var payload = new byte[] { 0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0xA6 };
+        var ep = IsoTpEndpoint.Extended(0x1, 0x2, sourceAddress: 0x10, targetAddress: 0xF1);
+        var frame = IsoTpFrameCodec.BuildSingleFrame(ep, payload, isCanFd: true, padding: true);
+
+        frame[0].Should().Be(0xF1); // address extension
+        frame[1].Should().Be(0x00); // escape PCI
+        frame[2].Should().Be(7);
+
+        IsoTpFrameCodec.TryParsePci(frame, ep, isCanFd: true, out var pci).Should().BeTrue();
+        pci.Type.Should().Be(PciType.SingleFrame);
+        pci.Length.Should().Be(7);
+        pci.DataOffset.Should().Be(3);
+    }
+
     [Fact]
     public void TryParsePci_SingleFrame_CanFd_EscapeForm_Length_Eight_Still_Parses()
     {

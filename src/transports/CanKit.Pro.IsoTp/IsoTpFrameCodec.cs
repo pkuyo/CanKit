@@ -447,8 +447,10 @@ public static class IsoTpFrameCodec
     /// <returns>
     /// <c>true</c> when the frame has enough bytes and a valid PCI nibble; <c>false</c> for
     /// truncated frames, reserved PCI nibbles (&gt; 3), reserved Flow-Status values (&gt; 2),
-    /// escape-form PCIs on classic CAN, or CAN-FD Single-Frame short-form SF_DL values in the
-    /// range 8..15 (those lengths must use the <c>0x00 LEN</c> escape).
+    /// escape-form PCIs on classic CAN, or CAN-FD Single-Frame short-form SF_DL values above
+    /// <see cref="SingleFrameShortFormMaxDataLength"/> for the endpoint's addressing mode
+    /// (those lengths must use the <c>0x00 LEN</c> escape — 8..15 without address extension,
+    /// 7..15 with extended/mixed addressing).
     /// </returns>
     public static bool TryParsePci(ReadOnlySpan<byte> canPayload, in IsoTpEndpoint endpoint,
         bool isCanFd, out Pci pci)
@@ -490,11 +492,14 @@ public static class IsoTpFrameCodec
                     else
                     {
                         // ISO 15765-2: on CAN-FD the one-byte SF PCI (SF_DL in the low nibble) is
-                        // only valid for lengths 1..7. Lengths 8+ must use the 0x00/LEN escape
-                        // form that the builder already emits (fixes bugbot 3596033572). Classic
-                        // CAN keeps accepting the low-nibble length when the payload is long
-                        // enough (in practice still 1..7 inside an 8-byte frame).
-                        if (isCanFd && shortLen > SingleFrameShortFormMaxDataLength(usesAddressExtension: false))
+                        // only valid up to SingleFrameShortFormMaxDataLength for the endpoint's
+                        // addressing mode (1..7 normal, 1..6 with address extension). Longer
+                        // payloads must use the 0x00/LEN escape that BuildSingleFrame already
+                        // emits (fixes bugbot 3596033572 / 3596165656). Classic CAN keeps
+                        // accepting the low-nibble length when the payload is long enough
+                        // (in practice still within the short-form cap inside an 8-byte frame).
+                        if (isCanFd &&
+                            shortLen > SingleFrameShortFormMaxDataLength(endpoint.UsesAddressExtension))
                             return false;
                         int dataOffset = pciIndex + 1;
                         if (canPayload.Length < dataOffset + shortLen)
