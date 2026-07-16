@@ -27,7 +27,9 @@ namespace CanKit.Pro.Hawe
         /// constructs its <see cref="ProtocolActor"/> with
         /// <see cref="SynchronizationContext"/> (or <see cref="System.Threading.SynchronizationContext.Current"/>
         /// when that property is null). Both must resolve to a non-null context; otherwise
-        /// construction fails with <see cref="System.ArgumentNullException"/>.
+        /// construction fails with <see cref="System.ArgumentNullException"/>. Construction,
+        /// <c>SetSessionState</c>, and detach are safe to invoke from that same context thread:
+        /// the channel runs the work inline instead of sync-waiting on a <c>Send</c> marshal.
         /// </remarks>
         public ActorExecutionMode ActorMode { get; set; } = ActorExecutionMode.DedicatedThread;
 

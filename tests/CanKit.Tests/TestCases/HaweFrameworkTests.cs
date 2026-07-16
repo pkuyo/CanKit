@@ -508,6 +508,58 @@ public class HaweFrameworkTests : IClassFixture<TestCaseProvider>
             "OnAttached must be marshaled through the SynchronizationContext supplied via options");
     }
 
+    // Regression for Bugbot 3596169080: ProtocolActor marshals SyncContext-mode work with blocking
+    // Send. Constructing HaweChannel (or calling SetSessionState) from that same dispatcher thread
+    // used to PostAsync().GetResult(), which blocks the pump Send needs → permanent deadlock.
+    // The channel must detect "caller is on the actor SyncContext" and run the work inline.
+    [Fact]
+    public void HaweChannel_SyncContext_Mode_From_Dispatcher_Thread_Does_Not_Deadlock()
+    {
+        using var dispatcher = new QueuingDispatcherSynchronizationContext();
+        dispatcher.Start();
+
+        var session = NewSession();
+        using var bus = Open(session, 0);
+        using var service = new CanBusService(bus);
+        var codec = new FakePatternCodec(HaweFramePattern.Range(0x100, 0x100));
+
+        Exception? error = null;
+        HaweSessionState? observed = null;
+        using var done = new ManualResetEventSlim(false);
+
+        dispatcher.Post(_ =>
+        {
+            try
+            {
+                using var channel = new HaweChannel(service, codec, new HaweChannelOptions
+                {
+                    ActorMode = ActorExecutionMode.SynchronizationContext,
+                    SynchronizationContext = dispatcher,
+                });
+
+                codec.Host.Should().NotBeNull();
+                codec.Host!.SetSessionState(HaweSessionState.Active).Should().BeTrue();
+                observed = channel.SessionState;
+            }
+            catch (Exception ex)
+            {
+                error = ex;
+            }
+            finally
+            {
+                done.Set();
+            }
+        }, null);
+
+        done.Wait(ShortTimeout).Should().BeTrue(
+            "constructing HaweChannel / SetSessionState on the SyncContext thread must not deadlock");
+        error.Should().BeNull();
+        observed.Should().Be(HaweSessionState.Active);
+        codec.Attached.Status.Should().Be(TaskStatus.RanToCompletion);
+        codec.Transitions.Should().ContainSingle()
+            .Which.Should().Be((HaweSessionState.Idle, HaweSessionState.Active));
+    }
+
     // If OnAttached fails after Subscribe + actor start, the demux subscription must not leak.
     [Fact]
     public void HaweChannel_Failed_Construction_Disposes_Partial_Resources()
@@ -551,6 +603,73 @@ public class HaweFrameworkTests : IClassFixture<TestCaseProvider>
         }
 
         public override void Post(SendOrPostCallback d, object? state) => Send(d, state);
+    }
+
+    /// <summary>
+    /// Minimal UI-style dispatcher: a dedicated thread pumps a queue; <see cref="Send"/> from
+    /// other threads blocks until that pump runs the callback; <see cref="Send"/> from the pump
+    /// thread itself runs inline. Reproduces the HaweChannel SyncContext deadlock when the
+    /// channel sync-waits on PostAsync from the dispatcher thread.
+    /// </summary>
+    private sealed class QueuingDispatcherSynchronizationContext : SynchronizationContext, IDisposable
+    {
+        private readonly BlockingCollection<(SendOrPostCallback Callback, object? State, ManualResetEventSlim? Done, Exception?[]? Error)> _queue = new();
+        private Thread? _thread;
+
+        public void Start()
+        {
+            _thread = new Thread(() =>
+            {
+                SetSynchronizationContext(this);
+                foreach (var item in _queue.GetConsumingEnumerable())
+                {
+                    try
+                    {
+                        item.Callback(item.State);
+                    }
+                    catch (Exception ex)
+                    {
+                        if (item.Error is not null) item.Error[0] = ex;
+                        else throw;
+                    }
+                    finally
+                    {
+                        item.Done?.Set();
+                    }
+                }
+            })
+            {
+                IsBackground = true,
+                Name = "HaweTest.Dispatcher",
+            };
+            _thread.Start();
+        }
+
+        public override void Send(SendOrPostCallback d, object? state)
+        {
+            if (ReferenceEquals(Current, this))
+            {
+                d(state);
+                return;
+            }
+
+            using var done = new ManualResetEventSlim(false);
+            var error = new Exception?[1];
+            _queue.Add((d, state, done, error));
+            done.Wait();
+            if (error[0] is not null)
+                throw error[0]!;
+        }
+
+        public override void Post(SendOrPostCallback d, object? state)
+            => _queue.Add((d, state, null, null));
+
+        public void Dispose()
+        {
+            _queue.CompleteAdding();
+            _thread?.Join(TimeSpan.FromSeconds(5));
+            _queue.Dispose();
+        }
     }
 
     // Calls Host.SetSessionState from inside OnFrameReceived (i.e. from the actor loop).

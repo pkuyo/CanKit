@@ -45,6 +45,12 @@ namespace CanKit.Pro.Hawe
         private readonly Task _pumpTask;
         private readonly Host _host;
 
+        // Non-null only in ActorExecutionMode.SynchronizationContext. Used to detect the classic
+        // "sync-over-async on the dispatcher thread" deadlock: ProtocolActor marshals with
+        // SynchronizationContext.Send, so a PostAsync().GetAwaiter().GetResult() call made *from*
+        // that same context blocks the pump Send needs and hangs forever. See RunOnActorLoop.
+        private readonly SynchronizationContext? _actorSyncContext;
+
         // Guarded via Interlocked; the channel's own state, distinct from the codec-driven session
         // state, so a Dispose racing with a codec callback is fully deterministic.
         private int _disposed;
@@ -107,17 +113,17 @@ namespace CanKit.Pro.Hawe
 
                 _subscription = subscription;
                 _actor = actor;
+                _actorSyncContext = syncContext;
                 _deadlines = new DeadlineScheduler(_actor);
                 _host = new Host(this);
 
                 // Attach on the actor loop before starting the pump: the OnAttached callback is
                 // guaranteed to see zero frames delivered, matching every other protocol instance's
-                // "attach first, then receive" ordering. Wait synchronously so the constructor's
-                // contract ("codec attached before this returns") is a hard guarantee, not a race.
-                // Safe from the SetSessionState-style deadlock: the constructor is by definition not
-                // running on the actor loop yet, so PostAsync().GetAwaiter().GetResult() here cannot
-                // be a reentrant self-wait.
-                _actor.PostAsync(WrapOnLoop(() => _codec.OnAttached(_host))).GetAwaiter().GetResult();
+                // "attach first, then receive" ordering. RunOnActorLoop waits synchronously so the
+                // constructor's contract ("codec attached before this returns") is a hard guarantee,
+                // not a race -- and avoids PostAsync().GetResult() when called from the actor's
+                // own SynchronizationContext (UI/dispatcher), which would deadlock on Send.
+                RunOnActorLoop(() => _codec.OnAttached(_host));
 
                 _pumpTask = Task.Run(PumpAsync);
             }
@@ -195,10 +201,15 @@ namespace CanKit.Pro.Hawe
             // exactly-once OnDetached on the same single-writer loop as every other callback,
             // closing out any codec-owned resources safely. If the actor is already torn down
             // for some reason, swallow the exception and continue -- Dispose must not throw for
-            // an already-broken channel.
+            // an already-broken channel. Inline when already on the actor SyncContext so we do
+            // not PostAsync().Wait on the dispatcher thread (Send deadlock); otherwise wait with
+            // a bounded timeout so a stuck actor cannot hang Dispose forever.
             try
             {
-                _actor.PostAsync(WrapOnLoop(() => _codec.OnDetached())).Wait(TimeSpan.FromSeconds(5));
+                if (_isOnActorLoop.Value || IsOnActorSyncContext())
+                    RunOnActorLoop(() => _codec.OnDetached());
+                else
+                    _actor.PostAsync(WrapOnLoop(() => _codec.OnDetached())).Wait(TimeSpan.FromSeconds(5));
             }
             catch
             {
@@ -236,6 +247,56 @@ namespace CanKit.Pro.Hawe
             };
         }
 
+        // True when the caller is already executing on the SynchronizationContext that
+        // ProtocolActor.Send marshals onto. Reference equality matches how UI dispatchers install
+        // a single context instance as Current on their thread.
+        private bool IsOnActorSyncContext()
+            => _actorSyncContext is not null
+               && ReferenceEquals(SynchronizationContext.Current, _actorSyncContext);
+
+        /// <summary>
+        /// Runs <paramref name="work"/> under the channel's single-writer discipline and waits for
+        /// it to finish. Three paths, in priority order:
+        /// <list type="number">
+        /// <item>Already inside a WrapOnLoop callback → invoke inline (reentrancy; avoids
+        /// self-deadlock on the actor mailbox).</item>
+        /// <item>Calling from the actor's SynchronizationContext → invoke inline (avoids the
+        /// SyncContext UI deadlock: PostAsync+GetResult blocks the dispatcher that
+        /// ProtocolActor.Send needs to deliver the posted work).</item>
+        /// <item>Otherwise → PostAsync and block for the result (DedicatedThread / ThreadPool /
+        /// SyncContext called from a non-dispatcher thread).</item>
+        /// </list>
+        /// Inline paths preserve single-writer: while this thread runs the callback, a concurrent
+        /// ProtocolActor.Send onto the same context cannot proceed until we return to the pump.
+        /// </summary>
+        private void RunOnActorLoop(Action work)
+        {
+            if (_isOnActorLoop.Value)
+            {
+                work();
+                return;
+            }
+
+            if (IsOnActorSyncContext())
+            {
+                WrapOnLoop(work)();
+                return;
+            }
+
+            _actor.PostAsync(WrapOnLoop(work)).GetAwaiter().GetResult();
+        }
+
+        private T RunOnActorLoop<T>(Func<T> work)
+        {
+            if (_isOnActorLoop.Value)
+                return work();
+
+            if (IsOnActorSyncContext())
+                return WrapOnLoop(work)();
+
+            return _actor.PostAsync(WrapOnLoop(work)).GetAwaiter().GetResult();
+        }
+
         // The IHaweCodecHost surface. Kept as a private nested class so the framework's own
         // instance state (actor, deadlines, session state) is never exposed to the codec beyond
         // the documented interface.
@@ -254,22 +315,12 @@ namespace CanKit.Pro.Hawe
 
             public bool SetSessionState(HaweSessionState state)
             {
-                // Reentrant fast path: if this call is happening from inside a codec callback the
-                // channel dispatched to the actor loop (OnFrameReceived, ArmDeadline fires,
-                // Host.Post work, OnAttached/OnDetached), we are already on the single-writer loop
-                // -- the state mutation and OnSessionStateChanged fire can run synchronously,
-                // preserving the same "callbacks always on the loop, in order" discipline. Going
-                // through PostAsync().GetAwaiter().GetResult() in this case would deadlock: the
-                // loop cannot process the newly posted work while it is blocked inside the very
-                // callback that just called us.
-                if (_channel._isOnActorLoop.Value)
-                    return ApplyStateChange(state);
-
-                // Off-loop caller: hop onto the actor loop and wait for the result. Wrapped so a
-                // nested SetSessionState from inside OnSessionStateChanged is also detected as
-                // reentrant and takes the synchronous path above.
-                return _channel._actor.PostAsync(_channel.WrapOnLoop(() => ApplyStateChange(state)))
-                    .GetAwaiter().GetResult();
+                // RunOnActorLoop covers both deadlock classes: (1) reentrant calls from inside a
+                // codec callback already on the actor loop, and (2) off-loop calls made from the
+                // actor's own SynchronizationContext / UI thread, where PostAsync().GetResult()
+                // would block the dispatcher ProtocolActor.Send needs. Nested SetSessionState
+                // from inside OnSessionStateChanged takes the reentrant path via WrapOnLoop.
+                return _channel.RunOnActorLoop(() => ApplyStateChange(state));
             }
 
             private bool ApplyStateChange(HaweSessionState state)
