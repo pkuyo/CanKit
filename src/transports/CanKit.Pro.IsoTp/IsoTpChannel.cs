@@ -357,7 +357,10 @@ internal sealed class IsoTpChannel : IIsoTpChannel
                 if (addrExt && (payload.Length == 0 || payload[0] != _endpoint.RxAddressExtension))
                     continue;
 
-                _actor.Post(() => HandleReceivedFrame(payload));
+                // Pass the on-wire frame kind into TryParsePci so CAN-FD escape SF/FF headers are
+                // accepted only for real FD frames (develop codec API: isCanFd required).
+                bool isCanFd = frame.FrameKind == CanFrameType.CanFd;
+                _actor.Post(() => HandleReceivedFrame(payload, isCanFd));
             }
         }
         catch (OperationCanceledException)
@@ -790,9 +793,9 @@ internal sealed class IsoTpChannel : IIsoTpChannel
     // RX side (all methods run on the actor loop)
     // -----------------------------------------------------------------------------------------
 
-    private void HandleReceivedFrame(byte[] payload)
+    private void HandleReceivedFrame(byte[] payload, bool isCanFd)
     {
-        if (!IsoTpFrameCodec.TryParsePci(payload, _endpoint, out var pci))
+        if (!IsoTpFrameCodec.TryParsePci(payload, _endpoint, isCanFd, out var pci))
             return; // truncated / reserved: drop silently (bounds-safe per FR-TP-007)
 
         switch (pci.Type)

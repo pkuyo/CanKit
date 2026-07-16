@@ -46,12 +46,16 @@ public class IsoTpChannelIntegrationTests : IClassFixture<TestCaseProvider>
         $"virtual://{session}/{channel}",
         cfg => cfg.SetProtocolMode(CanProtocolMode.Can20).Baud(TestCaseProvider.AbitRate));
 
+    private static ICanBus OpenCanFd(string session, int channel) => CanBus.Open(
+        $"virtual://{session}/{channel}",
+        cfg => cfg.SetProtocolMode(CanProtocolMode.CanFd).Fd(TestCaseProvider.AbitRate, TestCaseProvider.DbitRate));
+
     // Fast timings so protocol-timeout tests don't spend seconds each. Classic-CAN.
     private static IsoTpChannelOptions FastOptions(byte localBs = 0, TimeSpan? localStMin = null,
-        TimeSpan? nBs = null, TimeSpan? nCr = null, int wftMax = 10)
+        TimeSpan? nBs = null, TimeSpan? nCr = null, int wftMax = 10, bool useCanFd = false)
         => new()
         {
-            UseCanFd = false,
+            UseCanFd = useCanFd,
             UsePadding = true,
             LocalBlockSize = localBs,
             LocalStMin = localStMin ?? TimeSpan.Zero,
@@ -588,8 +592,10 @@ public class IsoTpChannelIntegrationTests : IClassFixture<TestCaseProvider>
     public async Task MultiFrame_Receive_Faults_When_Superseded_By_FirstFrame_Then_Overflow()
     {
         var session = NewSession();
-        using var busA = OpenClassic(session, 0);
-        using var busB = OpenClassic(session, 1);
+        // CAN-FD bus so the escape-form oversized FF is delivered; channel stays classic-capped
+        // (UseCanFd=false → MaxPduLength=4095) so the escape length triggers OVFLW.
+        using var busA = OpenCanFd(session, 0);
+        using var busB = OpenCanFd(session, 1);
 
         var epRecv = IsoTpEndpoint.Normal(txCanId: 0x348, rxCanId: 0x340);
         var epPeer = IsoTpEndpoint.Normal(txCanId: 0x340, rxCanId: 0x348);
@@ -614,22 +620,21 @@ public class IsoTpChannelIntegrationTests : IClassFixture<TestCaseProvider>
 
         var recvTask = receiver.ReceiveAsync(new CancellationTokenSource(ShortTimeout).Token);
 
-        // Start a valid multi-frame reception so _rx + N_Cr are armed.
+        // Start a valid multi-frame reception so _rx + N_Cr are armed (short-form FF on FD bus).
         byte[] ffPayload = Enumerable.Range(0, 20).Select(i => (byte)(i + 3)).ToArray();
         int ffData = IsoTpFrameCodec.FirstFrameMaxDataLength(isCanFd: false, usesAddressExtension: false, useLongLength: false);
         var ff = IsoTpFrameCodec.BuildFirstFrame(epPeer, ffPayload.Length, ffPayload.AsSpan(0, ffData), isCanFd: false);
-        busA.Transmit(CanFrame.Classic(unchecked((int)epPeer.TxCanId), ff));
+        busA.Transmit(CanFrame.Fd(unchecked((int)epPeer.TxCanId), ff));
         await fcSeen.Task.WaitAsync(ShortTimeout);
 
-        // Oversized FF supersedes then refuses with OVFLW — no replacement session. Without
-        // AbortRx this left ReceiveAsync hung forever.
+        // Oversized escape FF supersedes then refuses with OVFLW — no replacement session.
         byte[] hugeFf =
         {
             0x10, 0x00,
             0x01, 0x00, 0x00, 0x00, // length = 16_777_216
             0x00, 0x00,
         };
-        busA.Transmit(CanFrame.Classic(unchecked((int)epPeer.TxCanId), hugeFf));
+        busA.Transmit(CanFrame.Fd(unchecked((int)epPeer.TxCanId), hugeFf));
 
         Func<Task> act = () => recvTask;
         (await act.Should().ThrowAsync<IsoTpException>())
@@ -643,7 +648,7 @@ public class IsoTpChannelIntegrationTests : IClassFixture<TestCaseProvider>
         var recv2 = receiver.ReceiveAsync(new CancellationTokenSource(ShortTimeout).Token);
         var okSf = IsoTpFrameCodec.BuildSingleFrame(epPeer, new byte[] { 0x55 },
             isCanFd: false, padding: true);
-        busA.Transmit(CanFrame.Classic(unchecked((int)epPeer.TxCanId), okSf));
+        busA.Transmit(CanFrame.Fd(unchecked((int)epPeer.TxCanId), okSf));
         (await recv2).Should().Equal(0x55);
     }
 
@@ -1108,15 +1113,17 @@ public class IsoTpChannelIntegrationTests : IClassFixture<TestCaseProvider>
 
     // --------------------------------------------------------------------------------
     // Bugbot 3596212802 (MEDIUM) — HandleRxFirstFrame must not allocate new byte[pci.Length]
-    // from an uncapped FF length. Classic channels reject announced lengths above 4095 with
-    // FC(OVFLW) and stay usable (same max outbound SendAsync enforces via BuildFirstFrame).
+    // from an uncapped FF length. A classic-configured channel (MaxPduLength=4095) must reply
+    // FC(OVFLW) when a CAN-FD escape FF announces a larger PDU. The frame itself must be FD:
+    // TryParsePci rejects the escape header on classic frames (develop codec API).
     // --------------------------------------------------------------------------------
     [Fact]
     public async Task Rx_FirstFrame_Above_Classic_Max_Sends_Overflow_And_Does_Not_Allocate()
     {
         var session = NewSession();
-        using var busA = OpenClassic(session, 0);
-        using var busB = OpenClassic(session, 1);
+        // FD bus delivers the escape-form FF; classic channel options keep MaxPduLength at 4095.
+        using var busA = OpenCanFd(session, 0);
+        using var busB = OpenCanFd(session, 1);
 
         var epRecv = IsoTpEndpoint.Normal(txCanId: 0x7E0, rxCanId: 0x7E8);
         using var receiver = IsoTpFactory.Open(busA, epRecv, FastOptions());
@@ -1141,7 +1148,7 @@ public class IsoTpChannelIntegrationTests : IClassFixture<TestCaseProvider>
             0x01, 0x00, 0x00, 0x00, // length = 16_777_216
             0x00, 0x00,
         };
-        busB.Transmit(CanFrame.Classic(0x7E8, hugeFf));
+        busB.Transmit(CanFrame.Fd(0x7E8, hugeFf));
 
         for (int i = 0; i < 50 && Volatile.Read(ref overflowFc) == 0; i++)
             await Task.Delay(20);
@@ -1150,7 +1157,7 @@ public class IsoTpChannelIntegrationTests : IClassFixture<TestCaseProvider>
         // Channel remains usable for a normal SF afterwards.
         var recvTask = receiver.ReceiveAsync(new CancellationTokenSource(ShortTimeout).Token);
         byte[] okSf = { 0x01, 0x99 }; // SF DL=1, data 0x99 — build via peer transmit
-        busB.Transmit(CanFrame.Classic(0x7E8, okSf));
+        busB.Transmit(CanFrame.Fd(0x7E8, okSf));
         (await recvTask).Should().Equal(0x99);
     }
 
