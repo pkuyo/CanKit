@@ -43,4 +43,66 @@ public class AsyncFramePipeTests
         var act = async () => await waitingRead;
         await act.Should().ThrowAsync<OperationCanceledException>();
     }
+
+    [Fact]
+    public async Task ReceiveBatchAsync_Timeout_Returns_Partial_Batch()
+    {
+        var pipe = new AsyncFramePipe<int>();
+        pipe.Publish(1);
+
+        var batch = await pipe.ReceiveBatchAsync(2, 50, CancellationToken.None);
+
+        batch.Should().Equal(1);
+    }
+
+    [Fact]
+    public async Task ReadAllAsync_Background_Exception_Does_Not_Cause_Subsequent_Frame_Loss()
+    {
+        var pipe = new AsyncFramePipe<int>();
+        var exception = new InvalidOperationException("boom");
+
+        await using var enumerator = pipe.ReadAllAsync(CancellationToken.None).GetAsyncEnumerator();
+        var waitingMove = enumerator.MoveNextAsync().AsTask();
+
+        pipe.ExceptionOccured(exception);
+
+        var act = async () => await waitingMove;
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("boom");
+
+        pipe.Publish(7);
+
+        var batch = await pipe.ReceiveBatchAsync(1, 1_000, CancellationToken.None);
+        batch.Should().Equal(7);
+    }
+
+    [Fact]
+    public async Task ReadAllAsync_User_Cancellation_Propagates()
+    {
+        var pipe = new AsyncFramePipe<int>();
+        using var cts = new CancellationTokenSource();
+
+        await using var enumerator = pipe.ReadAllAsync(cts.Token).GetAsyncEnumerator();
+        var waitingMove = enumerator.MoveNextAsync().AsTask();
+
+        cts.Cancel();
+
+        var act = async () => await waitingMove;
+        await act.Should().ThrowAsync<OperationCanceledException>();
+    }
+
+    [Fact]
+    public async Task Exception_Pulse_During_Timeout_Wait_Surfaces_Fault()
+    {
+        var pipe = new AsyncFramePipe<int>();
+        var exception = new InvalidOperationException("timed-fault");
+
+        var waitingRead = pipe.ReceiveBatchAsync(1, 5_000, CancellationToken.None);
+        await Task.Delay(20);
+        pipe.ExceptionOccured(exception);
+
+        var act = async () => await waitingRead;
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("timed-fault");
+    }
 }

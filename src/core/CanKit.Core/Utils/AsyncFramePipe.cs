@@ -105,6 +105,19 @@ public sealed class AsyncFramePipe<T>
                             list.Add(item);
                         }
                     }
+                    catch (OperationCanceledException)
+                    {
+                        // Timeout raced with ExceptionOccured: prefer an already-signalled fault
+                        // over returning a partial/empty timeout result.
+                        if (!cancellationToken.IsCancellationRequested &&
+                            bgException.Task.IsCompleted)
+                        {
+                            var fault = await bgException.Task.ConfigureAwait(false);
+                            throw fault ?? new InvalidOperationException("Exception signalled.");
+                        }
+
+                        throw;
+                    }
                     catch (ChannelClosedException cce)
                     {
                         if (cce.InnerException is not null) throw cce.InnerException;
@@ -145,12 +158,23 @@ public sealed class AsyncFramePipe<T>
     {
         while (true)
         {
-            var waitTask = _channel.Reader.WaitToReadAsync(cancellationToken).AsTask();
+            using var waitCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            var waitTask = _channel.Reader.WaitToReadAsync(waitCts.Token).AsTask();
             var faultSnap = _exceptionPulse;
 
             var completed = await Task.WhenAny(waitTask, faultSnap.Task).ConfigureAwait(false);
             if (completed == faultSnap.Task)
             {
+                waitCts.Cancel();
+                try
+                {
+                    _ = await waitTask.ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    // Losing wait canceled for cleanup; the fault below is the outcome.
+                }
+
                 var ex = await faultSnap.Task.ConfigureAwait(false);
                 throw ex ?? new InvalidOperationException("Fault signalled.");
             }
