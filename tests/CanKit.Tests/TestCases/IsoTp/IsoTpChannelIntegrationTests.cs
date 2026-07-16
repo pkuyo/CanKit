@@ -322,6 +322,97 @@ public class IsoTpChannelIntegrationTests : IClassFixture<TestCaseProvider>
     }
 
     // --------------------------------------------------------------------------------
+    // Bugbot 3596134684 / FR-TP-010 — N_Cr expiry must fault a blocked ReceiveAsync (not only
+    // raise BackgroundExceptionOccurred), and the channel must remain usable afterward.
+    // --------------------------------------------------------------------------------
+    [Fact]
+    public async Task MultiFrame_Receive_Faults_On_NCr_Timeout_And_Channel_Remains_Usable()
+    {
+        var session = NewSession();
+        using var busA = OpenClassic(session, 0);
+        using var busB = OpenClassic(session, 1);
+
+        var epRecv = IsoTpEndpoint.Normal(txCanId: 0x7E8, rxCanId: 0x7E0);
+        var epPeer = IsoTpEndpoint.Normal(txCanId: 0x7E0, rxCanId: 0x7E8);
+
+        var opts = FastOptions(nCr: TimeSpan.FromMilliseconds(120));
+        using var receiver = IsoTpFactory.Open(busB, epRecv, opts);
+
+        var bgFault = new TaskCompletionSource<Exception>(TaskCreationOptions.RunContinuationsAsynchronously);
+        receiver.BackgroundExceptionOccurred += (_, ex) => bgFault.TrySetResult(ex);
+
+        var recvTask = receiver.ReceiveAsync(new CancellationTokenSource(ShortTimeout).Token);
+
+        // Peer sends FF for a multi-frame PDU, then never sends CFs -> receiver arms N_Cr and
+        // must abort with IsoTpTimeoutException rather than leaving ReceiveAsync hung.
+        byte[] ffPayload = Enumerable.Range(0, 20).Select(i => (byte)i).ToArray();
+        int ffData = IsoTpFrameCodec.FirstFrameMaxDataLength(isCanFd: false, usesAddressExtension: false, useLongLength: false);
+        var ff = IsoTpFrameCodec.BuildFirstFrame(epPeer, ffPayload.Length, ffPayload.AsSpan(0, ffData), isCanFd: false);
+        busA.Transmit(CanFrame.Classic(unchecked((int)epPeer.TxCanId), ff));
+
+        Func<Task> act = () => recvTask;
+        var timeout = (await act.Should().ThrowAsync<IsoTpTimeoutException>()).Which;
+        timeout.Timer.Should().Be(IsoTpTimer.NCr);
+
+        var bg = await bgFault.Task.WaitAsync(ShortTimeout);
+        bg.Should().BeOfType<IsoTpTimeoutException>()
+            .Which.Timer.Should().Be(IsoTpTimer.NCr);
+
+        // Channel remains usable for a subsequent SF after the abort.
+        using var sender = IsoTpFactory.Open(busA, epPeer, FastOptions());
+        var recv2 = receiver.ReceiveAsync(new CancellationTokenSource(ShortTimeout).Token);
+        byte[] ok = { 0x22, 0xF1, 0x90 };
+        await sender.SendAsync(ok);
+        (await recv2).Should().Equal(ok);
+    }
+
+    // --------------------------------------------------------------------------------
+    // Bugbot 3596134684 — CF sequence-number mismatch aborts reassembly and faults
+    // ReceiveAsync (same FailTx-style path as N_Cr).
+    // --------------------------------------------------------------------------------
+    [Fact]
+    public async Task MultiFrame_Receive_Faults_On_SequenceNumber_Mismatch()
+    {
+        var session = NewSession();
+        using var busA = OpenClassic(session, 0);
+        using var busB = OpenClassic(session, 1);
+
+        var epRecv = IsoTpEndpoint.Normal(txCanId: 0x318, rxCanId: 0x310);
+        var epPeer = IsoTpEndpoint.Normal(txCanId: 0x310, rxCanId: 0x318);
+
+        using var receiver = IsoTpFactory.Open(busB, epRecv, FastOptions());
+
+        // Wait until the receiver has answered the FF with FC before injecting a bad CF.
+        var fcSeen = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        busA.FrameObserved += (_, e) =>
+        {
+            if (e.CanFrame.ID != unchecked((int)epRecv.TxCanId)) return;
+            var data = e.CanFrame.Data.ToArray();
+            if (data.Length > 0 && (data[0] >> 4) == 0x3)
+                fcSeen.TrySetResult(true);
+        };
+
+        var recvTask = receiver.ReceiveAsync(new CancellationTokenSource(ShortTimeout).Token);
+
+        byte[] ffPayload = Enumerable.Range(0, 20).Select(i => (byte)(i + 1)).ToArray();
+        int ffData = IsoTpFrameCodec.FirstFrameMaxDataLength(isCanFd: false, usesAddressExtension: false, useLongLength: false);
+        var ff = IsoTpFrameCodec.BuildFirstFrame(epPeer, ffPayload.Length, ffPayload.AsSpan(0, ffData), isCanFd: false);
+        busA.Transmit(CanFrame.Classic(unchecked((int)epPeer.TxCanId), ff));
+
+        await fcSeen.Task.WaitAsync(ShortTimeout);
+
+        // Expected SN after FF is 1; send SN=2 to force mismatch abort.
+        byte[] chunk = { 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16 };
+        var badCf = IsoTpFrameCodec.BuildConsecutiveFrame(epPeer, sequenceNumber: 2, chunk,
+            isCanFd: false, padding: true);
+        busA.Transmit(CanFrame.Classic(unchecked((int)epPeer.TxCanId), badCf));
+
+        Func<Task> act = () => recvTask;
+        (await act.Should().ThrowAsync<IsoTpException>())
+            .WithMessage("*sequence-number mismatch*");
+    }
+
+    // --------------------------------------------------------------------------------
     // Bugbot 3594960783 (HIGH) — a codec throw inside BeginSendOnLoop (e.g. > 4095 bytes
     // on classic CAN triggers ArgumentOutOfRangeException from BuildFirstFrame) must
     // (1) fault the awaiting SendAsync with the codec exception, (2) release the send-gate,

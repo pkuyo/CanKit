@@ -52,10 +52,11 @@ internal sealed class IsoTpChannel : IIsoTpChannel
     private readonly Task _readerTask;
     private readonly CancellationTokenSource _readerCts = new();
 
-    // Bounded PDU inbox for consumers. Drop-oldest so a stalled reader never stalls the RX state
-    // machine (mirrors the L2 Subscription policy). Handed out as byte[] because a fully
-    // reassembled PDU has no shared ownership contract with any per-frame buffer.
-    private readonly Channel<byte[]> _pduInbox;
+    // Bounded receive inbox for consumers. Drop-oldest so a stalled reader never stalls the RX
+    // state machine (mirrors the L2 Subscription policy). Items are either a fully reassembled
+    // PDU or a reassembly-abort fault (N_Cr / SN mismatch) so a blocked ReceiveAsync completes
+    // instead of hanging (Bugbot 3596134684 / FR-TP-010) — the FailTx analogue on the RX side.
+    private readonly Channel<RxInboxItem> _pduInbox;
 
     // Serializes SendAsync callers: one outbound PDU on the wire at a time, per ISO 15765-2's
     // "one N-USData at a time" model. Also avoids competition for _tx state across calls.
@@ -95,7 +96,7 @@ internal sealed class IsoTpChannel : IIsoTpChannel
             SingleWriter = true, // written only from the actor loop
             FullMode = BoundedChannelFullMode.DropOldest,
         };
-        _pduInbox = Channel.CreateBounded<byte[]>(inboxOptions);
+        _pduInbox = Channel.CreateBounded<RxInboxItem>(inboxOptions);
 
         _actor = new ProtocolActor();
         _actor.BackgroundExceptionOccurred += OnActorBackgroundException;
@@ -171,8 +172,8 @@ internal sealed class IsoTpChannel : IIsoTpChannel
     {
         while (await _pduInbox.Reader.WaitToReadAsync(cancellationToken).ConfigureAwait(false))
         {
-            if (_pduInbox.Reader.TryRead(out var pdu))
-                return pdu;
+            if (_pduInbox.Reader.TryRead(out var item))
+                return UnwrapInboxItem(item);
         }
         throw new InvalidOperationException("Channel is disposed; no more PDUs will arrive.");
     }
@@ -187,9 +188,16 @@ internal sealed class IsoTpChannel : IIsoTpChannel
         var reader = _pduInbox.Reader;
         while (await reader.WaitToReadAsync(cancellationToken).ConfigureAwait(false))
         {
-            while (reader.TryRead(out var pdu))
-                yield return pdu;
+            while (reader.TryRead(out var item))
+                yield return UnwrapInboxItem(item);
         }
+    }
+
+    private static byte[] UnwrapInboxItem(RxInboxItem item)
+    {
+        if (item.Error is not null)
+            throw item.Error;
+        return item.Pdu!;
     }
 
     /// <inheritdoc />
@@ -657,11 +665,11 @@ internal sealed class IsoTpChannel : IIsoTpChannel
 
         if (pci.SequenceNumber != rx.ExpectedSn)
         {
-            // Sequence-number mismatch (FR-TP-002 negative case). Abort reception and surface the
-            // problem via the background exception channel; the sender will hit its own N_Cr.
-            _rx = null;
-            rx.CancelDeadline();
-            RaiseBackgroundException(new IsoTpException(
+            // Sequence-number mismatch (FR-TP-002 negative case). Abort reception: surface via
+            // BackgroundExceptionOccurred and fault any blocked ReceiveAsync (FailTx analogue)
+            // so the waiter does not hang on _pduInbox (Bugbot 3596134684). The peer sender
+            // will hit its own N_Cr / missing-FC path independently.
+            AbortRx(new IsoTpException(
                 $"ISO-TP CF sequence-number mismatch: expected {rx.ExpectedSn}, got {pci.SequenceNumber}."));
             return;
         }
@@ -751,11 +759,32 @@ internal sealed class IsoTpChannel : IIsoTpChannel
 
     private void OnNCrExpired()
     {
-        var rx = _rx;
-        if (rx is null) return;
-        _rx = null;
-        RaiseBackgroundException(new IsoTpTimeoutException(IsoTpTimer.NCr,
+        if (_rx is null) return;
+        // FR-TP-010: N_Cr expiry must complete the receive with an observable error — not only
+        // BackgroundExceptionOccurred (which leaves ReceiveAsync parked on an empty inbox).
+        AbortRx(new IsoTpTimeoutException(IsoTpTimer.NCr,
             "N_Cr timer expired waiting for next Consecutive Frame."));
+    }
+
+    /// <summary>
+    /// Aborts in-flight multi-frame reassembly. Mirrors <see cref="FailTx"/> on the receive side:
+    /// clears RX state, raises <see cref="BackgroundExceptionOccurred"/>, and enqueues the fault
+    /// into the PDU inbox so a blocked <see cref="ReceiveAsync"/>/<see cref="ReceiveAllAsync"/>
+    /// completes with the same exception instead of waiting indefinitely (Bugbot 3596134684).
+    /// Successful PDUs already in the inbox are unaffected (FIFO); exactly one waiter consumes
+    /// the fault item, preserving multi-receive inbox semantics for subsequent PDUs.
+    /// </summary>
+    private void AbortRx(Exception ex)
+    {
+        var rx = _rx;
+        if (rx is not null)
+        {
+            rx.CancelDeadline();
+            _rx = null;
+        }
+
+        RaiseBackgroundException(ex);
+        _pduInbox.Writer.TryWrite(RxInboxItem.FromError(ex));
     }
 
     // Fire-and-forget send of a frame that is NOT part of the current TX PDU (typically a FC we
@@ -800,12 +829,30 @@ internal sealed class IsoTpChannel : IIsoTpChannel
         {
             RaiseBackgroundException(ex);
         }
-        _pduInbox.Writer.TryWrite(pdu);
+        _pduInbox.Writer.TryWrite(RxInboxItem.FromPdu(pdu));
     }
 
     // -----------------------------------------------------------------------------------------
     // Nested types
     // -----------------------------------------------------------------------------------------
+
+    /// <summary>
+    /// One inbox delivery: either a reassembled PDU or a reassembly-abort fault.
+    /// </summary>
+    private readonly struct RxInboxItem
+    {
+        private RxInboxItem(byte[]? pdu, Exception? error)
+        {
+            Pdu = pdu;
+            Error = error;
+        }
+
+        public byte[]? Pdu { get; }
+        public Exception? Error { get; }
+
+        public static RxInboxItem FromPdu(byte[] pdu) => new(pdu, null);
+        public static RxInboxItem FromError(Exception error) => new(null, error);
+    }
 
     private enum TxStage
     {
