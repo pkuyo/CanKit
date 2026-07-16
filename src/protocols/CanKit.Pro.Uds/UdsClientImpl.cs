@@ -141,11 +141,29 @@ internal sealed class UdsClientImpl : IUdsClient
     }
 
     public async Task<IReadOnlyDictionary<ushort, byte[]>> ReadDataByIdentifierAsync(
-        IReadOnlyList<ushort> dataIdentifiers, CancellationToken cancellationToken = default)
+        IReadOnlyList<ushort> dataIdentifiers,
+        IReadOnlyDictionary<ushort, int> dataRecordLengths,
+        CancellationToken cancellationToken = default)
     {
         if (dataIdentifiers is null) throw new ArgumentNullException(nameof(dataIdentifiers));
+        if (dataRecordLengths is null) throw new ArgumentNullException(nameof(dataRecordLengths));
         if (dataIdentifiers.Count == 0)
             throw new ArgumentException("At least one DID is required.", nameof(dataIdentifiers));
+
+        var requested = new HashSet<ushort>();
+        foreach (var did in dataIdentifiers)
+        {
+            if (!requested.Add(did))
+                throw new ArgumentException(
+                    $"Duplicate DID 0x{did:X4} in multi-DID request.", nameof(dataIdentifiers));
+            if (!dataRecordLengths.TryGetValue(did, out int len))
+                throw new ArgumentException(
+                    $"Missing dataRecord length for DID 0x{did:X4}.", nameof(dataRecordLengths));
+            if (len < 0)
+                throw new ArgumentException(
+                    $"dataRecord length for DID 0x{did:X4} must be non-negative.",
+                    nameof(dataRecordLengths));
+        }
 
         var request = new byte[1 + dataIdentifiers.Count * 2];
         request[0] = (byte)UdsServiceId.ReadDataByIdentifier;
@@ -159,53 +177,36 @@ internal sealed class UdsClientImpl : IUdsClient
             cancellationToken).ConfigureAwait(false);
 
         // Multi-DID positive response (ISO 14229-1 §9.3.4.4): [0]=0x62 then
-        // (DID[2 bytes] + dataRecord[len bytes])* for every returned DID. dataRecord length may
-        // be zero. Because lengths are implicit, we walk the response by matching each two-byte
-        // DID against the request and treating everything up to the next known DID (or
-        // end-of-buffer) as its dataRecord — including an empty span when DIDs are adjacent.
-        var requested = new HashSet<ushort>();
-        foreach (var did in dataIdentifiers) requested.Add(did);
-
+        // (DID[2 bytes] + dataRecord[len bytes])* for every returned DID. Lengths are not on
+        // the wire — parse strictly from the caller-supplied DID definition so payload bytes
+        // that happen to match another DID are never treated as record boundaries.
         var result = new Dictionary<ushort, byte[]>(dataIdentifiers.Count);
         int cursor = 1;
-        int? currentDidStart = null;
-        ushort currentDid = 0;
-
-        while (cursor <= response.Length)
+        while (cursor < response.Length)
         {
-            bool atEnd = cursor + 2 > response.Length;
-            ushort maybeDid = atEnd
-                ? (ushort)0
-                : (ushort)((response[cursor] << 8) | response[cursor + 1]);
+            if (cursor + 2 > response.Length)
+                throw new UdsProtocolException(
+                    $"Multi-DID ReadDataByIdentifier response truncated while reading DID at offset {cursor}.");
 
-            if (!atEnd && requested.Contains(maybeDid) && !result.ContainsKey(maybeDid))
-            {
-                if (currentDidStart is int prev)
-                {
-                    int recLen = cursor - prev;
-                    var rec = new byte[recLen];
-                    if (recLen > 0) Buffer.BlockCopy(response, prev, rec, 0, recLen);
-                    result[currentDid] = rec;
-                }
-                currentDid = maybeDid;
-                currentDidStart = cursor + 2;
-                cursor += 2;
-            }
-            else if (atEnd)
-            {
-                if (currentDidStart is int prev)
-                {
-                    int recLen = response.Length - prev;
-                    var rec = new byte[recLen];
-                    if (recLen > 0) Buffer.BlockCopy(response, prev, rec, 0, recLen);
-                    result[currentDid] = rec;
-                }
-                break;
-            }
-            else
-            {
-                cursor++;
-            }
+            ushort did = (ushort)((response[cursor] << 8) | response[cursor + 1]);
+            if (!requested.Contains(did))
+                throw new UdsProtocolException(
+                    $"Multi-DID ReadDataByIdentifier response contains unexpected DID 0x{did:X4}.");
+            if (result.ContainsKey(did))
+                throw new UdsProtocolException(
+                    $"Multi-DID ReadDataByIdentifier response contains duplicate DID 0x{did:X4}.");
+
+            int recLen = dataRecordLengths[did];
+            int dataStart = cursor + 2;
+            if (dataStart + recLen > response.Length)
+                throw new UdsProtocolException(
+                    $"Multi-DID ReadDataByIdentifier response truncated for DID 0x{did:X4} " +
+                    $"(expected {recLen} data bytes, {response.Length - dataStart} remain).");
+
+            var rec = new byte[recLen];
+            if (recLen > 0) Buffer.BlockCopy(response, dataStart, rec, 0, recLen);
+            result[did] = rec;
+            cursor = dataStart + recLen;
         }
 
         if (result.Count != dataIdentifiers.Count)

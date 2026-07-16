@@ -87,10 +87,20 @@ public interface IUdsClient : IDisposable
     /// (SRS FR-UDS-011, ISO 14229-1 §9.3.4). Returns a dictionary keyed by DID with each
     /// requested identifier's raw data-record bytes.
     /// </summary>
-    /// <exception cref="UdsProtocolException">The ECU response is malformed, missing a DID, or
-    /// contains DIDs that were not requested.</exception>
+    /// <param name="dataIdentifiers">DIDs to request, in the order they are placed on the wire.</param>
+    /// <param name="dataRecordLengths">
+    /// Expected <c>dataRecord</c> length (bytes) for every requested DID. ISO 14229-1 §9.3.4.4
+    /// does not encode lengths in the positive response — the client must know them from the
+    /// ECU's DID definition (ODX/CDD/etc.). Zero-length records are allowed.
+    /// </param>
+    /// <param name="cancellationToken">Cancels the wait for the ECU response.</param>
+    /// <exception cref="ArgumentException">A requested DID has no length entry, or a length is
+    /// negative.</exception>
+    /// <exception cref="UdsProtocolException">The ECU response is malformed, truncated, missing a
+    /// DID, or contains DIDs that were not requested.</exception>
     Task<IReadOnlyDictionary<ushort, byte[]>> ReadDataByIdentifierAsync(
         IReadOnlyList<ushort> dataIdentifiers,
+        IReadOnlyDictionary<ushort, int> dataRecordLengths,
         CancellationToken cancellationToken = default);
 
     /// <summary>

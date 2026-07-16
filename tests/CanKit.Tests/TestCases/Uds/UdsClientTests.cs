@@ -505,8 +505,15 @@ public class UdsClientTests : IClassFixture<TestCaseProvider>
         }));
         using (dispose)
         {
+            var lengths = new Dictionary<ushort, int>
+            {
+                [(ushort)0xF190] = 3,
+                [(ushort)0xF187] = 2,
+                [(ushort)0xF189] = 1,
+            };
             var results = await client.ReadDataByIdentifierAsync(
                 new ushort[] { 0xF190, 0xF187, 0xF189 },
+                lengths,
                 new CancellationTokenSource(ShortTimeout).Token);
 
             results.Should().ContainKey((ushort)0xF190).WhoseValue.Should().Equal(0x41, 0x42, 0x43);
@@ -528,13 +535,48 @@ public class UdsClientTests : IClassFixture<TestCaseProvider>
         }));
         using (dispose)
         {
+            var lengths = new Dictionary<ushort, int>
+            {
+                [(ushort)0xF190] = 0,
+                [(ushort)0xF187] = 2,
+                [(ushort)0xF189] = 0,
+            };
             var results = await client.ReadDataByIdentifierAsync(
                 new ushort[] { 0xF190, 0xF187, 0xF189 },
+                lengths,
                 new CancellationTokenSource(ShortTimeout).Token);
 
             results.Should().ContainKey((ushort)0xF190).WhoseValue.Should().BeEmpty();
             results.Should().ContainKey((ushort)0xF187).WhoseValue.Should().Equal(0x11, 0x22);
             results.Should().ContainKey((ushort)0xF189).WhoseValue.Should().BeEmpty();
+        }
+    }
+
+    // Bugbot 3596550854 — payload bytes matching a later DID must not become record boundaries.
+    [Fact]
+    public async Task ReadDataByIdentifier_Multi_Did_Does_Not_Split_On_Data_Bytes()
+    {
+        var (client, _, dispose) = BuildPair(e => e.On(0x22, _ => new byte[]
+        {
+            // DID 0x1234 data contains the byte pair of the next DID (0xF187); length-based
+            // parsing must keep those bytes inside 0x1234's record.
+            0x12, 0x34, 0xF1, 0x87, 0xAA,
+            0xF1, 0x87, 0x11, 0x22,
+        }));
+        using (dispose)
+        {
+            var lengths = new Dictionary<ushort, int>
+            {
+                [(ushort)0x1234] = 3,
+                [(ushort)0xF187] = 2,
+            };
+            var results = await client.ReadDataByIdentifierAsync(
+                new ushort[] { 0x1234, 0xF187 },
+                lengths,
+                new CancellationTokenSource(ShortTimeout).Token);
+
+            results.Should().ContainKey((ushort)0x1234).WhoseValue.Should().Equal(0xF1, 0x87, 0xAA);
+            results.Should().ContainKey((ushort)0xF187).WhoseValue.Should().Equal(0x11, 0x22);
         }
     }
 
