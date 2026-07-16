@@ -73,9 +73,6 @@ public sealed class AsyncFramePipe<T>
 
         CancellationToken token = cancellationToken;
         CancellationTokenSource? linkedCts = null;
-        // Tracks a fault delivered via ExceptionOccured so a pulsed
-        // OperationCanceledException/TaskCanceledException is not mistaken for a timeout.
-        Exception? backgroundFault = null;
         try
         {
             if (timeoutMs > 0)
@@ -94,40 +91,7 @@ public sealed class AsyncFramePipe<T>
                 var bgException = _exceptionPulse;
 
                 var completed = await Task.WhenAny(waitTask, bgException.Task).ConfigureAwait(false);
-                if (completed == waitTask)
-                {
-                    try
-                    {
-                        if (!await waitTask.ConfigureAwait(false))
-                        {
-                            break;
-                        }
-
-                        if (_channel.Reader.TryRead(out var item))
-                        {
-                            list.Add(item);
-                        }
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        // Timeout raced with ExceptionOccured: prefer an already-signalled fault
-                        // over returning a partial/empty timeout result.
-                        if (!cancellationToken.IsCancellationRequested &&
-                            bgException.Task.IsCompleted)
-                        {
-                            backgroundFault = await bgException.Task.ConfigureAwait(false);
-                            throw backgroundFault ?? new InvalidOperationException("Exception signalled.");
-                        }
-
-                        throw;
-                    }
-                    catch (ChannelClosedException cce)
-                    {
-                        if (cce.InnerException is not null) throw cce.InnerException;
-                        throw;
-                    }
-                }
-                else
+                if (completed != waitTask)
                 {
                     waitCts.Cancel();
                     try
@@ -136,18 +100,45 @@ public sealed class AsyncFramePipe<T>
                     }
                     catch (OperationCanceledException)
                     {
-                        // The wait was intentionally canceled so the losing waitTask can finish cleanup.
+                        // Losing wait canceled for cleanup; surface the background fault below.
                     }
 
-                    backgroundFault = await bgException.Task.ConfigureAwait(false);
-                    throw backgroundFault ?? new InvalidOperationException("Exception signalled.");
+                    // Propagate pulsed faults as-is (including OCE/TCE). There is intentionally no
+                    // outer timeout catch that could disguise these as a partial-batch timeout.
+                    var fault = await bgException.Task.ConfigureAwait(false);
+                    throw fault ?? new InvalidOperationException("Exception signalled.");
+                }
+
+                try
+                {
+                    if (!await waitTask.ConfigureAwait(false))
+                    {
+                        break;
+                    }
+
+                    if (_channel.Reader.TryRead(out var item))
+                    {
+                        list.Add(item);
+                    }
+                }
+                catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+                {
+                    // Timeout (or timeout racing ExceptionOccured): prefer an already-signalled
+                    // fault, including pulsed OCE/TCE, over returning a partial timeout result.
+                    if (bgException.Task.IsCompleted)
+                    {
+                        var fault = await bgException.Task.ConfigureAwait(false);
+                        throw fault ?? new InvalidOperationException("Exception signalled.");
+                    }
+
+                    return list;
+                }
+                catch (ChannelClosedException cce)
+                {
+                    if (cce.InnerException is not null) throw cce.InnerException;
+                    throw;
                 }
             }
-        }
-        catch (OperationCanceledException) when (
-            !cancellationToken.IsCancellationRequested && backgroundFault is null)
-        {
-            return list;
         }
         finally
         {
