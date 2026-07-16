@@ -57,9 +57,15 @@ namespace CanKit.Core.Utils
         public int RemainingCount => _remaining;
         public event EventHandler? Completed;
 
+        /// <summary>
+        /// Create a stopped handle so callers can subscribe to <see cref="Completed"/> before starting.
+        /// </summary>
+        public static SoftwarePeriodicTx Create(ICanBus bus, CanFrame frame, PeriodicTxOptions options)
+            => new SoftwarePeriodicTx(bus, frame, options);
+
         public static IPeriodicTx Start(ICanBus bus, CanFrame frame, PeriodicTxOptions options)
         {
-            var h = new SoftwarePeriodicTx(bus, frame, options);
+            var h = Create(bus, frame, options);
             h.Start();
             return h;
         }

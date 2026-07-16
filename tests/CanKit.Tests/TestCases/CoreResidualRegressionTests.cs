@@ -1,8 +1,6 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
-using System.Threading.Tasks;
 using CanKit.Abstractions.API.Can;
 using CanKit.Abstractions.API.Can.Definitions;
 using CanKit.Abstractions.API.Common;
@@ -64,24 +62,22 @@ public class CoreResidualRegressionTests : IClassFixture<TestCaseProvider>
     }
 
     [Fact]
-    public async Task SoftwarePeriodicTx_Update_After_Remaining_Zero_Rearms_Instead_Of_Stopping()
+    public void SoftwarePeriodicTx_Update_After_Remaining_Zero_Rearms_Instead_Of_Stopping()
     {
         var session = $"rearm-{Guid.NewGuid():N}";
-        using var tx = CanBus.Open($"virtual://{session}/0", cfg => cfg
-            .SetProtocolMode(CanProtocolMode.Can20)
-            .Baud(TestCaseProvider.AbitRate)
-            .SoftwareFeaturesFallBack(CanFeature.All));
-        using var rx = CanBus.Open($"virtual://{session}/1", cfg => cfg
+        using var bus = CanBus.Open($"virtual://{session}/0", cfg => cfg
             .SetProtocolMode(CanProtocolMode.Can20)
             .Baud(TestCaseProvider.AbitRate)
             .SoftwareFeaturesFallBack(CanFeature.All));
 
         using var firstCompleted = new ManualResetEventSlim();
+        using var secondCompleted = new ManualResetEventSlim();
         var completedCount = 0;
-        const int frameId = 0x322;
 
-        using var periodic = tx.TransmitPeriodic(
-            CanFrame.Classic(frameId, new byte[] { 4, 5, 6 }),
+        // Create/subscribe/Start so fireImmediately:true cannot race past Completed.
+        using var periodic = SoftwarePeriodicTx.Create(
+            bus,
+            CanFrame.Classic(0x322, new byte[] { 4, 5, 6 }),
             new PeriodicTxOptions(TimeSpan.FromMilliseconds(5), 1, fireImmediately: true));
 
         periodic.Completed += (sender, _) =>
@@ -94,21 +90,19 @@ public class CoreResidualRegressionTests : IClassFixture<TestCaseProvider>
                 ((IPeriodicTx)sender!).Update(repeatCount: 2);
                 firstCompleted.Set();
             }
+            else if (count == 2)
+            {
+                secondCompleted.Set();
+            }
         };
 
-        firstCompleted.Wait(TimeSpan.FromSeconds(2)).Should().BeTrue();
+        periodic.Start();
 
-        var received = 0;
-        var end = DateTime.UtcNow.AddSeconds(2);
-        while (DateTime.UtcNow < end && received < 3)
-        {
-            var batch = await rx.ReceiveAsync(16, 50);
-            received += batch.Count(d => d.CanFrame.ID == frameId);
-        }
-
-        periodic.Stop();
-        received.Should().BeGreaterOrEqualTo(3, "re-armed repeats after remaining hit zero must continue transmitting");
-        completedCount.Should().BeGreaterOrEqualTo(1);
+        firstCompleted.Wait(TimeSpan.FromSeconds(2)).Should().BeTrue(
+            "Completed must fire when the initial repeat count is exhausted");
+        secondCompleted.Wait(TimeSpan.FromSeconds(2)).Should().BeTrue(
+            "re-armed repeats after remaining hit zero must keep the loop alive and complete again");
+        completedCount.Should().Be(2);
     }
 
     [Fact]
