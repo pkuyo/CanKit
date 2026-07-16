@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+* **CanKit.Pro.CANopen 0.1.0 (MVP)** — new experimental L4 package `CanKit.Pro.CANopen`
+  implementing the CiA 301 Must requirements (FR-CO-001/002/003/005/006/007/008/010/011/012):
+  * Local Object Dictionary with typed read/write and data-type enforcement.
+  * SDO client + server (expedited ≤ 4 bytes and segmented > 4 bytes with toggle-bit).
+  * NMT master + slave state machine (Start / Stop / Pre-Op / Reset).
+  * Heartbeat producer + consumer-timeout event.
+  * SYNC producer + consumer, EMCY encode/decode with structured receive event.
+  * Static TPDO/RPDO mapping with event, event-timer and SYNC-triggered transmission.
+  * Composed on the CanKit.Pro L2 pipeline (`ICanBusService`, `IProtocolActor`,
+    `DeadlineScheduler`) exactly like `CanKit.Pro.IsoTp` / `CanKit.Pro.J1939Tp` /
+    `CanKit.Pro.Uds`; ships with a `CanKitProCANopen.slnf` and a `canopen-ci.yml` workflow.
+  * SDO block transfer (FR-CO-004 Should) and Node-Guarding (FR-CO-009 Could) are documented
+    open items for a future iteration.
+
 ## 0.5.5
 
 Published packages:

@@ -285,7 +285,7 @@ Ist-Zustand: MVP umgesetzt als eigenständiges Paket `CanKit.Pro.J1939Tp` (`src/
 
 #### 4.3.2 CANopen (CiA 301)
 
-Ist-Zustand: nicht vorhanden, Neubau.
+Ist-Zustand: MVP-Paket `CanKit.Pro.CANopen` umgesetzt (`src/protocols/CanKit.Pro.CANopen/`, `IsPackable=false`, Version 0.1.0). Deckt die Must-Anforderungen FR-CO-001/002/003/005/006/007/008/010/011 sowie das L2-Multi-Consumer-Demultiplexing FR-CO-012 vollständig ab; die Should-Anforderung FR-CO-004 (SDO-Block-Transfer) und die Could-Anforderung FR-CO-009 (Node-Guarding) sind bewusst zurückgestellt (dokumentiert in `src/protocols/CanKit.Pro.CANopen/README.md`).
 
 | ID | Anforderung | Priorität | Verifikation | Quelle |
 |---|---|---|---|---|
@@ -395,7 +395,7 @@ Verweise auf Architektur-Bausteine nutzen die in Abschnitt 2.1 definierten Schic
 | FR-TP-001..020 | L3 – ISO-TP-Transport, `CanKit.Transport.IsoTp` (`IsoTpChannelCore`, `IsoTpScheduler`, `FrameCodec`, `Router`, `Deadline`/`QueuedDeadline`) | Unit-Test (Codec/Timing), Virtual-Loopback-Integrationstest, HIL-Stichprobe |
 | FR-TP-030..035 | L3 – *J1939-Transport* (umgesetzt als eigenständiges `CanKit.Pro.J1939Tp`: `J1939Tp`/`J1939TpChannel`/`J1939TpOptions`/`J1939TpFrames`/`J1939TpAbortReason`, aufbauend auf `CanKit.Pro.Addressing` (`J1939Id`/`J1939Pgn`) sowie `CanKit.Pro.Actor`/`CanKit.Pro.RawCan`/`CanKit.Pro.Reliability`; MVP, `IsPackable=false`) | Virtual-Loopback-Integrationstest |
 | FR-UDS-001..010 | L4 – **UDS-Client-MVP umgesetzt** (`CanKit.Pro.Uds`, `IUdsClient`/`UdsClient` auf `IIsoTpChannel`); FR-UDS-011 (Multi-DID) ebenfalls umgesetzt (SHOULD), FR-UDS-012 (Upload/Download) bewusst als COULD zurückgestellt | Virtual-Loopback-Integrationstest (simulierte ECU, `tests/CanKit.Tests/TestCases/Uds/UdsClientTests.cs`), HIL-Stichprobe |
-| FR-CO-001..012 | L4 – *CANopen-Stack* (geplant, neues Paket auf L2-Demultiplexing + L1 `ICanBus`) | Virtual-Loopback-Integrationstest, HIL-Stichprobe |
+| FR-CO-001..012 | L4 – **CANopen-Stack-MVP umgesetzt** (`CanKit.Pro.CANopen`, `ICanOpenNode`/`CanOpen`/`ObjectDictionary`/`CanOpenNode` auf `CanKit.Pro.RawCan`/`CanKit.Pro.Actor`/`CanKit.Pro.Reliability`); FR-CO-004 (Block-Transfer, SHOULD) und FR-CO-009 (Node-Guarding, COULD) sind zurückgestellt | Virtual-Loopback-Integrationstest (`tests/CanKit.Tests/TestCases/CANopen/`), HIL-Stichprobe |
 | FR-J1939-001..007 | L4 – *J1939-Applikationsschicht* (geplant, aufbauend auf L3 J1939-TP) | Virtual-Loopback-Integrationstest, HIL-Stichprobe |
 | FR-HAWE-001..005 | L4 – *HAWE-Erweiterungsrahmen* (`src/protocols/CanKit.Pro.Hawe`, SPI-Erweiterungspunkt analog `IIsoTpRegister`, `src/core/CanKit.Abstractions/SPI/Registry/Transports/IIsoTpRegister.cs`) | Architekturreview, Virtual-Loopback-Integrationstest (generischer `FakePatternCodec` in `tests/CanKit.Tests/TestCases/HaweFrameworkTests.cs`) |
 | NFR-001..003 | L2/L3 Timing-Infrastruktur, L1 `SoftwarePeriodicTx`/`PreciseDelay` (`src/core/CanKit.Core/Utils/SoftwarePeriodicTx.cs`) | Performance-/Timing-Test |
@@ -414,6 +414,6 @@ Verweise auf Architektur-Bausteine nutzen die in Abschnitt 2.1 definierten Schic
 ## Anhang: Offene Punkte für die nächste Iteration
 
 1. Konkrete Zielwerte für Jitter/Durchsatz (NFR-001) sind projektspezifisch festzulegen (aktuell als Platzhalter markiert) – abhängig von Zielanwendungen (Diagnose vs. Steuerungs-Echtzeit).
-2. J1939-TP ist als MVP-Paket `CanKit.Pro.J1939Tp` umgesetzt (siehe 4.2.2); CANopen-Pakete existieren im Repository noch nicht; Anforderungen in Abschnitt 4.3.2/4.3.3 bleiben Neubau-Spezifikationen ohne Ist-Code-Referenz.
+2. J1939-TP ist als MVP-Paket `CanKit.Pro.J1939Tp` umgesetzt (siehe 4.2.2); CANopen ist als MVP-Paket `CanKit.Pro.CANopen` umgesetzt (siehe 4.3.2); die J1939-Applikationsschicht (Abschnitt 4.3.3) bleibt weiterhin Neubau-Spezifikation ohne Ist-Code-Referenz.
 3. HAWE-Anforderungen (Abschnitt 4.3.4) sind bewusst als Rahmen gehalten und müssen bei Vorliegen der vertraulichen Spezifikation verfeinert werden (Annahme A-6). Der öffentliche generische Rahmen (`CanKit.Pro.Hawe`) ist umgesetzt; die konkrete HAWE-Codec-Implementierung erfolgt außerhalb dieses Repositorys (CON-006).
 4. Die Traceability-Matrix referenziert `docs/architecture/arc42-CanKit.md`, das zum Zeitpunkt dieser SRS noch nicht vorliegt; Bausteinnamen sind als *geplant* markiert und beim Erscheinen des Architekturdokuments gegenzuprüfen.
