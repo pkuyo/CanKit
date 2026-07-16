@@ -247,7 +247,12 @@ internal sealed class IsoTpChannel : IIsoTpChannel
                 // Endpoint uses an address-extension byte and the first byte does not match:
                 // skip this frame silently (matches ISO 15765-2 §5.2.4.4 semantics for a foreign
                 // address-extension on the same CAN-ID).
-                if (addrExt && (payload.Length == 0 || payload[0] != _endpoint.AddressExtension))
+                //
+                // The RX filter uses RxAddressExtension, not AddressExtension: for Extended
+                // addressing the two differ (TX = target address, RX = source address per ISO
+                // 15765-2 §5.3.2.4). Comparing inbound frames against the TX byte would have
+                // silently dropped every valid inbound frame under Extended addressing.
+                if (addrExt && (payload.Length == 0 || payload[0] != _endpoint.RxAddressExtension))
                     continue;
 
                 _actor.Post(() => HandleReceivedFrame(payload));

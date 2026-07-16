@@ -299,6 +299,50 @@ public class IsoTpChannelIntegrationTests : IClassFixture<TestCaseProvider>
     }
 
     // --------------------------------------------------------------------------------
+    // Regression: Extended addressing must not drop inbound frames.
+    //
+    // Under ISO 15765-2 §5.3.2.4 Extended addressing puts the *target* address in the first
+    // payload byte on TX and the *source* address on RX -- the two values differ. Previously the
+    // subscription reader compared inbound frames against the endpoint's TX address-extension
+    // byte, silently dropping every valid inbound frame. This test drives an SF round-trip in
+    // both directions to prove the RX filter uses the RX-side address-extension byte instead.
+    // --------------------------------------------------------------------------------
+    [Fact]
+    public async Task Extended_Addressing_RoundTrips_On_Virtual_Loopback()
+    {
+        var session = NewSession();
+        using var busA = OpenClassic(session, 0);
+        using var busB = OpenClassic(session, 1);
+
+        // Two nodes, both use the same physical CAN-ID pair 0x7E0/0x7E8 but Extended addressing
+        // multiplexes distinct logical peers via the first payload byte:
+        //   node A: source=0xF1 (its own N_SA), target=0xF2 (its peer's N_TA)
+        //   node B: source=0xF2 (its own N_SA), target=0xF1 (its peer's N_TA)
+        // Inbound frames from B carry N_TA=0xF1 which A must accept (matches its source),
+        // *not* N_TA=0xF2 which is what A itself writes on TX.
+        var epA = IsoTpEndpoint.Extended(txCanId: 0x7E0, rxCanId: 0x7E8,
+            sourceAddress: 0xF1, targetAddress: 0xF2);
+        var epB = IsoTpEndpoint.Extended(txCanId: 0x7E8, rxCanId: 0x7E0,
+            sourceAddress: 0xF2, targetAddress: 0xF1);
+
+        using var chA = IsoTpFactory.Open(busA, epA, FastOptions());
+        using var chB = IsoTpFactory.Open(busB, epB, FastOptions());
+
+        // A -> B
+        var recvOnB = chB.ReceiveAsync(new CancellationTokenSource(ShortTimeout).Token);
+        byte[] pduAB = { 0x22, 0xF1, 0x89 };
+        await chA.SendAsync(pduAB);
+        (await recvOnB).Should().Equal(pduAB);
+
+        // B -> A (would fail before the fix because chA's RX filter compared against 0xF2
+        // instead of 0xF1 and dropped every inbound frame).
+        var recvOnA = chA.ReceiveAsync(new CancellationTokenSource(ShortTimeout).Token);
+        byte[] pduBA = { 0x62, 0xF1, 0x89, 0x01, 0x02 };
+        await chB.SendAsync(pduBA);
+        (await recvOnA).Should().Equal(pduBA);
+    }
+
+    // --------------------------------------------------------------------------------
     // FR-TP-016 — DatagramReceived event fires for a SF PDU.
     // --------------------------------------------------------------------------------
     [Fact]
