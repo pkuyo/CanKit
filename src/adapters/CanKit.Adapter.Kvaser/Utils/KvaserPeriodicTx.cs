@@ -3,10 +3,10 @@ using CanKit.Abstractions.API.Can;
 using CanKit.Abstractions.API.Can.Definitions;
 using CanKit.Abstractions.API.Common;
 using CanKit.Abstractions.API.Common.Definitions;
+using CanKit.Adapter.Kvaser.Native;
 using CanKit.Core.Definitions;
 using CanKit.Core.Diagnostics;
 using CanKit.Core.Exceptions;
-using CanKit.Adapter.Kvaser.Native;
 
 namespace CanKit.Adapter.Kvaser.Utils;
 

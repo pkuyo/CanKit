@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Buffers;
 using CanKit.Abstractions.API.Common;
 using CanKit.Abstractions.API.Common.Definitions;

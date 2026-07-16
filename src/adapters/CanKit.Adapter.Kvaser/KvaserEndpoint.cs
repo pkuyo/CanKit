@@ -1,16 +1,16 @@
-using CanKit.Adapter.Kvaser.Definitions;
-using CanKit.Core;
-using CanKit.Core.Endpoints;
 using System;
 using System.Collections.Generic;
 using CanKit.Abstractions.API.Can;
 using CanKit.Abstractions.API.Common;
 using CanKit.Abstractions.Attributes;
 using CanKit.Abstractions.SPI.Registry.Core.Endpoints;
-using CanKit.Core.Diagnostics;
-using CanKit.Core.Registry;
+using CanKit.Adapter.Kvaser.Definitions;
 using CanKit.Adapter.Kvaser.Native;
+using CanKit.Core;
+using CanKit.Core.Diagnostics;
+using CanKit.Core.Endpoints;
 using CanKit.Core.Exceptions;
+using CanKit.Core.Registry;
 
 namespace CanKit.Adapter.Kvaser;
 

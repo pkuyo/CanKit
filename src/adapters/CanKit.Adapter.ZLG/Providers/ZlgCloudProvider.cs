@@ -1,4 +1,4 @@
-﻿using CanKit.Abstractions.API.Common.Definitions;
+using CanKit.Abstractions.API.Common.Definitions;
 using CanKit.Adapter.ZLG.Definitions;
 
 namespace CanKit.Adapter.ZLG.Providers;

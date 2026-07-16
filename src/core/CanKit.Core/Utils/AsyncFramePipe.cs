@@ -3,11 +3,11 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
-using System.Threading.Tasks;
-using CanKit.Core.Definitions;
 using System.Threading.Channels;
+using System.Threading.Tasks;
 using CanKit.Abstractions.API.Common;
 using CanKit.Abstractions.API.Common.Definitions;
+using CanKit.Core.Definitions;
 
 namespace CanKit.Core.Utils;
 

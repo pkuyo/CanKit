@@ -1,4 +1,4 @@
-﻿using CanKit.Core.Utils;
+using CanKit.Core.Utils;
 using CanKit.Protocol.IsoTp.Defines;
 
 namespace CanKit.Protocol.IsoTp.Utils;

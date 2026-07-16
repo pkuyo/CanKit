@@ -118,7 +118,7 @@ public class CanFrameTests : IClassFixture<TestCaseProvider>
         TestCaseProvider.Rand.NextBytes(data);
         var frameId = TestCaseProvider.Rand.Next(ext ? 0x1FFFFFFF : 0x7FF);
 
-        var frame = CanFrame.Classic(frameId,new ReadOnlyMemory<byte>(data), ext, rtr);
+        var frame = CanFrame.Classic(frameId, new ReadOnlyMemory<byte>(data), ext, rtr);
         frame.FrameKind.Should().Be(CanFrameType.Can20);
         frame.ID.Should().Be(frameId);
         frame.IsExtendedFrame.Should().Be(ext);

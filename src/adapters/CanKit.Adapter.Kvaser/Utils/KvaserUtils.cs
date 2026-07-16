@@ -1,9 +1,9 @@
-﻿using System.Runtime.CompilerServices;
+using System.Runtime.CompilerServices;
 using CanKit.Abstractions.API.Common;
 using CanKit.Abstractions.API.Common.Definitions;
+using CanKit.Adapter.Kvaser.Native;
 using CanKit.Core.Definitions;
 using CanKit.Core.Exceptions;
-using CanKit.Adapter.Kvaser.Native;
 
 namespace CanKit.Adapter.Kvaser.Utils;
 

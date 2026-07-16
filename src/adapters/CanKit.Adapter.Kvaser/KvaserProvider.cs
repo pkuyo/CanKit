@@ -3,9 +3,9 @@ using CanKit.Abstractions.API.Common.Definitions;
 using CanKit.Abstractions.SPI.Factories;
 using CanKit.Abstractions.SPI.Providers;
 using CanKit.Adapter.Kvaser.Definitions;
+using CanKit.Adapter.Kvaser.Native;
 using CanKit.Core.Definitions;
 using CanKit.Core.Registry;
-using CanKit.Adapter.Kvaser.Native;
 
 namespace CanKit.Adapter.Kvaser;
 

@@ -1,4 +1,4 @@
-﻿namespace CanKit.Protocol.IsoTp.Defines;
+namespace CanKit.Protocol.IsoTp.Defines;
 
 public sealed class RxFcPolicy
 {

@@ -6,8 +6,8 @@ using CanKit.Abstractions.API.Can.Definitions;
 using CanKit.Abstractions.API.Common;
 using CanKit.Abstractions.API.Common.Definitions;
 using CanKit.Adapter.ControlCAN.Utils;
-using CcApi = CanKit.Adapter.ControlCAN.Native.ControlCAN;
 using CanKit.Core.Definitions;
+using CcApi = CanKit.Adapter.ControlCAN.Native.ControlCAN;
 
 namespace CanKit.Adapter.ControlCAN;
 

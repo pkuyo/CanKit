@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using CanKit.Abstractions.API.Can;
@@ -11,16 +11,16 @@ public partial class TestMatrix
 {
     public static IEnumerable<object[]> CombinedPeriodicCount()
     {
-        foreach(var i in Pairs())
-        foreach (var l in PeriodicCountCases())
-            yield return i.Concat(l).ToArray();
+        foreach (var i in Pairs())
+            foreach (var l in PeriodicCountCases())
+                yield return i.Concat(l).ToArray();
     }
 
     public static IEnumerable<object[]> CombinedPeriodicPeriod()
     {
-        foreach(var i in Pairs())
-        foreach (var l in PeriodicPeriodCases())
-            yield return i.Concat(l).ToArray();
+        foreach (var i in Pairs())
+            foreach (var l in PeriodicPeriodCases())
+                yield return i.Concat(l).ToArray();
     }
 }
 

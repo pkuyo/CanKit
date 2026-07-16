@@ -1,4 +1,4 @@
-﻿using CanKit.Abstractions.API.Can;
+using CanKit.Abstractions.API.Can;
 using CanKit.Abstractions.API.Common;
 using CanKit.Abstractions.Attributes;
 using CanKit.Abstractions.SPI.Registry.Core;

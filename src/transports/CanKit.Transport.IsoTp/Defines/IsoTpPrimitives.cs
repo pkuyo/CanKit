@@ -1,4 +1,4 @@
-﻿namespace CanKit.Protocol.IsoTp.Defines;
+namespace CanKit.Protocol.IsoTp.Defines;
 
 
 public enum PciType : byte { SF = 0x0, FF = 0x1, CF = 0x2, FC = 0x3 }

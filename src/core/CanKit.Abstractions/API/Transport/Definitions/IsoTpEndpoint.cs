@@ -1,4 +1,4 @@
-﻿namespace CanKit.Abstractions.API.Transport.Definitions;
+namespace CanKit.Abstractions.API.Transport.Definitions;
 
 public enum AddressingFormat
 {

@@ -136,7 +136,8 @@ namespace CanKit.Adapter.ZLG
             try
             {
                 Reset();
-            } catch { /*ignore*/ }
+            }
+            catch { /*ignore*/ }
 
             ApplyConfigAfterInit(options);
 

@@ -1,4 +1,4 @@
-﻿using CanKit.Abstractions.API.Common;
+using CanKit.Abstractions.API.Common;
 using CanKit.Abstractions.API.Common.Definitions;
 using CanKit.Adapter.PCAN.Exceptions;
 using CanKit.Core.Definitions;

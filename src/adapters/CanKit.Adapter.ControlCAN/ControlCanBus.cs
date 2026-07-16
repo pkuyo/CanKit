@@ -10,14 +10,14 @@ using CanKit.Abstractions.SPI;
 using CanKit.Abstractions.SPI.Common;
 using CanKit.Abstractions.SPI.Providers;
 using CanKit.Adapter.ControlCAN.Definitions;
+using CanKit.Adapter.ControlCAN.Diagnostics;
 using CanKit.Adapter.ControlCAN.Options;
-using CcApi = CanKit.Adapter.ControlCAN.Native.ControlCAN;
+using CanKit.Adapter.ControlCAN.Utils;
 using CanKit.Core.Definitions;
 using CanKit.Core.Diagnostics;
 using CanKit.Core.Exceptions;
 using CanKit.Core.Utils;
-using CanKit.Adapter.ControlCAN.Diagnostics;
-using CanKit.Adapter.ControlCAN.Utils;
+using CcApi = CanKit.Adapter.ControlCAN.Native.ControlCAN;
 
 namespace CanKit.Adapter.ControlCAN;
 

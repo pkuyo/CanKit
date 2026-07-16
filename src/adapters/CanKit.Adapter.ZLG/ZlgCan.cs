@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using CanKit.Abstractions.SPI;
 using CanKit.Abstractions.SPI.Common;

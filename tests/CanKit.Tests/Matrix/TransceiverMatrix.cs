@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using System.Linq;
 
 namespace CanKit.Tests.Matrix;
@@ -7,32 +7,32 @@ public partial class TestMatrix
 {
     public static IEnumerable<object[]> CombinedOneShotClassic()
     {
-        foreach(var i in Pairs())
-        foreach (var r in ClassicFrameSettings())
-            yield return i.Concat(r).ToArray();
+        foreach (var i in Pairs())
+            foreach (var r in ClassicFrameSettings())
+                yield return i.Concat(r).ToArray();
     }
 
     public static IEnumerable<object[]> CombinedOneShotFD()
     {
-        foreach(var i in Pairs())
-        foreach (var r in FDFrameSettings())
-            yield return i.Concat(r).ToArray();
+        foreach (var i in Pairs())
+            foreach (var r in FDFrameSettings())
+                yield return i.Concat(r).ToArray();
     }
 
     public static IEnumerable<object[]> CombinedContinuosClassic()
     {
-        foreach(var i in Pairs())
-        foreach (var l in GapCases())
-        foreach (var r in ClassicFrameSettings())
-            yield return i.Concat(l).Concat(r).ToArray();
+        foreach (var i in Pairs())
+            foreach (var l in GapCases())
+                foreach (var r in ClassicFrameSettings())
+                    yield return i.Concat(l).Concat(r).ToArray();
     }
 
     public static IEnumerable<object[]> CombinedContinuosFD()
     {
-        foreach(var i in Pairs())
-        foreach (var l in GapCases())
-        foreach (var r in FDFrameSettings())
-            yield return i.Concat(l).Concat(r).ToArray();
+        foreach (var i in Pairs())
+            foreach (var l in GapCases())
+                foreach (var r in FDFrameSettings())
+                    yield return i.Concat(l).Concat(r).ToArray();
     }
 }
 

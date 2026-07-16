@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using CanKit.Abstractions.API.Transport.Definitions;
 using CanKit.Core.Exceptions;
 

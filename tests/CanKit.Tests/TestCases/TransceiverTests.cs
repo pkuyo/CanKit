@@ -45,7 +45,7 @@ public class ThroughputAndFeaturesTests : IClassFixture<TestCaseProvider>
     // 单次64和128的发送批次（CANFD）
     [Theory]
     [MemberData(nameof(Matrix.TestMatrix.CombinedOneShotFD), MemberType = typeof(Matrix.TestMatrix))]
-    public async Task OneShot_Batch_FD_64_And_128(string epA, string epB, string _ ,bool hasFd,
+    public async Task OneShot_Batch_FD_64_And_128(string epA, string epB, string _, bool hasFd,
         int len, bool brs, bool ide)
     {
         if (!hasFd)
@@ -74,7 +74,7 @@ public class ThroughputAndFeaturesTests : IClassFixture<TestCaseProvider>
     [Theory]
     [MemberData(nameof(Matrix.TestMatrix.CombinedContinuosFD), MemberType = typeof(Matrix.TestMatrix))]
     public async Task Continuous_Fd_Over5000_With_Gap_And_Loss
-        (string epA, string epB, string _,bool hasFd, double gapMs, double lossLimit, int len, bool brs, bool ide)
+        (string epA, string epB, string _, bool hasFd, double gapMs, double lossLimit, int len, bool brs, bool ide)
     {
         if (!hasFd)
             return;
@@ -188,7 +188,7 @@ public class ThroughputAndFeaturesTests : IClassFixture<TestCaseProvider>
 
             recClassic.Should().Be(classicCases.Count);
         }
-        if(hasFd)
+        if (hasFd)
         {
             // FD ext 48 and 64
             using var rxFd = TestHelpers.OpenFd(epA);

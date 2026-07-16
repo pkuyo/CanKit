@@ -1,7 +1,7 @@
 using System;
 using System.Runtime.InteropServices;
-using Microsoft.Win32.SafeHandles;
 using CanKit.Adapter.SocketCAN.Native;
+using Microsoft.Win32.SafeHandles;
 
 namespace CanKit.Adapter.SocketCAN.Definitions;
 

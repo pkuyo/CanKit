@@ -15,14 +15,14 @@ public class CanBusBackgroundExceptionOccurredTests : IClassFixture<TestCaseProv
 {
     [Theory]
     [MemberData(nameof(Matrix.TestMatrix.Pairs), MemberType = typeof(Matrix.TestMatrix))]
-    public async Task BackgroundExceptionOccurred_Is_Raised_When_ReceiveThread_Hits_Exception(string epA, string epB, string __, bool hasFd)
+    public Task BackgroundExceptionOccurred_Is_Raised_When_ReceiveThread_Hits_Exception(string epA, string epB, string __, bool hasFd)
     {
         _ = hasFd;
         _ = __;
         using var rxClassic = TestHelpers.OpenClassic(epA);
         using var txClassic = TestHelpers.OpenClassic(epB);
-        using AutoResetEvent ev = new AutoResetEvent(false);
-        using CancellationTokenSource cts = new CancellationTokenSource();
+        using var ev = new AutoResetEvent(false);
+        using var cts = new CancellationTokenSource();
         Exception? exception = null;
         rxClassic.FrameObserved += (sender, data) =>
         {
@@ -36,8 +36,8 @@ public class CanBusBackgroundExceptionOccurredTests : IClassFixture<TestCaseProv
         cts.CancelAfter(TimeSpan.FromSeconds(2));
         txClassic.Transmit(CanFrame.Classic(0x123456, ReadOnlyMemory<byte>.Empty, true));
 
-        WaitHandle.WaitAny([ ev, cts.Token.WaitHandle ]);
+        WaitHandle.WaitAny([ev, cts.Token.WaitHandle]);
         exception.Should().BeOfType<ArgumentException>();
-
+        return Task.CompletedTask;
     }
 }

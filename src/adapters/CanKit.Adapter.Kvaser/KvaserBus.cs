@@ -8,11 +8,11 @@ using CanKit.Abstractions.API.Common.Definitions;
 using CanKit.Abstractions.SPI;
 using CanKit.Abstractions.SPI.Common;
 using CanKit.Abstractions.SPI.Providers;
+using CanKit.Adapter.Kvaser.Native;
 using CanKit.Adapter.Kvaser.Utils;
 using CanKit.Core.Definitions;
 using CanKit.Core.Diagnostics;
 using CanKit.Core.Exceptions;
-using CanKit.Adapter.Kvaser.Native;
 using CanKit.Core.Utils;
 
 namespace CanKit.Adapter.Kvaser;

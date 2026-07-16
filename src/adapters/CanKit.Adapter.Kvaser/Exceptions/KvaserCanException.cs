@@ -1,5 +1,5 @@
-using CanKit.Core.Exceptions;
 using CanKit.Adapter.Kvaser.Native;
+using CanKit.Core.Exceptions;
 
 namespace CanKit.Adapter.Kvaser.Exceptions;
 

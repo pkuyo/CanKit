@@ -1,4 +1,4 @@
-﻿namespace CanKit.Protocol.IsoTp.Utils;
+namespace CanKit.Protocol.IsoTp.Utils;
 
 public sealed class AsyncAutoResetEvent
 {

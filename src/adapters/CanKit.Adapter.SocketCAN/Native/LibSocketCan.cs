@@ -1,4 +1,4 @@
-﻿#if !FAKE
+#if !FAKE
 using System.Runtime.InteropServices;
 // @formatter:off
 #nullable disable

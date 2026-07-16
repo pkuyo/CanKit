@@ -1,7 +1,3 @@
-using CanKit.Adapter.PCAN.Definitions;
-using CanKit.Core;
-using CanKit.Core.Endpoints;
-using CanKit.Core.Registry;
 using System;
 using System.Collections.Generic;
 using System.Reflection;
@@ -12,8 +8,12 @@ using CanKit.Abstractions.API.Transport.Definitions;
 using CanKit.Abstractions.Attributes;
 using CanKit.Abstractions.SPI.Common;
 using CanKit.Abstractions.SPI.Registry.Core.Endpoints;
+using CanKit.Adapter.PCAN.Definitions;
 using CanKit.Adapter.PCAN.Transport;
+using CanKit.Core;
+using CanKit.Core.Endpoints;
 using CanKit.Core.Exceptions;
+using CanKit.Core.Registry;
 using Peak.Can.Basic;
 using Peak.Can.Basic.BackwardCompatibility;
 

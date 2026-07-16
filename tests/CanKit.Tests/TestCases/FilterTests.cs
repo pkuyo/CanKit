@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -29,7 +29,7 @@ public class FilterTests : IClassFixture<TestCaseProvider>
         {
             cfg.SetProtocolMode(CanProtocolMode.Can20).Baud(TestCaseProvider.AbitRate);
             cfg.SoftwareFeaturesFallBack(CanFeature.All);
-            foreach(var r in range)
+            foreach (var r in range)
             {
                 cfg.RangeFilter(r.Min, r.Max, (CanFilterIDType)r.Ide);
             }
@@ -40,7 +40,7 @@ public class FilterTests : IClassFixture<TestCaseProvider>
         using var tx = TestHelpers.OpenClassic(epB);
 
         var allFrames = new List<CanFrame>();
-        foreach(var f in frame)
+        foreach (var f in frame)
         {
             allFrames.Add(CanFrame.Classic(f.Id, new[] { (byte)(f.Id & 0xFF) }, f.Ide == 1));
         }
@@ -66,7 +66,7 @@ public class FilterTests : IClassFixture<TestCaseProvider>
             TestCaseProvider.Provider.TestBusInitFunc?.Invoke(cfg);
             cfg.SetProtocolMode(CanProtocolMode.Can20).Baud(TestCaseProvider.AbitRate);
             cfg.SoftwareFeaturesFallBack(CanFeature.All);
-            foreach(var r in masks)
+            foreach (var r in masks)
             {
                 cfg.AccMask(r.AccCode, r.AccMask, (CanFilterIDType)r.Ide);
             }
@@ -76,7 +76,7 @@ public class FilterTests : IClassFixture<TestCaseProvider>
         using var tx = TestHelpers.OpenClassic(epB);
 
         var allFrames = new List<CanFrame>();
-        foreach(var f in frame)
+        foreach (var f in frame)
         {
             allFrames.Add(CanFrame.Classic(f.Id, new[] { (byte)(f.Id & 0xFF) }, f.Ide == 1));
         }

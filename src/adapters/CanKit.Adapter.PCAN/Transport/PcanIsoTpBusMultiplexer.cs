@@ -1,4 +1,4 @@
-﻿using System.Collections.Concurrent;
+using System.Collections.Concurrent;
 using CanKit.Abstractions.API.Transport;
 using Peak.Can.Basic;
 

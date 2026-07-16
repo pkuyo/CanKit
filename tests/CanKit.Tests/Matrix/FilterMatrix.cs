@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using CanKit.Abstractions.SPI.Tests;
@@ -10,15 +10,15 @@ public partial class TestMatrix
     public static IEnumerable<object[]> CombinedRangeFilter()
     {
         foreach (var i in Pairs())
-        foreach (var l in RangeCases())
-            yield return i.Concat(l).ToArray();
+            foreach (var l in RangeCases())
+                yield return i.Concat(l).ToArray();
     }
 
     public static IEnumerable<object[]> CombinedMaskFilter()
     {
         foreach (var i in Pairs())
-        foreach (var l in MaskCases())
-            yield return i.Concat(l).ToArray();
+            foreach (var l in MaskCases())
+                yield return i.Concat(l).ToArray();
     }
 }
 
@@ -36,7 +36,7 @@ public partial class TestMatrix
 
     private static IEnumerable<object[]> RangeCases()
     {
-// 1) 标准帧区间 [0x100, 0x200]（含端点）
+        // 1) 标准帧区间 [0x100, 0x200]（含端点）
         yield return
         [
             new ITestDataProvider.FilterRange[] { new(0x100, 0x200, 0) },
@@ -53,7 +53,7 @@ public partial class TestMatrix
             3 // 期望匹配：0x100、0x150、0x200
         ];
 
-// 2) 扩展帧区间 [0x1ABCDE00, 0x1ABCDEFF]
+        // 2) 扩展帧区间 [0x1ABCDE00, 0x1ABCDEFF]
         yield return
         [
             new ITestDataProvider.FilterRange[] { new(0x1ABCDE00, 0x1ABCDEFF, 1) },
@@ -70,7 +70,7 @@ public partial class TestMatrix
             3 // 期望匹配：下界、中间、上界三条
         ];
 
-// 3) 标准帧：两段离散区间 [0x000,0x00F] ∪ [0x700,0x7FF]
+        // 3) 标准帧：两段离散区间 [0x000,0x00F] ∪ [0x700,0x7FF]
         yield return
         [
             new ITestDataProvider.FilterRange[] { new(0x000, 0x00F, 0), new(0x700, 0x7FF, 0) },
@@ -88,7 +88,7 @@ public partial class TestMatrix
             5 // 期望匹配：0x000、0x00F、0x700、0x7AB、0x7FF（标准帧）
         ];
 
-// 4) 混合：标准帧 [0x100,0x1FF]；扩展帧 [0x180,0x280]
+        // 4) 混合：标准帧 [0x100,0x1FF]；扩展帧 [0x180,0x280]
         yield return
         [
             new ITestDataProvider.FilterRange[] { new(0x100, 0x1FF, 0), new(0x180, 0x280, 1) },
@@ -105,7 +105,7 @@ public partial class TestMatrix
             4 // 期望匹配：0x17F(0)、0x180(0)、0x180(1)、0x200(1)
         ];
 
-// 5) 三段：标准 [0x050,0x060]、扩展 [0x1FFFF000,0x1FFFF010]、标准 [0x400,0x450]
+        // 5) 三段：标准 [0x050,0x060]、扩展 [0x1FFFF000,0x1FFFF010]、标准 [0x400,0x450]
         yield return
         [
             new ITestDataProvider.FilterRange[]
@@ -132,7 +132,7 @@ public partial class TestMatrix
             7 // 期望匹配：段1三条(0x50/55/60) + 段2三条 + 段3一条(0x420)
         ];
 
-// 6) 覆盖面广：标准全域 [0x000,0x7FF] + 扩展两个点与一个尾段 + 标准单点
+        // 6) 覆盖面广：标准全域 [0x000,0x7FF] + 扩展两个点与一个尾段 + 标准单点
         yield return
         [
             new ITestDataProvider.FilterRange[]
@@ -158,7 +158,7 @@ public partial class TestMatrix
             7 // 期望匹配：前三条标准 + 两条扩展(=1) + 尾段两条 = 7
         ];
 
-// 7) 同一数值 ID，分别允许标准与扩展的单点
+        // 7) 同一数值 ID，分别允许标准与扩展的单点
         yield return
         [
             new ITestDataProvider.FilterRange[] { new(0x200, 0x200, 0), new(0x200, 0x200, 1) },
@@ -173,7 +173,7 @@ public partial class TestMatrix
             3 // 期望匹配：三条（两标准一扩展）
         ];
 
-// 8) 标准帧两个重叠区间 [0x300,0x350] 与 [0x340,0x380]
+        // 8) 标准帧两个重叠区间 [0x300,0x350] 与 [0x340,0x380]
         yield return
         [
             new ITestDataProvider.FilterRange[] { new(0x300, 0x350, 0), new(0x340, 0x380, 0) },
@@ -191,7 +191,7 @@ public partial class TestMatrix
             5 // 期望匹配：0x340、0x345、0x350、0x351、0x380
         ];
 
-// 9) 扩展帧大区间 [0x18FF0000,0x18FFFFFF]
+        // 9) 扩展帧大区间 [0x18FF0000,0x18FFFFFF]
         yield return
         [
             new ITestDataProvider.FilterRange[] { new(0x18FF0000, 0x18FFFFFF, 1) },
@@ -207,7 +207,7 @@ public partial class TestMatrix
             3 // 期望匹配：下界、上界、区间内各一条
         ];
 
-// 10) 三段：标准 [0x010,0x01F]、扩展 [0x100,0x10F]、标准 [0x200,0x20F]
+        // 10) 三段：标准 [0x010,0x01F]、扩展 [0x100,0x10F]、标准 [0x200,0x20F]
         yield return
         [
             new ITestDataProvider.FilterRange[] { new(0x010, 0x01F, 0), new(0x100, 0x10F, 1), new(0x200, 0x20F, 0) },

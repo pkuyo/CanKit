@@ -1,4 +1,3 @@
-using CanKit.Adapter.SocketCAN.Definitions;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -7,6 +6,7 @@ using CanKit.Abstractions.API.Can;
 using CanKit.Abstractions.API.Common;
 using CanKit.Abstractions.Attributes;
 using CanKit.Abstractions.SPI.Registry.Core.Endpoints;
+using CanKit.Adapter.SocketCAN.Definitions;
 using CanKit.Core;
 using CanKit.Core.Diagnostics;
 using CanKit.Core.Endpoints;

@@ -123,12 +123,12 @@ internal static class TestHelpers
         while (!token.IsCancellationRequested && v.Received < expected && sw.ElapsedMilliseconds < timeoutMs)
         {
 
-                var batch = await bus.ReceiveAsync(Math.Min(256, expected - v.Received), 20, token);
-                foreach (var d in batch)
-                {
-                    result++;
-                    v.Feed(d.CanFrame);
-                }
+            var batch = await bus.ReceiveAsync(Math.Min(256, expected - v.Received), 20, token);
+            foreach (var d in batch)
+            {
+                result++;
+                v.Feed(d.CanFrame);
+            }
 
 
         }
@@ -138,7 +138,7 @@ internal static class TestHelpers
     public static async Task SendBurstAsync(ICanBus tx, IEnumerable<CanFrame> frames, double gapMs)
     {
         var queue = new Queue<CanFrame>();
-        foreach(var fr in frames)
+        foreach (var fr in frames)
         {
             queue.Enqueue(fr);
 

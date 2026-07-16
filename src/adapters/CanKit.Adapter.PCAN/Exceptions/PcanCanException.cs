@@ -1,4 +1,4 @@
-﻿using CanKit.Core.Exceptions;
+using CanKit.Core.Exceptions;
 using Peak.Can.Basic;
 
 namespace CanKit.Adapter.PCAN.Exceptions;

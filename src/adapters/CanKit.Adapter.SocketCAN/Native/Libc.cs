@@ -1,8 +1,8 @@
 #if !FAKE
 using System.Runtime.InteropServices;
 using System.Text;
-using CanKit.Adapter.SocketCAN.Diagnostics;
 using CanKit.Adapter.SocketCAN.Definitions;
+using CanKit.Adapter.SocketCAN.Diagnostics;
 using CanKit.Core.Definitions;
 using CanKit.Core.Exceptions;
 // @formatter:off
