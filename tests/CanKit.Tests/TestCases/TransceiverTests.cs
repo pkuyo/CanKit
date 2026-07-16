@@ -12,6 +12,7 @@ using Xunit;
 
 namespace CanKit.Tests.TestCases;
 
+// Path-filter touch for CI-adapter-zlgcan re-run after a flaky hardware timeout.
 public class ThroughputAndFeaturesTests : IClassFixture<TestCaseProvider>
 {
     // 64 and 128 one-shot batch (Classic)
