@@ -51,10 +51,17 @@ public sealed class AsyncFramePipe<T>
         }
     }
 
+    /// <summary>
+    /// Reads up to <paramref name="count"/> frames, or until timeout/channel completion when
+    /// <paramref name="count"/> is 0. Timeout cancellation returns the frames already read, while
+    /// caller-provided cancellation propagates as <see cref="OperationCanceledException"/>.
+    /// </summary>
     public async Task<IReadOnlyList<T>> ReceiveBatchAsync(
         int count, int timeoutMs, CancellationToken cancellationToken)
     {
         if (count < 0) throw new ArgumentOutOfRangeException(nameof(count));
+        cancellationToken.ThrowIfCancellationRequested();
+
         var list = new List<T>((int)Math.Max(1, Math.Min(count, 256)));
 
         if (timeoutMs == 0)
@@ -66,6 +73,9 @@ public sealed class AsyncFramePipe<T>
 
         CancellationToken token = cancellationToken;
         CancellationTokenSource? linkedCts = null;
+        // Tracks a fault delivered via ExceptionOccured so a pulsed
+        // OperationCanceledException/TaskCanceledException is not mistaken for a timeout.
+        Exception? backgroundFault = null;
         try
         {
             if (timeoutMs > 0)
@@ -77,20 +87,39 @@ public sealed class AsyncFramePipe<T>
 
             while (count == 0 || list.Count < count)
             {
-                var readTask = _channel.Reader.ReadAsync(token).AsTask();
+                cancellationToken.ThrowIfCancellationRequested();
+
+                using var waitCts = CancellationTokenSource.CreateLinkedTokenSource(token);
+                var waitTask = _channel.Reader.WaitToReadAsync(waitCts.Token).AsTask();
                 var bgException = _exceptionPulse;
 
-                var completed = await Task.WhenAny(readTask, bgException.Task).ConfigureAwait(false);
-                if (completed == readTask)
+                var completed = await Task.WhenAny(waitTask, bgException.Task).ConfigureAwait(false);
+                if (completed == waitTask)
                 {
                     try
                     {
-                        var item = await readTask.ConfigureAwait(false);
-                        list.Add(item);
+                        if (!await waitTask.ConfigureAwait(false))
+                        {
+                            break;
+                        }
+
+                        if (_channel.Reader.TryRead(out var item))
+                        {
+                            list.Add(item);
+                        }
                     }
                     catch (OperationCanceledException)
                     {
-                        return list;
+                        // Timeout raced with ExceptionOccured: prefer an already-signalled fault
+                        // over returning a partial/empty timeout result.
+                        if (!cancellationToken.IsCancellationRequested &&
+                            bgException.Task.IsCompleted)
+                        {
+                            backgroundFault = await bgException.Task.ConfigureAwait(false);
+                            throw backgroundFault ?? new InvalidOperationException("Exception signalled.");
+                        }
+
+                        throw;
                     }
                     catch (ChannelClosedException cce)
                     {
@@ -100,12 +129,23 @@ public sealed class AsyncFramePipe<T>
                 }
                 else
                 {
-                    var ex = await bgException.Task.ConfigureAwait(false);
-                    throw ex ?? new InvalidOperationException("Exception signalled.");
+                    waitCts.Cancel();
+                    try
+                    {
+                        _ = await waitTask.ConfigureAwait(false);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        // The wait was intentionally canceled so the losing waitTask can finish cleanup.
+                    }
+
+                    backgroundFault = await bgException.Task.ConfigureAwait(false);
+                    throw backgroundFault ?? new InvalidOperationException("Exception signalled.");
                 }
             }
         }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException) when (
+            !cancellationToken.IsCancellationRequested && backgroundFault is null)
         {
             return list;
         }
@@ -122,12 +162,23 @@ public sealed class AsyncFramePipe<T>
     {
         while (true)
         {
-            var waitTask = _channel.Reader.WaitToReadAsync(cancellationToken).AsTask();
+            using var waitCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            var waitTask = _channel.Reader.WaitToReadAsync(waitCts.Token).AsTask();
             var faultSnap = _exceptionPulse;
 
             var completed = await Task.WhenAny(waitTask, faultSnap.Task).ConfigureAwait(false);
             if (completed == faultSnap.Task)
             {
+                waitCts.Cancel();
+                try
+                {
+                    _ = await waitTask.ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    // Losing wait canceled for cleanup; the fault below is the outcome.
+                }
+
                 var ex = await faultSnap.Task.ConfigureAwait(false);
                 throw ex ?? new InvalidOperationException("Fault signalled.");
             }
@@ -151,6 +202,10 @@ public sealed class AsyncFramePipe<T>
     }
 
 
+    /// <summary>
+    /// Wakes readers currently waiting on this pipe with <paramref name="ex"/>. The pulse is not
+    /// sticky: readers that start after this call wait for the next frame or next exception pulse.
+    /// </summary>
     public void ExceptionOccured(Exception ex)
     {
         var old = Interlocked.Exchange(

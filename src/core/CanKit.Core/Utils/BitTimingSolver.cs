@@ -41,7 +41,9 @@ public static class BitTimingSolver
 
             var tseg1Star = samplePoint * ntq - 1.0;
             var tseg1 = (uint)Math.Round(tseg1Star);
-            tseg1 = Clamp<uint>(tseg1, (uint)L.Tseg1Min, Math.Min((uint)L.Tseg1Max, ntq - 2U)); // 预留至少 1 给 Sync、1 给 tseg2
+            var maxTseg1 = Math.Min(L.Tseg1Max, (int)ntq - 1 - L.Tseg2Min);
+            if (maxTseg1 < L.Tseg1Min) continue;
+            tseg1 = Clamp<uint>(tseg1, (uint)L.Tseg1Min, (uint)maxTseg1);
 
             var tseg2 = ntq - tseg1 - 1U;
             if (tseg2 < L.Tseg2Min || tseg2 > L.Tseg2Max) continue;
