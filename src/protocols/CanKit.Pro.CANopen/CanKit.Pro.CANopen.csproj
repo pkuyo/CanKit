@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <Nullable>enable</Nullable>
+        <LangVersion>12</LangVersion>
+        <RootNamespace>CanKit.Pro.CANopen</RootNamespace>
+        <AssemblyName>CanKit.Pro.CANopen</AssemblyName>
+        <Version>$(CanKitProCANopenVersion)</Version>
+        <Description>Experimental CANopen (CiA 301) node implementation for CanKit.Pro. Provides an in-process ICanOpenNode with a local Object Dictionary (FR-CO-001), SDO expedited and segmented transfers (FR-CO-002/003), static TPDO/RPDO mapping with event/timer/SYNC triggers (FR-CO-005/006), an NMT master with heartbeat producer/consumer (FR-CO-007/008), SYNC producer/consumer (FR-CO-010) and EMCY encode/decode (FR-CO-011), all composed on the L2 ICanBusService demux (FR-CO-012).</Description>
+        <PackageTags>CAN;can bus;CANopen;CiA 301;CanKit;CanKit.Pro</PackageTags>
+        <AssemblyVersion>1.0.0.0</AssemblyVersion>
+        <FileVersion>$(CanKitSharedFileVersion)</FileVersion>
+        <Authors>Pkuyo</Authors>
+        <RepositoryUrl>https://github.com/pkuyo/CanKit</RepositoryUrl>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
+        <Configurations>Debug;Release;Fake</Configurations>
+        <Platforms>AnyCPU</Platforms>
+        <!-- MVP (0.1.x); pre-release until SDO block transfer and node-guarding land. -->
+        <IsPackable>false</IsPackable>
+    </PropertyGroup>
+
+    <ItemGroup Condition="'$(TargetFramework)'=='netstandard2.0'">
+        <PackageReference Include="System.Memory" Version="4.5.4" />
+        <PackageReference Include="Microsoft.Bcl.AsyncInterfaces" Version="9.0.10" />
+    </ItemGroup>
+
+    <ItemGroup Condition="'$(UseLocalProjectReferences)'=='true'">
+        <ProjectReference Include="..\..\core\CanKit.Abstractions\CanKit.Abstractions.csproj" />
+        <ProjectReference Include="..\..\core\CanKit.Core\CanKit.Core.csproj" />
+        <ProjectReference Include="..\..\core\CanKit.Pro.Actor\CanKit.Pro.Actor.csproj" />
+        <ProjectReference Include="..\..\core\CanKit.Pro.RawCan\CanKit.Pro.RawCan.csproj" />
+        <ProjectReference Include="..\..\core\CanKit.Pro.Reliability\CanKit.Pro.Reliability.csproj" />
+    </ItemGroup>
+
+    <ItemGroup Condition="'$(UseLocalProjectReferences)'!='true'">
+        <PackageReference Include="CanKit.Abstractions" Version="$(CanKitAbstractionsDependencyVersion)" />
+        <PackageReference Include="CanKit.Core" Version="$(CanKitCoreDependencyVersion)" />
+        <PackageReference Include="CanKit.Pro.Actor" Version="$(CanKitProActorVersion)" />
+        <PackageReference Include="CanKit.Pro.RawCan" Version="$(CanKitProRawCanVersion)" />
+        <PackageReference Include="CanKit.Pro.Reliability" Version="$(CanKitProReliabilityVersion)" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <None Include="README.md" Pack="true" PackagePath="" />
+    </ItemGroup>
+</Project>
