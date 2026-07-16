@@ -1161,6 +1161,51 @@ public class IsoTpChannelIntegrationTests : IClassFixture<TestCaseProvider>
         (await recvTask).Should().Equal(0x99);
     }
 
+    // --------------------------------------------------------------------------------
+    // Bugbot 3594958445 / 3596212802 — on classic CAN the CAN-FD First-Frame escape form
+    // (0x10 0x00 + 4-byte length) is invalid and must be rejected in TryParsePci, not
+    // mis-parsed as a huge FF_DL that would allocate before FC(OVFLW). Silent drop keeps
+    // the channel usable. Complements the FD-bus OVFLW test above (per-frame isCanFd).
+    // --------------------------------------------------------------------------------
+    [Fact]
+    public async Task Rx_Classic_Rejects_CanFd_Escape_FirstFrame_Without_Allocating()
+    {
+        var session = NewSession();
+        using var busA = OpenClassic(session, 0);
+        using var busB = OpenClassic(session, 1);
+
+        var epRecv = IsoTpEndpoint.Normal(txCanId: 0x7E0, rxCanId: 0x7E8);
+        using var receiver = IsoTpFactory.Open(busA, epRecv, FastOptions());
+
+        int anyFc = 0;
+        busB.FrameObserved += (_, e) =>
+        {
+            if (e.CanFrame.ID != 0x7E0) return;
+            var payload = e.CanFrame.Data.ToArray();
+            if (payload.Length >= 1 && (payload[0] >> 4) == 0x3)
+                Interlocked.Increment(ref anyFc);
+        };
+
+        // CAN-FD escape FF announcing 0x01000000 bytes. Classic TryParsePci must reject it
+        // (isCanFd: false) so HandleRxFirstFrame never sees pci.Length = 16_777_216.
+        byte[] hugeFf =
+        {
+            0x10, 0x00,
+            0x01, 0x00, 0x00, 0x00, // length = 16_777_216
+            0x00, 0x00,
+        };
+        busB.Transmit(CanFrame.Classic(0x7E8, hugeFf));
+
+        await Task.Delay(100);
+        anyFc.Should().Be(0, "classic channels must drop CAN-FD escape FFs without FC reply");
+
+        // Channel remains usable for a normal SF afterwards.
+        var recvTask = receiver.ReceiveAsync(new CancellationTokenSource(ShortTimeout).Token);
+        byte[] okSf = { 0x01, 0x99 }; // SF DL=1, data 0x99 — build via peer transmit
+        busB.Transmit(CanFrame.Classic(0x7E8, okSf));
+        (await recvTask).Should().Equal(0x99);
+    }
+
     /// <summary>
     /// Test double: forwards every <see cref="ICanBusService"/> call to an inner service, but
     /// parks <see cref="ICanBusService.SendConfirmed"/> until <paramref name="release"/> is

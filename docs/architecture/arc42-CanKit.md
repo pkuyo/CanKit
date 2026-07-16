@@ -302,7 +302,7 @@ flowchart TB
 | L1 Raw-CAN-Kern | vorhanden | Herstellerneutraler Frame-Zugriff, Discovery, Utilities, Diagnostics. | `ICanBus`, `CanBus.Open`, `CanRegistry` | `FR-RAW-*` |
 | L2 Raw-CAN-Dienste | NEU | Ein RX-Strom → N unabhängige gefilterte Consumer; Ownership-Vertrag; TX-Confirm; Aktor-Modell. | (neu) `ICanBusService` / `ISubscription` | `FR-RAW-DEMUX-*`, `FR-RAW-OWN-*`, `FR-RAW-TXC-*` |
 | L3 Transport | Prototyp (ISO-TP) / MVP (J1939-TP) | Segmentierung/Reassemblierung (ISO-TP), Sessions (J1939-TP, `CanKit.Pro.J1939Tp`: BAM/CM/DT, T1..T4/Tr/Th, parallele Sessions über gemeinsamen `ICanBusService`). | `IIsoTpChannel`, `IIsoTpScheduler`, `IJ1939TpChannel` | `FR-TP-*` |
-| L4 Anwendungsprotokolle | NEU | Diagnose-/Applikationssemantik auf L3/L2. | (neu) protokollspezifisch; HAWE-Rahmen vorhanden: `IHaweCodec`/`IHaweCodecRegistry`/`HaweChannel` in `CanKit.Pro.Hawe` (generisch, kein Protokolldetail; CON-006) | `FR-UDS-*`, `FR-CO-*`, `FR-J1939-*`, `FR-HAWE-*` |
+| L4 Anwendungsprotokolle | UDS-MVP vorhanden (`CanKit.Pro.Uds`); HAWE-Rahmen vorhanden (`CanKit.Pro.Hawe`); Rest NEU | Diagnose-/Applikationssemantik auf L3/L2. | `IUdsClient`/`UdsClient` (UDS); HAWE-Rahmen: `IHaweCodec`/`IHaweCodecRegistry`/`HaweChannel` (generisch, kein Protokolldetail; CON-006); sonst neu, protokollspezifisch | `FR-UDS-*`, `FR-CO-*`, `FR-J1939-*`, `FR-HAWE-*` |
 
 ## 5.2 Ebene 2 – Zoom L1 (Raw-CAN-Kern, vorhanden)
 
@@ -555,6 +555,29 @@ existierende `BackgroundExceptionOccurred`-Konvention (FR-RAW-023 / FR-TP-016).
 SRS-Anforderungen FR-TP-003 (CAN/CAN-FD-Kind wird nicht mehr invertiert), FR-TP-004 (FC-PCI 0x3
 und Padding nach BS/STmin), FR-TP-005 (FF > 255), FR-TP-006 (STmin 0 ms/1 ms), FR-TP-007 /
 FR-RAW-052 (reservierte STmin-Werte → 127 ms) und FR-TP-015 (Classic-CAN SF ≤ 8 Byte).
+
+**Neu (in Arbeit): Paket `CanKit.Pro.Uds` (L4 – UDS-Client-MVP).** Eigenständiges Assembly, das
+`IUdsClient` / `UdsClient.Create(IIsoTpChannel, ...)` bereitstellt und die UDS-Anwendungsschicht
+auf dem `CanKit.Pro.IsoTp`-Kanal aufsetzt. MVP-Serviceabdeckung (ISO 14229-1:2020): 0x10
+`DiagnosticSessionControl`, 0x11 `ECUReset`, 0x22 `ReadDataByIdentifier` (single + Multi-DID),
+0x27 `SecurityAccess` (mit Seed→Key-Callback), 0x2E `WriteDataByIdentifier`, 0x31 `RoutineControl`
+(Start/Stop/RequestResults), 0x3E `TesterPresent` inkl. Hintergrund-Keep-Alive. Ein interner
+`SemaphoreSlim`-Request-Lock stellt sicher, dass zu jedem Zeitpunkt höchstens eine UDS-Transaktion
+„on the wire" ist (§7.3). P2/P2*-Timing wird durch `UdsClientOptions.P2ClientMax` /
+`P2StarClientMax` konfiguriert und bei jedem NRC 0x78
+(`requestCorrectlyReceived-ResponsePending`) neu gestartet — begrenzt durch
+`MaxResponsePendingCount` als Sicherheitsnetz gegen stuck ECUs. Negative Responses werden
+strukturiert als `UdsNegativeResponseException(RequestedService, Code, CodeAsEnum)` gemeldet
+(SRS FR-UDS-010). Timeouts werden als `UdsTimeoutException(Timer=P2|P2Star)` gemeldet
+(FR-UDS-008/009). Adressiert die SRS-Anforderungen **FR-UDS-001..010** (Must) sowie
+**FR-UDS-011** (Should, Multi-DID) vollständig; **FR-UDS-012** (Upload/Download,
+0x34/0x36/0x37, Could) ist bewusst außerhalb des MVP und wird als Folgearbeit geführt.
+`IsPackable=false` bis (a) FR-UDS-012 nachgezogen ist, (b) das Server-Timing aus dem 0x10-Session-
+Parameter-Record automatisch in `P2ClientMax`/`P2StarClientMax` übernommen wird und (c) ein
+Response-Router die aktuelle „passiv verwerfen"-Logik für Fremdresponses durch aktive Korrelation
+über den Request-SID ersetzt. Der Virtual-Loopback-Integrationstest
+(`tests/CanKit.Tests/TestCases/Uds/UdsClientTests.cs`) fährt eine simulierte ECU auf einem zweiten
+ISO-TP-Kanal und deckt sämtliche MVP-Services inklusive 0x78-Pfad ab.
 
 ## 5.5 Ebene 2 – Zoom L4: HAWE-Erweiterungsrahmen (generisch)
 
