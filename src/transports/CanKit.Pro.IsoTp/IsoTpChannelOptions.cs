@@ -68,7 +68,9 @@ public sealed class IsoTpChannelOptions
 
     /// <summary>
     /// N_Cr — maximum time between two Consecutive Frames on the receive side (ISO 15765-2 §6.5).
-    /// Expiring aborts the incoming reassembly (FR-TP-010). Defaults to <see cref="DefaultTimeout"/>.
+    /// Expiring aborts the incoming reassembly and faults a pending
+    /// <see cref="IIsoTpChannel.ReceiveAsync"/> with <see cref="IsoTpTimeoutException"/>
+    /// (FR-TP-010). Defaults to <see cref="DefaultTimeout"/>.
     /// </summary>
     public TimeSpan NCr { get; init; } = DefaultTimeout;
 
