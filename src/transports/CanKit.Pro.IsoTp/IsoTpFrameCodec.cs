@@ -183,9 +183,18 @@ public static class IsoTpFrameCodec
     /// buffer must be at least <see cref="ClassicCanMaxData"/> (or <see cref="CanFdMaxData"/> for
     /// CAN-FD) bytes long.
     /// </summary>
-    /// <exception cref="ArgumentOutOfRangeException">The user data does not fit in a Single Frame
-    /// for the requested frame-kind/addressing combination, or <paramref name="destination"/> is
-    /// too small.</exception>
+    /// <remarks>
+    /// <para>
+    /// ISO 15765-2 does not define an empty Single Frame: on classic CAN the SF_DL low-nibble range
+    /// is <c>1..7</c>, and on CAN-FD the escape-form <c>LEN</c> byte likewise starts at <c>1</c>.
+    /// A zero-length SF is therefore rejected at build time to prevent producing an on-wire frame
+    /// that no conformant peer could parse (fixes bugbot 3594958440).
+    /// </para>
+    /// </remarks>
+    /// <exception cref="ArgumentOutOfRangeException">
+    /// <paramref name="userData"/> is empty, exceeds the Single-Frame capacity for the requested
+    /// frame-kind/addressing combination, or <paramref name="destination"/> is too small.
+    /// </exception>
     public static int BuildSingleFrame(Span<byte> destination, in IsoTpEndpoint endpoint,
         ReadOnlySpan<byte> userData, bool isCanFd, bool padding,
         byte paddingByte = DefaultPaddingByte)
@@ -195,9 +204,9 @@ public static class IsoTpFrameCodec
         int shortMax = SingleFrameShortFormMaxDataLength(endpoint.UsesAddressExtension);
         int longMax = SingleFrameMaxDataLength(isCanFd, endpoint.UsesAddressExtension);
 
-        if (userData.Length < 0 || userData.Length > longMax)
+        if (userData.Length < 1 || userData.Length > longMax)
             throw new ArgumentOutOfRangeException(nameof(userData), userData.Length,
-                $"Single-Frame user data length must be in [0, {longMax}] for this endpoint/frame kind.");
+                $"Single-Frame user data length must be in [1, {longMax}] for this endpoint/frame kind.");
         if (destination.Length < maxFrame)
             throw new ArgumentOutOfRangeException(nameof(destination), destination.Length,
                 $"Destination buffer must be at least {maxFrame} bytes for the requested frame kind.");

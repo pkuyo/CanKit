@@ -437,4 +437,39 @@ public class IsoTpFrameCodecTests
         pci.SequenceNumber.Should().Be((byte)5);
         frame.AsSpan(pci.DataOffset).ToArray().Should().Equal(chunk);
     }
+
+    // ---------------------------------------------------------------------------------------------
+    // Bugbot 3594958440: zero-length Single Frame is rejected at build time.
+    // A classic-CAN SF with SF_DL=0 is invalid per ISO 15765-2, and any consumer that later parsed
+    // the resulting bytes would treat the zero low-nibble as either an escape header (CAN-FD only)
+    // or a malformed frame — so building such a frame at all would yield an on-wire payload no
+    // conformant peer could parse. Reject at build time instead.
+    // ---------------------------------------------------------------------------------------------
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void BuildSingleFrame_Empty_Payload_Is_Rejected(bool isCanFd, bool padding)
+    {
+        var ep = IsoTpEndpoint.Normal(0x123, 0x124);
+
+        Action act = () => IsoTpFrameCodec.BuildSingleFrame(ep, ReadOnlySpan<byte>.Empty, isCanFd, padding);
+
+        act.Should().Throw<ArgumentOutOfRangeException>()
+            .Which.ParamName.Should().Be("userData");
+    }
+
+    [Fact]
+    public void BuildSingleFrame_Empty_Payload_Is_Rejected_With_Extended_Addressing()
+    {
+        var ep = IsoTpEndpoint.Extended(0x1, 0x2, sourceAddress: 0x10, targetAddress: 0x11);
+
+        Action act = () => IsoTpFrameCodec.BuildSingleFrame(ep, ReadOnlySpan<byte>.Empty,
+            isCanFd: false, padding: true);
+
+        act.Should().Throw<ArgumentOutOfRangeException>()
+            .Which.ParamName.Should().Be("userData");
+    }
 }
