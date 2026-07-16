@@ -464,7 +464,7 @@ internal sealed class IsoTpChannel : IIsoTpChannel
         tx.Offset = firstChunk.Length;
         tx.NextSn = IsoTpFrameCodec.FirstConsecutiveSequenceNumber;
         // Stay in SingleOrFirstInFlight until FF is TX-confirmed. N_Bs is armed only after that
-        // confirmation (Bugbot 3596201526), matching block-FC waits that arm N_Bs after the last
+        // confirmation (Bugbot 3596580056), matching block-FC waits that arm N_Bs after the last
         // CF of a block is confirmed. Early peer FC is deferred until confirm (see OnSendConfirmed).
         tx.State = TxStage.SingleOrFirstInFlight;
         tx.WaitFramesReceived = 0;
@@ -646,7 +646,7 @@ internal sealed class IsoTpChannel : IIsoTpChannel
             case TxExpect.FirstFrameConfirm:
                 {
                     var tx = expected;
-                    // Fix (Bugbot 3596201526): N_Bs starts after FF TX-confirm, not when FF is
+                    // Fix (Bugbot 3596580056): N_Bs starts after FF TX-confirm, not when FF is
                     // handed to the driver. Apply any FC that arrived during the confirm wait
                     // only now so CF cannot race ahead of FF on the wire.
                     tx.State = TxStage.WaitFcInitial;
@@ -932,7 +932,7 @@ internal sealed class IsoTpChannel : IIsoTpChannel
             return; // FC with no matching pending TX: drop (matches ISO 15765-2 §6.5.5.2).
 
         // FF handed to the driver but not yet TX-confirmed: defer FC until FirstFrameConfirm so
-        // we neither arm N_Bs early nor emit CF before FF confirm (Bugbot 3596201526).
+        // we neither arm N_Bs early nor emit CF before FF confirm (Bugbot 3596580056).
         if (tx.State == TxStage.SingleOrFirstInFlight && tx.Offset > 0)
         {
             tx.DeferredFc = pci;
@@ -1055,17 +1055,28 @@ internal sealed class IsoTpChannel : IIsoTpChannel
 
     private void EmitPdu(byte[] pdu)
     {
-        // Fire event first, then enqueue: this matches "sync consumers see it first" ordering
-        // and mirrors how RawCan Subscription pushes into its channel after its own fan-out.
-        try
-        {
-            DatagramReceived?.Invoke(this, new IsoTpDatagramReceivedEventArgs(_endpoint, pdu));
-        }
-        catch (Exception ex)
-        {
-            RaiseBackgroundException(ex);
-        }
+        // Enqueue first so ReceiveAsync/ReceiveAllAsync can observe the PDU even if a
+        // DatagramReceived handler blocks. Raise the event off the actor loop so a sync wait
+        // on ReceiveAsync / SendAsync / DiscardPendingPdus cannot deadlock the mailbox
+        // (Bugbot 3596580061).
         _pduInbox.Writer.TryWrite(RxInboxItem.FromPdu(pdu));
+
+        var handler = DatagramReceived;
+        if (handler is null)
+            return;
+
+        var endpoint = _endpoint;
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                handler.Invoke(this, new IsoTpDatagramReceivedEventArgs(endpoint, pdu));
+            }
+            catch (Exception ex)
+            {
+                RaiseBackgroundException(ex);
+            }
+        });
     }
 
     // -----------------------------------------------------------------------------------------
@@ -1127,7 +1138,7 @@ internal sealed class IsoTpChannel : IIsoTpChannel
 
         /// <summary>
         /// FC that arrived while the First Frame was still awaiting TX confirmation
-        /// (Bugbot 3596201526).
+        /// (Bugbot 3596580056).
         /// </summary>
         public Pci? DeferredFc { get; set; }
 

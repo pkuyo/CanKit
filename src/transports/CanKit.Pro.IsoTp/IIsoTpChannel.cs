@@ -84,9 +84,11 @@ public interface IIsoTpChannel : IDisposable
     IAsyncEnumerable<byte[]> ReceiveAllAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// Raised on the actor's loop thread every time a full PDU is reassembled. The same PDU is
-    /// also enqueued for <see cref="ReceiveAsync"/>/<see cref="ReceiveAllAsync"/>. Handlers must
-    /// be lightweight and non-throwing; a throwing handler is caught and surfaced via
+    /// Raised (on a thread-pool thread) every time a full PDU is reassembled. The same PDU is
+    /// enqueued for <see cref="ReceiveAsync"/>/<see cref="ReceiveAllAsync"/> before the event
+    /// fires, so a handler that synchronously waits on those APIs — or on
+    /// <see cref="DiscardPendingPdus"/> — cannot deadlock the protocol actor. Handlers must be
+    /// non-throwing; a throwing handler is caught and surfaced via
     /// <see cref="BackgroundExceptionOccurred"/>.
     /// </summary>
     event EventHandler<IsoTpDatagramReceivedEventArgs>? DatagramReceived;
