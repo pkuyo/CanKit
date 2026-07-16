@@ -1055,17 +1055,28 @@ internal sealed class IsoTpChannel : IIsoTpChannel
 
     private void EmitPdu(byte[] pdu)
     {
-        // Fire event first, then enqueue: this matches "sync consumers see it first" ordering
-        // and mirrors how RawCan Subscription pushes into its channel after its own fan-out.
-        try
-        {
-            DatagramReceived?.Invoke(this, new IsoTpDatagramReceivedEventArgs(_endpoint, pdu));
-        }
-        catch (Exception ex)
-        {
-            RaiseBackgroundException(ex);
-        }
+        // Enqueue first so ReceiveAsync/ReceiveAllAsync can observe the PDU even if a
+        // DatagramReceived handler blocks. Raise the event off the actor loop so a sync wait
+        // on ReceiveAsync / SendAsync / DiscardPendingPdus cannot deadlock the mailbox
+        // (Bugbot 3596580061).
         _pduInbox.Writer.TryWrite(RxInboxItem.FromPdu(pdu));
+
+        var handler = DatagramReceived;
+        if (handler is null)
+            return;
+
+        var endpoint = _endpoint;
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                handler.Invoke(this, new IsoTpDatagramReceivedEventArgs(endpoint, pdu));
+            }
+            catch (Exception ex)
+            {
+                RaiseBackgroundException(ex);
+            }
+        });
     }
 
     // -----------------------------------------------------------------------------------------
