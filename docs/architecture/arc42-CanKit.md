@@ -30,7 +30,7 @@ Diese Nomenklatur ist identisch zur SRS und wird im gesamten Dokument verwendet:
 | **L1** | Raw-CAN-Kern | vorhanden | `ICanBus`, `CanFrame`, Registry, Utilities, Diagnostics |
 | **L2** | Raw-CAN-Dienstebene | **NEU / Ziel** | Multi-Consumer-Demux, Ownership-Vertrag, TX-Confirm, Adressierung, Aktor-Modell, Fehler-/Timeout-Infrastruktur |
 | **L3** | Transport-Ebene | Prototyp (ISO-TP) / Ziel (J1939-TP) | ISO-TP (ISO 15765-2), J1939-TP (BAM/CM) |
-| **L4** | Anwendungsprotokoll-Ebene | **NEU / Ziel** | UDS, CANopen, J1939-App, HAWE-Privatprotokoll |
+| **L4** | Anwendungsprotokoll-Ebene | **NEU / Ziel** (HAWE-Rahmen vorhanden, generisch – kein Protokolldetail; CON-006) | UDS, CANopen, J1939-App, HAWE-Privatprotokoll |
 
 ### Auflösung der Requirement-Referenzen (arc42 ↔ SRS)
 
@@ -302,7 +302,7 @@ flowchart TB
 | L1 Raw-CAN-Kern | vorhanden | Herstellerneutraler Frame-Zugriff, Discovery, Utilities, Diagnostics. | `ICanBus`, `CanBus.Open`, `CanRegistry` | `FR-RAW-*` |
 | L2 Raw-CAN-Dienste | NEU | Ein RX-Strom → N unabhängige gefilterte Consumer; Ownership-Vertrag; TX-Confirm; Aktor-Modell. | (neu) `ICanBusService` / `ISubscription` | `FR-RAW-DEMUX-*`, `FR-RAW-OWN-*`, `FR-RAW-TXC-*` |
 | L3 Transport | Prototyp/Ziel | Segmentierung/Reassemblierung (ISO-TP), Sessions (J1939-TP). | `IIsoTpChannel`, `IIsoTpScheduler` | `FR-TP-*` |
-| L4 Anwendungsprotokolle | NEU | Diagnose-/Applikationssemantik auf L3/L2. | (neu) protokollspezifisch | `FR-UDS-*`, `FR-CO-*`, `FR-J1939-*`, `FR-HAWE-*` |
+| L4 Anwendungsprotokolle | NEU | Diagnose-/Applikationssemantik auf L3/L2. | (neu) protokollspezifisch; HAWE-Rahmen vorhanden: `IHaweCodec`/`IHaweCodecRegistry`/`HaweChannel` in `CanKit.Pro.Hawe` (generisch, kein Protokolldetail; CON-006) | `FR-UDS-*`, `FR-CO-*`, `FR-J1939-*`, `FR-HAWE-*` |
 
 ## 5.2 Ebene 2 – Zoom L1 (Raw-CAN-Kern, vorhanden)
 
@@ -528,6 +528,86 @@ classDiagram
 | `Router` | Ordnet RX-Frames und TX-Echo den Kanälen zu (`Match`). | `Route(rx)`, `Route(tx,frame[,ex])`. | Prototyp (List ohne Sync). |
 | `FrameCodec` | Bau/Parsing von SF/FF/CF/FC + STmin-En/Decode. | `BuildSF/FF/CF/FC`, `TryParsePci`, `Encode/DecodeStmin`. | Prototyp, mehrere Bugs. |
 | `Deadline`/`QueuedDeadline` | N_As/N_Bs/N_Cs/N_Ar/N_Br/N_Cr. | Gepflegt, aber nie ausgewertet. | Prototyp. |
+
+## 5.5 Ebene 2 – Zoom L4: HAWE-Erweiterungsrahmen (generisch)
+
+Baustein: `src/protocols/CanKit.Pro.Hawe` (Assembly `CanKit.Pro.Hawe`).
+Umsetzt FR-HAWE-001..004 als **generisches, protokoll-agnostisches** L4-Framework
+(kein HAWE-Protokolldetail; siehe CON-006 / A-6). Konkrete HAWE-Codecs werden ausschließlich
+in einem separaten, nicht-öffentlichen Modul gegen die hier veröffentlichte SPI implementiert.
+
+```mermaid
+classDiagram
+    class IHaweCodec {
+        <<interface>>
+        +string Name
+        +HaweFramePattern FramePattern
+        +OnAttached(host)
+        +OnFrameReceived(frame)
+        +OnSessionStateChanged(prev, curr)
+        +OnDetached()
+    }
+    class IHaweCodecHost {
+        <<interface>>
+        +ICanBusService BusService
+        +HaweSessionState SessionState
+        +SendConfirmedAsync(frame, timeout, ct) Task~TxConfirmation~
+        +SetSessionState(state) bool
+        +ArmDeadline(timeout, onExpired) IDisposable
+        +Post(work)
+    }
+    class IHaweCodecRegistry {
+        <<interface>>
+        +Register(name, factory)
+        +Unregister(name) bool
+        +Create(name) IHaweCodec
+        +IsRegistered(name) bool
+        +RegisteredNames
+    }
+    class HaweCodecRegistry {
+        -Dictionary~string, Func~IHaweCodec~~ _factories
+    }
+    class HaweChannel {
+        -ICanBusService _busService
+        -ProtocolActor _actor
+        -DeadlineScheduler _deadlines
+        -ISubscription _subscription
+        +HaweSessionState SessionState
+    }
+    class HaweFramePattern {
+        <<readonly struct>>
+        +CanIdFilter Filter
+        +Range(from, to, idType)
+        +Mask(accCode, accMask, idType)
+    }
+    class HaweSessionState {
+        <<enum>>
+        Idle
+        Active
+        Fault
+    }
+
+    IHaweCodecRegistry <|.. HaweCodecRegistry
+    HaweChannel ..> IHaweCodec : besitzt einen Codec
+    HaweChannel ..> IHaweCodecHost : stellt bereit
+    HaweChannel ..> HaweFramePattern : liest
+    HaweChannel ..> HaweSessionState : verwaltet
+```
+
+**Bausteine L4/HAWE (Ist, generisch):**
+
+| Baustein | Zweck | Kernmethoden | Status |
+|----------|-------|--------------|--------|
+| `IHaweCodec` | Öffentlicher Erweiterungspunkt (SPI) für ein privates HAWE-Modul (FR-HAWE-001). | `OnAttached/OnFrameReceived/OnSessionStateChanged/OnDetached`. | vorhanden, generisch. |
+| `IHaweCodecHost` | Framework-Seite des Vertrags: L2-Dienste (Sende-/Confirm-/Deadline-/Zustandssteuerung) für den Codec (FR-HAWE-003). | `SendConfirmedAsync`, `SetSessionState`, `ArmDeadline`, `Post`. | vorhanden. |
+| `HaweCodecRegistry` | Prozess-lokale, namensbasierte Registrierung von Codec-Factories, analog `IIsoTpRegister` (FR-HAWE-001). | `Register/Unregister/Create/IsRegistered`. | vorhanden. |
+| `HaweChannel` | Laufender Verbund `Codec` + `ICanBusService` + `ProtocolActor` + `DeadlineScheduler` + Subskription (FR-HAWE-002/003). | ctor, `Dispose`. | vorhanden. |
+| `HaweFramePattern` | Nur ID-Bereich/Maske (via `CanIdFilter`) – kein Payload-Layout, kein Serviceverzeichnis (FR-HAWE-002, CON-006). | `Range/Mask`. | vorhanden. |
+| `HaweSessionState` | Platzhalter-Sitzungsautomat `Idle`/`Active`/`Fault` (FR-HAWE-004). | (Enum). | vorhanden, generisch. |
+
+Verifikation: `tests/CanKit.Tests/TestCases/HaweFrameworkTests.cs` mit generischem `FakePatternCodec`
+über den Virtual-Adapter. Das Paket ist `IsPackable=false`, bis ein privates HAWE-Modul es
+konsumiert (CON-004).
 
 ---
 

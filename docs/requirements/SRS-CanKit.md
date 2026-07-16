@@ -298,7 +298,7 @@ Ist-Zustand: nicht vorhanden, Neubau; setzt FR-TP-030ff. voraus.
 
 #### 4.3.4 HAWE-Privatprotokoll (generischer Rahmen)
 
-Ist-Zustand: nicht vorhanden; Protokolldetails vertraulich/extern (Annahme A-6). Anforderungen sind bewusst generisch gehalten und definieren Erweiterungspunkte statt konkreter Serviceinhalte.
+Ist-Zustand: Der generische Rahmen (`src/protocols/CanKit.Pro.Hawe`) existiert und deckt FR-HAWE-001..004 auf L4 ab (öffentliche SPI `IHaweCodec`/`IHaweCodecRegistry`/`IHaweChannel`, Frame-Pattern-Send/-Receive über die L2-Demux-Dienste, Aktor-/Deadline-Anbindung, Platzhalter-Sitzungsautomat `Idle`/`Active`/`Fault`). Es sind **keinerlei** vertrauliche HAWE-Protokolldetails (Service-IDs, Frame-Layouts, Sitzungssemantik) in diesem Assembly oder öffentlichen Repository enthalten (CON-006). Konkrete HAWE-Codecs sind ausschließlich in einem separaten, nicht-öffentlichen Modul zu implementieren; das öffentliche Framework-Paket wird bis dahin `IsPackable=false` gehalten (CON-004). Protokolldetails bleiben extern/vertraulich (Annahme A-6). Anforderungen sind bewusst generisch gehalten und definieren Erweiterungspunkte statt konkreter Serviceinhalte.
 
 | ID | Anforderung | Priorität | Verifikation | Quelle |
 |---|---|---|---|---|
@@ -377,7 +377,7 @@ Verweise auf Architektur-Bausteine nutzen die in Abschnitt 2.1 definierten Schic
 | FR-UDS-001..012 | L4 – *UDS-Client* (geplant, neues Paket auf `IIsoTpChannel`) | Virtual-Loopback-Integrationstest, HIL-Stichprobe |
 | FR-CO-001..012 | L4 – *CANopen-Stack* (geplant, neues Paket auf L2-Demultiplexing + L1 `ICanBus`) | Virtual-Loopback-Integrationstest, HIL-Stichprobe |
 | FR-J1939-001..007 | L4 – *J1939-Applikationsschicht* (geplant, aufbauend auf L3 J1939-TP) | Virtual-Loopback-Integrationstest, HIL-Stichprobe |
-| FR-HAWE-001..005 | L4 – *HAWE-Erweiterungsrahmen* (geplant, SPI-Erweiterungspunkt analog `IIsoTpRegister`, `src/core/CanKit.Abstractions/SPI/Registry/Transports/IIsoTpRegister.cs`) | Architekturreview, Virtual-Loopback-Integrationstest (generischer Referenzcodec) |
+| FR-HAWE-001..005 | L4 – *HAWE-Erweiterungsrahmen* (`src/protocols/CanKit.Pro.Hawe`, SPI-Erweiterungspunkt analog `IIsoTpRegister`, `src/core/CanKit.Abstractions/SPI/Registry/Transports/IIsoTpRegister.cs`) | Architekturreview, Virtual-Loopback-Integrationstest (generischer `FakePatternCodec` in `tests/CanKit.Tests/TestCases/HaweFrameworkTests.cs`) |
 | NFR-001..003 | L2/L3 Timing-Infrastruktur, L1 `SoftwarePeriodicTx`/`PreciseDelay` (`src/core/CanKit.Core/Utils/SoftwarePeriodicTx.cs`) | Performance-/Timing-Test |
 | NFR-004, CON-001 | Alle Ebenen – Multi-Targeting (`src/Directory.Build.props`) | CI-Testmatrix |
 | NFR-005, CON-002, CON-003 | L0 – Vendor-Adapter (`src/adapters/*`) | Buildmatrix, Codereview |
@@ -395,5 +395,5 @@ Verweise auf Architektur-Bausteine nutzen die in Abschnitt 2.1 definierten Schic
 
 1. Konkrete Zielwerte für Jitter/Durchsatz (NFR-001) sind projektspezifisch festzulegen (aktuell als Platzhalter markiert) – abhängig von Zielanwendungen (Diagnose vs. Steuerungs-Echtzeit).
 2. J1939-TP- und CANopen-Pakete existieren im Repository noch nicht; Anforderungen in Abschnitt 4.2.2/4.3.2/4.3.3 sind Neubau-Spezifikationen ohne Ist-Code-Referenz.
-3. HAWE-Anforderungen (Abschnitt 4.3.4) sind bewusst als Rahmen gehalten und müssen bei Vorliegen der vertraulichen Spezifikation verfeinert werden (Annahme A-6).
+3. HAWE-Anforderungen (Abschnitt 4.3.4) sind bewusst als Rahmen gehalten und müssen bei Vorliegen der vertraulichen Spezifikation verfeinert werden (Annahme A-6). Der öffentliche generische Rahmen (`CanKit.Pro.Hawe`) ist umgesetzt; die konkrete HAWE-Codec-Implementierung erfolgt außerhalb dieses Repositorys (CON-006).
 4. Die Traceability-Matrix referenziert `docs/architecture/arc42-CanKit.md`, das zum Zeitpunkt dieser SRS noch nicht vorliegt; Bausteinnamen sind als *geplant* markiert und beim Erscheinen des Architekturdokuments gegenzuprüfen.
