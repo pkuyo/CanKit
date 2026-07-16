@@ -5,8 +5,9 @@
         <LangVersion>12</LangVersion>
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
         <Version>$(CanKitTransportIsoTpVersion)</Version>
-        <Description>TODO</Description>
-        <PackageTags>CAN;can bus;CANFD;ISOTP;CanKit</PackageTags>
+        <IsPackable>false</IsPackable>
+        <Description>Experimental unfinished ISO-TP transport prototype; not supported for production use.</Description>
+        <PackageTags>CAN;can bus;CANFD;ISOTP;CanKit;experimental</PackageTags>
         <AssemblyVersion>1.0.0.0</AssemblyVersion>
         <FileVersion>$(CanKitSharedFileVersion)</FileVersion>
         <Authors>Pkuyo</Authors>
@@ -22,10 +23,6 @@
 
     <ItemGroup Condition="'$(UseLocalProjectReferences)'!='true'">
         <PackageReference Include="CanKit.Core" Version="$(CanKitCoreDependencyVersion)"/>
-    </ItemGroup>
-
-    <ItemGroup Condition="'$(Configuration)'!='Fake'">
-        <PackageReference Include="Peak.PCANBasic.NET" Version="4.10.1.968"/>
     </ItemGroup>
 
     <ItemGroup>

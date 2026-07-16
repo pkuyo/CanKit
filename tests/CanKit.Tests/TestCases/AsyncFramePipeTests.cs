@@ -105,4 +105,34 @@ public class AsyncFramePipeTests
         await act.Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("timed-fault");
     }
+
+    [Fact]
+    public async Task Background_OperationCanceledException_Is_Not_Treated_As_Timeout()
+    {
+        var pipe = new AsyncFramePipe<int>();
+        var exception = new OperationCanceledException("background-cancel");
+
+        var waitingRead = pipe.ReceiveBatchAsync(1, Timeout.Infinite, CancellationToken.None);
+
+        pipe.ExceptionOccured(exception);
+
+        var act = async () => await waitingRead;
+        await act.Should().ThrowAsync<OperationCanceledException>()
+            .WithMessage("background-cancel");
+    }
+
+    [Fact]
+    public async Task Background_TaskCanceledException_During_Timeout_Wait_Surfaces_Fault()
+    {
+        var pipe = new AsyncFramePipe<int>();
+        var exception = new TaskCanceledException("timed-cancel-fault");
+
+        var waitingRead = pipe.ReceiveBatchAsync(1, 5_000, CancellationToken.None);
+        await Task.Delay(20);
+        pipe.ExceptionOccured(exception);
+
+        var act = async () => await waitingRead;
+        await act.Should().ThrowAsync<TaskCanceledException>()
+            .WithMessage("timed-cancel-fault");
+    }
 }

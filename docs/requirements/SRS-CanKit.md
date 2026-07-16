@@ -298,7 +298,7 @@ Ist-Zustand: nicht vorhanden, Neubau; setzt FR-TP-030ff. voraus.
 
 #### 4.3.4 HAWE-Privatprotokoll (generischer Rahmen)
 
-Ist-Zustand: nicht vorhanden; Protokolldetails vertraulich/extern (Annahme A-6). Anforderungen sind bewusst generisch gehalten und definieren Erweiterungspunkte statt konkreter Serviceinhalte.
+Ist-Zustand: Der generische Rahmen (`src/protocols/CanKit.Pro.Hawe`) existiert und deckt FR-HAWE-001..004 auf L4 ab (öffentliche SPI `IHaweCodec`/`IHaweCodecRegistry`/`IHaweChannel`, Frame-Pattern-Send/-Receive über die L2-Demux-Dienste, Aktor-/Deadline-Anbindung, Platzhalter-Sitzungsautomat `Idle`/`Active`/`Fault`). Es sind **keinerlei** vertrauliche HAWE-Protokolldetails (Service-IDs, Frame-Layouts, Sitzungssemantik) in diesem Assembly oder öffentlichen Repository enthalten (CON-006). Konkrete HAWE-Codecs sind ausschließlich in einem separaten, nicht-öffentlichen Modul zu implementieren; das öffentliche Framework-Paket wird bis dahin `IsPackable=false` gehalten (CON-004). Protokolldetails bleiben extern/vertraulich (Annahme A-6). Anforderungen sind bewusst generisch gehalten und definieren Erweiterungspunkte statt konkreter Serviceinhalte.
 
 | ID | Anforderung | Priorität | Verifikation | Quelle |
 |---|---|---|---|---|
@@ -336,10 +336,10 @@ Ist-Zustand: nicht vorhanden; Protokolldetails vertraulich/extern (Annahme A-6).
 | CON-001 | Alle L2/L3-Pakete MÜSSEN mindestens `netstandard2.0`, `net8.0` und `net8.0-windows` als Ziel-Frameworks unterstützen (gemäß `src/Directory.Build.props`). | technisch | `src/Directory.Build.props` |
 | CON-002 | Vendor-Adapter-Integrationen (PCAN, Kvaser, Vector, ControlCAN) basieren auf P/Invoke gegen proprietäre native SDKs/DLLs; L2/L3-Komponenten dürfen diese Abhängigkeiten nicht direkt referenzieren, sondern ausschließlich über `ICanBus`/`ITransceiver`-Abstraktionen nutzen. | technisch | Review §1.1 Punkt 16 (Negativbeispiel: ISO-TP referenziert `Peak.PCANBasic.NET` grundlos) |
 | CON-003 | Lizenzbedingungen der Vendor-SDKs (Peak PCANBasic, Kvaser CANlib, Vector XL-Driver) sind proprietär; Distribution/Verwendung dieser SDKs unterliegt Drittanbieter-Lizenzen, die außerhalb der Kontrolle dieses Projekts liegen. | rechtlich | `CanKit.Adapter.PCAN.csproj` (`Peak.PCANBasic.NET`-Referenz) |
-| CON-004 | Neue Pakete (L3/L4) MÜSSEN, solange sie funktional unvollständig sind, klar als experimentell gekennzeichnet oder von der Release-Pipeline ausgeschlossen werden (`IsPackable=false`), analog der Review-Empfehlung für den aktuellen ISO-TP-Stand. | organisatorisch | Review §1.1, Empfehlung Pkt. 1 |
+| CON-004 | Neue Pakete (L3/L4) MÜSSEN, solange sie funktional unvollständig sind, klar als experimentell gekennzeichnet oder von der Release-Pipeline ausgeschlossen werden (`IsPackable=false`), analog der Review-Empfehlung für den aktuellen ISO-TP-Stand. Stand: Der aktuelle ISO-TP-Prototyp ist als experimentell gekennzeichnet und mit `IsPackable=false` vom Packaging ausgeschlossen. | organisatorisch | Review §1.1, Empfehlung Pkt. 1 |
 | CON-005 | Das Projekt verwendet Apache-2.0-Lizenzierung (`PackageLicenseExpression` in `Directory.Build.props`); neue L3/L4-Pakete MÜSSEN dieselbe Lizenz führen, sofern keine abweichende vertragliche Regelung (z. B. HAWE-Vertraulichkeit) entgegensteht. | rechtlich/organisatorisch | `src/Directory.Build.props` |
 | CON-006 | Das HAWE-Protokoll ist vertraulich; jegliche konkrete Protokolldetails DÜRFEN NICHT in öffentlichen CanKit-Repositories oder NuGet-Paketen offengelegt werden. Nur der generische Rahmen (FR-HAWE-xxx) ist öffentlich. | rechtlich | Auftrag, Annahme A-6 |
-| CON-007 | CI-Workflows testen aktuell projektweise über `.slnf`-Filterdateien (z. B. `CanKitAdapters.slnf`, `CanKitTransports.slnf`); neue L3/L4-Pakete MÜSSEN in eine passende `.slnf`-Datei mit eigenem CI-Workflow aufgenommen werden. | organisatorisch | Review §4 („ISO-TP-Projekt hat keinen eigenen Workflow“) |
+| CON-007 | CI-Workflows testen aktuell projektweise über `.slnf`-Filterdateien (z. B. `CanKitAdapters.slnf`, `CanKitTransports.slnf`); neue L3/L4-Pakete MÜSSEN in eine passende `.slnf`-Datei mit eigenem CI-Workflow aufgenommen werden. Stand: `CanKitTransports.slnf` wird bis zur Einführung von ISO-TP-Tests von einem reinen Build-Transport-Workflow abgedeckt. | organisatorisch | Review §4 („ISO-TP-Projekt hat keinen eigenen Workflow“) |
 | CON-008 | Der Standard-Git-Branch ist `master`; Release-/Paket-Pipelines MÜSSEN konsistent auf diesen Branch referenzieren. | organisatorisch | Review §3, §5 Pkt. 9 (`nuget-pipeline.yml` Branch-Trigger-Fehler) |
 
 ---
@@ -377,7 +377,7 @@ Verweise auf Architektur-Bausteine nutzen die in Abschnitt 2.1 definierten Schic
 | FR-UDS-001..012 | L4 – *UDS-Client* (geplant, neues Paket auf `IIsoTpChannel`) | Virtual-Loopback-Integrationstest, HIL-Stichprobe |
 | FR-CO-001..012 | L4 – *CANopen-Stack* (geplant, neues Paket auf L2-Demultiplexing + L1 `ICanBus`) | Virtual-Loopback-Integrationstest, HIL-Stichprobe |
 | FR-J1939-001..007 | L4 – *J1939-Applikationsschicht* (geplant, aufbauend auf L3 J1939-TP) | Virtual-Loopback-Integrationstest, HIL-Stichprobe |
-| FR-HAWE-001..005 | L4 – *HAWE-Erweiterungsrahmen* (geplant, SPI-Erweiterungspunkt analog `IIsoTpRegister`, `src/core/CanKit.Abstractions/SPI/Registry/Transports/IIsoTpRegister.cs`) | Architekturreview, Virtual-Loopback-Integrationstest (generischer Referenzcodec) |
+| FR-HAWE-001..005 | L4 – *HAWE-Erweiterungsrahmen* (`src/protocols/CanKit.Pro.Hawe`, SPI-Erweiterungspunkt analog `IIsoTpRegister`, `src/core/CanKit.Abstractions/SPI/Registry/Transports/IIsoTpRegister.cs`) | Architekturreview, Virtual-Loopback-Integrationstest (generischer `FakePatternCodec` in `tests/CanKit.Tests/TestCases/HaweFrameworkTests.cs`) |
 | NFR-001..003 | L2/L3 Timing-Infrastruktur, L1 `SoftwarePeriodicTx`/`PreciseDelay` (`src/core/CanKit.Core/Utils/SoftwarePeriodicTx.cs`) | Performance-/Timing-Test |
 | NFR-004, CON-001 | Alle Ebenen – Multi-Targeting (`src/Directory.Build.props`) | CI-Testmatrix |
 | NFR-005, CON-002, CON-003 | L0 – Vendor-Adapter (`src/adapters/*`) | Buildmatrix, Codereview |
@@ -395,5 +395,5 @@ Verweise auf Architektur-Bausteine nutzen die in Abschnitt 2.1 definierten Schic
 
 1. Konkrete Zielwerte für Jitter/Durchsatz (NFR-001) sind projektspezifisch festzulegen (aktuell als Platzhalter markiert) – abhängig von Zielanwendungen (Diagnose vs. Steuerungs-Echtzeit).
 2. J1939-TP- und CANopen-Pakete existieren im Repository noch nicht; Anforderungen in Abschnitt 4.2.2/4.3.2/4.3.3 sind Neubau-Spezifikationen ohne Ist-Code-Referenz.
-3. HAWE-Anforderungen (Abschnitt 4.3.4) sind bewusst als Rahmen gehalten und müssen bei Vorliegen der vertraulichen Spezifikation verfeinert werden (Annahme A-6).
+3. HAWE-Anforderungen (Abschnitt 4.3.4) sind bewusst als Rahmen gehalten und müssen bei Vorliegen der vertraulichen Spezifikation verfeinert werden (Annahme A-6). Der öffentliche generische Rahmen (`CanKit.Pro.Hawe`) ist umgesetzt; die konkrete HAWE-Codec-Implementierung erfolgt außerhalb dieses Repositorys (CON-006).
 4. Die Traceability-Matrix referenziert `docs/architecture/arc42-CanKit.md`, das zum Zeitpunkt dieser SRS noch nicht vorliegt; Bausteinnamen sind als *geplant* markiert und beim Erscheinen des Architekturdokuments gegenzuprüfen.

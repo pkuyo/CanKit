@@ -73,6 +73,9 @@ public sealed class AsyncFramePipe<T>
 
         CancellationToken token = cancellationToken;
         CancellationTokenSource? linkedCts = null;
+        // Tracks a fault delivered via ExceptionOccured so a pulsed
+        // OperationCanceledException/TaskCanceledException is not mistaken for a timeout.
+        Exception? backgroundFault = null;
         try
         {
             if (timeoutMs > 0)
@@ -112,8 +115,8 @@ public sealed class AsyncFramePipe<T>
                         if (!cancellationToken.IsCancellationRequested &&
                             bgException.Task.IsCompleted)
                         {
-                            var fault = await bgException.Task.ConfigureAwait(false);
-                            throw fault ?? new InvalidOperationException("Exception signalled.");
+                            backgroundFault = await bgException.Task.ConfigureAwait(false);
+                            throw backgroundFault ?? new InvalidOperationException("Exception signalled.");
                         }
 
                         throw;
@@ -136,12 +139,13 @@ public sealed class AsyncFramePipe<T>
                         // The wait was intentionally canceled so the losing waitTask can finish cleanup.
                     }
 
-                    var ex = await bgException.Task.ConfigureAwait(false);
-                    throw ex ?? new InvalidOperationException("Exception signalled.");
+                    backgroundFault = await bgException.Task.ConfigureAwait(false);
+                    throw backgroundFault ?? new InvalidOperationException("Exception signalled.");
                 }
             }
         }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException) when (
+            !cancellationToken.IsCancellationRequested && backgroundFault is null)
         {
             return list;
         }
