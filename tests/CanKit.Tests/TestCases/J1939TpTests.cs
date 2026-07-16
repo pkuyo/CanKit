@@ -776,6 +776,49 @@ public class J1939TpTests : IClassFixture<TestCaseProvider>
         bgEx.Reason.Should().Be(J1939TpAbortReason.UnexpectedCtsSequenceNumber);
     }
 
+    // Bugbot 3596617262: peer Connection Abort during outbound TP.CM must fail SendCmAsync
+    // immediately — not leave the send task open until T2/T3/T4 expires.
+    [Fact]
+    public async Task Cm_Sender_PeerAbort_FailsSendImmediately()
+    {
+        var session = NewSession();
+        using var senderBus = Open(session, 0);
+        using var peerBus = Open(session, 1);
+
+        const byte senderSa = 0x8D;
+        const byte peerSa = 0x8E;
+        const uint pgn = 0xEE8Du;
+        var payload = RandomPayload(50, seed: 0x8D);
+
+        // Long T3 so a missed abort would hang well past ShortTimeout.
+        var opts = new J1939TpOptions().With(t3: TimeSpan.FromSeconds(30));
+        using var sender = J1939Tp.Open(senderBus, sourceAddress: senderSa, options: opts);
+
+        var rtsSeen = new TaskCompletionSource<byte[]>(TaskCreationOptions.RunContinuationsAsynchronously);
+        peerBus.FrameObserved += (_, e) =>
+        {
+            if (!e.CanFrame.IsExtendedFrame) return;
+            var fields = J1939Id.Decompose((uint)e.CanFrame.ID);
+            if (fields.SourceAddress != senderSa || !J1939Pgn.IsTransportCm(fields.Pgn)) return;
+            var data = e.CanFrame.Data.ToArray();
+            if (data.Length >= 8 && data[0] == J1939TpFrames.ControlRts
+                && J1939TpFrames.ReadDataPgn(data) == pgn)
+                rtsSeen.TrySetResult(data);
+        };
+
+        var sendTask = sender.SendCmAsync(pgn, destinationAddress: peerSa, payload);
+        await rtsSeen.Task.AsTaskWithTimeout(ShortTimeout);
+
+        var abort = J1939TpFrames.BuildAbort(J1939TpAbortReason.NoResourcesAvailable, pgn);
+        var cmId = J1939Id.ComposePgn(7, J1939Pgn.TpCm, peerSa, senderSa);
+        peerBus.Transmit(CanFrame.Classic((int)cmId, abort, isExtendedFrame: true));
+
+        Func<Task> act = () => sendTask.WithTimeout(ShortTimeout);
+        var ex = (await act.Should().ThrowAsync<J1939TpAbortException>()).Which;
+        ex.Reason.Should().Be(J1939TpAbortReason.NoResourcesAvailable);
+        ex.Pgn.Should().Be(pgn);
+    }
+
     // Bugbot 3596489078: a stray/early EndOfMsgAck while still waiting for CTS must abort
     // SendCmAsync — not complete it successfully before any DT has been sent.
     [Fact]

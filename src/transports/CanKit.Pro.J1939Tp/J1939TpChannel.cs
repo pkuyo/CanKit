@@ -442,6 +442,12 @@ internal sealed class J1939TpChannel : IJ1939TpChannel
                             (J1939TpAbortReason)payload[1], dataPgn,
                             $"Peer 0x{sa:X2} aborted TP.CM RX session for PGN 0x{dataPgn:X}."));
                     }
+
+                    // Same frame can also terminate our *outbound* TP.CM: peer as responder
+                    // aborts while we wait for CTS / send DTs / wait for EOM. HandleRxTxSideResponse
+                    // already implements that path, but CTS/EOM routing alone never delivered
+                    // ControlAbort there — SendCmAsync would hang until T2/T3/T4 (Bugbot 3596617262).
+                    HandleRxTxSideResponse(sa, dataPgn, payload);
                     break;
                 }
 
