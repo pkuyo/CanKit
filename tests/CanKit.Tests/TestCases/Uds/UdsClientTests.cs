@@ -59,10 +59,8 @@ public class UdsClientTests : IClassFixture<TestCaseProvider>
 
         var ecu = new SimulatedUdsEcu(ecuChannel);
         configure(ecu);
+        // Start() blocks until the ECU receive loop is subscribed (no fixed Sleep race).
         ecu.Start();
-        // Give the ECU receive loop a tick to attach before the first client request
-        // (avoids a rare race on slow CI where the request is lost before the loop starts).
-        Thread.Sleep(20);
 
         var client = UdsClient.Create(clientChannel, options);
 
