@@ -160,6 +160,54 @@ public class IsoTpFrameCodecTests
     }
 
     // ---------------------------------------------------------------------------------------------
+    // Bugbot 3596393504: First-Frame user bytes must not exceed the announced FF_DL.
+    // BuildFirstFrame used to copy min(chunk, capacity) only, so a chunk longer than totalLength
+    // put more on-wire data after the PCI than peers (and TryParsePci.Length) expect.
+    // ---------------------------------------------------------------------------------------------
+
+    [Fact]
+    public void FirstFrame_Truncates_Chunk_To_Announced_TotalLength()
+    {
+        var ep = IsoTpEndpoint.Normal(0x100, 0x101);
+        // Classic FF capacity is 6 user bytes; announce only 3 so a full-capacity chunk would
+        // previously over-deliver relative to FF_DL.
+        const int totalLength = 3;
+        var chunk = new byte[] { 0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5 };
+
+        var frame = IsoTpFrameCodec.BuildFirstFrame(ep, totalLength, chunk, isCanFd: false);
+
+        frame.Length.Should().Be(IsoTpFrameCodec.ClassicCanMaxData);
+        IsoTpFrameCodec.TryParsePci(frame, ep, isCanFd: false, out var pci).Should().BeTrue();
+        pci.Type.Should().Be(PciType.FirstFrame);
+        pci.Length.Should().Be(totalLength);
+        pci.DataOffset.Should().Be(2);
+
+        frame.AsSpan(pci.DataOffset, totalLength).ToArray().Should().Equal(0xA0, 0xA1, 0xA2);
+        // Remaining classic-CAN bytes after the announced PDU must be fill, not leftover chunk.
+        frame.AsSpan(pci.DataOffset + totalLength).ToArray().Should().Equal(0x00, 0x00, 0x00);
+    }
+
+    [Fact]
+    public void FirstFrame_CanFd_Truncates_Chunk_To_Announced_TotalLength()
+    {
+        var ep = IsoTpEndpoint.Normal(0x100, 0x101);
+        const int totalLength = 10;
+        var chunk = Enumerable.Range(0, 62).Select(i => (byte)(0x40 + i)).ToArray();
+
+        var frame = IsoTpFrameCodec.BuildFirstFrame(ep, totalLength, chunk, isCanFd: true);
+
+        frame.Length.Should().Be(IsoTpFrameCodec.CanFdMaxData);
+        IsoTpFrameCodec.TryParsePci(frame, ep, isCanFd: true, out var pci).Should().BeTrue();
+        pci.Type.Should().Be(PciType.FirstFrame);
+        pci.Length.Should().Be(totalLength);
+
+        frame.AsSpan(pci.DataOffset, totalLength).ToArray()
+            .Should().Equal(chunk.AsSpan(0, totalLength).ToArray());
+        frame.AsSpan(pci.DataOffset + totalLength).ToArray()
+            .Should().OnlyContain(b => b == 0x00);
+    }
+
+    // ---------------------------------------------------------------------------------------------
     // Review §1.1 point 4 (bit-precedence): a 256-byte length must NOT be truncated to 0.
     // ---------------------------------------------------------------------------------------------
 

@@ -259,6 +259,11 @@ public static class IsoTpFrameCodec
     /// Writes a First-Frame CAN payload into <paramref name="destination"/>. First Frames never
     /// use padding — they always fill the underlying CAN frame completely.
     /// </summary>
+    /// <remarks>
+    /// User bytes copied from <paramref name="firstChunk"/> are capped to
+    /// <c>min(firstChunk.Length, frame capacity, totalLength)</c> so the on-wire data never
+    /// exceeds the PDU size announced in the FF_DL field (fixes bugbot 3596393504).
+    /// </remarks>
     /// <exception cref="ArgumentOutOfRangeException">
     /// <paramref name="totalLength"/> is negative or exceeds the addressable range for the
     /// requested frame kind; classic-CAN cannot address totals &gt; 4095 (FF escape form is
@@ -283,7 +288,10 @@ public static class IsoTpFrameCodec
 
         int pciBytes = useLongLength ? 6 : 2;
         int dataCapacity = maxFrame - addrExt - pciBytes;
-        int dataLen = Math.Min(firstChunk.Length, dataCapacity);
+        // Cap to totalLength as well: otherwise a long firstChunk would place more user bytes in
+        // the frame than FF_DL announces, so peers / TryParsePci disagree on how much of the
+        // payload is real data vs trailing fill (fixes bugbot 3596393504).
+        int dataLen = Math.Min(firstChunk.Length, Math.Min(dataCapacity, totalLength));
 
         if (endpoint.UsesAddressExtension)
             destination[0] = endpoint.AddressExtension;
