@@ -57,7 +57,9 @@ public interface IIsoTpChannel : IDisposable
     /// Awaits the next fully reassembled inbound PDU. Cancels via <paramref name="cancellationToken"/>.
     /// Faults with <see cref="IsoTpTimeoutException"/> (<see cref="IsoTpTimer.NCr"/>) or
     /// <see cref="IsoTpException"/> when an in-progress multi-frame reassembly is aborted
-    /// (FR-TP-010), so a caller waiting for that PDU does not hang indefinitely.
+    /// (N_Cr, CF sequence mismatch, or a superseding SF/FF — including when the new FF is
+    /// refused with FC(OVFLW); FR-TP-010), so a caller waiting for that PDU does not hang
+    /// indefinitely.
     /// </summary>
     Task<byte[]> ReceiveAsync(CancellationToken cancellationToken = default);
 
@@ -74,8 +76,9 @@ public interface IIsoTpChannel : IDisposable
 
     /// <summary>
     /// Enumerates every fully reassembled inbound PDU as it becomes available. The enumeration
-    /// ends when the channel is disposed. A reassembly abort (N_Cr / CF sequence mismatch)
-    /// faults the enumerator with the same exception <see cref="ReceiveAsync"/> would throw.
+    /// ends when the channel is disposed. A reassembly abort (N_Cr / CF sequence mismatch /
+    /// SF·FF supersede) faults the enumerator with the same exception
+    /// <see cref="ReceiveAsync"/> would throw.
     /// Cancel by passing a token via <c>WithCancellation</c> or by disposing the channel.
     /// </summary>
     IAsyncEnumerable<byte[]> ReceiveAllAsync(CancellationToken cancellationToken = default);

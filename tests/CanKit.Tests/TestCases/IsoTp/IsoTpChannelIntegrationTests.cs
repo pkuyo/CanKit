@@ -530,6 +530,122 @@ public class IsoTpChannelIntegrationTests : IClassFixture<TestCaseProvider>
     }
 
     // --------------------------------------------------------------------------------
+    // Bugbot 3596527680 — a superseding SF / FF (or FF→OVFLW) must AbortRx so a blocked
+    // ReceiveAsync does not hang after silent _rx clear.
+    // --------------------------------------------------------------------------------
+    [Fact]
+    public async Task MultiFrame_Receive_Faults_When_Superseded_By_SingleFrame()
+    {
+        var session = NewSession();
+        using var busA = OpenClassic(session, 0);
+        using var busB = OpenClassic(session, 1);
+
+        var epRecv = IsoTpEndpoint.Normal(txCanId: 0x338, rxCanId: 0x330);
+        var epPeer = IsoTpEndpoint.Normal(txCanId: 0x330, rxCanId: 0x338);
+
+        using var receiver = IsoTpFactory.Open(busB, epRecv, FastOptions());
+
+        var bgFault = new TaskCompletionSource<Exception>(TaskCreationOptions.RunContinuationsAsynchronously);
+        receiver.BackgroundExceptionOccurred += (_, ex) => bgFault.TrySetResult(ex);
+
+        var fcSeen = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        busA.FrameObserved += (_, e) =>
+        {
+            if (e.CanFrame.ID != unchecked((int)epRecv.TxCanId)) return;
+            var data = e.CanFrame.Data.ToArray();
+            if (data.Length > 0 && (data[0] >> 4) == 0x3)
+                fcSeen.TrySetResult(true);
+        };
+
+        var recvTask = receiver.ReceiveAsync(new CancellationTokenSource(ShortTimeout).Token);
+
+        byte[] ffPayload = Enumerable.Range(0, 20).Select(i => (byte)i).ToArray();
+        int ffData = IsoTpFrameCodec.FirstFrameMaxDataLength(isCanFd: false, usesAddressExtension: false, useLongLength: false);
+        var ff = IsoTpFrameCodec.BuildFirstFrame(epPeer, ffPayload.Length, ffPayload.AsSpan(0, ffData), isCanFd: false);
+        busA.Transmit(CanFrame.Classic(unchecked((int)epPeer.TxCanId), ff));
+        await fcSeen.Task.WaitAsync(ShortTimeout);
+
+        // Racing SF aborts the half-built multi-frame; waiter must see the abort fault first.
+        var sf = IsoTpFrameCodec.BuildSingleFrame(epPeer, new byte[] { 0x11, 0x22 },
+            isCanFd: false, padding: true);
+        busA.Transmit(CanFrame.Classic(unchecked((int)epPeer.TxCanId), sf));
+
+        Func<Task> act = () => recvTask;
+        (await act.Should().ThrowAsync<IsoTpException>())
+            .WithMessage("*Single Frame aborted in-flight*");
+
+        var bg = await bgFault.Task.WaitAsync(ShortTimeout);
+        bg.Should().BeOfType<IsoTpException>().Which.Message.Should().Contain("Single Frame aborted");
+
+        // The superseding SF is still delivered as the next PDU.
+        var next = await receiver.ReceiveAsync(new CancellationTokenSource(ShortTimeout).Token);
+        next.Should().Equal(0x11, 0x22);
+    }
+
+    [Fact]
+    public async Task MultiFrame_Receive_Faults_When_Superseded_By_FirstFrame_Then_Overflow()
+    {
+        var session = NewSession();
+        using var busA = OpenClassic(session, 0);
+        using var busB = OpenClassic(session, 1);
+
+        var epRecv = IsoTpEndpoint.Normal(txCanId: 0x348, rxCanId: 0x340);
+        var epPeer = IsoTpEndpoint.Normal(txCanId: 0x340, rxCanId: 0x348);
+
+        using var receiver = IsoTpFactory.Open(busB, epRecv, FastOptions());
+
+        var fcSeen = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        int overflowFc = 0;
+        busA.FrameObserved += (_, e) =>
+        {
+            if (e.CanFrame.ID != unchecked((int)epRecv.TxCanId)) return;
+            var data = e.CanFrame.Data.ToArray();
+            if (data.Length == 0) return;
+            if ((data[0] >> 4) == 0x3)
+            {
+                if ((data[0] & 0x0F) == (byte)FlowStatus.Overflow)
+                    Interlocked.Increment(ref overflowFc);
+                else
+                    fcSeen.TrySetResult(true);
+            }
+        };
+
+        var recvTask = receiver.ReceiveAsync(new CancellationTokenSource(ShortTimeout).Token);
+
+        // Start a valid multi-frame reception so _rx + N_Cr are armed.
+        byte[] ffPayload = Enumerable.Range(0, 20).Select(i => (byte)(i + 3)).ToArray();
+        int ffData = IsoTpFrameCodec.FirstFrameMaxDataLength(isCanFd: false, usesAddressExtension: false, useLongLength: false);
+        var ff = IsoTpFrameCodec.BuildFirstFrame(epPeer, ffPayload.Length, ffPayload.AsSpan(0, ffData), isCanFd: false);
+        busA.Transmit(CanFrame.Classic(unchecked((int)epPeer.TxCanId), ff));
+        await fcSeen.Task.WaitAsync(ShortTimeout);
+
+        // Oversized FF supersedes then refuses with OVFLW — no replacement session. Without
+        // AbortRx this left ReceiveAsync hung forever.
+        byte[] hugeFf =
+        {
+            0x10, 0x00,
+            0x01, 0x00, 0x00, 0x00, // length = 16_777_216
+            0x00, 0x00,
+        };
+        busA.Transmit(CanFrame.Classic(unchecked((int)epPeer.TxCanId), hugeFf));
+
+        Func<Task> act = () => recvTask;
+        (await act.Should().ThrowAsync<IsoTpException>())
+            .WithMessage("*First Frame aborted in-flight*");
+
+        for (int i = 0; i < 50 && Volatile.Read(ref overflowFc) == 0; i++)
+            await Task.Delay(20);
+        overflowFc.Should().Be(1, "superseding oversized FF must still reply FC(OVFLW)");
+
+        // Channel remains usable for a subsequent SF.
+        var recv2 = receiver.ReceiveAsync(new CancellationTokenSource(ShortTimeout).Token);
+        var okSf = IsoTpFrameCodec.BuildSingleFrame(epPeer, new byte[] { 0x55 },
+            isCanFd: false, padding: true);
+        busA.Transmit(CanFrame.Classic(unchecked((int)epPeer.TxCanId), okSf));
+        (await recv2).Should().Equal(0x55);
+    }
+
+    // --------------------------------------------------------------------------------
     // Bugbot 3596378393 — an empty CF (PCI only, zero user bytes) must not advance
     // ExpectedSn / BS / N_Cr; a subsequent valid CF with the same SN must still complete
     // reassembly instead of mismatch-aborting or stalling until N_Cr.
