@@ -208,6 +208,14 @@ Hintergrund: Zustandsautomaten in L3/L4 (z. B. ISO-TP-Sendepfad, CANopen-SDO) be
 
 Ist-Zustand: unfertiger, funktional defekter Prototyp (`CanKit.Transport.IsoTp`); öffentlicher Einstieg wirft `NotImplementedException` (Review §1.1). Die folgenden Anforderungen umfassen sowohl die Fertigstellung/Fehlerbehebung als auch die vollständige Spezifikation des Zielverhaltens.
 
+> **Fortschritt (in Arbeit):** Die deterministische Codec-Grundlage (SF/FF/CF/FC-Bau,
+> `TryParsePci`, `EncodeStMin`/`DecodeStMin` inkl. reservierter Bänder) wird als eigenständiges
+> Paket `CanKit.Pro.IsoTp` (`IsPackable=false`, 0.1.x) aufgebaut und soll den defekten Codec des
+> Prototyps ablösen. Damit werden aktuell die Anforderungen **FR-TP-003, FR-TP-004, FR-TP-005,
+> FR-TP-006, FR-TP-007, FR-TP-015 und FR-RAW-052** unit-testabgedeckt (Codec-Anteil). Scheduler,
+> `IIsoTpChannel`, Actor-Wiring, `SendAsync`-Laufzeit und die TX-Queue-Semantik nach FR-TP-013
+> sind weiterhin offen und werden in einem Folge-Increment im selben Paket ergänzt.
+
 | ID | Anforderung | Priorität | Verifikation | Quelle |
 |---|---|---|---|---|
 | FR-TP-001 | Das System MUSS dem Protokollentwickler die Möglichkeit bieten, eine PDU beliebiger zulässiger Länge (Single Frame bis Multi-Frame, klassisches CAN und CAN-FD) über einen ISO-TP-Kanal zu senden (`SendAsync`) und den Abschluss der Übertragung asynchron zu erfahren. | Must | Integrationstest (Virtual-Loopback): SF- und Multi-Frame-Roundtrip für Nutzlasten 1–4095 Byte. | ISO 15765-2; Review §1.1 (Fehlerkatalog als Ausgangspunkt) |

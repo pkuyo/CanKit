@@ -526,8 +526,23 @@ classDiagram
 | `IsoTpChannelCore` | TX/RX-State-Machine je Endpoint. | TX: `Idle/WaitFc/SendCf/WaitFcAfterBlock/Failed`; RX: `Idle/RecvCf`. `OnRx/OnTx/SendAsync`. | Prototyp, defekt (§11). |
 | `IsoTpScheduler` | Kanal-Auswahl/Scoring, FC-Priorität, BusGuard, Echo-Routing. | `RunAsync` (Busy-Loop!), `TransmitTxOperation`, `Score` (konstant). | Prototyp, defekt. |
 | `Router` | Ordnet RX-Frames und TX-Echo den Kanälen zu (`Match`). | `Route(rx)`, `Route(tx,frame[,ex])`. | Prototyp (List ohne Sync). |
-| `FrameCodec` | Bau/Parsing von SF/FF/CF/FC + STmin-En/Decode. | `BuildSF/FF/CF/FC`, `TryParsePci`, `Encode/DecodeStmin`. | Prototyp, mehrere Bugs. |
+| `FrameCodec` | Bau/Parsing von SF/FF/CF/FC + STmin-En/Decode. | `BuildSF/FF/CF/FC`, `TryParsePci`, `Encode/DecodeStmin`. | Prototyp, mehrere Bugs. **Wird abgelöst durch `CanKit.Pro.IsoTp.IsoTpFrameCodec`** (siehe Kasten unten). |
 | `Deadline`/`QueuedDeadline` | N_As/N_Bs/N_Cs/N_Ar/N_Br/N_Cr. | Gepflegt, aber nie ausgewertet. | Prototyp. |
+
+**Neu (in Arbeit): Paket `CanKit.Pro.IsoTp` (Codec-Grundlage).** Eigenständiges, adapterfreies
+Assembly, das den defekten Prototyp-Codec Schritt für Schritt ablösen soll (siehe ADR-Notiz weiter
+unten). Enthält ausschließlich die deterministische Hälfte des ISO-TP-Rewrite:
+`IsoTpFrameCodec` mit `BuildSingleFrame`/`BuildFirstFrame`/`BuildConsecutiveFrame`/
+`BuildFlowControl`, `TryParsePci` (bounds-safe, wirft nie `IndexOutOfRangeException` bei kurzen
+Frames), `EncodeStMin`/`DecodeStMin` inklusive korrekter Behandlung reservierter Werte
+(FR-TP-007 / FR-RAW-052), sowie die Wertetypen `IsoTpEndpoint`, `Pci`, `PciType`, `FlowStatus`,
+`IsoTpAddressingMode`. Behebt die in §11 gelisteten Codec-Defekte 1..6 sowie den Klassik-CAN
+SF-Kapazitäts-Fehler (Punkt 13) und ist als **Baustein-Status: Codec-Foundation** deklariert.
+`IsPackable=false` bis der Laufzeit-Teil (Scheduler + `IIsoTpChannel`) im selben Paket landet
+(CON-004). Kein `IIsoTpChannel`, kein Scheduler, keine Vendor-SDK-Abhängigkeiten. Adressiert die
+SRS-Anforderungen FR-TP-003 (CAN/CAN-FD-Kind wird nicht mehr invertiert), FR-TP-004 (FC-PCI 0x3
+und Padding nach BS/STmin), FR-TP-005 (FF > 255), FR-TP-006 (STmin 0 ms/1 ms), FR-TP-007 /
+FR-RAW-052 (reservierte STmin-Werte → 127 ms) und FR-TP-015 (Classic-CAN SF ≤ 8 Byte).
 
 ---
 
