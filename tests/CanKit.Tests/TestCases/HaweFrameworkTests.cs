@@ -1,0 +1,356 @@
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
+using CanKit.Abstractions.API.Can;
+using CanKit.Abstractions.API.Can.Definitions;
+using CanKit.Abstractions.API.Common.Definitions;
+using CanKit.Core;
+using CanKit.Core.Definitions;
+using CanKit.Pro.Hawe;
+using CanKit.Pro.RawCan;
+using FluentAssertions;
+using Xunit;
+
+namespace CanKit.Tests.TestCases;
+
+/// <summary>
+/// Verifies the generic public HAWE extension framework (CanKit.Pro.Hawe,
+/// SRS FR-HAWE-001..005) against the Virtual adapter. Uses a deliberately generic
+/// <see cref="FakePatternCodec"/> that carries no HAWE-specific behaviour -- the framework
+/// itself must never require, or expose, proprietary HAWE protocol details (SRS CON-006 / A-6).
+/// </summary>
+public class HaweFrameworkTests : IClassFixture<TestCaseProvider>
+{
+    private static string NewSession() => $"hawe-{Guid.NewGuid():N}";
+
+    private static ICanBus Open(string session, int channel) => CanBus.Open(
+        $"virtual://{session}/{channel}",
+        cfg => cfg.SetProtocolMode(CanProtocolMode.Can20).Baud(TestCaseProvider.AbitRate));
+
+    private static readonly TimeSpan ShortTimeout = TimeSpan.FromSeconds(2);
+
+    // A deliberately generic codec used only in the test project: it selects one CAN ID range,
+    // counts callbacks, echoes back a fixed byte, and lets the test drive the session skeleton
+    // through IHaweCodecHost.SetSessionState. It contains no HAWE-specific frame layout, service
+    // id, or state machine -- the framework itself must not require any of those (SRS CON-006).
+    private sealed class FakePatternCodec : IHaweCodec
+    {
+        private readonly TaskCompletionSource<bool> _attachedTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public FakePatternCodec(HaweFramePattern pattern) => FramePattern = pattern;
+
+        public string Name => "fake-pattern-codec";
+        public HaweFramePattern FramePattern { get; }
+        public IHaweCodecHost? Host { get; private set; }
+
+        public ConcurrentQueue<CanFrameView> Received { get; } = new();
+        public int DetachedCount => Volatile.Read(ref _detached);
+        public List<(HaweSessionState prev, HaweSessionState curr)> Transitions { get; } = new();
+        public Task Attached => _attachedTcs.Task;
+
+        private int _detached;
+
+        public void OnAttached(IHaweCodecHost host)
+        {
+            Host = host;
+            _attachedTcs.TrySetResult(true);
+        }
+
+        public void OnFrameReceived(in CanFrameView frame) => Received.Enqueue(frame);
+
+        public void OnSessionStateChanged(HaweSessionState previous, HaweSessionState current)
+            => Transitions.Add((previous, current));
+
+        public void OnDetached() => Interlocked.Increment(ref _detached);
+    }
+
+    // Convenience helper: waits (bounded) until the codec has captured `count` frames.
+    private static async Task WaitForFrames(FakePatternCodec codec, int count, TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        while (codec.Received.Count < count && DateTime.UtcNow < deadline)
+            await Task.Delay(10);
+    }
+
+    // FR-HAWE-001 verification criterion: a codec registered via the public SPI is discoverable
+    // by name and the registry hands back a fresh instance per Create call.
+    [Fact]
+    public void Registry_Registers_And_Creates_Codec_By_Name()
+    {
+        var registry = new HaweCodecRegistry();
+        var pattern = HaweFramePattern.Range(0x700, 0x7FF);
+
+        registry.IsRegistered("fake-pattern-codec").Should().BeFalse();
+        registry.Register("fake-pattern-codec", () => new FakePatternCodec(pattern));
+
+        registry.IsRegistered("fake-pattern-codec").Should().BeTrue();
+        registry.RegisteredNames.Should().Contain("fake-pattern-codec");
+
+        var codec1 = registry.Create("fake-pattern-codec");
+        var codec2 = registry.Create("fake-pattern-codec");
+        codec1.Should().NotBeNull();
+        codec2.Should().NotBeNull();
+        codec1.Should().NotBeSameAs(codec2);
+        codec1.Name.Should().Be("fake-pattern-codec");
+    }
+
+    [Fact]
+    public void Registry_Throws_KeyNotFound_For_Unknown_Codec()
+    {
+        var registry = new HaweCodecRegistry();
+        Action act = () => registry.Create("does-not-exist");
+        act.Should().Throw<KeyNotFoundException>();
+    }
+
+    [Fact]
+    public void Registry_Unregister_Removes_Factory()
+    {
+        var registry = new HaweCodecRegistry();
+        registry.Register("x", () => new FakePatternCodec(HaweFramePattern.Range(0x100, 0x1FF)));
+        registry.Unregister("x").Should().BeTrue();
+        registry.Unregister("x").Should().BeFalse();
+        registry.IsRegistered("x").Should().BeFalse();
+    }
+
+    [Fact]
+    public void Registry_Rejects_Null_Or_Empty_Name_On_Register()
+    {
+        var registry = new HaweCodecRegistry();
+        Action nullName = () => registry.Register(null!, () => new FakePatternCodec(HaweFramePattern.Range(0, 0)));
+        Action emptyName = () => registry.Register(string.Empty, () => new FakePatternCodec(HaweFramePattern.Range(0, 0)));
+        nullName.Should().Throw<ArgumentException>();
+        emptyName.Should().Throw<ArgumentException>();
+    }
+
+    // FR-HAWE-002 verification criterion: a generic frame pattern is sent/received end-to-end
+    // over the Virtual adapter without the framework knowing anything about payload semantics.
+    [Fact]
+    public async Task Frame_Pattern_Delivers_Matching_Frames_And_Ignores_Others()
+    {
+        var session = NewSession();
+        using var sender = Open(session, 0);
+        using var receiver = Open(session, 1);
+        using var service = new CanBusService(receiver);
+
+        var codec = new FakePatternCodec(HaweFramePattern.Range(0x300, 0x3FF));
+        using var channel = new HaweChannel(service, codec);
+
+        codec.Attached.Status.Should().Be(TaskStatus.RanToCompletion);
+        channel.Codec.Should().BeSameAs(codec);
+        channel.SessionState.Should().Be(HaweSessionState.Idle);
+
+        sender.Transmit(CanFrame.Classic(0x300, new byte[] { 0xA }));
+        sender.Transmit(CanFrame.Classic(0x3FF, new byte[] { 0xB }));
+        // Deliberately outside the pattern; must be ignored by this codec.
+        sender.Transmit(CanFrame.Classic(0x400, new byte[] { 0xC }));
+
+        await WaitForFrames(codec, 2, ShortTimeout);
+
+        codec.Received.Count.Should().Be(2);
+        codec.Received.Select(f => f.ID).Should().BeEquivalentTo(new[] { 0x300, 0x3FF });
+    }
+
+    // FR-HAWE-002 / FR-HAWE-003 verification: a codec can send frames back on the same bus via
+    // IHaweCodecHost.SendConfirmedAsync (built on ICanBusService's TX-confirm), i.e. the codec
+    // reaches the shared L2 services on the same terms as ISO-TP/J1939-TP.
+    [Fact]
+    public async Task Codec_Can_Send_Frames_Through_Host_On_Same_Bus()
+    {
+        var session = NewSession();
+        using var busA = Open(session, 0);
+        using var busB = Open(session, 1);
+        using var service = new CanBusService(busA);
+        using var mirror = new CanBusService(busB);
+
+        // A vanilla subscription on the *other* bus receives whatever the codec sends via the
+        // host: it lets the test observe the transmit end-to-end without inspecting internal
+        // service state.
+        using var observer = mirror.Subscribe(CanIdFilter.Range(0x555, 0x555));
+
+        var codec = new FakePatternCodec(HaweFramePattern.Range(0x100, 0x1FF));
+        using var channel = new HaweChannel(service, codec);
+        codec.Attached.Status.Should().Be(TaskStatus.RanToCompletion);
+
+        var frame = CanFrame.Classic(0x555, new byte[] { 1, 2, 3, 4 });
+        var confirmation = await codec.Host!.SendConfirmedAsync(frame);
+        confirmation.Confirmed.Should().BeTrue();
+
+        using var cts = new CancellationTokenSource(ShortTimeout);
+        var received = new List<CanFrameView>();
+        try
+        {
+            await foreach (var f in observer.Frames.WithCancellation(cts.Token))
+            {
+                received.Add(f);
+                break;
+            }
+        }
+        catch (OperationCanceledException) { }
+
+        received.Should().HaveCount(1);
+        received[0].ID.Should().Be(0x555);
+        received[0].Data.ToArray().Should().Equal(new byte[] { 1, 2, 3, 4 });
+    }
+
+    // FR-HAWE-004 verification: the session skeleton exists as a placeholder and can be driven
+    // by the codec through IHaweCodecHost.SetSessionState; the framework surfaces every
+    // transition to OnSessionStateChanged in order.
+    [Fact]
+    public async Task Session_Skeleton_Transitions_Are_Observed_By_Codec()
+    {
+        var session = NewSession();
+        using var receiver = Open(session, 0);
+        using var service = new CanBusService(receiver);
+
+        var codec = new FakePatternCodec(HaweFramePattern.Range(0x600, 0x6FF));
+        using var channel = new HaweChannel(service, codec);
+        codec.Attached.Status.Should().Be(TaskStatus.RanToCompletion);
+
+        channel.SessionState.Should().Be(HaweSessionState.Idle);
+
+        codec.Host!.SetSessionState(HaweSessionState.Active).Should().BeTrue();
+        codec.Host!.SetSessionState(HaweSessionState.Active).Should().BeFalse(); // no-op
+        codec.Host!.SetSessionState(HaweSessionState.Fault).Should().BeTrue();
+        codec.Host!.SetSessionState(HaweSessionState.Idle).Should().BeTrue();
+
+        // Give the actor loop a beat to drain any posted callbacks (they are synchronous under
+        // PostAsync().GetAwaiter().GetResult(), but the visibility of `Transitions` mutations to
+        // this thread is what we wait for here).
+        await Task.Delay(50);
+
+        codec.Transitions.Should().Equal(new[]
+        {
+            (HaweSessionState.Idle, HaweSessionState.Active),
+            (HaweSessionState.Active, HaweSessionState.Fault),
+            (HaweSessionState.Fault, HaweSessionState.Idle),
+        });
+        channel.SessionState.Should().Be(HaweSessionState.Idle);
+    }
+
+    // FR-HAWE-003 verification: the actor-driven deadline surface is reachable from a codec via
+    // the host and fires on the actor loop.
+    [Fact]
+    public async Task Codec_Can_Arm_Deadline_Through_Host()
+    {
+        var session = NewSession();
+        using var receiver = Open(session, 0);
+        using var service = new CanBusService(receiver);
+
+        var codec = new FakePatternCodec(HaweFramePattern.Range(0x200, 0x2FF));
+        using var channel = new HaweChannel(service, codec);
+        codec.Attached.Status.Should().Be(TaskStatus.RanToCompletion);
+
+        var fired = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var handle = codec.Host!.ArmDeadline(TimeSpan.FromMilliseconds(50), () => fired.TrySetResult(true));
+
+        // Bounded wait: if the actor-driven deadline never fires within ShortTimeout something
+        // is wrong with the framework's wiring to Reliability's DeadlineScheduler.
+        var completed = await Task.WhenAny(fired.Task, Task.Delay(ShortTimeout));
+        completed.Should().BeSameAs(fired.Task);
+    }
+
+    // Disposing the channel must invoke OnDetached exactly once and stop delivering frames to
+    // the codec afterwards, even if the underlying bus keeps carrying traffic.
+    [Fact]
+    public async Task Dispose_Detaches_Codec_And_Stops_Delivery()
+    {
+        var session = NewSession();
+        using var sender = Open(session, 0);
+        using var receiver = Open(session, 1);
+        using var service = new CanBusService(receiver);
+
+        var codec = new FakePatternCodec(HaweFramePattern.Range(0x100, 0x1FF));
+        var channel = new HaweChannel(service, codec);
+        codec.Attached.Status.Should().Be(TaskStatus.RanToCompletion);
+
+        sender.Transmit(CanFrame.Classic(0x100, new byte[] { 1 }));
+        await WaitForFrames(codec, 1, ShortTimeout);
+        codec.Received.Count.Should().Be(1);
+
+        channel.Dispose();
+        codec.DetachedCount.Should().Be(1);
+
+        // Traffic on the shared bus continues; the codec must not see any of it now.
+        sender.Transmit(CanFrame.Classic(0x101, new byte[] { 2 }));
+        await Task.Delay(200);
+        codec.Received.Count.Should().Be(1);
+
+        // Double-dispose is safe and must not increment OnDetached a second time.
+        channel.Dispose();
+        codec.DetachedCount.Should().Be(1);
+    }
+
+    // The framework attaches purely on the shared bus service and does not take ownership of it:
+    // two independent codecs on disjoint patterns coexist on one service and each see only their
+    // own traffic (mirrors the multi-protocol scenario FR-HAWE-003 is aligned with).
+    [Fact]
+    public async Task Two_Codecs_Share_One_Bus_Service_Without_Cross_Talk()
+    {
+        var session = NewSession();
+        using var sender = Open(session, 0);
+        using var receiver = Open(session, 1);
+        using var service = new CanBusService(receiver);
+
+        var codecA = new FakePatternCodec(HaweFramePattern.Range(0x100, 0x1FF));
+        var codecB = new FakePatternCodec(HaweFramePattern.Range(0x200, 0x2FF));
+
+        using var channelA = new HaweChannel(service, codecA);
+        using var channelB = new HaweChannel(service, codecB);
+
+        codecA.Attached.Status.Should().Be(TaskStatus.RanToCompletion);
+        codecB.Attached.Status.Should().Be(TaskStatus.RanToCompletion);
+
+        sender.Transmit(CanFrame.Classic(0x100, new byte[] { 1 }));
+        sender.Transmit(CanFrame.Classic(0x150, new byte[] { 2 }));
+        sender.Transmit(CanFrame.Classic(0x200, new byte[] { 3 }));
+        sender.Transmit(CanFrame.Classic(0x2FF, new byte[] { 4 }));
+
+        await WaitForFrames(codecA, 2, ShortTimeout);
+        await WaitForFrames(codecB, 2, ShortTimeout);
+
+        codecA.Received.Select(f => f.ID).Should().BeEquivalentTo(new[] { 0x100, 0x150 });
+        codecB.Received.Select(f => f.ID).Should().BeEquivalentTo(new[] { 0x200, 0x2FF });
+    }
+
+    // FR-HAWE-002: the CanIdFilter-based pattern works with the acceptance-code/mask shape too,
+    // not just inclusive ranges.
+    [Fact]
+    public async Task Frame_Pattern_Accepts_Mask_Filter()
+    {
+        var session = NewSession();
+        using var sender = Open(session, 0);
+        using var receiver = Open(session, 1);
+        using var service = new CanBusService(receiver);
+
+        // Match all IDs whose lower nibble is 0x1 (0x001, 0x011, 0x021, ...).
+        var codec = new FakePatternCodec(HaweFramePattern.Mask(0x001, 0x00F));
+        using var channel = new HaweChannel(service, codec);
+        codec.Attached.Status.Should().Be(TaskStatus.RanToCompletion);
+
+        sender.Transmit(CanFrame.Classic(0x001, new byte[] { 1 })); // match
+        sender.Transmit(CanFrame.Classic(0x011, new byte[] { 2 })); // match
+        sender.Transmit(CanFrame.Classic(0x002, new byte[] { 3 })); // no match
+
+        await WaitForFrames(codec, 2, ShortTimeout);
+        codec.Received.Select(f => f.ID).Should().BeEquivalentTo(new[] { 0x001, 0x011 });
+    }
+
+    // Constructor guards.
+    [Fact]
+    public void HaweChannel_Rejects_Null_Args()
+    {
+        var codec = new FakePatternCodec(HaweFramePattern.Range(0, 0));
+        Action nullService = () => new HaweChannel(null!, codec);
+        Action nullCodec = () =>
+        {
+            var session = NewSession();
+            using var bus = Open(session, 0);
+            using var service = new CanBusService(bus);
+            _ = new HaweChannel(service, null!);
+        };
+        nullService.Should().Throw<ArgumentNullException>();
+        nullCodec.Should().Throw<ArgumentNullException>();
+    }
+}
