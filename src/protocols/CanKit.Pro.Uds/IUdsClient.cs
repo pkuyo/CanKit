@@ -46,9 +46,10 @@ public interface IUdsClient : IDisposable
 
     /// <summary>
     /// The most recently negotiated session, updated on a successful
-    /// <see cref="DiagnosticSessionControlAsync(byte, System.Threading.CancellationToken)"/>.
-    /// Starts at <see cref="UdsSessionType.Default"/> because ISO 14229-1 §9.2 guarantees an ECU
-    /// starts up in the default session.
+    /// <see cref="DiagnosticSessionControlAsync(byte, System.Threading.CancellationToken)"/>
+    /// and reset to <see cref="UdsSessionType.Default"/> after a successful
+    /// <see cref="EcuResetAsync"/>. Starts at <see cref="UdsSessionType.Default"/> because
+    /// ISO 14229-1 §9.2 guarantees an ECU starts up in the default session.
     /// </summary>
     byte CurrentSession { get; }
 
@@ -69,8 +70,9 @@ public interface IUdsClient : IDisposable
 
     /// <summary>
     /// Sends ECUReset (0x11, SRS FR-UDS-005) and returns the raw powerDownTime parameter (0..1
-    /// bytes) echoed back by the ECU. Callers should typically wait for the ECU to reboot before
-    /// issuing further requests.
+    /// bytes) echoed back by the ECU. On success, <see cref="CurrentSession"/> is reset to
+    /// <see cref="UdsSessionType.Default"/> to match the ECU returning to the default session.
+    /// Callers should typically wait for the ECU to reboot before issuing further requests.
     /// </summary>
     Task<byte[]> EcuResetAsync(UdsEcuResetType resetType,
         CancellationToken cancellationToken = default);

@@ -108,6 +108,11 @@ internal sealed class UdsClientImpl : IUdsClient
         if (response.Length < 2 || response[1] != (byte)resetType)
             throw new UdsProtocolException(
                 $"ECUReset response reset-type mismatch (expected 0x{(byte)resetType:X2}, got payload length {response.Length}).");
+
+        // ISO 14229-1: after a successful ECUReset the server returns to the default session.
+        // Mirror that in CurrentSession so later calls do not assume a stale negotiated session.
+        Volatile.Write(ref _currentSession, (byte)UdsSessionType.Default);
+
         int tail = response.Length - 2;
         var record = new byte[tail];
         if (tail > 0) Buffer.BlockCopy(response, 2, record, 0, tail);

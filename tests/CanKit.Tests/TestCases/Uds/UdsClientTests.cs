@@ -170,22 +170,37 @@ public class UdsClientTests : IClassFixture<TestCaseProvider>
     }
 
     // -----------------------------------------------------------------------------------
-    // FR-UDS-005 — ECUReset (0x11).
+    // FR-UDS-005 — ECUReset (0x11). After a successful reset the ECU returns to the
+    // default session, so CurrentSession must not keep a stale DiagnosticSessionControl
+    // value (Bugbot 3597974544).
     // -----------------------------------------------------------------------------------
     [Fact]
     public async Task EcuReset_Completes_Before_Ecu_Would_Reboot()
     {
-        var (client, _, dispose) = BuildPair(e => e.On(0x11, req =>
+        var (client, _, dispose) = BuildPair(e =>
         {
-            req[0].Should().Be(0x11);
-            req[1].Should().Be((byte)UdsEcuResetType.HardReset);
-            return new byte[] { (byte)UdsEcuResetType.HardReset };
-        }));
+            e.On(0x10, req =>
+            {
+                req.Should().Equal(0x10, (byte)UdsSessionType.Extended);
+                return new byte[] { (byte)UdsSessionType.Extended, 0x00, 0x32, 0x01, 0xF4 };
+            });
+            e.On(0x11, req =>
+            {
+                req[0].Should().Be(0x11);
+                req[1].Should().Be((byte)UdsEcuResetType.HardReset);
+                return new byte[] { (byte)UdsEcuResetType.HardReset };
+            });
+        });
         using (dispose)
         {
+            await client.DiagnosticSessionControlAsync(UdsSessionType.Extended,
+                new CancellationTokenSource(ShortTimeout).Token);
+            client.CurrentSession.Should().Be((byte)UdsSessionType.Extended);
+
             var tail = await client.EcuResetAsync(UdsEcuResetType.HardReset,
                 new CancellationTokenSource(ShortTimeout).Token);
             tail.Should().BeEmpty();
+            client.CurrentSession.Should().Be((byte)UdsSessionType.Default);
         }
     }
 
