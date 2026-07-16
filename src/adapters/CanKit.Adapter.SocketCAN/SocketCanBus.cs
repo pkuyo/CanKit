@@ -79,7 +79,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IOwnersh
             },
             failAsyncReceivers: ex =>
             {
-                try { _asyncRx.ExceptionOccured(ex); } catch { /*ignore*/ }
+                try { _asyncRx.ExceptionOccurred(ex); } catch { /*ignore*/ }
             });
 
         // Apply device configs
@@ -150,7 +150,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IOwnersh
                 }
             }
         }
-        var tv = SocketCanUtils.ToTimeval(TimeSpan.FromMilliseconds(Options.ReadTImeOutMs));
+        var tv = SocketCanUtils.ToTimeval(TimeSpan.FromMilliseconds(Options.ReadTimeoutMs));
 
         unsafe
         {

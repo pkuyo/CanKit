@@ -38,7 +38,7 @@ public sealed class SocketCanBusOptions(ICanModelProvider provider) : IBusOption
     /// <summary>
     /// Read timeout, in milliseconds, for blocking receive operations on the CAN socket.
     /// </summary>
-    public int ReadTImeOutMs { get; set; } = 5;
+    public int ReadTimeoutMs { get; set; } = 5;
 
     /// <summary>
     /// When true, configure the CAN interface via libsocketcan.
@@ -99,7 +99,7 @@ public sealed class SocketCanBusInitConfigurator
     }
     public SocketCanBusInitConfigurator ReadTimeOut(int ms)
     {
-        Options.ReadTImeOutMs = ms;
+        Options.ReadTimeoutMs = ms;
         return this;
     }
 
@@ -114,8 +114,8 @@ public sealed class SocketCanBusInitConfigurator
                 Options.UseNetLink = ThrowOrGet<bool>(value);
                 break;
             case nameof(ReadTimeOut):
-            case nameof(ReadTImeOutMs):
-                Options.ReadTImeOutMs = Convert.ToInt32(value);
+            case nameof(ReadTimeoutMs):
+                Options.ReadTimeoutMs = Convert.ToInt32(value);
                 break;
             case nameof(ReceiveBufferCapacity):
                 Options.ReceiveBufferCapacity = Convert.ToUInt32(value);
@@ -139,7 +139,7 @@ public sealed class SocketCanBusInitConfigurator
 
     public bool UseNetLink => Options.UseNetLink;
 
-    public int ReadTImeOutMs => Options.ReadTImeOutMs;
+    public int ReadTimeoutMs => Options.ReadTimeoutMs;
 }
 
 public sealed class SocketCanBusRtConfigurator
@@ -149,7 +149,7 @@ public sealed class SocketCanBusRtConfigurator
 
     public bool UseNetLink => Options.UseNetLink;
 
-    public int ReadTImeOutMs => Options.ReadTImeOutMs;
+    public int ReadTimeoutMs => Options.ReadTimeoutMs;
 
     public uint? ReceiveBufferCapacity => Options.ReceiveBufferCapacity;
 

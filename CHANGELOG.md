@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Breaking Changes
+
+* Renamed `AsyncFramePipe.ExceptionOccured` → `ExceptionOccurred` (NFR-011).
+* Renamed SocketCAN `ReadTImeOutMs` → `ReadTimeoutMs` (options, configurator, runtime
+  accessors, and string-key config switch) (NFR-011).
+* The Abstractions namespace typo `Excpetions` is removed together with legacy
+  `CanKit.Transport.IsoTp` (separate PR).
+
 ## 0.5.5
 
 Published packages:
