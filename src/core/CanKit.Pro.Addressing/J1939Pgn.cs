@@ -73,8 +73,8 @@ namespace CanKit.Pro.Addressing
         /// </summary>
         public static byte GetGroupExtension(uint pgn)
         {
-            ValidatePgn(pgn);
-            return IsPdu2(GetPduFormat(pgn)) ? (byte)(pgn & 0xFF) : (byte)0;
+            var pduFormat = GetPduFormat(pgn);
+            return IsPdu2(pduFormat) ? (byte)(pgn & 0xFF) : (byte)0;
         }
 
         /// <summary>
@@ -83,8 +83,8 @@ namespace CanKit.Pro.Addressing
         /// <returns>True for PDU2 PGNs; false for PDU1 PGNs.</returns>
         public static bool TryGetGroupExtension(uint pgn, out byte groupExtension)
         {
-            ValidatePgn(pgn);
-            if (IsPdu1(GetPduFormat(pgn)))
+            var pduFormat = GetPduFormat(pgn);
+            if (IsPdu1(pduFormat))
             {
                 groupExtension = 0;
                 return false;
@@ -99,8 +99,8 @@ namespace CanKit.Pro.Addressing
         /// </summary>
         public static uint Normalize(uint pgn)
         {
-            ValidatePgn(pgn);
-            return IsPdu1(GetPduFormat(pgn)) ? pgn & 0x3FF00u : pgn;
+            var pduFormat = GetPduFormat(pgn);
+            return IsPdu1(pduFormat) ? pgn & 0x3FF00u : pgn;
         }
 
         /// <summary>Returns true when the PGN is Request (0xEA00).</summary>
@@ -137,7 +137,7 @@ namespace CanKit.Pro.Addressing
         private static void ValidatePgn(uint pgn)
         {
             if (pgn > MaxValue)
-                throw new ArgumentOutOfRangeException(nameof(pgn), pgn, "PGN must fit in 18 bits (Reserved|DataPage|PF|GE).");
+                throw new ArgumentOutOfRangeException(nameof(pgn), pgn, "PGN must fit in 18 bits (Reserved|DataPage|PF|PS/GE).");
         }
     }
 }
