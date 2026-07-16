@@ -1006,37 +1006,47 @@ public class IsoTpChannelIntegrationTests : IClassFixture<TestCaseProvider>
         var epBA = IsoTpEndpoint.Normal(0x261, 0x260);
 
         using var inner = new CanBusService(busA);
-        // Hold every SendConfirmed so peer FC can race into SendingCf before confirm.
-        using var holdConfirm = new SemaphoreSlim(0, 32);
-        using var confirmStarted = new ManualResetEventSlim(false);
-        var delaying = new DelayingConfirmService(inner, holdConfirm, confirmStarted,
-            holdEveryConfirm: true, holdAfterTransmit: true);
+        using var holdCfConfirm = new SemaphoreSlim(0, 8);
+        using var cfConfirmParked = new ManualResetEventSlim(false);
+        // Hold only CF TX-confirms (after the frame is on the wire). FF confirms normally so the
+        // peer can answer the initial FC; the bug window is SendingCf for the last CF of a block.
+        var delaying = new HoldConsecutiveFrameConfirmService(inner, holdCfConfirm, cfConfirmParked);
         using var sender = IsoTpFactory.Open(delaying, epAB,
-            FastOptions(nBs: TimeSpan.FromMilliseconds(400)), leaveOpen: true);
-        using var receiver = IsoTpFactory.Open(busB, epBA,
-            FastOptions(localBs: 1)); // BS=1 => FC after every CF
+            FastOptions(nBs: TimeSpan.FromMilliseconds(300)), leaveOpen: true);
 
-        // 20 bytes classic: FF(6) + CF1(7) + CF2(7). With peer BS=1, sender waits for FC after
-        // FF, after CF1, and completes after CF2.
+        // Manual peer: CTS with BS=1 after FF and after each CF. FC is sent while CF confirm is
+        // still parked so it lands in State==SendingCf (the drop window Bugbot flagged).
+        busB.FrameObserved += (_, e) =>
+        {
+            if (e.CanFrame.ID != 0x260) return;
+            var payload = e.CanFrame.Data.ToArray();
+            if (payload.Length == 0) return;
+            int type = payload[0] >> 4;
+            if (type is 0x1 or 0x2) // FF or CF
+            {
+                var fc = IsoTpFrameCodec.BuildFlowControl(epBA, FlowStatus.ClearToSend,
+                    blockSize: 1, stMinRaw: 0, isCanFd: false, padding: true);
+                busB.Transmit(CanFrame.Classic(0x261, fc));
+            }
+        };
+
+        // 20 bytes classic: FF(6) + CF1(7) + CF2(7). BS=1 => wait for FC after FF and after CF1.
         byte[] pdu = Enumerable.Range(0, 20).Select(i => (byte)(i + 1)).ToArray();
-        var recvTask = receiver.ReceiveAsync(new CancellationTokenSource(ShortTimeout).Token);
         var sendTask = sender.SendAsync(pdu);
 
-        // Release confirms one-by-one. holdAfterTransmit puts the frame on the wire first so the
-        // peer can answer FC while our SendConfirmed is still parked (SendingCf window).
-        for (int i = 0; i < 10 && !sendTask.IsCompleted; i++)
+        // Two block-ending CFs (CF1 then CF2): for each, wait until confirm is parked (FC already
+        // sent by the peer handler above), then release so deferred FC is applied.
+        for (int i = 0; i < 2; i++)
         {
-            confirmStarted.Wait(TimeSpan.FromSeconds(2)).Should().BeTrue(
-                "next SendConfirmed should park after transmitting");
-            confirmStarted.Reset();
-            // Give the peer a moment to observe the frame and emit FC before we complete confirm.
-            await Task.Delay(40);
-            holdConfirm.Release();
+            cfConfirmParked.Wait(TimeSpan.FromSeconds(3)).Should().BeTrue(
+                $"CF confirm #{i + 1} must park after transmit so peer FC can defer");
+            cfConfirmParked.Reset();
+            await Task.Delay(30); // ensure peer FC is processed into DeferredFcs
+            holdCfConfirm.Release();
         }
 
-        holdConfirm.Release(8); // drain any straggler confirms
+        // Under the bug this times out on N_Bs; under the fix deferred FC resumes the block.
         await sendTask.WaitAsync(ShortTimeout);
-        (await recvTask).Should().Equal(pdu);
     }
 
     // --------------------------------------------------------------------------------
@@ -1150,31 +1160,24 @@ public class IsoTpChannelIntegrationTests : IClassFixture<TestCaseProvider>
     /// signaled so cancel/gate / deferred-FC races are deterministic.
     /// </summary>
     /// <remarks>
-    /// <list type="bullet">
-    /// <item><description>Default: hold only the first confirm <em>before</em> transmitting
-    /// (cancel/gate tests need the frame off the wire until release).</description></item>
-    /// <item><description><paramref name="holdAfterTransmit"/>: transmit first, then park — so
-    /// peers can answer FC while TX-confirm is still outstanding (deferred-FC tests).</description></item>
-    /// <item><description><paramref name="holdEveryConfirm"/>: park every confirm, not just the
-    /// first (block-FC races across multiple CFs).</description></item>
-    /// </list>
+    /// Default holds only the first confirm <em>before</em> transmitting (cancel/gate tests).
+    /// Pass <paramref name="holdAfterTransmit"/> to transmit first, then park — so peers can
+    /// answer FC while TX-confirm is still outstanding (deferred-FC / WftMax tests).
     /// </remarks>
     private sealed class DelayingConfirmService : ICanBusService
     {
         private readonly ICanBusService _inner;
         private readonly SemaphoreSlim _release;
         private readonly ManualResetEventSlim _started;
-        private readonly bool _holdEveryConfirm;
         private readonly bool _holdAfterTransmit;
         private int _confirmCount;
 
         public DelayingConfirmService(ICanBusService inner, SemaphoreSlim release,
-            ManualResetEventSlim started, bool holdEveryConfirm = false, bool holdAfterTransmit = false)
+            ManualResetEventSlim started, bool holdAfterTransmit = false)
         {
             _inner = inner;
             _release = release;
             _started = started;
-            _holdEveryConfirm = holdEveryConfirm;
             _holdAfterTransmit = holdAfterTransmit;
         }
 
@@ -1193,8 +1196,7 @@ public class IsoTpChannelIntegrationTests : IClassFixture<TestCaseProvider>
         public async Task<TxConfirmation> SendConfirmed(CanFrame frame, TimeSpan? timeout = null,
             CancellationToken cancellationToken = default)
         {
-            int n = Interlocked.Increment(ref _confirmCount);
-            bool hold = _holdEveryConfirm || n == 1;
+            bool hold = Interlocked.Increment(ref _confirmCount) == 1;
 
             if (hold && !_holdAfterTransmit)
             {
@@ -1212,6 +1214,59 @@ public class IsoTpChannelIntegrationTests : IClassFixture<TestCaseProvider>
                 _started.Set();
                 if (!_release.Wait(TimeSpan.FromSeconds(10)))
                     throw new TimeoutException("test release gate was never signaled");
+            }
+
+            return result;
+        }
+
+        public void Dispose() { /* leaveOpen: inner disposed by test */ }
+    }
+
+    /// <summary>
+    /// Parks <see cref="ICanBusService.SendConfirmed"/> only for Consecutive Frames, and only
+    /// after the frame has been transmitted — so a peer FC can arrive while TX state is still
+    /// <c>SendingCf</c> (Bugbot 3597408323).
+    /// </summary>
+    private sealed class HoldConsecutiveFrameConfirmService : ICanBusService
+    {
+        private readonly ICanBusService _inner;
+        private readonly SemaphoreSlim _release;
+        private readonly ManualResetEventSlim _parked;
+
+        public HoldConsecutiveFrameConfirmService(ICanBusService inner, SemaphoreSlim release,
+            ManualResetEventSlim parked)
+        {
+            _inner = inner;
+            _release = release;
+            _parked = parked;
+        }
+
+        public ICanBus Bus => _inner.Bus;
+        public int SubscriptionCount => _inner.SubscriptionCount;
+
+        public ISubscription Subscribe(Func<CanFrameView, bool>? predicate = null, int? bufferCapacity = null)
+            => _inner.Subscribe(predicate, bufferCapacity);
+
+        public ISubscription Subscribe(CanIdFilter filter, int? bufferCapacity = null)
+            => _inner.Subscribe(filter, bufferCapacity);
+
+        public IReadOnlyList<(ISubscription First, ISubscription Second)> FindOverlappingFilterSubscriptions()
+            => _inner.FindOverlappingFilterSubscriptions();
+
+        public async Task<TxConfirmation> SendConfirmed(CanFrame frame, TimeSpan? timeout = null,
+            CancellationToken cancellationToken = default)
+        {
+            // Copy PCI before await — ReadOnlySpan cannot live across await points.
+            byte[] payload = frame.Data.ToArray();
+            bool isCf = payload.Length > 0 && (payload[0] >> 4) == 0x2;
+
+            var result = await _inner.SendConfirmed(frame, timeout, cancellationToken).ConfigureAwait(false);
+
+            if (isCf)
+            {
+                _parked.Set();
+                if (!_release.Wait(TimeSpan.FromSeconds(10)))
+                    throw new TimeoutException("CF confirm release gate was never signaled");
             }
 
             return result;
