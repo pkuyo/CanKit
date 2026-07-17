@@ -495,7 +495,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IOwnership
                         PcanUtils.ToProtocolViolationType(raw, span),
                         PcanUtils.ToErrorLocation(span),
                         PcanUtils.ToTransceiverStatus(span),
-                        DateTime.Now,
+                        DateTime.UtcNow,
                         (uint)raw,
                         rec.ReceiveTimestamp,
                         PcanUtils.ToDirection(span),

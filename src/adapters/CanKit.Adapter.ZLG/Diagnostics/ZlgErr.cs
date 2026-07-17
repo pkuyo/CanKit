@@ -92,7 +92,7 @@ namespace CanKit.Adapter.ZLG.Diagnostics
                 ProtocolViolationLocation = loc,
                 Direction = dir,
                 TransceiverStatus = CanTransceiverStatus.Unspecified,
-                SystemTimestamp = DateTime.Now,
+                SystemTimestamp = DateTime.UtcNow,
                 ArbitrationLostBit = arbBit,
                 ErrorCounters = new CanErrorCounters()
                 {

@@ -60,7 +60,7 @@ internal static class ControlCanErr
             prot,
             loc,
             CanTransceiverStatus.Unspecified,
-            DateTime.Now,
+            DateTime.UtcNow,
             err.ErrCode,
             null,
             dir,
