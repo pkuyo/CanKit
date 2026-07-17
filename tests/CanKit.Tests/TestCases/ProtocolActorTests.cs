@@ -355,6 +355,46 @@ public class ProtocolActorTests
     }
 
     [Fact]
+    public async Task IsOnCurrentActor_Is_False_Off_Loop_And_True_Inside_Posted_Work()
+    {
+        // Regression: PR #30 review 3600429136/3600429144/3600429156 -- callers on the actor
+        // loop must be able to detect that so they can run inline instead of synchronously
+        // waiting on PostAsync (which would deadlock the loop against itself). The property is
+        // the single primitive that makes that "safe sync" pattern possible; verify it flips as
+        // documented.
+        using var actor = new ProtocolActor();
+
+        actor.IsOnCurrentActor.Should().BeFalse("no loop is currently running on the caller's thread");
+
+        var seenInsidePost = await actor.PostAsync(() => actor.IsOnCurrentActor);
+        seenInsidePost.Should().BeTrue("a work item is running on the actor's loop");
+
+        // Two ProtocolActors are logically distinct loops; a work item running on actor A must
+        // see IsOnCurrentActor=false on actor B, i.e. the AsyncLocal is instance-scoped rather
+        // than "any actor is running somewhere on this callstack".
+        using var other = new ProtocolActor();
+        var seenAcrossActors = await actor.PostAsync(() => other.IsOnCurrentActor);
+        seenAcrossActors.Should().BeFalse("IsOnCurrentActor is per-instance, not global");
+    }
+
+    [Fact]
+    public async Task IsOnCurrentActor_Is_True_Inside_A_Scheduled_Timer_Callback()
+    {
+        // Same reentrancy story as inside Post callbacks: a scheduled timer's callback runs on
+        // the loop thread too, so IsOnCurrentActor must be true there for the "safe sync"
+        // pattern to work when a periodic timer needs to call back into a public sync API.
+        using var actor = new ProtocolActor();
+        var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        using var handle = actor.Schedule(TimeSpan.FromMilliseconds(10),
+            () => tcs.TrySetResult(actor.IsOnCurrentActor));
+
+        var observed = await Task.WhenAny(tcs.Task, Task.Delay(TimeSpan.FromSeconds(5)));
+        observed.Should().BeSameAs(tcs.Task, "the scheduled callback must run within a few ms");
+        (await tcs.Task).Should().BeTrue();
+    }
+
+    [Fact]
     public void Constructor_Requires_A_Context_For_SynchronizationContext_Mode()
     {
         Action act = () => new ProtocolActor(ActorExecutionMode.SynchronizationContext, synchronizationContext: null);
