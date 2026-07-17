@@ -869,12 +869,15 @@ entstehen **Use-after-free** und **Double-Dispose** (Review §1.5, §2.1).
 **Noch offen:** Event-Beobachter (`FrameReceived`, deprecated) erhalten weiterhin den
 disposable `CanFrame` statt nur einer `CanFrameView`, was Fehlgebrauch erlaubt (Migration
 auf `FrameObserved` läuft, aber `FrameReceived` bleibt aus Kompatibilitätsgründen bestehen).
-Der TX-Lease-Grundsatz (3) ist für den Virtual-Adapter umgesetzt; für die übrigen L0-Adapter
-steht die Umsetzung noch aus (`FR-RAW-005`, Should). Nach der Entfernung des Legacy-
-`CanKit.Transport.IsoTp` beschränkt sich der offene Umfang jetzt auf L0-Sendepfade, die den
-Frame nach `Transmit` weiter referenzieren — insbesondere periodische TX-Pfade (z. B.
-SocketCAN-BCM); die aktorbasierte `CanKit.Pro.IsoTp`-Runtime kopiert Payloads bereits im
-`SendConfirmed`-/`ProtocolActor`-Pfad und hat keinen offenen Echo-Matching-Bedarf hier.
+Der TX-Lease-Grundsatz (3) ist für den Virtual-Adapter und für **SocketCAN/BCM**
+(`BCMPeriodicTx` dupliziert den Aufrufer-Frame per `CanFrame.Duplicate(BufferAllocator)`
+und gibt die eigene Kopie in `Stop`/`Dispose`/`Update` frei) umgesetzt. Nach der Entfernung
+des Legacy-`CanKit.Transport.IsoTp` beschränkt sich der offene Umfang (`FR-RAW-005`, Should)
+auf weitere L0-Periodic-TX-Pfade (`ZlgPeriodicTx`, `ControlCanPeriodicTx`,
+`SoftwarePeriodicTx` als Vector/PCAN-Fallback); Kvaser kopiert die Nutzlast bereits per
+`ToArray()` und ist nicht betroffen. Die aktorbasierte `CanKit.Pro.IsoTp`-Runtime kopiert
+Payloads bereits im `SendConfirmed`-/`ProtocolActor`-Pfad und hat keinen offenen
+Echo-Matching-Bedarf hier.
 
 **Ziel-Vertrag (L2, `FR-RAW-OWN-*`):**
 
@@ -1154,11 +1157,15 @@ STmin-Grenzwerte, SN-Folge, N_Bs/N_Cr-Timeouts gegen Virtual.
   Adapter kopiert); `Dispose()` respektiert `OwnMemory`.
 - **Konsequenzen:** + sichere Grundlage für L2–L4 (Q1/Q5). − erfordert Anpassung von Pipe,
   QueuedCanBus, Virtual-Hub, ISO-TP-Scheduler.
-- **Status:** `Dispose()`/`OwnMemory` und Virtual-Hub (`CanFrame.Duplicate`, Broadcast-Kopie,
-  `_hubs`-Leak-Fix) sind umgesetzt und per Unit-/Virtual-Loopback-Test abgesichert
-  (`tests/CanKit.Tests/TestCases/CanFrameTests.cs`,
-  `tests/CanKit.Tests/TestCases/VirtualBusOwnershipTests.cs`). Offen: TX-Lease-Kopie in den
-  übrigen L0-Adaptern und im ISO-TP-Scheduler (Echo-Matching).
+- **Status:** `Dispose()`/`OwnMemory`, Virtual-Hub (`CanFrame.Duplicate`, Broadcast-Kopie,
+  `_hubs`-Leak-Fix) und **SocketCAN-BCM** (`BCMPeriodicTx` dupliziert den Aufrufer-Frame
+  über `CanFrame.Duplicate(configurator.BufferAllocator)` und gibt die eigene Kopie in
+  `Update`/`Stop`/`Dispose` frei) sind umgesetzt und per Unit-/Virtual-Loopback- bzw.
+  SocketCAN-Fake-Test abgesichert (`tests/CanKit.Tests/TestCases/CanFrameTests.cs`,
+  `tests/CanKit.Tests/TestCases/VirtualBusOwnershipTests.cs`,
+  `tests/CanKit.Tests/TestCases/SocketCanBcmOwnershipTests.cs`). Offen: TX-Lease-Kopie
+  in den übrigen L0-Adaptern (`ZlgPeriodicTx`, `ControlCanPeriodicTx`,
+  `SoftwarePeriodicTx` als Vector/PCAN-Fallback) und im ISO-TP-Scheduler (Echo-Matching).
 
 ### ADR-10 (umgesetzt): Adressierungs-Helfer als eigenständiges Paket
 - **Kontext:** 11-/29-Bit-ID- und J1939-PGN-Logik existierte nur als ein einziger, fest auf eine
@@ -1271,7 +1278,7 @@ Priorisierung: **K** = kritisch, **W** = wichtig, **G** = gering.
 | K | ✅ *Behoben.* **Frame-Ownership**: `CanFrame.Dispose()` ignorierte `OwnMemory` (gab Owner immer frei). | Use-after-free / Double-Dispose bei gepoolten Buffern über Events/Pipe/Virtual-Hub. | `Dispose()` → `if (OwnMemory) _memoryOwner?.Dispose();`; `CanFrame.Duplicate(IBufferAllocator)` ergänzt; Ownership-Vertrag (8.1/ADR-9) durchgesetzt. | §1.5, §2.1 |
 | K | ✅ *Behoben.* **`QueuedCanBus`-Retry-Stau**: Batch-Reste blieben bis zum nächsten `Enqueue` liegen (blockierte in `WaitToReadAsync`). | Frames wurden verspätet oder nie gesendet; Backoff wirkungslos. | `WaitToReadAsync` nur bei `index==0`; sonst direkter Retry mit Backoff; nur die gültige Batch-Teilmenge wird an `Transmit` übergeben. | §1.2 |
 | K | ✅ *Behoben.* **SocketCAN/ZLG Stopwatch nie gestartet**: `remainingTime` blieb konstant. | Sende-`poll()`-Endlosschleife bei nicht-annehmendem, schreibbarem Bus; unbegrenzte Wartezeit. | `Stopwatch.StartNew()` in `SocketCanBus.Transmit` (2×) und 3 ZLG-Transceivern. | §1.3 |
-| K | ✅ *Behoben.* **BCMPeriodicTx `Update()` FD-Zweig**: `Can20` doppelt (Copy-Paste) statt `CanFd`. | Jedes `Update(fdFrame)` warf `NotSupportedException`; `RemainingCount` unzuverlässig (EAGAIN, weiterhin offen). | FD-Zweig auf `CanFd` korrigiert; `RemainingCount`-Robustheit per `poll` bleibt offen. | §1.4 |
+| K | ✅ *Behoben.* **BCMPeriodicTx `Update()` FD-Zweig + `RemainingCount` EAGAIN + TX-Lease**: `Can20`-Zweig im FD-Pfad (Copy-Paste), nicht-blockierender Query-FD ohne `poll` → EAGAIN aus `read()` wurde als harter `ThrowErrno` weitergereicht, und `_frame = frame` hielt den Aufrufer-`IMemoryOwner` über die Rückkehr von `TransmitPeriodic` hinaus. | `Update(fdFrame)` warf `NotSupportedException`; `RemainingCount` konnte willkürlich EAGAIN werfen; Use-after-Free möglich, sobald der Aufrufer seinen Frame nach `TransmitPeriodic` disposed und der BCM-Zustand später in `Update`/`Stop` erneut auf `_frame.Data` zugriff. | FD-Zweig auf `CanFd` korrigiert; `RemainingCount` versucht zuerst `read`, bei `EAGAIN` `poll(POLLIN, 100 ms)` und begrenzten Retry (Standard: 5 Versuche), fällt bei unerwartetem Opcode oder erschöpften Retries auf den zuletzt gecachten Zählerstand zurück statt zu werfen; `_frame` ist jetzt eine `CanFrame.Duplicate(configurator.BufferAllocator)`-Kopie, die in `Update`/`Stop`/`Dispose` freigegeben wird. Abgesichert per `tests/CanKit.Tests/TestCases/SocketCanBcmOwnershipTests.cs` (SocketCAN-Fake). | §1.4 |
 | W | ✅ *Behoben.* **SoftwarePeriodicTx macOS/Reentrancy**: `clock_nanosleep` fehlt auf macOS, Exception wurde verschluckt; `Completed` lief innerhalb von `_gate`. | `PreWait` kehrte sofort zurück → Bus-Flut; Handler mit `Update`/`Stop` konnten reentrant hängen. | Statische macOS-Delegate-Route auf `SleepCoarse`/`Thread.Sleep`; `Completed` wird erst nach Verlassen von `_gate` ausgelöst. | §2.3 |
 | W | ✅ *Behoben.* **AsyncFramePipe Fehlerpfade**: verwaister Reader konsumierte später Frames; Nutzer-Cancellation wurde geschluckt. | Frame-Verlust nach Hintergrundfehlern; inkonsistenter Cancellation-Kontrakt. | `ReceiveBatchAsync`/`ReadAllAsync` warten auf Lesebereitschaft statt auf ein verwaistes `ReadAsync`; der verlierende Wait wird abgebrochen. Timeout↔Fault-Races bevorzugen bereits signalisierte Faults. Nutzer-Cancellation propagiert, reine Timeouts liefern weiterhin die Teilliste; gepulste `OperationCanceledException`/`TaskCanceledException` werden nicht als Timeout getarnt; `ExceptionOccurred` bleibt ein Wake-only-Pulse. | §2.2 |
 | W | ✅ *Behoben/entfernt.* **Nebenläufigkeit im ISO-TP**: der defekte Legacy-Scheduler (`_tx`, `_pendingOperations`, `Router._channels` als `List` ohne Sync; `SetResult`/`SetException` statt `Try*`; Busy-Loop, `RunAsync` nie aufgerufen) wurde mit `CanKit.Transport.IsoTp` entfernt und durch `CanKit.Pro.IsoTp` ersetzt: Single-Writer-`ProtocolActor` (ADR-6, FR-RAW-020..023), ereignisgetriebenes Warten (FR-RAW-022), `SendConfirmed`-basiertes TX-Confirm (ADR-7) und `DeadlineScheduler` (ADR-11) statt eines eigenen Schedulers. | (historisch) Datenrennen, CPU-Last, Nichtfunktion. | Aktor-Modell (ADR-6): 1 Mailbox/Loop je Instanz; `TrySet*`; ereignisgetriebenes Warten — umgesetzt in `CanKit.Pro.IsoTp`. | §1.1/9,14 |
