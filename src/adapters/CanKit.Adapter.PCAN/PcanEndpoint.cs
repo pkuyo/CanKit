@@ -3,13 +3,10 @@ using System.Collections.Generic;
 using System.Reflection;
 using CanKit.Abstractions.API.Can;
 using CanKit.Abstractions.API.Common;
-using CanKit.Abstractions.API.Transport;
-using CanKit.Abstractions.API.Transport.Definitions;
 using CanKit.Abstractions.Attributes;
 using CanKit.Abstractions.SPI.Common;
 using CanKit.Abstractions.SPI.Registry.Core.Endpoints;
 using CanKit.Adapter.PCAN.Definitions;
-using CanKit.Adapter.PCAN.Transport;
 using CanKit.Core;
 using CanKit.Core.Endpoints;
 using CanKit.Core.Exceptions;
@@ -56,17 +53,6 @@ internal static class PcanEndpoint
             device, (PcanBusOptions)chOpt, (PcanBusInitConfigurator)chCfg);
     }
 
-    public static IIsoTpChannel Open(CanEndpoint endpoint, IsoTpOptions options, Action<IBusInitOptionsConfigurator>? cfg = null)
-    {
-        var ctx = PcanEndpoint.Prepare(endpoint, cfg);
-        var handle = PcanProvider.ParseHandle(ctx.BusOptions.ChannelName!);
-        var (channel, lease) = PcanIsoTpBusMultiplexer.Acquire(handle,
-            () => new PcanIsoTpScheduler(ctx.BusOptions),
-            (bus) => new PcanIsoTpChannel((PcanIsoTpScheduler)bus, options));
-        if (channel is IOwnership ownership)
-            ownership.AttachOwner(lease);
-        return channel;
-    }
 
     /// <summary>
     /// Enumerate available PCAN channels using PCAN-Basic, if present. Fails safe to empty.

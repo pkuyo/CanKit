@@ -50,12 +50,13 @@ Experimental ISO 15765-2 (ISO-TP) implementation for [CanKit](https://github.com
   in the integration-test matrix.
 - Functional (1:n) addressing (SRS FR-TP-019, Could).
 - No vendor-SDK references, ever.
-- Legacy `CanKit.Transport.IsoTp` remains in the tree as historical reference; new work should
-  target this package.
+- The legacy `CanKit.Transport.IsoTp` prototype (and its Abstractions `API/Transport` surface plus
+  the PCAN native ISO-TP register) has been removed; this package is the sole ISO-TP
+  implementation path.
 
 ## Fixes over the prototype (see review §1.1)
 
-The codec is the specification-compliant replacement for `CanKit.Transport.IsoTp/Utils/FrameCodec.cs`
+The codec is the specification-compliant replacement for the removed legacy prototype codec
 and deliberately avoids the following defects:
 
 1. Inverted CAN vs CAN-FD frame kind — this codec is agnostic; it returns the frame **payload**

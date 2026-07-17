@@ -17,8 +17,18 @@
 * CI workflow `.github/workflows/j1939-ci.yml` (Ubuntu + Windows net8.0/net48) modeled on `j1939tp-ci.yml`.
 * `tests/CanKit.Tests/TestCases/J1939/J1939NodeTests.cs` — Virtual-loopback integration tests covering every FR-J1939-001..006 requirement plus SPN cross-byte extraction and round-trip.
 
+### Removed
+
+* Legacy `CanKit.Transport.IsoTp` prototype (functionally defective; superseded by `CanKit.Pro.IsoTp`).
+* Abstractions ISO-TP surface `CanKit.Abstractions.API.Transport.*` (including the `Excpetions`
+  typo namespace) and `IIsoTpRegister`.
+* PCAN native ISO-TP register path (`PcanIsoTp*`, `PcanIsoTpRegister`) that depended on the
+  removed Abstractions transport API.
+* `CanKitTransports.slnf` and `.github/workflows/transports-ci.yml` (replaced by Pro IsoTp CI).
+
 ### Changed
 
+* ISO-TP is exclusively provided by `CanKit.Pro.IsoTp` on the L2 services.
 * `docs/requirements/SRS-CanKit.md` (§4.3.3 J1939): Ist-Zustand aktualisiert (MVP umgesetzt, offene Punkte dokumentiert); Traceability-Tabelle aktualisiert.
 * `docs/architecture/arc42-CanKit.md`: L4-Zeile in der Schichtenübersicht und der Umsetzungstabelle aktualisiert (J1939-App-MVP als vorhanden markiert).
 
