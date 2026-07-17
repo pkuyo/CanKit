@@ -237,6 +237,68 @@ public class IsoTpFunctionalClientTests : IClassFixture<TestCaseProvider>
     }
 
     // ─────────────────────────────────────────────────────────────────────────────────────────
+    // Bugbot #3603879808 — a Single Frame that arrives on the response range BEFORE the
+    // tester's functional request is TX-confirmed must NOT be included in the collected
+    // responses. Only frames that arrive after the request went out on the wire count.
+    // ─────────────────────────────────────────────────────────────────────────────────────────
+    [Fact]
+    public async Task Functional_Collect_Discards_Frames_That_Arrived_Before_Send_Confirmed()
+    {
+        var session = NewSession();
+        using var busA = OpenClassic(session, 0); // tester bus
+        using var busB = OpenClassic(session, 1); // ECU bus
+
+        const uint FunctionalTxId = 0x7DF;
+        const uint EcuResponseId = 0x7E8;
+        const uint StaleEcuResponseId = 0x7E9; // also in-range but sent BEFORE the request
+        const uint RangeStart = 0x7E8;
+        const uint RangeEnd = 0x7EF;
+
+        // The stale reply — same shape as a real SF response, on an in-range CAN-ID. If the
+        // collector treats it as a reply, the assertion will fail.
+        byte[] stalePdu = { 0xDE, 0xAD, 0xBE, 0xEF };
+        var staleEp = IsoTpEndpoint.Normal(StaleEcuResponseId, 0);
+        var staleFrame = CanFrame.Classic(
+            unchecked((int)StaleEcuResponseId),
+            IsoTpFrameCodec.BuildSingleFrame(staleEp, stalePdu, isCanFd: false, padding: true));
+
+        // The real reply — only sent after the ECU actually observes the functional request.
+        byte[] realPdu = { 0x62, 0xF1, 0x90, 0x01 };
+        var realEp = IsoTpEndpoint.Normal(EcuResponseId, 0);
+        var realFrame = CanFrame.Classic(
+            unchecked((int)EcuResponseId),
+            IsoTpFrameCodec.BuildSingleFrame(realEp, realPdu, isCanFd: false, padding: true));
+
+        // Open the functional client first so the response filter is subscribed. Now blast the
+        // stale SF onto the response CAN-ID while nothing has been sent yet — this is the
+        // scenario where an earlier request's late reply is sitting in the pipe.
+        using var client = IsoTpFactory.OpenFunctional(busA, FunctionalTxId, RangeStart, RangeEnd,
+            FastOptions());
+
+        busB.FrameObserved += (_, e) =>
+        {
+            if (e.CanFrame.ID == unchecked((int)FunctionalTxId))
+                busB.Transmit(realFrame);
+        };
+
+        // Emit the stale frame BEFORE the send even begins. Give the virtual loopback a
+        // moment to deliver it into the subscription's buffer.
+        busB.Transmit(staleFrame);
+        await Task.Delay(50);
+
+        byte[] request = { 0x22, 0xF1, 0x90 };
+        var responses = await client.SendAndCollectAsync(request, CollectionWindow)
+            .WaitAsync(ShortTimeout);
+
+        responses.Should().HaveCount(1,
+            "only the reply that arrived AFTER the functional request went out counts");
+        responses[0].SourceCanId.Should().Be(EcuResponseId);
+        responses[0].Data.Should().Equal(realPdu);
+        responses.Should().NotContain(r => r.SourceCanId == StaleEcuResponseId,
+            "the pre-send stale SF must be discarded by the gate");
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────────────────
     // FR-TP-019 — Dispose is idempotent and stops the client.
     // ─────────────────────────────────────────────────────────────────────────────────────────
     [Fact]

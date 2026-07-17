@@ -125,12 +125,43 @@ public sealed class IsoTpFunctionalClient : IDisposable
         if (pdu.Length == 0)
             throw new ArgumentException("ISO-TP PDU must be non-empty.", nameof(pdu));
 
-        // Subscribe before sending so no early fast response is missed.
+        // Subscribe before sending so no early fast response is missed. Every frame that
+        // arrives on the response filter *before* we hand the outbound Single Frame to the
+        // driver is stale bus traffic (a previous request's late reply, background chatter,
+        // an unrelated ECU broadcast, …) and MUST NOT be treated as a reply to the request
+        // we are about to send.
+        //
+        // The gate below is signalled from inside SendSingleFrameAsync, immediately before
+        // it calls the driver — anything the subscription has already buffered by that
+        // point is dropped; anything that arrives afterwards is a candidate reply and is
+        // collected until the caller-supplied window expires. Doing this "just before the
+        // driver call" (not "after TX-confirm returns") is important: on very fast buses
+        // (e.g. the in-process Virtual bus, or a hardware ECU with a near-zero P2 time)
+        // the ECU's reply can already be on our RX subscription before the outbound
+        // TX-echo confirmation arrives, and gating on TX-confirm would then discard the
+        // legitimate reply.
         using var sub = _service.Subscribe(_responseFilter);
+        var gate = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var collectTask = CollectAfterGateAsync(sub, gate.Task, window, cancellationToken);
 
-        await SendSingleFrameAsync(pdu, cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await SendSingleFrameAsync(pdu, gate, cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            // Ensure the collector unwinds instead of running the whole window on an
+            // aborted send. If the gate was already opened (send failed after TX started)
+            // we still let the collector complete gracefully — cancel via TrySetCanceled
+            // only matters when the gate never opened, in which case the collector was
+            // idling in the pre-gate discard phase and needs to bail out immediately.
+            gate.TrySetCanceled();
+            try { await collectTask.ConfigureAwait(false); }
+            catch { /* observe & swallow — the original send failure is what the caller sees */ }
+            throw;
+        }
 
-        return await CollectFromSubscriptionAsync(sub, window, cancellationToken).ConfigureAwait(false);
+        return await collectTask.ConfigureAwait(false);
     }
 
     /// <summary>
@@ -189,7 +220,18 @@ public sealed class IsoTpFunctionalClient : IDisposable
     // Internal helpers
     // -----------------------------------------------------------------------------------------
 
-    private async Task SendSingleFrameAsync(ReadOnlyMemory<byte> pdu, CancellationToken ct)
+    private Task SendSingleFrameAsync(ReadOnlyMemory<byte> pdu, CancellationToken ct)
+        => SendSingleFrameAsync(pdu, sendStartedGate: null, ct);
+
+    /// <summary>
+    /// Sends <paramref name="pdu"/> as a functional Single Frame. If
+    /// <paramref name="sendStartedGate"/> is non-null, it is completed immediately before the
+    /// call to <see cref="ICanBusService.SendConfirmed"/>; <see cref="SendAndCollectAsync"/>
+    /// uses this to demarcate stale frames buffered on the response subscription from
+    /// candidate replies.
+    /// </summary>
+    private async Task SendSingleFrameAsync(ReadOnlyMemory<byte> pdu,
+        TaskCompletionSource<object?>? sendStartedGate, CancellationToken ct)
     {
         int sfMax = IsoTpFrameCodec.SingleFrameMaxDataLength(_options.UseCanFd,
             _txEndpoint.UsesAddressExtension);
@@ -209,6 +251,11 @@ public sealed class IsoTpFunctionalClient : IDisposable
                 isExtendedFrame: _options.IsExtendedCanId)
             : CanFrame.Classic(unchecked((int)_txEndpoint.TxCanId), payload,
                 isExtendedFrame: _options.IsExtendedCanId);
+
+        // Open the "send has started" gate the moment before we hand the frame to the driver.
+        // From this instant onward, frames matched by the response filter are candidate
+        // replies; anything the collector saw before this point was stale.
+        sendStartedGate?.TrySetResult(null);
 
         var confirmation = await _service.SendConfirmed(frame, _options.NAs, ct)
             .ConfigureAwait(false);
@@ -245,25 +292,8 @@ public sealed class IsoTpFunctionalClient : IDisposable
         {
             await foreach (var frame in sub.Frames.WithCancellation(windowToken).ConfigureAwait(false))
             {
-                var payload = frame.Data.ToArray();
-                bool isCanFd = frame.FrameKind == CanFrameType.CanFd;
-
-                // Parse the PCI using Normal addressing (no address-extension byte).
-                if (!IsoTpFrameCodec.TryParsePci(payload, NormalParseEndpoint, isCanFd, out var pci))
-                    continue;
-
-                // Functional addressing: collect only Single-Frame responses.
-                // First-Frame responses cannot be reassembled without a physical TX address for
-                // each ECU's Flow-Control reply (ISO 15765-2 §9.4). CF and FC are stray frames.
-                if (pci.Type != PciType.SingleFrame)
-                    continue;
-
-                if (pci.DataOffset + pci.Length > payload.Length)
-                    continue;
-
-                var pdu = new byte[pci.Length];
-                Array.Copy(payload, pci.DataOffset, pdu, 0, pci.Length);
-                responses.Add(new IsoTpFunctionalResponse((uint)frame.ID, pdu));
+                if (TryParseFunctionalResponse(frame, out var response))
+                    responses.Add(response!);
             }
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
@@ -273,6 +303,116 @@ public sealed class IsoTpFunctionalClient : IDisposable
         }
 
         return responses.AsReadOnly();
+    }
+
+    /// <summary>
+    /// Drains any frames that arrived on the subscription <em>before</em> <paramref name="gateTask"/>
+    /// completes (they belong to earlier bus traffic and must not be treated as replies), then
+    /// arms the <paramref name="window"/> deadline and collects the frames that arrive after
+    /// the gate opens. If the gate is cancelled (send failed), the collector unwinds and returns
+    /// whatever it has (typically empty).
+    /// </summary>
+    private static async Task<IReadOnlyList<IsoTpFunctionalResponse>> CollectAfterGateAsync(
+        ISubscription sub, Task gateTask, TimeSpan window, CancellationToken cancellationToken)
+    {
+        var responses = new List<IsoTpFunctionalResponse>();
+
+        // One lifetime CTS drives the enumerator: it is cancelled by the caller's token or,
+        // once the gate opens, by the window timer we arm below.
+        using var lifetimeCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var enumerator = sub.Frames.GetAsyncEnumerator(lifetimeCts.Token);
+        try
+        {
+            Task<bool> nextMove = enumerator.MoveNextAsync().AsTask();
+            bool gateOpen = false;
+
+            while (true)
+            {
+                if (!gateOpen)
+                {
+                    // Race the next-frame wait against the gate. Whichever finishes first
+                    // determines whether the frame is pre- or post-gate.
+                    var winner = await Task.WhenAny(nextMove, gateTask).ConfigureAwait(false);
+                    if (winner == gateTask)
+                    {
+                        // Send failed → collector aborts and returns nothing new.
+                        if (gateTask.IsCanceled) return responses.AsReadOnly();
+
+                        gateOpen = true;
+                        // From this instant we are collecting for the caller-supplied window.
+                        lifetimeCts.CancelAfter(window);
+                        // Fall through: nextMove is still in flight; we now treat its result
+                        // as a real reply (or, if the timer fires first, an OCE we swallow).
+                        continue;
+                    }
+
+                    // A frame arrived before the gate opened — discard it as stale traffic.
+                    bool moved;
+                    try { moved = await nextMove.ConfigureAwait(false); }
+                    catch (OperationCanceledException) { throw; }
+                    if (!moved) return responses.AsReadOnly();
+                    nextMove = enumerator.MoveNextAsync().AsTask();
+                    continue;
+                }
+
+                bool got;
+                try
+                {
+                    got = await nextMove.ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+                {
+                    break; // window expired
+                }
+                if (!got) break;
+
+                if (TryParseFunctionalResponse(enumerator.Current, out var response))
+                    responses.Add(response!);
+                nextMove = enumerator.MoveNextAsync().AsTask();
+            }
+        }
+        finally
+        {
+            try { await enumerator.DisposeAsync().ConfigureAwait(false); }
+            catch (OperationCanceledException) { /* enumerator token tripped — cleanup only */ }
+            catch (ObjectDisposedException) { /* subscription already disposed */ }
+        }
+
+        return responses.AsReadOnly();
+    }
+
+    private static bool TryParseFunctionalResponse(CanFrameView frame,
+        out IsoTpFunctionalResponse? response)
+    {
+        var payload = frame.Data.ToArray();
+        bool isCanFd = frame.FrameKind == CanFrameType.CanFd;
+
+        // Parse the PCI using Normal addressing (no address-extension byte).
+        if (!IsoTpFrameCodec.TryParsePci(payload, NormalParseEndpoint, isCanFd, out var pci))
+        {
+            response = null;
+            return false;
+        }
+
+        // Functional addressing: collect only Single-Frame responses.
+        // First-Frame responses cannot be reassembled without a physical TX address for
+        // each ECU's Flow-Control reply (ISO 15765-2 §9.4). CF and FC are stray frames.
+        if (pci.Type != PciType.SingleFrame)
+        {
+            response = null;
+            return false;
+        }
+
+        if (pci.DataOffset + pci.Length > payload.Length)
+        {
+            response = null;
+            return false;
+        }
+
+        var pdu = new byte[pci.Length];
+        Array.Copy(payload, pci.DataOffset, pdu, 0, pci.Length);
+        response = new IsoTpFunctionalResponse((uint)frame.ID, pdu);
+        return true;
     }
 
     private void ThrowIfDisposed()

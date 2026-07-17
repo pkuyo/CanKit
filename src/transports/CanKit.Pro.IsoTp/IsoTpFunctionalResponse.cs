@@ -9,8 +9,10 @@ namespace CanKit.Pro.IsoTp;
 /// Functional addressing is a broadcast mechanism (ISO 15765-2 §9): the tester transmits a
 /// Single Frame on the shared functional CAN identifier, and each ECU that recognises the
 /// request replies on its own physical response CAN identifier. One
-/// <see cref="IsoTpFunctionalResponse"/> is produced for every SF (or, when multi-frame support
-/// is enabled, every reassembled multi-frame PDU) that arrives within the collection window.
+/// <see cref="IsoTpFunctionalResponse"/> is produced for every Single-Frame response that
+/// arrives within the collection window; multi-frame responses cannot be reassembled in
+/// functional addressing (no physical response address to send Flow Control to) and are
+/// dropped by the collector.
 /// </remarks>
 public sealed class IsoTpFunctionalResponse
 {
