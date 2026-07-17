@@ -351,15 +351,10 @@ public class IsoTpFunctionalClientTests : IClassFixture<TestCaseProvider>
     }
 
     // ─────────────────────────────────────────────────────────────────────────────────────────
-    // Bugbot 3604648050 regression — every ECU reply that reaches the subscription channel
-    // inside the collection window must be surfaced to the caller, including frames that are
-    // still sitting in the channel's buffer when the window CTS fires. The pre-fix
-    // `CollectFromSubscriptionAsync` used `await foreach` alone: once the window token
-    // cancelled the enumerator, any Single-Frame reply that had already been written to the
-    // channel but not yet yielded was silently dropped when the subscription was disposed.
-    //
-    // The fix drains the channel synchronously with `TryRead` in the OperationCanceledException
-    // catch, so buffered replies survive the transition from await-yield to window-expiry.
+    // Bugbot 3604648050 + 3604785766 — on window expiry we Dispose the subscription (stop
+    // delivery) then TryRead-drain whatever was already buffered. That surfaces in-window
+    // replies that the cancelled enumerator never yielded (3604648050) without admitting
+    // frames that arrive after the deadline (3604785766).
     // ─────────────────────────────────────────────────────────────────────────────────────────
     [Fact]
     public async Task Functional_Collect_Drains_Buffered_Frames_On_Window_Expiry()
@@ -402,9 +397,8 @@ public class IsoTpFunctionalClientTests : IClassFixture<TestCaseProvider>
         // Zero-length collection window: TX-confirm returns synchronously with all ReplyCount
         // frames already in the subscription buffer, then `CancelAfter(TimeSpan.Zero)` fires
         // the window CTS immediately — the enumerator's `MoveNextAsync` throws OCE without
-        // ever yielding a frame. This makes the drain-on-catch (Bugbot 3604648050) the ONLY
-        // path that can surface the buffered replies to the caller: pre-fix, the returned
-        // list would be empty even though every reply arrived on time.
+        // ever yielding a frame. This makes the dispose-then-drain path (Bugbot 3604648050)
+        // the ONLY path that can surface the buffered replies to the caller.
         var responses = await client
             .SendAndCollectAsync(request, TimeSpan.Zero)
             .WaitAsync(ShortTimeout);
@@ -412,11 +406,45 @@ public class IsoTpFunctionalClientTests : IClassFixture<TestCaseProvider>
         responses.Should().HaveCount(ReplyCount,
             "every reply that arrived on the subscription before the window CTS fired must " +
             "be surfaced, even when the window expires before the enumerator yields any " +
-            "frame — the OCE catch must drain the buffered channel (Bugbot 3604648050)");
+            "frame — the OCE catch must dispose then drain the buffered channel " +
+            "(Bugbot 3604648050)");
 
         // Verify identity — no duplication and no data corruption from the drain path.
         var lastBytes = responses.Select(r => r.Data[3]).OrderBy(b => b).ToArray();
         lastBytes.Should().Equal(Enumerable.Range(0, ReplyCount).Select(i => (byte)i));
+    }
+
+    [Fact]
+    public async Task Functional_Collect_Does_Not_Accept_Frames_After_Window_Expiry()
+    {
+        // Bugbot 3604785766: after ResponseTimeout, disposing the subscription before the
+        // TryRead drain must prevent a post-window frame from being admitted.
+        var session = NewSession();
+        using var busA = OpenClassic(session, 0);
+        using var busB = OpenClassic(session, 1);
+
+        const uint FunctionalTxId = 0x7DF;
+        const uint EcuResponseId = 0x7E8;
+
+        using var client = IsoTpFactory.OpenFunctional(busA, FunctionalTxId, 0x7E8, 0x7EF,
+            FastOptions());
+
+        // Collect with a short window and no ECU reply during it.
+        var collectTask = client.CollectResponsesAsync(TimeSpan.FromMilliseconds(40));
+        await Task.Delay(80);
+
+        // Inject a late SF after the window has expired — must not appear in the result.
+        var ep = IsoTpEndpoint.Normal(EcuResponseId, 0);
+        byte[] latePdu = { 0x50, 0x01 };
+        busB.Transmit(CanFrame.Classic(
+            unchecked((int)EcuResponseId),
+            IsoTpFrameCodec.BuildSingleFrame(ep, latePdu, isCanFd: false, padding: true)));
+        await Task.Delay(30);
+
+        var responses = await collectTask.WaitAsync(ShortTimeout);
+        responses.Should().BeEmpty(
+            "a frame that arrives after the collection window must not be admitted " +
+            "(Bugbot 3604785766: dispose-before-drain)");
     }
 
     // ─────────────────────────────────────────────────────────────────────────────────────────

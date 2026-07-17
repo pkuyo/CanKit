@@ -268,15 +268,18 @@ public sealed class IsoTpFunctionalClient : IDisposable
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
-            // Window expired normally — not a caller-initiated cancellation. Bugbot
-            // 3604648050: when the window CTS fires, `Frames.WithCancellation` throws
-            // OCE from `MoveNextAsync` even though replies delivered on the underlying
-            // subscription channel *before* the deadline may still be sitting in that
-            // channel unread. Disposing the subscription would discard those buffered
-            // frames along with the enumerator, so we drain the reader synchronously
-            // here first — any SF reply that arrived on this subscription within the
-            // window is still returned to the caller. Frames that arrive after the
-            // window are ignored by design (they are out-of-band for this exchange).
+            // Window expired normally — not a caller-initiated cancellation.
+            //
+            // Bugbot 3604648050: replies that arrived on the subscription channel *before*
+            // the deadline may still be sitting unread when WithCancellation throws OCE.
+            // We must surface those before returning.
+            //
+            // Bugbot 3604785766: a naive post-CancelAfter TryRead loop would also admit
+            // frames written *after* the deadline. Dispose the subscription first so the
+            // service stops delivering and the channel writer is completed; only then
+            // drain whatever was already buffered. Dispose is idempotent with the caller's
+            // `using`.
+            sub.Dispose();
             while (sub.TryRead(out var frame))
             {
                 if (TryParseFunctionalResponse(frame, out var response))
