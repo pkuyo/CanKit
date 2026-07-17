@@ -29,8 +29,6 @@
 ### Changed
 
 * ISO-TP is exclusively provided by `CanKit.Pro.IsoTp` on the L2 services.
-### Changed
-
 * `docs/requirements/SRS-CanKit.md` (§4.3.3 J1939): Ist-Zustand aktualisiert (MVP umgesetzt, offene Punkte dokumentiert); Traceability-Tabelle aktualisiert.
 * `docs/architecture/arc42-CanKit.md`: L4-Zeile in der Schichtenübersicht und der Umsetzungstabelle aktualisiert (J1939-App-MVP als vorhanden markiert).
 
