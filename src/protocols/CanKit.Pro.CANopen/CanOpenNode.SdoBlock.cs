@@ -312,13 +312,11 @@ internal sealed partial class CanOpenNode
 
                     if (session.DeclaredTotalSize > 0 && session.Offset != session.DeclaredTotalSize)
                     {
-                        // Trim / grow to declared size if the peer over-declared. Under-declare
-                        // (Offset > declared) is a protocol error.
-                        if (session.Offset > session.DeclaredTotalSize)
-                        {
-                            AbortBlockClient(session, SdoAbortCode.LengthTooHigh);
-                            return true;
-                        }
+                        AbortBlockClient(session,
+                            session.Offset > session.DeclaredTotalSize
+                                ? SdoAbortCode.LengthTooHigh
+                                : SdoAbortCode.LengthTooLow);
+                        return true;
                     }
 
                     var final = new byte[session.Offset];
@@ -474,6 +472,12 @@ internal sealed partial class CanOpenNode
     /// </summary>
     private bool HandleSdoServerRequestBlock(byte[] data)
     {
+        // CiA 301: SDO (including block transfer) is not available in Stopped / Initializing.
+        // Mirror HandleSdoServerRequest so block initiates and in-flight segment handling are
+        // dropped the same way as classic SDO.
+        if (_state is NmtState.Stopped or NmtState.Initializing)
+            return false;
+
         if (data.Length == 0) return false;
 
         // Pad short DLC frames back to 8 bytes for parsing.

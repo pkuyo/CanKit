@@ -166,21 +166,21 @@ internal sealed partial class CanOpenNode
         // CiA 301 §7.2.8.3.3: a reply that does not alternate the toggle bit is invalid for
         // resetting the life-time window (stale/repeated frames must not keep the consumer
         // alive). The first observed reply establishes the baseline; every later reply must
-        // flip bit 7 relative to the previous accepted response.
-        bool toggleOk = !consumer.HasSeenResponse || toggle != consumer.LastToggle;
-        if (toggleOk)
-        {
-            consumer.HasSeenResponse = true;
-            consumer.LastToggle = toggle;
+        // flip bit 7 relative to the previous accepted response. Invalid toggles are dropped
+        // entirely — do not raise NodeGuardingReceived for them.
+        if (consumer.HasSeenResponse && toggle == consumer.LastToggle)
+            return;
 
-            var deadline = consumer.LifeTimeDeadline;
-            var lifeTime = ScaleLifeTime(consumer.GuardTime, consumer.LifeTimeFactor);
-            if (deadline is null || deadline.IsExpired || deadline.IsCancelled || !deadline.Rearm(lifeTime))
-            {
-                deadline?.Dispose();
-                consumer.LifeTimeDeadline = _deadlines.Arm(lifeTime,
-                    () => OnNodeGuardingTimeout(producerNodeId));
-            }
+        consumer.HasSeenResponse = true;
+        consumer.LastToggle = toggle;
+
+        var deadline = consumer.LifeTimeDeadline;
+        var lifeTime = ScaleLifeTime(consumer.GuardTime, consumer.LifeTimeFactor);
+        if (deadline is null || deadline.IsExpired || deadline.IsCancelled || !deadline.Rearm(lifeTime))
+        {
+            deadline?.Dispose();
+            consumer.LifeTimeDeadline = _deadlines.Arm(lifeTime,
+                () => OnNodeGuardingTimeout(producerNodeId));
         }
 
         RaiseNodeGuardingReceived(producerNodeId, state, toggle, DateTime.UtcNow);
