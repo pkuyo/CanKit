@@ -216,7 +216,7 @@ Der Legacy-Prototyp `CanKit.Transport.IsoTp` sowie die zugehörige Abstractions-
 > Integrationstests decken **FR-TP-001/002/008..012/016..018** ab. **FR-TP-013** (netstandard2.0-
 > `TryPeek`-Polyfill im alten TX-Queue-Ablauf) entfällt mit dem Legacy-Paket — `CanKit.Pro.IsoTp`
 > nutzt `SendConfirmed` + `SemaphoreSlim`-Send-Gate. **FR-TP-014** ist durch L2-`SendConfirmed`
-> (FIFO-Matching je (ID, Payload)) abgedeckt. **FR-TP-019** (Functional Addressing, Could) bleibt offen.
+> (FIFO-Matching je (ID, Payload)) abgedeckt. **FR-TP-019** (Functional Addressing, Could) ist implementiert: `IsoTpFunctionalClient` / `IsoTp.OpenFunctional` — Integrationstest `IsoTpFunctionalClientTests` verifiziert SF-Anfrage mit Antworten von ≥ 2 simulierten ECUs.
 
 | ID | Anforderung | Priorität | Verifikation | Quelle |
 |---|---|---|---|---|
