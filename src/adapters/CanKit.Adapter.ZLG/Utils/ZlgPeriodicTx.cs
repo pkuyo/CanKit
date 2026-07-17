@@ -121,6 +121,18 @@ public sealed class ZlgPeriodicTx : IPeriodicTx
         }
     }
 
+    /// <summary>
+    /// ZLG programs the auto-send list on the device and any transmit-time failure is
+    /// surfaced via the device return code at configuration time (thrown from the
+    /// constructor / <see cref="Update"/>). There is no software transmit loop for this
+    /// wrapper to observe, so this event is never raised by the ZLG implementation.
+    /// </summary>
+    public event EventHandler<Exception>? Faulted
+    {
+        add { /* never raised — see XML docs */ }
+        remove { /* never raised — see XML docs */ }
+    }
+
     private void StopHardware()
     {
         // Disable only this auto-send entry (by index) instead of clearing all

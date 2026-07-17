@@ -47,4 +47,14 @@ public interface IPeriodicTx : IDisposable
     /// 因达到次数而结束时触发。
     /// </summary>
     event EventHandler? Completed;
+
+    /// <summary>
+    /// Raised when a background transmit attempt fails with an exception. The periodic loop
+    /// is kept alive (subsequent ticks are still attempted); subscribers may choose to stop
+    /// the handle explicitly. Hardware-programmed implementations (BCM/PCAN/Kvaser/ZLG/Vector/
+    /// ControlCAN) never raise this event because their driver reports failures through other
+    /// channels (return codes or <see cref="ICanBus.BackgroundExceptionOccurred"/>); only the
+    /// software-emulated periodic sender raises it today.
+    /// </summary>
+    event EventHandler<Exception>? Faulted;
 }
