@@ -1,8 +1,8 @@
 namespace CanKit.Pro.CANopen.Sdo;
 
 /// <summary>
-/// Selects which CiA 301 SDO transport <see cref="ICanOpenNode.SdoUploadAsync"/> and
-/// <see cref="ICanOpenNode.SdoDownloadAsync"/> should use for a single transfer.
+/// Selects which CiA 301 SDO transport the <c>SdoUploadAsync</c> /
+/// <c>SdoDownloadAsync</c> APIs on <see cref="ICanOpenNode"/> should use for a single transfer.
 /// </summary>
 /// <remarks>
 /// <see cref="Auto"/> is the recommended default and preserves the historical behaviour of the
