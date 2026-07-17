@@ -643,6 +643,60 @@ public class CanOpenNodeIntegrationTests : IClassFixture<TestCaseProvider>
         consumer.ObjectDictionary.ReadUnsigned(0x2100, 0x01).Should().Be((uint)0xDEAD);
     }
 
+    // Regression for PR #30 Bugbot 3600571636 (TPDO skips mapping slot offset). When a mapped
+    // OD entry is missing on the producer side, EmitTpdo used to `continue` without advancing
+    // the payload offset, so every subsequent value packed one slot left of where the mapping
+    // said it should land. Verify the second slot lands at its configured byte offset even
+    // when the first slot's OD entry is absent -- the missing slot's window is emitted as its
+    // default zero bytes, and later slots are decoded correctly by the peer.
+    [Fact]
+    public async Task Tpdo_MissingMappingSlot_KeepsSubsequentSlotOffsets()
+    {
+        var session = NewSession();
+        using var busA = Open(session, 0);
+        using var busB = Open(session, 1);
+
+        using var producer = CanOpen.OpenNode(busA, nodeId: 0x11);
+        using var consumer = CanOpen.OpenNode(busB, nodeId: 0x01);
+
+        // Producer OD is intentionally missing 0x2000:00; only the second mapped slot
+        // (0x2000:01) exists. The mapping still declares two 16-bit slots so total frame
+        // length is 4 bytes.
+        producer.ObjectDictionary.AddU16(0x2000, 0x01, 0xDEAD);
+
+        consumer.ObjectDictionary.AddU16(0x2100, 0x00, 0);
+        consumer.ObjectDictionary.AddU16(0x2100, 0x01, 0);
+
+        var producerCobId = CanOpenCobId.TpdoDefault(nodeId: 0x11, pdoIndex: 1);
+        var producerMapping = new PdoMapping()
+            .Add(0x2000, 0x00, 16)   // missing on the producer's OD
+            .Add(0x2000, 0x01, 16);  // present -- must land at byte offset 2, not 0
+        producer.ConfigureTpdo(pdoIndex: 1, producerMapping);
+
+        var consumerMapping = new PdoMapping()
+            .Add(0x2100, 0x00, 16)
+            .Add(0x2100, 0x01, 16);
+        consumer.ConfigureRpdo(pdoIndex: 1, consumerMapping, cobId: producerCobId);
+
+        var received = new TaskCompletionSource<byte[]>(TaskCreationOptions.RunContinuationsAsynchronously);
+        consumer.RpdoReceived += (s, e) =>
+        {
+            if (e.CobId == producerCobId) received.TrySetResult(e.Payload);
+        };
+
+        await consumer.SendNmtCommandAsync(NmtCommand.Start, targetNodeId: 0x11);
+        await Task.Delay(50);
+        await producer.TriggerTpdoAsync(1);
+
+        var payload = await received.Task.WithTimeoutAsync(ShortTimeout);
+        // Missing first slot -> two default zero bytes; then 0xDEAD little-endian.
+        // If the bug regresses (offset not advanced), the payload would be [0xAD, 0xDE, 0x00, 0x00].
+        payload.Should().Equal(0x00, 0x00, 0xAD, 0xDE);
+
+        consumer.ObjectDictionary.ReadUnsigned(0x2100, 0x00).Should().Be((uint)0x0000);
+        consumer.ObjectDictionary.ReadUnsigned(0x2100, 0x01).Should().Be((uint)0xDEAD);
+    }
+
     [Fact]
     public async Task Tpdo_SyncTriggered_FiresEverySync()
     {

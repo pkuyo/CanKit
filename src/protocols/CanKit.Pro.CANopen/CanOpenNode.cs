@@ -1305,16 +1305,25 @@ internal sealed class CanOpenNode : ICanOpenNode
     // =========================================================================================
     private void EmitTpdo(TpdoConfig config)
     {
-        // Assemble the payload by concatenating the current OD values in mapping order.
+        // Assemble the payload by concatenating the current OD values in mapping order. Each
+        // mapping slot occupies its configured ByteLength window in the frame regardless of
+        // whether the OD entry is present -- a missing entry leaves its window as the buffer's
+        // default zero bytes and the next slot lands at its correct offset. The previous
+        // behaviour skipped `offset += entry.ByteLength` on missing entries, which shifted
+        // every subsequent value left of its configured byte position while total length
+        // stayed the same, so consumers decoded the wrong fields even though the frame was
+        // the "right size". See Bugbot 3600571636.
         var mapping = config.Mapping;
         var payload = new byte[mapping.TotalBytes];
         int offset = 0;
         foreach (var entry in mapping.Entries)
         {
-            if (!_od.TryGet(entry.Index, entry.Subindex, out var od)) continue;
-            var raw = od.GetRawValue();
-            int copy = Math.Min(raw.Length, entry.ByteLength);
-            Buffer.BlockCopy(raw, 0, payload, offset, copy);
+            if (_od.TryGet(entry.Index, entry.Subindex, out var od))
+            {
+                var raw = od.GetRawValue();
+                int copy = Math.Min(raw.Length, entry.ByteLength);
+                Buffer.BlockCopy(raw, 0, payload, offset, copy);
+            }
             offset += entry.ByteLength;
         }
         _ = SendControlFrame(config.CobId, payload);
