@@ -362,6 +362,83 @@ public class UdsTransferTests : IClassFixture<TestCaseProvider>
         }
     }
 
+    // -----------------------------------------------------------------------------------
+    // FR-UDS-012 / Bugbot 3603877893 — DownloadAsync must hold exclusivity for the whole
+    // 0x34 → 0x36…0x36 → 0x37 sequence. A concurrent TesterPresent (or any other UDS call)
+    // must NOT be able to sneak onto the wire mid-download, or the ECU's block-sequence
+    // counter check will trip.
+    // -----------------------------------------------------------------------------------
+    [Fact]
+    public async Task DownloadAsync_Holds_Exclusive_Lock_Against_Concurrent_TesterPresent()
+    {
+        // 128 blocks × 2 payload bytes = 256 bytes. Small per-block delay in the ECU handler
+        // keeps the download on the wire long enough for a racing TesterPresent to try to
+        // interleave; the lock must serialize them.
+        const int blockCount = 128;
+        const int chunkSize = 2;
+        var payload = new byte[blockCount * chunkSize];
+        for (int i = 0; i < payload.Length; i++) payload[i] = (byte)(i & 0xFF);
+
+        var (client, ecu, dispose) = BuildPair(e => { });
+        using (dispose)
+        {
+            // Record every SID as the ECU sees it — we assert that no 0x3E appears between
+            // 0x34 and 0x37 (i.e. TesterPresent is not interleaved with the download).
+            var seenSids = new System.Collections.Concurrent.ConcurrentQueue<byte>();
+
+            ecu.On(0x34, req =>
+            {
+                seenSids.Enqueue(0x34);
+                // maxNumberOfBlockLength = 4 → chunk size = 2.
+                return new byte[] { 0x10, 0x04 };
+            });
+            ecu.On(0x36, req =>
+            {
+                seenSids.Enqueue(0x36);
+                // Small artificial delay per block so a concurrent 3E has a real chance to
+                // slip in if the lock were not held.
+                Thread.Sleep(2);
+                return new byte[] { req[1] };
+            });
+            ecu.On(0x37, req => { seenSids.Enqueue(0x37); return Array.Empty<byte>(); });
+            ecu.On(0x3E, req => { seenSids.Enqueue(0x3E); return new byte[] { 0x00 }; });
+
+            var downloadTask = client.DownloadAsync(
+                dataFormatIdentifier: 0x00,
+                addressAndLengthFormatIdentifier: 0x11,
+                memoryAddress: new byte[] { 0x10 },
+                memorySize: new byte[] { (byte)payload.Length },
+                data: payload,
+                cancellationToken: new CancellationTokenSource(ShortTimeout).Token);
+
+            // Fire concurrent TesterPresent calls (both the fire-and-forget suppressed form
+            // and the request/response form) as soon as the download begins. The request
+            // lock must serialise them all after the download finishes.
+            await Task.Yield();
+            var tp1 = client.TesterPresentAsync(suppressPositiveResponse: true,
+                new CancellationTokenSource(ShortTimeout).Token);
+            var tp2 = client.TesterPresentAsync(suppressPositiveResponse: false,
+                new CancellationTokenSource(ShortTimeout).Token);
+
+            await Task.WhenAll(downloadTask, tp1, tp2);
+
+            var order = seenSids.ToArray();
+            // First frame must be the RequestDownload (0x34) — no earlier 0x3E.
+            order[0].Should().Be(0x34);
+            int exitIndex = Array.IndexOf(order, (byte)0x37);
+            exitIndex.Should().BeGreaterThan(0, "RequestTransferExit must be observed");
+            // No TesterPresent may appear before RequestTransferExit finishes.
+            for (int i = 0; i <= exitIndex; i++)
+                order[i].Should().NotBe(0x3E,
+                    $"TesterPresent (0x3E) at index {i} would have interleaved the download");
+            // Every 0x36 must sit strictly between 0x34 and 0x37 with no 0x3E in between.
+            int downloadCount = 0;
+            foreach (var sid in order)
+                if (sid == 0x36) downloadCount++;
+            downloadCount.Should().Be(blockCount);
+        }
+    }
+
     private sealed class CompositeDisposable : IDisposable
     {
         private readonly IDisposable[] _items;

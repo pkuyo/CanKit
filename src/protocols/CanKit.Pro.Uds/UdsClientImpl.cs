@@ -19,8 +19,8 @@ namespace CanKit.Pro.Uds;
 /// is a single <see cref="IIsoTpChannel.ReceiveAsync"/>. Because we hold the request lock
 /// across the send + wait, we know the next reassembled PDU on the channel belongs to the
 /// current request (the ECU only speaks in response to a request, ISO 14229-1 §7.3).
-/// Multi-step services such as SecurityAccess keep that same lock across both on-the-wire
-/// exchanges so keep-alive traffic cannot interleave.
+/// Multi-step services such as SecurityAccess and DownloadAsync keep that same lock across
+/// every on-the-wire exchange so keep-alive traffic cannot interleave.
 /// </para>
 /// <para>
 /// Before each send (and on abort paths) the client calls
@@ -404,44 +404,78 @@ internal sealed class UdsClientImpl : IUdsClient
     // Upload / Download (SRS FR-UDS-012, ISO 14229-1 §14).
     // ---------------------------------------------------------------------------------------
 
-    public Task<UdsDownloadResponse> RequestDownloadAsync(
+    public async Task<UdsDownloadResponse> RequestDownloadAsync(
         byte dataFormatIdentifier,
         byte addressAndLengthFormatIdentifier,
         ReadOnlyMemory<byte> memoryAddress,
         ReadOnlyMemory<byte> memorySize,
         CancellationToken cancellationToken = default)
-        => RequestTransferSetupAsync(
-            UdsServiceId.RequestDownload,
-            dataFormatIdentifier,
-            addressAndLengthFormatIdentifier,
-            memoryAddress,
-            memorySize,
-            (lfid, maxBlock) => new UdsDownloadResponse(lfid, maxBlock),
-            cancellationToken);
+    {
+        ThrowIfDisposed();
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken, _lifetimeCts.Token);
+        var linkedToken = linked.Token;
 
-    public Task<UdsUploadResponse> RequestUploadAsync(
+        await _requestLock.WaitAsync(linkedToken).ConfigureAwait(false);
+        try
+        {
+            return await RequestTransferSetupCoreAsync(
+                UdsServiceId.RequestDownload,
+                dataFormatIdentifier,
+                addressAndLengthFormatIdentifier,
+                memoryAddress,
+                memorySize,
+                (lfid, maxBlock) => new UdsDownloadResponse(lfid, maxBlock),
+                linkedToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _requestLock.Release();
+        }
+    }
+
+    public async Task<UdsUploadResponse> RequestUploadAsync(
         byte dataFormatIdentifier,
         byte addressAndLengthFormatIdentifier,
         ReadOnlyMemory<byte> memoryAddress,
         ReadOnlyMemory<byte> memorySize,
         CancellationToken cancellationToken = default)
-        => RequestTransferSetupAsync(
-            UdsServiceId.RequestUpload,
-            dataFormatIdentifier,
-            addressAndLengthFormatIdentifier,
-            memoryAddress,
-            memorySize,
-            (lfid, maxBlock) => new UdsUploadResponse(lfid, maxBlock),
-            cancellationToken);
+    {
+        ThrowIfDisposed();
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken, _lifetimeCts.Token);
+        var linkedToken = linked.Token;
 
-    private async Task<TResult> RequestTransferSetupAsync<TResult>(
+        await _requestLock.WaitAsync(linkedToken).ConfigureAwait(false);
+        try
+        {
+            return await RequestTransferSetupCoreAsync(
+                UdsServiceId.RequestUpload,
+                dataFormatIdentifier,
+                addressAndLengthFormatIdentifier,
+                memoryAddress,
+                memorySize,
+                (lfid, maxBlock) => new UdsUploadResponse(lfid, maxBlock),
+                linkedToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _requestLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Assumes <see cref="_requestLock"/> is already held. Builds the 0x34/0x35 request, hands
+    /// it to <see cref="ExecuteCoreAsync"/>, and parses the maxNumberOfBlockLength.
+    /// </summary>
+    private async Task<TResult> RequestTransferSetupCoreAsync<TResult>(
         UdsServiceId serviceId,
         byte dataFormatIdentifier,
         byte addressAndLengthFormatIdentifier,
         ReadOnlyMemory<byte> memoryAddress,
         ReadOnlyMemory<byte> memorySize,
         Func<byte, ulong, TResult> project,
-        CancellationToken cancellationToken)
+        CancellationToken linkedToken)
     {
         int addressWidth = addressAndLengthFormatIdentifier & 0x0F;
         int sizeWidth = (addressAndLengthFormatIdentifier >> 4) & 0x0F;
@@ -465,7 +499,7 @@ internal sealed class UdsClientImpl : IUdsClient
         memoryAddress.Span.CopyTo(request.AsSpan(3));
         memorySize.Span.CopyTo(request.AsSpan(3 + addressWidth));
 
-        var response = await ExecuteAsync(serviceId, request, cancellationToken).ConfigureAwait(false);
+        var response = await ExecuteCoreAsync(serviceId, request, linkedToken).ConfigureAwait(false);
 
         // Positive response layout (ISO 14229-1 §14.2.2.4 / §14.1.2.4):
         //   [0]=respSid  [1]=lengthFormatIdentifier  [2..]=maxNumberOfBlockLength (big-endian).
@@ -495,13 +529,37 @@ internal sealed class UdsClientImpl : IUdsClient
     public async Task<byte[]> TransferDataAsync(byte blockSequenceCounter,
         ReadOnlyMemory<byte> data, CancellationToken cancellationToken = default)
     {
+        ThrowIfDisposed();
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken, _lifetimeCts.Token);
+        var linkedToken = linked.Token;
+
+        await _requestLock.WaitAsync(linkedToken).ConfigureAwait(false);
+        try
+        {
+            return await TransferDataCoreAsync(blockSequenceCounter, data, linkedToken)
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            _requestLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Assumes <see cref="_requestLock"/> is already held. Sends one 0x36 request and validates
+    /// the echoed block-sequence counter.
+    /// </summary>
+    private async Task<byte[]> TransferDataCoreAsync(byte blockSequenceCounter,
+        ReadOnlyMemory<byte> data, CancellationToken linkedToken)
+    {
         var request = new byte[2 + data.Length];
         request[0] = (byte)UdsServiceId.TransferData;
         request[1] = blockSequenceCounter;
         if (data.Length > 0) data.Span.CopyTo(request.AsSpan(2));
 
-        var response = await ExecuteAsync(UdsServiceId.TransferData, request,
-            cancellationToken).ConfigureAwait(false);
+        var response = await ExecuteCoreAsync(UdsServiceId.TransferData, request,
+            linkedToken).ConfigureAwait(false);
 
         // Positive response: [0]=0x76 [1]=blockSequenceCounter [2..]=transferResponseParameterRecord.
         if (response.Length < 2)
@@ -521,17 +579,39 @@ internal sealed class UdsClientImpl : IUdsClient
         ReadOnlyMemory<byte> transferRequestParameterRecord = default,
         CancellationToken cancellationToken = default)
     {
+        ThrowIfDisposed();
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken, _lifetimeCts.Token);
+        var linkedToken = linked.Token;
+
+        await _requestLock.WaitAsync(linkedToken).ConfigureAwait(false);
+        try
+        {
+            await RequestTransferExitCoreAsync(transferRequestParameterRecord, linkedToken)
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            _requestLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Assumes <see cref="_requestLock"/> is already held. Sends one 0x37 request; the
+    /// vendor-specific transferResponseParameterRecord is discarded (SID correlation is done
+    /// by <see cref="ExecuteCoreAsync"/>).
+    /// </summary>
+    private async Task RequestTransferExitCoreAsync(
+        ReadOnlyMemory<byte> transferRequestParameterRecord,
+        CancellationToken linkedToken)
+    {
         var request = new byte[1 + transferRequestParameterRecord.Length];
         request[0] = (byte)UdsServiceId.RequestTransferExit;
         if (transferRequestParameterRecord.Length > 0)
             transferRequestParameterRecord.Span.CopyTo(request.AsSpan(1));
 
-        // Positive response is [0]=0x77 [1..]=transferResponseParameterRecord. We only need to
-        // verify the SID matches (ExecuteAsync already does that); the tail record is discarded
-        // because it is vendor-specific (e.g. an ECU-computed CRC that the caller may want to
-        // audit — expose it later if needed).
-        _ = await ExecuteAsync(UdsServiceId.RequestTransferExit, request,
-            cancellationToken).ConfigureAwait(false);
+        _ = await ExecuteCoreAsync(UdsServiceId.RequestTransferExit, request,
+            linkedToken).ConfigureAwait(false);
     }
 
     public async Task DownloadAsync(
@@ -542,37 +622,61 @@ internal sealed class UdsClientImpl : IUdsClient
         ReadOnlyMemory<byte> data,
         CancellationToken cancellationToken = default)
     {
-        var download = await RequestDownloadAsync(dataFormatIdentifier,
-            addressAndLengthFormatIdentifier, memoryAddress, memorySize,
-            cancellationToken).ConfigureAwait(false);
+        ThrowIfDisposed();
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken, _lifetimeCts.Token);
+        var linkedToken = linked.Token;
 
-        // TransferData request layout: [0]=0x36 [1]=BSC [2..]=payload.
-        // The ECU-reported maxNumberOfBlockLength is the TOTAL request size in bytes (including
-        // the SID and the BSC byte), so each chunk carries at most maxNumberOfBlockLength - 2
-        // payload bytes.
-        ulong maxBlock = download.MaxNumberOfBlockLength;
-        if (maxBlock <= 2)
-            throw new UdsProtocolException(
-                $"ECU-reported maxNumberOfBlockLength={maxBlock} leaves no room for TransferData payload " +
-                "(need at least 3 to carry SID + BSC + one payload byte).");
-
-        // Cap the chunk size at int.MaxValue so we can slice ReadOnlyMemory<byte>. Real ECUs
-        // report block lengths that fit in a few kB; the cap is defensive against absurd LFIs.
-        int chunkSize = maxBlock - 2 > int.MaxValue ? int.MaxValue : (int)(maxBlock - 2);
-
-        int offset = 0;
-        byte bsc = 0x01; // ISO 14229-1 §14.3.2: first TransferData uses BSC=0x01.
-        while (offset < data.Length)
+        // Hold the request lock across the entire 0x34 → 0x36…0x36 → 0x37 sequence so
+        // TesterPresent keep-alive (or any other UDS call) cannot interleave mid-download and
+        // desynchronise the ECU's block-sequence counter (ISO 14229-1 §14.3). Mirror of
+        // SecurityAccessAsync: acquire the lock once, then call the *Core helpers that assume
+        // the lock is held. The public RequestDownload/TransferData/RequestTransferExit APIs
+        // remain unchanged for single-step callers.
+        await _requestLock.WaitAsync(linkedToken).ConfigureAwait(false);
+        try
         {
-            int remaining = data.Length - offset;
-            int take = remaining < chunkSize ? remaining : chunkSize;
-            var chunk = data.Slice(offset, take);
-            _ = await TransferDataAsync(bsc, chunk, cancellationToken).ConfigureAwait(false);
-            offset += take;
-            unchecked { bsc++; } // Wraps 0xFF → 0x00 → 0x01 … as required by ISO 14229-1 §14.3.2.
-        }
+            var download = await RequestTransferSetupCoreAsync(
+                UdsServiceId.RequestDownload,
+                dataFormatIdentifier,
+                addressAndLengthFormatIdentifier,
+                memoryAddress,
+                memorySize,
+                (lfid, maxBlock) => new UdsDownloadResponse(lfid, maxBlock),
+                linkedToken).ConfigureAwait(false);
 
-        await RequestTransferExitAsync(default, cancellationToken).ConfigureAwait(false);
+            // TransferData request layout: [0]=0x36 [1]=BSC [2..]=payload.
+            // The ECU-reported maxNumberOfBlockLength is the TOTAL request size in bytes
+            // (including the SID and the BSC byte), so each chunk carries at most
+            // maxNumberOfBlockLength - 2 payload bytes.
+            ulong maxBlock = download.MaxNumberOfBlockLength;
+            if (maxBlock <= 2)
+                throw new UdsProtocolException(
+                    $"ECU-reported maxNumberOfBlockLength={maxBlock} leaves no room for TransferData payload " +
+                    "(need at least 3 to carry SID + BSC + one payload byte).");
+
+            // Cap the chunk size at int.MaxValue so we can slice ReadOnlyMemory<byte>. Real ECUs
+            // report block lengths that fit in a few kB; the cap is defensive against absurd LFIs.
+            int chunkSize = maxBlock - 2 > int.MaxValue ? int.MaxValue : (int)(maxBlock - 2);
+
+            int offset = 0;
+            byte bsc = 0x01; // ISO 14229-1 §14.3.2: first TransferData uses BSC=0x01.
+            while (offset < data.Length)
+            {
+                int remaining = data.Length - offset;
+                int take = remaining < chunkSize ? remaining : chunkSize;
+                var chunk = data.Slice(offset, take);
+                _ = await TransferDataCoreAsync(bsc, chunk, linkedToken).ConfigureAwait(false);
+                offset += take;
+                unchecked { bsc++; } // Wraps 0xFF → 0x00 → 0x01 … as required by ISO 14229-1 §14.3.2.
+            }
+
+            await RequestTransferExitCoreAsync(default, linkedToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _requestLock.Release();
+        }
     }
 
     // ---------------------------------------------------------------------------------------
