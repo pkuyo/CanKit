@@ -1180,8 +1180,10 @@ STmin-Grenzwerte, SN-Folge, N_Bs/N_Cr-Timeouts gegen Virtual.
   (FR-RAW-010/013); `Dispose` meldet Subscriptions deterministisch ab und schließt ihren Channel
   (FR-RAW-012), das Verwerfen des Dienstes hängt sich vom `FrameObserved`-Event ab. Baut rein auf der
   bestehenden `ICanBus`-Oberfläche — kein Adapter-Eingriff. Abgesichert per Virtual-Loopback
-  (`tests/CanKit.Tests/TestCases/RawCanSubscriptionTests.cs`). Offen: Laufzeit-Rekonfiguration der
-  Filterkriterien (FR-RAW-014, Could) ist bewusst nicht Teil dieser Umsetzung.
+  (`tests/CanKit.Tests/TestCases/RawCanSubscriptionTests.cs`). Laufzeit-Rekonfiguration der
+  Filterkriterien (FR-RAW-014, Could) über <c>ISubscription.Reconfigure</c> (atomarer Filtertausch
+  per <c>Interlocked.Exchange</c> auf dem Dispatch-Hot-Path; bereits gepufferte Frames bleiben
+  unverändert).
 
 ### ADR-6 (umgesetzt): Aktor-Modell pro Protokollinstanz
 - **Kontext:** ISO-TP-Prototyp mutiert State über Thread-Grenzen ohne Sync (Datenrennen, Busy-Loop).

@@ -14,12 +14,25 @@ namespace CanKit.Pro.RawCan
     /// </summary>
     internal sealed class Subscription : ISubscription
     {
+        private sealed class FilterCriteria
+        {
+            public static readonly FilterCriteria AcceptAll = new(null, null);
+
+            public CanIdFilter? IdFilter { get; }
+            public Func<CanFrameView, bool>? Predicate { get; }
+
+            public FilterCriteria(CanIdFilter? idFilter, Func<CanFrameView, bool>? predicate)
+            {
+                IdFilter = idFilter;
+                Predicate = predicate;
+            }
+        }
+
         private readonly CanBusService _service;
         private readonly Channel<CanFrameView> _channel;
 
-        // Exactly one of these is set (fast path vs. generic predicate); both null = accept all.
-        private readonly CanIdFilter? _idFilter;
-        private readonly Func<CanFrameView, bool>? _predicate;
+        // Swapped atomically on Reconfigure (FR-RAW-014); volatile read on the dispatch hot path.
+        private volatile FilterCriteria _criteria;
 
         private int _disposed;
 
@@ -28,9 +41,9 @@ namespace CanKit.Pro.RawCan
         /// predicate-based or catch-all subscription. Used only by
         /// <see cref="CanBusService.FindOverlappingFilterSubscriptions"/> (FR-RAW-041) to inspect
         /// currently registered filters; not part of the public <see cref="ISubscription"/>
-        /// surface.
+        /// surface. Reflects the current filter after <see cref="Reconfigure(CanIdFilter)"/>.
         /// </summary>
-        internal CanIdFilter? IdFilter => _idFilter;
+        internal CanIdFilter? IdFilter => _criteria.IdFilter;
 
         /// <summary>
         /// True once this subscription has been disposed (by itself or by the owning service).
@@ -47,8 +60,11 @@ namespace CanKit.Pro.RawCan
             int capacity)
         {
             _service = service;
-            _idFilter = idFilter;
-            _predicate = predicate;
+            _criteria = idFilter is { } filter
+                ? new FilterCriteria(filter, null)
+                : predicate is { } p
+                    ? new FilterCriteria(null, p)
+                    : FilterCriteria.AcceptAll;
 
             // Bounded + DropOldest gives the same non-blocking fan-out semantics AsyncFramePipe
             // uses for the L1 RX pipe (src/core/CanKit.Core/Utils/AsyncFramePipe.cs). We use a
@@ -62,6 +78,22 @@ namespace CanKit.Pro.RawCan
                 FullMode = BoundedChannelFullMode.DropOldest,
             };
             _channel = Channel.CreateBounded<CanFrameView>(options);
+        }
+
+        /// <inheritdoc />
+        public void Reconfigure(CanIdFilter filter)
+        {
+            ThrowIfNotDisposed();
+            Interlocked.Exchange(ref _criteria, new FilterCriteria(filter, null));
+        }
+
+        /// <inheritdoc />
+        public void Reconfigure(Func<CanFrameView, bool>? predicate)
+        {
+            ThrowIfNotDisposed();
+            Interlocked.Exchange(
+                ref _criteria,
+                predicate is null ? FilterCriteria.AcceptAll : new FilterCriteria(null, predicate));
         }
 
         /// <summary>
@@ -84,11 +116,12 @@ namespace CanKit.Pro.RawCan
         /// </remarks>
         internal void TryDeliver(in CanFrameView view)
         {
-            if (_idFilter is { } filter)
+            var criteria = _criteria;
+            if (criteria.IdFilter is { } filter)
             {
                 if (!filter.Matches(view)) return;
             }
-            else if (_predicate is { } predicate && !predicate(view))
+            else if (criteria.Predicate is { } predicate && !predicate(view))
             {
                 return;
             }
@@ -127,6 +160,12 @@ namespace CanKit.Pro.RawCan
         {
             if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
             _channel.Writer.TryComplete();
+        }
+
+        private void ThrowIfNotDisposed()
+        {
+            if (Volatile.Read(ref _disposed) != 0)
+                throw new ObjectDisposedException(nameof(ISubscription));
         }
     }
 }
