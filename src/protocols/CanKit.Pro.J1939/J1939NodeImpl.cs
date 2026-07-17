@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using CanKit.Abstractions.API.Can;
 using CanKit.Abstractions.API.Can.Definitions;
 using CanKit.Abstractions.API.Common;
+using CanKit.Core.Utils;
 using CanKit.Pro.Actor;
 using CanKit.Pro.Addressing;
 using CanKit.Pro.J1939Tp;
@@ -649,12 +650,17 @@ internal sealed class J1939NodeImpl : IJ1939Node
             throw new ArgumentOutOfRangeException(nameof(message.Priority), message.Priority,
                 "J1939 priority must be in [0, 7].");
 
-        // Payload-length split (FR-J1939-006/007): single-frame PGNs (<= 8 bytes) hand off to
-        // the L1 IPeriodicTx (bus-native cyclic TX when the adapter supports it, software
-        // fallback otherwise) so timing does not fight the .NET GC / actor loop for jitter.
-        // Multi-frame PGNs (> 8 bytes) still need the J1939-TP session per emission, which
-        // ICanBus.TransmitPeriodic cannot express, so they keep the software PeriodicSchedule
-        // that calls SendAsync -> the shared J1939-TP channel.
+        // Payload-length split (FR-J1939-006/007): single-frame PGNs (<= 8 bytes) prefer the
+        // L1 IPeriodicTx path (bus-native cyclic TX) so timing does not fight the .NET GC /
+        // actor loop for jitter. However, when the adapter routes TransmitPeriodic through
+        // the CanKit.Core.Utils.SoftwarePeriodicTx fallback (Virtual, PCAN/Vector/Kvaser SW
+        // fallback, …), its TrySendOnce swallows Transmit exceptions — those errors never
+        // reach BackgroundExceptionOccurred (Bugbot 3604386825). Detect that case at Start
+        // time and drive the period via the actor/SendAsync PeriodicSchedule (same as
+        // multi-frame) so failures surface uniformly on both paths.
+        //
+        // Multi-frame PGNs (> 8 bytes) always take PeriodicSchedule: TransmitPeriodic cannot
+        // express a J1939-TP session per emission.
         if (message.Payload.Length <= 8)
         {
             // Match SendAsync's pre-flight gate (Bugbot 3600377725): refuse to arm a periodic
@@ -667,16 +673,26 @@ internal sealed class J1939NodeImpl : IJ1939Node
             if (addr < 0)
                 throw new J1939NoAddressException();
 
-            var schedule = new SingleFramePeriodicSchedule(this, message, period, (byte)addr);
+            var single = new SingleFramePeriodicSchedule(this, message, period, (byte)addr);
             try
             {
-                schedule.Start();
+                single.Start();
             }
             catch
             {
-                schedule.Dispose();
+                single.Dispose();
                 throw;
             }
+
+            if (single.HandleIsNativeCyclicTx)
+                return single;
+
+            // Software-fallback adapter → the L1 handle cannot surface Transmit exceptions.
+            // Dispose it and drive the period via SendAsync so errors reach the same
+            // BackgroundExceptionOccurred sink as the multi-frame path.
+            single.Dispose();
+            var schedule = new PeriodicSchedule(this, message, period);
+            schedule.Start();
             return schedule;
         }
         else
@@ -1087,6 +1103,7 @@ internal sealed class J1939NodeImpl : IJ1939Node
         private IPeriodicTx? _handle;
         private byte _currentSa;
         private int _disposed;
+        private bool _handleIsNativeCyclicTx;
 
         public SingleFramePeriodicSchedule(J1939NodeImpl owner, J1939Message message, TimeSpan period,
             byte initialSa)
@@ -1097,6 +1114,16 @@ internal sealed class J1939NodeImpl : IJ1939Node
             _currentSa = initialSa;
             _claimHandler = OnClaimChanged;
         }
+
+        /// <summary>
+        /// <c>true</c> when the adapter's <see cref="ICanBus.TransmitPeriodic"/> returned a
+        /// bus-native periodic handle (not <see cref="SoftwarePeriodicTx"/>). Callers use this
+        /// to decide whether the L1 path can surface Transmit exceptions — SoftwarePeriodicTx
+        /// swallows them, so on those adapters we switch to <c>PeriodicSchedule</c> (SendAsync)
+        /// so failures reach <see cref="J1939NodeImpl.BackgroundExceptionOccurred"/>
+        /// (Bugbot 3604386825).
+        /// </summary>
+        public bool HandleIsNativeCyclicTx => _handleIsNativeCyclicTx;
 
         public void Start()
         {
@@ -1135,6 +1162,7 @@ internal sealed class J1939NodeImpl : IJ1939Node
                         _currentSa = (byte)addr;
                         var options = new PeriodicTxOptions(_period, repeat: -1, fireImmediately: true);
                         _handle = _owner._service.Bus.TransmitPeriodic(BuildFrame(_currentSa), options);
+                        _handleIsNativeCyclicTx = _handle is not SoftwarePeriodicTx;
                     }
                 }
             }
@@ -1180,6 +1208,7 @@ internal sealed class J1939NodeImpl : IJ1939Node
                             // freshly claimed SA using the same period/repeat contract.
                             var options = new PeriodicTxOptions(_period, repeat: -1, fireImmediately: true);
                             _handle = _owner._service.Bus.TransmitPeriodic(BuildFrame(newSa), options);
+                            _handleIsNativeCyclicTx = _handle is not SoftwarePeriodicTx;
                         }
                         else if (newSa != _currentSa)
                         {

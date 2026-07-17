@@ -1040,6 +1040,77 @@ public class J1939NodeTests : IClassFixture<TestCaseProvider>
             "(Bugbot 3603876664 / 3603876668)");
     }
 
+    // Bugbot 3604386825 regression: on adapters whose ICanBus.TransmitPeriodic routes through
+    // CanKit.Core.Utils.SoftwarePeriodicTx (Virtual, and every adapter that only exposes the
+    // software cyclic-TX fallback), the L1 IPeriodicTx handle can never surface Transmit
+    // exceptions — SoftwarePeriodicTx.TrySendOnce swallows them. StartPeriodicSend must
+    // detect that case and drive the period via the actor/SendAsync PeriodicSchedule so
+    // failures reach the same BackgroundExceptionOccurred sink as the multi-frame path. On
+    // the Virtual adapter that means SendAsync's pre-flight gate throws
+    // J1939NoAddressException after the owner loses its claim, and the schedule surfaces the
+    // exception via BackgroundExceptionOccurred (proving the SendAsync loop is engaged
+    // instead of a silent L1 handle).
+    [Fact]
+    public async Task StartPeriodicSend_SingleFrame_SwFallback_Surfaces_Send_Errors()
+    {
+        var session = NewSession();
+        using var busA = Open(session, 0);
+        using var busB = Open(session, 1);
+
+        var ownerOpts = new J1939NodeOptions(Name(0x000200))
+        {
+            ClaimAnnounceTimeout = TimeSpan.FromMilliseconds(80),
+        };
+        var peerOpts = new J1939NodeOptions(Name(0x000010))
+        {
+            ClaimAnnounceTimeout = TimeSpan.FromMilliseconds(80),
+        };
+
+        using var owner = J1939Node.Open(busA, ownerOpts);
+        using var peer = J1939Node.Open(busB, peerOpts);
+
+        var backgroundExceptions = new List<Exception>();
+        var exLock = new object();
+        owner.BackgroundExceptionOccurred += (_, ex) =>
+        {
+            lock (exLock) backgroundExceptions.Add(ex);
+        };
+
+        const byte contendedSa = 0x53;
+        await owner.ClaimAddressAsync(contendedSa).WithTimeout(ShortTimeout);
+        owner.Address.Should().Be(contendedSa);
+
+        var period = TimeSpan.FromMilliseconds(40);
+        var message = new J1939Message(0xFEE9u, new byte[] { 0xC1, 0xC2 }, priority: 6,
+            destinationAddress: 0xFF);
+        using var handle = owner.StartPeriodicSend(message, period);
+
+        // Peer unseats the owner → SendAsync's claim gate starts throwing
+        // J1939NoAddressException on every scheduled emission. If StartPeriodicSend had
+        // used the L1 IPeriodicTx path on Virtual, these throws would be swallowed inside
+        // SoftwarePeriodicTx and BackgroundExceptionOccurred would stay silent.
+        await peer.ClaimAddressAsync(contendedSa).WithTimeout(ShortTimeout);
+        var lossDeadline = DateTime.UtcNow + ShortTimeout;
+        while (owner.ClaimState == J1939ClaimState.Claimed && DateTime.UtcNow < lossDeadline)
+            await Task.Delay(10);
+        owner.ClaimState.Should().NotBe(J1939ClaimState.Claimed);
+
+        // Give the schedule a few periods to attempt emissions under the lost claim.
+        var seenDeadline = DateTime.UtcNow + ShortTimeout;
+        while (true)
+        {
+            bool seen;
+            lock (exLock) seen = backgroundExceptions.Exists(e => e is J1939NoAddressException);
+            if (seen) break;
+            if (DateTime.UtcNow >= seenDeadline)
+                throw new TimeoutException(
+                    "Expected the schedule to surface J1939NoAddressException via " +
+                    "BackgroundExceptionOccurred after address loss (SW-fallback path " +
+                    "must not swallow send errors — Bugbot 3604386825).");
+            await Task.Delay(10);
+        }
+    }
+
     // Optional coverage for the reclaim-with-new-SA path: after the schedule stops on
     // address loss, a subsequent successful claim (potentially on a different SA) MUST
     // re-arm the periodic emission and the wire ID MUST carry the new SA.
