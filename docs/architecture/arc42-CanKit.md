@@ -30,7 +30,7 @@ Diese Nomenklatur ist identisch zur SRS und wird im gesamten Dokument verwendet:
 | **L1** | Raw-CAN-Kern | vorhanden | `ICanBus`, `CanFrame`, Registry, Utilities, Diagnostics |
 | **L2** | Raw-CAN-Dienstebene | **NEU / Ziel** | Multi-Consumer-Demux, Ownership-Vertrag, TX-Confirm, Adressierung, Aktor-Modell, Fehler-/Timeout-Infrastruktur |
 | **L3** | Transport-Ebene | Prototyp (ISO-TP) / MVP (J1939-TP, Paket `CanKit.Pro.J1939Tp`) | ISO-TP (ISO 15765-2), J1939-TP (BAM/CM) |
-| **L4** | Anwendungsprotokoll-Ebene | **NEU / Ziel** (HAWE-Rahmen vorhanden, generisch – kein Protokolldetail; CON-006) | UDS, CANopen, J1939-App, HAWE-Privatprotokoll |
+| **L4** | Anwendungsprotokoll-Ebene | MVP (UDS-MVP `CanKit.Pro.Uds`, J1939-App-MVP `CanKit.Pro.J1939`); HAWE-Rahmen vorhanden (generisch – kein Protokolldetail; CON-006); CANopen NEU / Ziel | UDS, CANopen, J1939-App (`CanKit.Pro.J1939`, FR-J1939-001..006 Must), HAWE-Privatprotokoll |
 
 ### Auflösung der Requirement-Referenzen (arc42 ↔ SRS)
 
@@ -302,7 +302,7 @@ flowchart TB
 | L1 Raw-CAN-Kern | vorhanden | Herstellerneutraler Frame-Zugriff, Discovery, Utilities, Diagnostics. | `ICanBus`, `CanBus.Open`, `CanRegistry` | `FR-RAW-*` |
 | L2 Raw-CAN-Dienste | NEU | Ein RX-Strom → N unabhängige gefilterte Consumer; Ownership-Vertrag; TX-Confirm; Aktor-Modell. | (neu) `ICanBusService` / `ISubscription` | `FR-RAW-DEMUX-*`, `FR-RAW-OWN-*`, `FR-RAW-TXC-*` |
 | L3 Transport | Prototyp (ISO-TP) / MVP (J1939-TP) | Segmentierung/Reassemblierung (ISO-TP), Sessions (J1939-TP, `CanKit.Pro.J1939Tp`: BAM/CM/DT, T1..T4/Tr/Th, parallele Sessions über gemeinsamen `ICanBusService`). | `IIsoTpChannel`, `IIsoTpScheduler`, `IJ1939TpChannel` | `FR-TP-*` |
-| L4 Anwendungsprotokolle | UDS-MVP vorhanden (`CanKit.Pro.Uds`); HAWE-Rahmen vorhanden (`CanKit.Pro.Hawe`); Rest NEU | Diagnose-/Applikationssemantik auf L3/L2. | `IUdsClient`/`UdsClient` (UDS); HAWE-Rahmen: `IHaweCodec`/`IHaweCodecRegistry`/`HaweChannel` (generisch, kein Protokolldetail; CON-006); sonst neu, protokollspezifisch | `FR-UDS-*`, `FR-CO-*`, `FR-J1939-*`, `FR-HAWE-*` |
+| L4 Anwendungsprotokolle | UDS-MVP vorhanden (`CanKit.Pro.Uds`); J1939-App-MVP vorhanden (`CanKit.Pro.J1939`, FR-J1939-001..006 Must, FR-J1939-007 Should); HAWE-Rahmen vorhanden (`CanKit.Pro.Hawe`); CANopen NEU | Diagnose-/Applikationssemantik auf L3/L2. | `IUdsClient`/`UdsClient` (UDS); `IJ1939Node`/`J1939Node` (J1939-App); HAWE-Rahmen: `IHaweCodec`/`IHaweCodecRegistry`/`HaweChannel` (generisch, kein Protokolldetail; CON-006); CANopen neu, protokollspezifisch | `FR-UDS-*`, `FR-CO-*`, `FR-J1939-*`, `FR-HAWE-*` |
 
 ## 5.2 Ebene 2 – Zoom L1 (Raw-CAN-Kern, vorhanden)
 
