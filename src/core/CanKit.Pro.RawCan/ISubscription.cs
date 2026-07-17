@@ -32,5 +32,38 @@ namespace CanKit.Pro.RawCan
         /// disposed. (按到达顺序从本订阅自有缓冲区异步产出通过过滤的帧；订阅或其所属服务被释放时结束。)
         /// </summary>
         IAsyncEnumerable<CanFrameView> Frames { get; }
+
+        /// <summary>
+        /// Non-blocking: try to remove one already-buffered frame from this subscription. Returns
+        /// <c>false</c> if the buffer is currently empty.
+        /// </summary>
+        /// <remarks>
+        /// This is the synchronous counterpart to <see cref="Frames"/>: it never awaits and never
+        /// waits for a frame to arrive, it only removes what has already been queued at the moment
+        /// of the call. It is intended for consumers that need to snapshot-then-drop stale traffic
+        /// (for example, a request/reply client draining background chatter before issuing its
+        /// request) without racing an async enumerator against a wall-clock deadline.
+        /// </remarks>
+        /// <param name="frame">The buffered frame, if any; otherwise the default value.</param>
+        /// <returns><c>true</c> if a frame was removed; <c>false</c> if the buffer was empty.</returns>
+        bool TryRead(out CanFrameView frame);
+
+        /// <summary>
+        /// Replaces this subscription's filter with an ID-range/mask fast-path filter (FR-RAW-014).
+        /// Any previously configured predicate is cleared. Frames already buffered are not
+        /// retroactively filtered; only frames observed after this call follow the new criterion.
+        /// </summary>
+        /// <param name="filter">The new filter. Must not be a default-initialized struct when a
+        /// meaningful filter is required — use <see cref="Reconfigure(Func{CanFrameView, bool}?)"/>
+        /// with <c>null</c> to accept all frames.</param>
+        void Reconfigure(CanIdFilter filter);
+
+        /// <summary>
+        /// Replaces this subscription's filter with a generic predicate, or accepts all frames when
+        /// <paramref name="predicate"/> is <c>null</c> (FR-RAW-014). Any previously configured
+        /// <see cref="CanIdFilter"/> is cleared. Frames already buffered are not retroactively
+        /// filtered; only frames observed after this call follow the new criterion.
+        /// </summary>
+        void Reconfigure(Func<CanFrameView, bool>? predicate);
     }
 }

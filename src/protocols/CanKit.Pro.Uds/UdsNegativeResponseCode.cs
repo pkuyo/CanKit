@@ -44,6 +44,18 @@ public enum UdsNegativeResponseCode : byte
     /// <summary>requiredTimeDelayNotExpired (0x37).</summary>
     RequiredTimeDelayNotExpired = 0x37,
 
+    /// <summary>uploadDownloadNotAccepted (0x70).</summary>
+    UploadDownloadNotAccepted = 0x70,
+
+    /// <summary>transferDataSuspended (0x71).</summary>
+    TransferDataSuspended = 0x71,
+
+    /// <summary>generalProgrammingFailure (0x72).</summary>
+    GeneralProgrammingFailure = 0x72,
+
+    /// <summary>wrongBlockSequenceCounter (0x73).</summary>
+    WrongBlockSequenceCounter = 0x73,
+
     /// <summary>
     /// requestCorrectlyReceived-ResponsePending (0x78). Server acknowledges the request but needs
     /// more time; the client MUST restart its P2* timer and keep waiting until the final response
