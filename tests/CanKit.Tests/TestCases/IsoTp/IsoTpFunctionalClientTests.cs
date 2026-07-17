@@ -351,6 +351,75 @@ public class IsoTpFunctionalClientTests : IClassFixture<TestCaseProvider>
     }
 
     // ─────────────────────────────────────────────────────────────────────────────────────────
+    // Bugbot 3604648050 regression — every ECU reply that reaches the subscription channel
+    // inside the collection window must be surfaced to the caller, including frames that are
+    // still sitting in the channel's buffer when the window CTS fires. The pre-fix
+    // `CollectFromSubscriptionAsync` used `await foreach` alone: once the window token
+    // cancelled the enumerator, any Single-Frame reply that had already been written to the
+    // channel but not yet yielded was silently dropped when the subscription was disposed.
+    //
+    // The fix drains the channel synchronously with `TryRead` in the OperationCanceledException
+    // catch, so buffered replies survive the transition from await-yield to window-expiry.
+    // ─────────────────────────────────────────────────────────────────────────────────────────
+    [Fact]
+    public async Task Functional_Collect_Drains_Buffered_Frames_On_Window_Expiry()
+    {
+        var session = NewSession();
+        using var busA = OpenClassic(session, 0);
+        using var busB = OpenClassic(session, 1);
+
+        const uint FunctionalTxId = 0x7DF;
+        const uint EcuResponseId = 0x7E8;
+        const int ReplyCount = 12;
+
+        // Pre-build ReplyCount distinct SF frames so we can assert every one was collected
+        // (each carries a unique last byte so we can spot duplicates or drops).
+        var replies = new List<CanFrame>(ReplyCount);
+        for (int i = 0; i < ReplyCount; i++)
+        {
+            byte[] pdu = { 0x62, 0xF1, 0x90, (byte)i };
+            var ep = IsoTpEndpoint.Normal(EcuResponseId, 0);
+            replies.Add(CanFrame.Classic(
+                unchecked((int)EcuResponseId),
+                IsoTpFrameCodec.BuildSingleFrame(ep, pdu, isCanFd: false, padding: true)));
+        }
+
+        // The virtual hub calls `Transmit` synchronously and delivers each frame to observers
+        // before returning, so by the time our request's TX-confirm returns every reply is
+        // already sitting in the tester subscription's channel buffer. That is exactly the
+        // shape that provoked the pre-fix drop: frames buffered on the subscription channel
+        // but not yet yielded by the enumerator when the window CTS fires.
+        busB.FrameObserved += (_, e) =>
+        {
+            if (e.CanFrame.ID != unchecked((int)FunctionalTxId)) return;
+            foreach (var f in replies) busB.Transmit(f);
+        };
+
+        using var client = IsoTpFactory.OpenFunctional(busA, FunctionalTxId, 0x7E8, 0x7EF,
+            FastOptions());
+
+        byte[] request = { 0x22, 0xF1, 0x90 };
+        // Zero-length collection window: TX-confirm returns synchronously with all ReplyCount
+        // frames already in the subscription buffer, then `CancelAfter(TimeSpan.Zero)` fires
+        // the window CTS immediately — the enumerator's `MoveNextAsync` throws OCE without
+        // ever yielding a frame. This makes the drain-on-catch (Bugbot 3604648050) the ONLY
+        // path that can surface the buffered replies to the caller: pre-fix, the returned
+        // list would be empty even though every reply arrived on time.
+        var responses = await client
+            .SendAndCollectAsync(request, TimeSpan.Zero)
+            .WaitAsync(ShortTimeout);
+
+        responses.Should().HaveCount(ReplyCount,
+            "every reply that arrived on the subscription before the window CTS fired must " +
+            "be surfaced, even when the window expires before the enumerator yields any " +
+            "frame — the OCE catch must drain the buffered channel (Bugbot 3604648050)");
+
+        // Verify identity — no duplication and no data corruption from the drain path.
+        var lastBytes = responses.Select(r => r.Data[3]).OrderBy(b => b).ToArray();
+        lastBytes.Should().Equal(Enumerable.Range(0, ReplyCount).Select(i => (byte)i));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────────────────
     // FR-TP-019 — Dispose is idempotent and stops the client.
     // ─────────────────────────────────────────────────────────────────────────────────────────
     [Fact]
