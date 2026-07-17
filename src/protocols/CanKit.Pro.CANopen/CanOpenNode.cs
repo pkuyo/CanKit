@@ -796,7 +796,12 @@ internal sealed class CanOpenNode : ICanOpenNode
             SendSdoServerAbort(index, subindex, reason);
             return;
         }
-        try { entry.SetRawValue(payload); }
+        // Commit the value BEFORE acknowledging so a client task that unblocks on our ACK
+        // and then reads the OD (on any thread) is guaranteed to observe the new value.
+        // Route the write through ObjectDictionary.WriteRaw so it lands under the OD's
+        // internal lock, giving readers on other threads a proper acquire/release pairing
+        // rather than relying on OdEntry field-level memory ordering.
+        try { _od.WriteRaw(index, subindex, payload); }
         catch { SendSdoServerAbort(index, subindex, SdoAbortCode.General); return; }
 
         var respBuf = new byte[8];
@@ -825,7 +830,38 @@ internal sealed class CanOpenNode : ICanOpenNode
         Buffer.BlockCopy(payload, 0, session.Buffer, session.Offset, payload.Length);
         session.Offset += payload.Length;
 
-        // Server segment ack.
+        // On the last segment, commit the accumulated buffer to the OD BEFORE ACKing.
+        //
+        // SendControlFrame dispatches the wire TX through Task.Run, so the ACK can be
+        // delivered to the peer on a ThreadPool thread concurrently with this actor
+        // continuing. If we ACK first, the client's SdoDownloadAsync task completes as
+        // soon as the ACK arrives, which lets its caller read the OD before the actor
+        // reaches the SetRawValue below -- exactly the race that used to leave the
+        // segmented-download round-trip test intermittently observing all zeros on net48.
+        //
+        // Routing the write through ObjectDictionary.WriteRaw also takes the OD's lock,
+        // giving readers on other threads a proper release/acquire pairing rather than
+        // relying on field-level memory ordering of OdEntry._value.
+        if (last)
+        {
+            if (session.Offset != session.Buffer.Length)
+            {
+                SendSdoServerAbort(session.Index, session.Subindex, SdoAbortCode.LengthTooLow);
+                _sdoServer = null;
+                return;
+            }
+            var final = new byte[session.Offset];
+            Buffer.BlockCopy(session.Buffer, 0, final, 0, session.Offset);
+            try { _od.WriteRaw(session.Index, session.Subindex, final); }
+            catch
+            {
+                SendSdoServerAbort(session.Index, session.Subindex, SdoAbortCode.General);
+                return;
+            }
+        }
+
+        // Server segment ack -- sent after any OD commit so the client can never observe
+        // "download finished" before the OD is up to date.
         byte cs = SdoFrames.ScsDownloadSegmentBase;
         if (session.Toggle) cs |= SdoFrames.ToggleBit;
         var ack = new byte[8];
@@ -833,23 +869,7 @@ internal sealed class CanOpenNode : ICanOpenNode
         _ = SendControlFrame(CanOpenCobId.SdoTx(_nodeId), ack);
         session.Toggle = !session.Toggle;
 
-        if (last)
-        {
-            if (_od.TryGet(session.Index, session.Subindex, out var entry))
-            {
-                if (session.Offset != session.Buffer.Length)
-                {
-                    SendSdoServerAbort(session.Index, session.Subindex, SdoAbortCode.LengthTooLow);
-                    _sdoServer = null;
-                    return;
-                }
-                var final = new byte[session.Offset];
-                Buffer.BlockCopy(session.Buffer, 0, final, 0, session.Offset);
-                try { entry.SetRawValue(final); }
-                catch { SendSdoServerAbort(session.Index, session.Subindex, SdoAbortCode.General); }
-            }
-            _sdoServer = null;
-        }
+        if (last) _sdoServer = null;
     }
 
     private void SendSdoServerAbort(ushort index, byte subindex, SdoAbortCode code)
@@ -1127,16 +1147,19 @@ internal sealed class CanOpenNode : ICanOpenNode
     private void HandleRpdo(RpdoConfig config, byte[] payload)
     {
         // Unpack into OD in mapping order (skip missing OD entries silently — mapping mismatch
-        // is a config issue, not a protocol error).
+        // is a config issue, not a protocol error). Route the write through
+        // ObjectDictionary.WriteRaw so it happens under the OD's lock, giving readers on
+        // other threads a proper release/acquire pairing.
         int offset = 0;
         foreach (var entry in config.Mapping.Entries)
         {
             if (offset + entry.ByteLength > payload.Length) break;
-            if (_od.TryGet(entry.Index, entry.Subindex, out var od))
+            if (_od.TryGet(entry.Index, entry.Subindex, out _))
             {
                 var chunk = new byte[entry.ByteLength];
                 Buffer.BlockCopy(payload, offset, chunk, 0, entry.ByteLength);
-                try { od.SetRawValue(chunk); } catch { /* ignore mapping/OD size mismatch */ }
+                try { _od.WriteRaw(entry.Index, entry.Subindex, chunk); }
+                catch { /* ignore mapping/OD size mismatch */ }
             }
             offset += entry.ByteLength;
         }
