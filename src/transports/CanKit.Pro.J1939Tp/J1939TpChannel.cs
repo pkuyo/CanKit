@@ -698,10 +698,13 @@ internal sealed class J1939TpChannel : IJ1939TpChannel
         }
         else if (control == J1939TpFrames.ControlEomAck)
         {
-            // Only accept EOM after the last DT was confirmed (WaitEom). A stray/early EOM while
-            // still waiting for CTS or sending DTs must not complete SendCmAsync
-            // (Bugbot 3596489078).
-            if (session.State != TxStage.WaitEom)
+            // Accept EOM once the last DT has been handed to the wire. On a fast Virtual
+            // loopback the peer can emit EndOfMsgAck before our SendConfirmed callback runs
+            // OnCmDtConfirmed (SendingDt → WaitEom), so treat SendingDt with NextSn >=
+            // TotalPackets as equivalent to WaitEom. Reject truly early EOMs (still mid-block).
+            bool lastDtOnWire = session.State == TxStage.SendingDt
+                                && session.NextSn >= session.TotalPackets;
+            if (session.State != TxStage.WaitEom && !lastDtOnWire)
             {
                 AbortTx(session, J1939TpAbortReason.Unknown,
                     $"Peer sent EndOfMsgAck while TX session was in {session.State} (expected WaitEom).");
