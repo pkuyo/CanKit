@@ -1166,7 +1166,7 @@ STmin-Grenzwerte, SN-Folge, N_Bs/N_Cr-Timeouts gegen Virtual.
   `CanKit.Transport.IsoTp` inkl. Abstractions-`API/Transport` und PCAN-native ISO-TP-Register
   wurde entfernt.
 - **Konsequenzen:** + Kern bleibt schlank, unabhängige Release-Kadenz, keine Vendor-SDK-Kopplung
-  im Transportpaket. − Functional Addressing (FR-TP-019) und Long-Payload-FD-Matrix folgen.
+  im Transportpaket. FR-TP-019 (Functional Addressing) ist mit `IsoTpFunctionalClient` umgesetzt (thin client: SF-only TX auf der funktionalen CAN-ID, SF-Antwort-Sammlung aus einem CAN-ID-Bereich innerhalb eines konfigurierbaren Fensters, integriert in die bestehende L2-Demux-Schicht). Long-Payload-FD-Matrix folgt.
 
 ### ADR-5 (umgesetzt): L2-Demux statt konkurrierendem `ReceiveAsync`
 - **Kontext:** Mehrere Protokolle wollen denselben RX-Strom sehen; heute konkurrieren
