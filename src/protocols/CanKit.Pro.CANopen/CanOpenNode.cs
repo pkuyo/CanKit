@@ -109,9 +109,15 @@ internal sealed class CanOpenNode : ICanOpenNode
     {
         get
         {
-            // Snapshot from the actor loop so external readers see a consistent value even
-            // between transitions posted from other threads. PostAsync is cheap for a
-            // fire-and-return read.
+            // When the caller is already on the actor loop (e.g. reading State from a
+            // SyncReceived / NmtCommandReceived / RpdoReceived handler that the actor itself
+            // is currently running), synchronously waiting on PostAsync would deadlock the loop
+            // against itself -- the posted item cannot execute until the current callback
+            // returns, but the current callback is blocked here waiting for it. Run the read
+            // inline instead: it is the same single-writer thread that any other State write
+            // would come from, so no coordination is needed. External callers still marshal
+            // through the mailbox to see a value consistent with in-flight transitions.
+            if (_actor.IsOnCurrentActor) return _state;
             return _actor.PostAsync(() => _state).GetAwaiter().GetResult();
         }
     }
@@ -308,7 +314,7 @@ internal sealed class CanOpenNode : ICanOpenNode
         var actualCobId = cobId ?? CanOpenCobId.TpdoDefault(_nodeId, pdoIndex);
         var interval = eventTimerInterval ?? _options.DefaultTpdoEventTimerInterval;
 
-        _actor.PostAsync(() =>
+        void Apply()
         {
             if (_tpdos.TryGetValue(pdoIndex, out var existing))
                 existing.EventTimerHandle?.Dispose();
@@ -316,7 +322,16 @@ internal sealed class CanOpenNode : ICanOpenNode
             _tpdos[pdoIndex] = config;
             if (transmission == TpdoTransmission.EventTimer)
                 ScheduleTpdoEventTimer(config);
-        }).GetAwaiter().GetResult();
+        }
+
+        // A caller already running on the actor loop (e.g. reconfiguring a TPDO from within a
+        // SyncReceived / NmtCommandReceived handler) would deadlock the loop against itself if
+        // we synchronously waited on PostAsync -- the posted item cannot execute until the
+        // current callback returns, but the current callback is stuck waiting for it. Apply
+        // inline in that case; it is still the same single-writer thread that any other TPDO
+        // config mutation would run on, so no coordination is needed.
+        if (_actor.IsOnCurrentActor) Apply();
+        else _actor.PostAsync(Apply).GetAwaiter().GetResult();
     }
 
     /// <inheritdoc />
@@ -328,7 +343,7 @@ internal sealed class CanOpenNode : ICanOpenNode
         if (mapping is null) throw new ArgumentNullException(nameof(mapping));
         var actualCobId = cobId ?? CanOpenCobId.RpdoDefault(_nodeId, pdoIndex);
 
-        _actor.PostAsync(() =>
+        void Apply()
         {
             // Clean out any previous entry that had a different COB-ID for the same slot.
             uint[] existingKeys = new uint[_rpdosByCobId.Count];
@@ -339,7 +354,15 @@ internal sealed class CanOpenNode : ICanOpenNode
                 if (_rpdosByCobId[key].PdoIndex == pdoIndex) _rpdosByCobId.Remove(key);
             }
             _rpdosByCobId[actualCobId] = new RpdoConfig(pdoIndex, actualCobId, mapping);
-        }).GetAwaiter().GetResult();
+        }
+
+        // See ConfigureTpdo above: a caller already on the actor loop (e.g. re-mapping an RPDO
+        // from within an NmtCommandReceived handler that transitions the node into Operational)
+        // would deadlock the loop against itself if we synchronously waited on PostAsync. Apply
+        // inline in that case -- still the same single-writer thread that any other RPDO table
+        // mutation would run on.
+        if (_actor.IsOnCurrentActor) Apply();
+        else _actor.PostAsync(Apply).GetAwaiter().GetResult();
     }
 
     /// <inheritdoc />
