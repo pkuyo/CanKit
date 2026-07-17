@@ -372,6 +372,22 @@ internal sealed class CanOpenNode : ICanOpenNode
     {
         ThrowIfDisposed();
         CanOpenCobId.ValidateNodeId(serverNodeId);
+        if (data.Length == 0)
+        {
+            // The expedited encoding steals bit-pair "n" from the CS byte to advertise how many
+            // of the four payload bytes are valid (n = 4 - length, 2 bits). Length 0 collapses
+            // onto the same wire encoding as length 4 (n = 0), so a length-0 expedited download
+            // is indistinguishable from a length-4 one on the receiver. Rather than silently
+            // sending a bogus 4-byte frame that either a) writes four zero bytes on the peer or
+            // b) trips a length-mismatch abort, we reject empty downloads here with a clear
+            // exception. Callers wanting to touch an OD entry without changing its value should
+            // use a segmented transport (e.g. by embedding at least one meaningful byte).
+            throw new ArgumentException(
+                "SDO download payload must contain at least one byte; the CiA 301 expedited " +
+                "encoding cannot represent a zero-length download and empty payloads are " +
+                "rejected rather than being silently misencoded as four zero bytes.",
+                nameof(data));
+        }
         var payload = data.ToArray();
         var tcs = new TaskCompletionSource<byte[]>(TaskCreationOptions.RunContinuationsAsynchronously);
         RegisterSdoCancellation(tcs, cancellationToken, serverNodeId);
@@ -683,10 +699,19 @@ internal sealed class CanOpenNode : ICanOpenNode
     // =========================================================================================
     private void HandleSdoServerRequest(byte[] data)
     {
+        if (data.Length == 0) return; // nothing to look at — can't even read the CS byte
         if (data.Length < 8)
         {
-            // The wire truly must be 8 bytes; drop malformed request.
-            return;
+            // Match the symmetric client-side handling (see HandleSdoClientResponse): pad
+            // trailing-zero-stripped SDO frames to 8 bytes rather than dropping them, since
+            // SdoFrames' decoders are happy to read the shorter versions and the trailing
+            // bytes are always unused/zero in the current MVP frame formats. Prior behaviour
+            // left a well-formed but short client initiate lingering on the wire until its
+            // client-side timeout, which is exactly the bug Copilot flagged for the client
+            // path — this keeps the server path from having the mirror-image problem.
+            var padded = new byte[8];
+            Buffer.BlockCopy(data, 0, padded, 0, data.Length);
+            data = padded;
         }
         byte cs = data[0];
 
@@ -734,6 +759,13 @@ internal sealed class CanOpenNode : ICanOpenNode
 
     private void HandleServerUploadInit(ushort index, byte subindex, OdEntry? entry)
     {
+        // Per CiA 301 §7.2.4.3.4 a fresh initiate implicitly supersedes any previously open
+        // server-side transfer. Emit an abort on the wire for that stale (index, subindex) so
+        // its remote client does not have to wait for its own SDO timeout to notice the
+        // supersede. Done up-front so this holds even when we go on to reject the new initiate
+        // below (missing entry, wrong access, ...).
+        AbortSupersededServerSession();
+
         if (entry is null)
         {
             SendSdoServerAbort(index, subindex, SdoAbortCode.ObjectDoesNotExist);
@@ -746,16 +778,16 @@ internal sealed class CanOpenNode : ICanOpenNode
         }
 
         var value = entry.GetRawValue();
-        if (value.Length <= 4)
+        // Expedited only makes sense for 1..4 bytes: the 2-bit "n" field in the CS byte cannot
+        // distinguish a 0-byte payload from a 4-byte payload (both encode as n=0), so a
+        // length-0 OD value would decode as four zeros on the peer. Route empty values through
+        // the segmented path where the size indicator is a full 32-bit little-endian field,
+        // and a "last-segment / n=7" segment cleanly carries zero data bytes to the client.
+        if (value.Length is >= 1 and <= 4)
         {
             // Expedited upload response — no server-side session survives the initiate, since
-            // the whole value fits in the response frame. Discard any stale segmented session
-            // that was still open against this OD entry (or any other) so a subsequent stray
-            // segment frame can never land in the wrong buffer per CiA 301 §7.2.4.3.4 (an
-            // initiate supersedes any previously open transfer).
-            _sdoServer?.Deadline?.Dispose();
-            _sdoServer = null;
-
+            // the whole value fits in the response frame. (Supersede handling already ran at
+            // the top of the method, so no stale session remains.)
             var buf = new byte[8];
             buf[0] = (byte)(SdoFrames.ScsUploadInitExpeditedBase | (((4 - value.Length) & 0x03) << 2) | 0x03);
             buf[1] = (byte)(index & 0xFF);
@@ -767,6 +799,9 @@ internal sealed class CanOpenNode : ICanOpenNode
         }
 
         // Segmented upload: reply with 0x41 + size, then serve segments as the client acks.
+        // Also used for value.Length == 0 (the "empty OD value" case): declared length 0, and
+        // the first segment request from the client will be answered with a "last, 0-byte"
+        // segment (n=7, c=1) which decodes cleanly to an empty payload.
         var initBuf = new byte[8];
         initBuf[0] = SdoFrames.ScsUploadInitSegmented;
         initBuf[1] = (byte)(index & 0xFF);
@@ -778,7 +813,6 @@ internal sealed class CanOpenNode : ICanOpenNode
         initBuf[6] = (byte)((len >> 16) & 0xFF);
         initBuf[7] = (byte)((len >> 24) & 0xFF);
 
-        _sdoServer?.Deadline?.Dispose();
         var session = new SdoServerSession(inDownload: false, index, subindex, value, offset: 0, toggle: false);
         _sdoServer = session;
         _ = SendControlFrame(CanOpenCobId.SdoTx(_nodeId), initBuf);
@@ -811,6 +845,13 @@ internal sealed class CanOpenNode : ICanOpenNode
 
     private void HandleServerDownloadInit(ushort index, byte subindex, OdEntry? entry, byte cs, byte[] data)
     {
+        // Per CiA 301 §7.2.4.3.4 a fresh initiate implicitly supersedes any previously open
+        // server-side transfer. Emit an abort on the wire for that stale (index, subindex) so
+        // its remote client does not have to wait for its own SDO timeout to notice the
+        // supersede. Done up-front so this holds even when we go on to reject the new initiate
+        // below (missing entry, wrong access, length mismatch, ...).
+        AbortSupersededServerSession();
+
         if (entry is null)
         {
             SendSdoServerAbort(index, subindex, SdoAbortCode.ObjectDoesNotExist);
@@ -842,7 +883,8 @@ internal sealed class CanOpenNode : ICanOpenNode
                 return;
             }
 
-            _sdoServer?.Deadline?.Dispose();
+            // Supersede handling already ran at the top of the method; install the fresh
+            // segmented-download session cleanly here.
             _sdoServer = new SdoServerSession(inDownload: true, index, subindex,
                 new byte[declaredLen], offset: 0, toggle: false);
             var ack = new byte[8];
@@ -872,13 +914,10 @@ internal sealed class CanOpenNode : ICanOpenNode
         try { _od.WriteRaw(index, subindex, payload); }
         catch { SendSdoServerAbort(index, subindex, SdoAbortCode.General); return; }
 
-        // Expedited download owns no ongoing segmented state — discard any previously open
-        // segmented session so subsequent stray segment frames can never be applied against
-        // the wrong buffer or block a fresh segmented exchange (CiA 301 §7.2.4.3.4: any
-        // initiate supersedes a previously open transfer against the same SDO server).
-        _sdoServer?.Deadline?.Dispose();
-        _sdoServer = null;
-
+        // Expedited download owns no ongoing segmented state — no server-side session survives
+        // the initiate. Supersede handling for any previously open segmented transfer already
+        // ran at the top of the method (see AbortSupersededServerSession there); nothing left
+        // to clear here beyond acknowledging the write on the wire.
         var respBuf = new byte[8];
         respBuf[0] = SdoFrames.ScsDownloadInitAck;
         respBuf[1] = (byte)(index & 0xFF);
@@ -953,6 +992,25 @@ internal sealed class CanOpenNode : ICanOpenNode
         _sdoServer = null;
         _ = SendControlFrame(CanOpenCobId.SdoTx(_nodeId),
             SdoFrames.BuildAbort(index, subindex, (uint)code));
+    }
+
+    /// <summary>
+    /// Aborts any currently-open SDO server transfer on the wire and clears the local session.
+    /// Called before installing or omitting a new server session on any client-initiated
+    /// initiate (upload or download, expedited or segmented). Per CiA 301 §7.2.4.3.4 the new
+    /// initiate implicitly supersedes the previously open transfer, but staying silent leaves
+    /// the remote client blocked on its own SDO timer for that superseded transfer. Emitting a
+    /// General abort against the previously open (index, subindex) unblocks that peer
+    /// immediately, matching what compliant CiA 301 servers do (e.g. CANopenNode).
+    /// </summary>
+    private void AbortSupersededServerSession()
+    {
+        var stale = _sdoServer;
+        if (stale is null) return;
+        stale.Deadline?.Dispose();
+        _sdoServer = null;
+        _ = SendControlFrame(CanOpenCobId.SdoTx(_nodeId),
+            SdoFrames.BuildAbort(stale.Index, stale.Subindex, (uint)SdoAbortCode.General));
     }
 
     // =========================================================================================
@@ -1048,13 +1106,33 @@ internal sealed class CanOpenNode : ICanOpenNode
     private void HandleSdoClientResponse(byte serverNodeId, byte[] data)
     {
         if (!_sdoClients.TryGetValue(serverNodeId, out var session)) return;
-        if (data.Length < 8) return;
+        if (data.Length == 0) return; // nothing to look at — can't even read the CS byte
+        if (data.Length < 8)
+        {
+            // Real-world ECUs sometimes strip trailing zero bytes under DLC-padding rules
+            // (esp. on CAN-FD gateways that translate short SDO responses). SdoFrames.Read*
+            // is happy to decode as long as it can reach the fields it needs, so pad the
+            // frame to 8 bytes rather than silently dropping it and letting the client hang
+            // on its SDO deadline. Trailing zeros are semantically the same as "unused
+            // bytes" in every SDO frame layout in the MVP (index/sub, abort code, expedited
+            // payload with n = 4 − DLC-4, segment payload with n = 7 − (DLC-1)).
+            var padded = new byte[8];
+            Buffer.BlockCopy(data, 0, padded, 0, data.Length);
+            data = padded;
+        }
         byte cs = data[0];
 
         if (cs == SdoFrames.CsAbort)
         {
             var (idx, sub) = SdoFrames.ReadIndex(data);
             uint code = SdoFrames.ReadAbortCode(data);
+            // The abort may target a DIFFERENT transfer than ours: a compliant CiA 301 §7.2.4.3.4
+            // server emits an abort for a previously open transfer (potentially from another
+            // client, or an abandoned older initiate from us) when a new initiate supersedes it.
+            // Only fail our own session when the abort references the (index, subindex) we are
+            // actually asking about; otherwise it is bookkeeping for a transfer that is not ours
+            // and we ignore it so the response for our real request can still complete us.
+            if (idx != session.Index || sub != session.Subindex) return;
             _sdoClients.Remove(serverNodeId);
             session.Deadline?.Dispose();
             session.Tcs.TrySetException(new SdoAbortException(idx, sub, code,

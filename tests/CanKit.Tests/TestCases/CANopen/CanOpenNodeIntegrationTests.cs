@@ -245,6 +245,160 @@ public class CanOpenNodeIntegrationTests : IClassFixture<TestCaseProvider>
         slave.ObjectDictionary.ReadUnsigned(0x2001, 0x00).Should().Be((uint)0x5678);
     }
 
+    // Regression for Bugbot Medium (comment 3600499105): a new SDO initiate must abort the
+    // previously open server session ON THE WIRE, not just clear it locally. Without this the
+    // remote client for the superseded transfer waits until its own SDO timeout instead of
+    // hearing about the supersede immediately (CiA 301 §7.2.4.3.4).
+    [Fact]
+    public async Task Sdo_ServerSupersede_EmitsWireAbort_ForPriorTransfer()
+    {
+        var session = NewSession();
+        using var busA = Open(session, 0);
+        using var busB = Open(session, 1);
+        using var busObserver = Open(session, 2);
+
+        using var master = CanOpen.OpenNode(busA, nodeId: 0x01);
+        using var slave = CanOpen.OpenNode(busB, nodeId: 0x11);
+
+        // Server-side OD: a segmented-sized slot (to be "abandoned") plus an unrelated U16
+        // slot the master will supersede it with.
+        slave.ObjectDictionary.AddDomain(0x2100, 0x00, new byte[20]);
+        slave.ObjectDictionary.AddU16(0x2001, 0x00, 0);
+
+        // Observe every SDO frame the slave emits (COB-ID 0x580+0x11 = 0x591) on a third bus
+        // so we can distinguish the slave's own transmits from anything the master sends.
+        var slaveSdoTx = new List<byte[]>();
+        var abortSeen = new TaskCompletionSource<byte[]>(TaskCreationOptions.RunContinuationsAsynchronously);
+        busObserver.FrameObserved += (_, e) =>
+        {
+            var frame = e.CanFrame;
+            if (frame.IsExtendedFrame) return;
+            if ((uint)frame.ID != 0x580u + 0x11u) return;
+            var data = frame.Data.ToArray();
+            lock (slaveSdoTx) slaveSdoTx.Add(data);
+            // cs=0x80 -> SDO abort. Fire completion for the FIRST abort we see with the
+            // superseded (index, subindex) = (0x2100, 0x00). That is the marker we care
+            // about for this regression; ignore other frames.
+            if (data.Length >= 8 && data[0] == 0x80
+                && data[1] == 0x00 && data[2] == 0x21 && data[3] == 0x00)
+            {
+                abortSeen.TrySetResult(data);
+            }
+        };
+
+        // Push a raw segmented-download initiate for 0x2100:00 onto the wire from busA so the
+        // slave installs a server-side segmented session against that (index, subindex) — the
+        // "previously open transfer" from CiA 301 §7.2.4.3.4.
+        var priorInit = new byte[8]
+        {
+            0x21,                   // ccs=1 (init download, segmented)
+            0x00, 0x21, 0x00,       // index 0x2100, subindex 0x00
+            0x14, 0x00, 0x00, 0x00, // declared total length = 20
+        };
+        busA.Transmit(CanFrame.Classic(0x600 + 0x11, priorInit, isExtendedFrame: false));
+
+        // Give the actor loop a moment to install the segmented session for 0x2100:00.
+        await Task.Delay(50);
+
+        // Now supersede: master runs an expedited download to an unrelated (index, subindex)
+        // on the same server. Per CiA 301 the server must abort the still-open 0x2100 transfer
+        // on the wire; the master's own client for 0x2001 must complete normally (its abort
+        // handler ignores mismatched-index aborts intended for the superseded transfer).
+        await master.SdoDownloadAsync(0x11, 0x2001, 0x00, new byte[] { 0x78, 0x56 })
+            .WithTimeoutAsync(ShortTimeout);
+
+        var abortFrame = await abortSeen.Task.WithTimeoutAsync(ShortTimeout);
+        // 8-byte SDO abort layout: cs=0x80, LE(index, subindex), LE(uint32 abort code).
+        abortFrame[0].Should().Be((byte)0x80);
+        abortFrame[1].Should().Be((byte)0x00); // index low
+        abortFrame[2].Should().Be((byte)0x21); // index high
+        abortFrame[3].Should().Be((byte)0x00); // subindex
+        uint code = (uint)(abortFrame[4] | (abortFrame[5] << 8)
+            | (abortFrame[6] << 16) | (abortFrame[7] << 24));
+        // The supersede-abort must be a genuine SDO abort code (not something the tests could
+        // confuse with the fresh 0x2001 ack, which has cs=0x60).
+        code.Should().Be((uint)SdoAbortCode.General);
+
+        // Sanity: the fresh 0x2001 transfer really did commit despite the abort riding the
+        // wire alongside it.
+        slave.ObjectDictionary.ReadUnsigned(0x2001, 0x00).Should().Be((uint)0x5678);
+    }
+
+    // Regression for Copilot 3600429177: a real ECU that strips trailing zeros (DLC < 8) from
+    // an SDO server response must not leave our client hanging until its SDO timeout. The
+    // client pads short SDO frames back to 8 bytes and lets SdoFrames decode them.
+    [Fact]
+    public async Task Sdo_ClientResponseWithShortDlc_IsAcceptedAndCompletes()
+    {
+        var session = NewSession();
+        using var busA = Open(session, 0);
+        using var busB = Open(session, 1);
+
+        // No slave node on busB — just a raw wire we control so we can craft a short-DLC
+        // SDO server response and observe how the master's client reacts.
+        using var master = CanOpen.OpenNode(busA, nodeId: 0x01);
+
+        // Master initiates an expedited upload from a phantom server 0x11 at (0x2500, 0x00).
+        // We do NOT open a slave; instead we fake the server response on busB.
+        var uploadTask = master.SdoUploadAsync(serverNodeId: 0x11, index: 0x2500, subindex: 0x00);
+
+        // Give the master a moment to actually put its init request on the wire.
+        await Task.Delay(30);
+
+        // Fake a 5-byte SDO expedited upload response: cs=0x4F selects size-indicated with
+        // n=3 (one valid byte), followed by index (0x2500), subindex (0x00), and one payload
+        // byte 0xAA. A strict "DLC must be 8" implementation would drop this and leave the
+        // client waiting until its own SDO timeout fires.
+        var shortResponse = new byte[] { 0x4F, 0x00, 0x25, 0x00, 0xAA };
+        busB.Transmit(CanFrame.Classic(0x580 + 0x11, shortResponse, isExtendedFrame: false));
+
+        var raw = await uploadTask.WithTimeoutAsync(ShortTimeout);
+        raw.Should().Equal(0xAA);
+    }
+
+    // Regression for Copilot 3600429203: a length-0 download cannot be represented in the
+    // expedited SDO encoding (the 2-bit "n" field cannot distinguish empty from a 4-byte
+    // payload). We chose "reject empty downloads at the public API" as the consistent policy;
+    // this test locks that choice in and gives users a clear exception instead of silent
+    // misencoding.
+    [Fact]
+    public async Task Sdo_EmptyDownload_ThrowsArgumentException()
+    {
+        var session = NewSession();
+        using var busA = Open(session, 0);
+        using var busB = Open(session, 1);
+
+        using var master = CanOpen.OpenNode(busA, nodeId: 0x01);
+        using var slave = CanOpen.OpenNode(busB, nodeId: 0x11);
+        slave.ObjectDictionary.AddDomain(0x2600, 0x00, new byte[8]);
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            master.SdoDownloadAsync(0x11, 0x2600, 0x00, ReadOnlyMemory<byte>.Empty));
+    }
+
+    // Regression for Copilot 3600429187: an empty OD value must NOT be served via the
+    // expedited response, because expedited cannot represent length 0 (it would decode as
+    // four zero bytes on the peer). The server routes empty values through the segmented
+    // path, and the client faithfully hands back Array.Empty<byte>().
+    [Fact]
+    public async Task Sdo_UploadOfEmptyOdValue_ReturnsEmptyArray_ViaSegmented()
+    {
+        var session = NewSession();
+        using var busA = Open(session, 0);
+        using var busB = Open(session, 1);
+
+        using var master = CanOpen.OpenNode(busA, nodeId: 0x01);
+        using var slave = CanOpen.OpenNode(busB, nodeId: 0x11);
+
+        // Empty domain (0 bytes). If the server took the expedited branch, the client would
+        // observe 4 zero bytes; via the segmented branch it observes an empty payload.
+        slave.ObjectDictionary.AddDomain(0x2700, 0x00, Array.Empty<byte>(), OdAccess.ReadOnly);
+
+        var raw = await master.SdoUploadAsync(serverNodeId: 0x11, index: 0x2700, subindex: 0x00)
+            .WithTimeoutAsync(ShortTimeout);
+        raw.Should().BeEmpty();
+    }
+
     // -----------------------------------------------------------------------------------------
     // FR-CO-007 + FR-CO-008 — NMT master command transitions the slave and the slave's next
     // heartbeat carries the new state.
