@@ -562,7 +562,10 @@ FR-RAW-052 (reservierte STmin-Werte → 127 ms) und FR-TP-015 (Classic-CAN SF �
 auf dem `CanKit.Pro.IsoTp`-Kanal aufsetzt. MVP-Serviceabdeckung (ISO 14229-1:2020): 0x10
 `DiagnosticSessionControl`, 0x11 `ECUReset`, 0x22 `ReadDataByIdentifier` (single + Multi-DID),
 0x27 `SecurityAccess` (mit Seed→Key-Callback), 0x2E `WriteDataByIdentifier`, 0x31 `RoutineControl`
-(Start/Stop/RequestResults), 0x3E `TesterPresent` inkl. Hintergrund-Keep-Alive. Ein interner
+(Start/Stop/RequestResults), 0x34/0x35 `RequestDownload`/`RequestUpload`, 0x36 `TransferData`,
+0x37 `RequestTransferExit` (inkl. Convenience-`DownloadAsync`, das
+`maxNumberOfBlockLength` aushandelt, die Nutzlast chunk-t und den Block-Sequence-Counter
+0x01..0xFF→0x00 durchläuft), 0x3E `TesterPresent` inkl. Hintergrund-Keep-Alive. Ein interner
 `SemaphoreSlim`-Request-Lock stellt sicher, dass zu jedem Zeitpunkt höchstens eine UDS-Transaktion
 „on the wire" ist (§7.3). P2/P2*-Timing wird durch `UdsClientOptions.P2ClientMax` /
 `P2StarClientMax` konfiguriert und bei jedem NRC 0x78
@@ -570,15 +573,16 @@ auf dem `CanKit.Pro.IsoTp`-Kanal aufsetzt. MVP-Serviceabdeckung (ISO 14229-1:202
 `MaxResponsePendingCount` als Sicherheitsnetz gegen stuck ECUs. Negative Responses werden
 strukturiert als `UdsNegativeResponseException(RequestedService, Code, CodeAsEnum)` gemeldet
 (SRS FR-UDS-010). Timeouts werden als `UdsTimeoutException(Timer=P2|P2Star)` gemeldet
-(FR-UDS-008/009). Adressiert die SRS-Anforderungen **FR-UDS-001..010** (Must) sowie
-**FR-UDS-011** (Should, Multi-DID) vollständig; **FR-UDS-012** (Upload/Download,
-0x34/0x36/0x37, Could) ist bewusst außerhalb des MVP und wird als Folgearbeit geführt.
-`IsPackable=false` bis (a) FR-UDS-012 nachgezogen ist, (b) das Server-Timing aus dem 0x10-Session-
-Parameter-Record automatisch in `P2ClientMax`/`P2StarClientMax` übernommen wird und (c) ein
-Response-Router die aktuelle „passiv verwerfen"-Logik für Fremdresponses durch aktive Korrelation
-über den Request-SID ersetzt. Der Virtual-Loopback-Integrationstest
-(`tests/CanKit.Tests/TestCases/Uds/UdsClientTests.cs`) fährt eine simulierte ECU auf einem zweiten
-ISO-TP-Kanal und deckt sämtliche MVP-Services inklusive 0x78-Pfad ab.
+(FR-UDS-008/009). Adressiert die SRS-Anforderungen **FR-UDS-001..010** (Must),
+**FR-UDS-011** (Should, Multi-DID) sowie **FR-UDS-012** (Could, Upload/Download —
+0x34/0x35/0x36/0x37) vollständig. `IsPackable=false` bis (a) das Server-Timing aus dem
+0x10-Session-Parameter-Record automatisch in `P2ClientMax`/`P2StarClientMax` übernommen wird
+und (b) ein Response-Router die aktuelle „passiv verwerfen"-Logik für Fremdresponses durch
+aktive Korrelation über den Request-SID ersetzt. Die Virtual-Loopback-Integrationstests
+(`tests/CanKit.Tests/TestCases/Uds/UdsClientTests.cs` +
+`tests/CanKit.Tests/TestCases/Uds/UdsTransferTests.cs`) fahren eine simulierte ECU auf einem
+zweiten ISO-TP-Kanal und decken sämtliche Services inklusive 0x78-Pfad und
+Download/Upload-Zyklus (inkl. NRC 0x73 wrongBlockSequenceCounter und BSC-Wrap 0xFF→0x00) ab.
 
 ## 5.5 Ebene 2 – Zoom L4: HAWE-Erweiterungsrahmen (generisch)
 

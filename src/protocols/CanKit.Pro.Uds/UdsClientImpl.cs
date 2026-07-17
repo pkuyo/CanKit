@@ -401,6 +401,181 @@ internal sealed class UdsClientImpl : IUdsClient
     }
 
     // ---------------------------------------------------------------------------------------
+    // Upload / Download (SRS FR-UDS-012, ISO 14229-1 §14).
+    // ---------------------------------------------------------------------------------------
+
+    public Task<UdsDownloadResponse> RequestDownloadAsync(
+        byte dataFormatIdentifier,
+        byte addressAndLengthFormatIdentifier,
+        ReadOnlyMemory<byte> memoryAddress,
+        ReadOnlyMemory<byte> memorySize,
+        CancellationToken cancellationToken = default)
+        => RequestTransferSetupAsync(
+            UdsServiceId.RequestDownload,
+            dataFormatIdentifier,
+            addressAndLengthFormatIdentifier,
+            memoryAddress,
+            memorySize,
+            (lfid, maxBlock) => new UdsDownloadResponse(lfid, maxBlock),
+            cancellationToken);
+
+    public Task<UdsUploadResponse> RequestUploadAsync(
+        byte dataFormatIdentifier,
+        byte addressAndLengthFormatIdentifier,
+        ReadOnlyMemory<byte> memoryAddress,
+        ReadOnlyMemory<byte> memorySize,
+        CancellationToken cancellationToken = default)
+        => RequestTransferSetupAsync(
+            UdsServiceId.RequestUpload,
+            dataFormatIdentifier,
+            addressAndLengthFormatIdentifier,
+            memoryAddress,
+            memorySize,
+            (lfid, maxBlock) => new UdsUploadResponse(lfid, maxBlock),
+            cancellationToken);
+
+    private async Task<TResult> RequestTransferSetupAsync<TResult>(
+        UdsServiceId serviceId,
+        byte dataFormatIdentifier,
+        byte addressAndLengthFormatIdentifier,
+        ReadOnlyMemory<byte> memoryAddress,
+        ReadOnlyMemory<byte> memorySize,
+        Func<byte, ulong, TResult> project,
+        CancellationToken cancellationToken)
+    {
+        int addressWidth = addressAndLengthFormatIdentifier & 0x0F;
+        int sizeWidth = (addressAndLengthFormatIdentifier >> 4) & 0x0F;
+        if (addressWidth == 0)
+            throw new ArgumentOutOfRangeException(nameof(addressAndLengthFormatIdentifier),
+                "memoryAddress width nibble (low nibble) must be non-zero.");
+        if (sizeWidth == 0)
+            throw new ArgumentOutOfRangeException(nameof(addressAndLengthFormatIdentifier),
+                "memorySize width nibble (high nibble) must be non-zero.");
+        if (memoryAddress.Length != addressWidth)
+            throw new ArgumentOutOfRangeException(nameof(memoryAddress),
+                $"memoryAddress length ({memoryAddress.Length}) does not match the width nibble ({addressWidth}) in addressAndLengthFormatIdentifier.");
+        if (memorySize.Length != sizeWidth)
+            throw new ArgumentOutOfRangeException(nameof(memorySize),
+                $"memorySize length ({memorySize.Length}) does not match the width nibble ({sizeWidth}) in addressAndLengthFormatIdentifier.");
+
+        var request = new byte[3 + addressWidth + sizeWidth];
+        request[0] = (byte)serviceId;
+        request[1] = dataFormatIdentifier;
+        request[2] = addressAndLengthFormatIdentifier;
+        memoryAddress.Span.CopyTo(request.AsSpan(3));
+        memorySize.Span.CopyTo(request.AsSpan(3 + addressWidth));
+
+        var response = await ExecuteAsync(serviceId, request, cancellationToken).ConfigureAwait(false);
+
+        // Positive response layout (ISO 14229-1 §14.2.2.4 / §14.1.2.4):
+        //   [0]=respSid  [1]=lengthFormatIdentifier  [2..]=maxNumberOfBlockLength (big-endian).
+        if (response.Length < 2)
+            throw new UdsProtocolException(
+                $"{serviceId} response too short ({response.Length} bytes).");
+
+        byte lengthFormatIdentifier = response[1];
+        int maxBlockWidth = (lengthFormatIdentifier >> 4) & 0x0F;
+        if (maxBlockWidth == 0)
+            throw new UdsProtocolException(
+                $"{serviceId} response lengthFormatIdentifier 0x{lengthFormatIdentifier:X2} has zero maxNumberOfBlockLength width.");
+        if (maxBlockWidth > 8)
+            throw new UdsProtocolException(
+                $"{serviceId} response lengthFormatIdentifier 0x{lengthFormatIdentifier:X2} claims {maxBlockWidth} bytes of maxNumberOfBlockLength; the client caps this at 8 (ulong).");
+        if (response.Length < 2 + maxBlockWidth)
+            throw new UdsProtocolException(
+                $"{serviceId} response truncated (need {2 + maxBlockWidth} bytes for maxNumberOfBlockLength, got {response.Length}).");
+
+        ulong maxNumberOfBlockLength = 0;
+        for (int i = 0; i < maxBlockWidth; i++)
+            maxNumberOfBlockLength = (maxNumberOfBlockLength << 8) | response[2 + i];
+
+        return project(lengthFormatIdentifier, maxNumberOfBlockLength);
+    }
+
+    public async Task<byte[]> TransferDataAsync(byte blockSequenceCounter,
+        ReadOnlyMemory<byte> data, CancellationToken cancellationToken = default)
+    {
+        var request = new byte[2 + data.Length];
+        request[0] = (byte)UdsServiceId.TransferData;
+        request[1] = blockSequenceCounter;
+        if (data.Length > 0) data.Span.CopyTo(request.AsSpan(2));
+
+        var response = await ExecuteAsync(UdsServiceId.TransferData, request,
+            cancellationToken).ConfigureAwait(false);
+
+        // Positive response: [0]=0x76 [1]=blockSequenceCounter [2..]=transferResponseParameterRecord.
+        if (response.Length < 2)
+            throw new UdsProtocolException(
+                $"TransferData response too short ({response.Length} bytes).");
+        if (response[1] != blockSequenceCounter)
+            throw new UdsProtocolException(
+                $"TransferData response blockSequenceCounter mismatch (sent 0x{blockSequenceCounter:X2}, got 0x{response[1]:X2}).");
+
+        int tail = response.Length - 2;
+        var record = new byte[tail];
+        if (tail > 0) Buffer.BlockCopy(response, 2, record, 0, tail);
+        return record;
+    }
+
+    public async Task RequestTransferExitAsync(
+        ReadOnlyMemory<byte> transferRequestParameterRecord = default,
+        CancellationToken cancellationToken = default)
+    {
+        var request = new byte[1 + transferRequestParameterRecord.Length];
+        request[0] = (byte)UdsServiceId.RequestTransferExit;
+        if (transferRequestParameterRecord.Length > 0)
+            transferRequestParameterRecord.Span.CopyTo(request.AsSpan(1));
+
+        // Positive response is [0]=0x77 [1..]=transferResponseParameterRecord. We only need to
+        // verify the SID matches (ExecuteAsync already does that); the tail record is discarded
+        // because it is vendor-specific (e.g. an ECU-computed CRC that the caller may want to
+        // audit — expose it later if needed).
+        _ = await ExecuteAsync(UdsServiceId.RequestTransferExit, request,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    public async Task DownloadAsync(
+        byte dataFormatIdentifier,
+        byte addressAndLengthFormatIdentifier,
+        ReadOnlyMemory<byte> memoryAddress,
+        ReadOnlyMemory<byte> memorySize,
+        ReadOnlyMemory<byte> data,
+        CancellationToken cancellationToken = default)
+    {
+        var download = await RequestDownloadAsync(dataFormatIdentifier,
+            addressAndLengthFormatIdentifier, memoryAddress, memorySize,
+            cancellationToken).ConfigureAwait(false);
+
+        // TransferData request layout: [0]=0x36 [1]=BSC [2..]=payload.
+        // The ECU-reported maxNumberOfBlockLength is the TOTAL request size in bytes (including
+        // the SID and the BSC byte), so each chunk carries at most maxNumberOfBlockLength - 2
+        // payload bytes.
+        ulong maxBlock = download.MaxNumberOfBlockLength;
+        if (maxBlock <= 2)
+            throw new UdsProtocolException(
+                $"ECU-reported maxNumberOfBlockLength={maxBlock} leaves no room for TransferData payload " +
+                "(need at least 3 to carry SID + BSC + one payload byte).");
+
+        // Cap the chunk size at int.MaxValue so we can slice ReadOnlyMemory<byte>. Real ECUs
+        // report block lengths that fit in a few kB; the cap is defensive against absurd LFIs.
+        int chunkSize = maxBlock - 2 > int.MaxValue ? int.MaxValue : (int)(maxBlock - 2);
+
+        int offset = 0;
+        byte bsc = 0x01; // ISO 14229-1 §14.3.2: first TransferData uses BSC=0x01.
+        while (offset < data.Length)
+        {
+            int remaining = data.Length - offset;
+            int take = remaining < chunkSize ? remaining : chunkSize;
+            var chunk = data.Slice(offset, take);
+            _ = await TransferDataAsync(bsc, chunk, cancellationToken).ConfigureAwait(false);
+            offset += take;
+            unchecked { bsc++; } // Wraps 0xFF → 0x00 → 0x01 … as required by ISO 14229-1 §14.3.2.
+        }
+
+        await RequestTransferExitAsync(default, cancellationToken).ConfigureAwait(false);
+    }
+
+    // ---------------------------------------------------------------------------------------
     // Shared request/response engine (P2/P2* + NRC 0x78 loop + structured NRC surfacing).
     // ---------------------------------------------------------------------------------------
 
