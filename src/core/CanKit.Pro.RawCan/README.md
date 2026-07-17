@@ -1,7 +1,7 @@
 # CanKit.Pro.RawCan
 
 Raw-CAN service layer for [CanKit](https://github.com/pkuyo/CanKit): multi-protocol
-demultiplexing / subscriptions (arc42 §5.3, ADR-5; SRS FR-RAW-010..013) and a TX-confirm
+demultiplexing / subscriptions (arc42 §5.3, ADR-5; SRS FR-RAW-010..014) and a TX-confirm
 abstraction (arc42 §6.3, ADR-7; SRS FR-RAW-030..034).
 
 One `ICanBusService` wraps one `ICanBus` and turns its single `FrameObserved` RX stream into
@@ -30,8 +30,11 @@ await foreach (var frame in isoTp.Frames.WithCancellation(token))
 
 Each subscription owns its own bounded, drop-oldest buffer (FR-RAW-011). Disposing a
 subscription deterministically deregisters it and completes its `Frames` stream; disposing the
-service unwinds all subscriptions and detaches from the bus (FR-RAW-012). This layer is built
-purely on the public `ICanBus.FrameObserved` surface, so it works identically for every adapter.
+service unwinds all subscriptions and detaches from the bus (FR-RAW-012). Call
+`subscription.Reconfigure(CanIdFilter)` or `Reconfigure(predicate)` to change filter criteria at
+runtime without recreating the subscription (FR-RAW-014); only frames observed after the call follow
+the new criterion. This layer is built purely on the public `ICanBus.FrameObserved` surface, so it
+works identically for every adapter.
 
 ## TX-Confirm
 
