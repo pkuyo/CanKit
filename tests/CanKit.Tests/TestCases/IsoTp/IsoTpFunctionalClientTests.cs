@@ -237,12 +237,18 @@ public class IsoTpFunctionalClientTests : IClassFixture<TestCaseProvider>
     }
 
     // ─────────────────────────────────────────────────────────────────────────────────────────
-    // Bugbot #3603879808 — a Single Frame that arrives on the response range BEFORE the
-    // tester's functional request is TX-confirmed must NOT be included in the collected
-    // responses. Only frames that arrive after the request went out on the wire count.
+    // Bugbot #3603879808 / #3604506438 — an unrelated Single Frame that was already sitting
+    // in the RX pipeline before the tester issued its functional request must NOT be treated
+    // as a reply to that request. SendAndCollectAsync enforces this via drain-before-send:
+    // subscribe, synchronously drop everything already queued on the subscription, then send.
+    //
+    // The test emits a spurious in-range SF, gives the loopback a moment to route it, and
+    // then calls SendAndCollectAsync. If the spurious frame reached the subscription buffer
+    // between Subscribe and DrainBuffered it must be dropped; if it arrived before Subscribe
+    // it was never a candidate. In either case the caller must see only the real ECU reply.
     // ─────────────────────────────────────────────────────────────────────────────────────────
     [Fact]
-    public async Task Functional_Collect_Discards_Frames_That_Arrived_Before_Send_Confirmed()
+    public async Task Functional_Collect_Discards_Frames_That_Arrived_Before_Send()
     {
         var session = NewSession();
         using var busA = OpenClassic(session, 0); // tester bus
@@ -250,28 +256,22 @@ public class IsoTpFunctionalClientTests : IClassFixture<TestCaseProvider>
 
         const uint FunctionalTxId = 0x7DF;
         const uint EcuResponseId = 0x7E8;
-        const uint StaleEcuResponseId = 0x7E9; // also in-range but sent BEFORE the request
+        const uint StaleEcuResponseId = 0x7E9; // also in-range but transmitted BEFORE the request
         const uint RangeStart = 0x7E8;
         const uint RangeEnd = 0x7EF;
 
-        // The stale reply — same shape as a real SF response, on an in-range CAN-ID. If the
-        // collector treats it as a reply, the assertion will fail.
         byte[] stalePdu = { 0xDE, 0xAD, 0xBE, 0xEF };
         var staleEp = IsoTpEndpoint.Normal(StaleEcuResponseId, 0);
         var staleFrame = CanFrame.Classic(
             unchecked((int)StaleEcuResponseId),
             IsoTpFrameCodec.BuildSingleFrame(staleEp, stalePdu, isCanFd: false, padding: true));
 
-        // The real reply — only sent after the ECU actually observes the functional request.
         byte[] realPdu = { 0x62, 0xF1, 0x90, 0x01 };
         var realEp = IsoTpEndpoint.Normal(EcuResponseId, 0);
         var realFrame = CanFrame.Classic(
             unchecked((int)EcuResponseId),
             IsoTpFrameCodec.BuildSingleFrame(realEp, realPdu, isCanFd: false, padding: true));
 
-        // Open the functional client first so the response filter is subscribed. Now blast the
-        // stale SF onto the response CAN-ID while nothing has been sent yet — this is the
-        // scenario where an earlier request's late reply is sitting in the pipe.
         using var client = IsoTpFactory.OpenFunctional(busA, FunctionalTxId, RangeStart, RangeEnd,
             FastOptions());
 
@@ -281,8 +281,10 @@ public class IsoTpFunctionalClientTests : IClassFixture<TestCaseProvider>
                 busB.Transmit(realFrame);
         };
 
-        // Emit the stale frame BEFORE the send even begins. Give the virtual loopback a
-        // moment to deliver it into the subscription's buffer.
+        // Blast the stale SF into the pipe. Give the virtual hub a moment to route it —
+        // if it lands after SendAndCollectAsync's internal Subscribe, DrainBuffered must
+        // drop it; if it lands before Subscribe, the subscription never sees it. Either
+        // way the assertion below must hold.
         busB.Transmit(staleFrame);
         await Task.Delay(50);
 
@@ -295,19 +297,18 @@ public class IsoTpFunctionalClientTests : IClassFixture<TestCaseProvider>
         responses[0].SourceCanId.Should().Be(EcuResponseId);
         responses[0].Data.Should().Equal(realPdu);
         responses.Should().NotContain(r => r.SourceCanId == StaleEcuResponseId,
-            "the pre-send stale SF must be discarded by the gate");
+            "the pre-send stale SF must be discarded by drain-before-send");
     }
 
     // ─────────────────────────────────────────────────────────────────────────────────────────
-    // Bugbot #3604407387 — a Single Frame that arrives at (or immediately after) the instant
-    // the send-started gate opens must NOT be dropped. Task.WhenAny may report either task as
-    // the "winner" when both have already completed; the collector must decide by inspecting
-    // gateTask.IsCompleted, not by which task WhenAny picked. This regression covers a fast
-    // ECU whose reply lands concurrently with the gate: every iteration must yield exactly
-    // one collected reply. Before the fix the race dropped responses intermittently.
+    // Regression — a fast ECU whose reply lands during or immediately after the driver's
+    // TX-confirm must not be dropped. Drain-before-send discards only what is buffered at the
+    // instant of the drain call, so any frame delivered afterwards (which necessarily includes
+    // every legitimate reply, because the request has not yet gone out on the wire when Drain
+    // runs) is a candidate for collection. Every iteration must yield exactly one reply.
     // ─────────────────────────────────────────────────────────────────────────────────────────
     [Fact]
-    public async Task Functional_Collect_Accepts_Reply_That_Arrives_At_Gate_Instant()
+    public async Task Functional_Collect_Accepts_Fast_Reply_During_Send()
     {
         var session = NewSession();
         using var busA = OpenClassic(session, 0);
@@ -323,8 +324,8 @@ public class IsoTpFunctionalClientTests : IClassFixture<TestCaseProvider>
             IsoTpFrameCodec.BuildSingleFrame(realEp, realPdu, isCanFd: false, padding: true));
 
         // ECU replies inline the moment it observes the functional request. On the virtual
-        // hub this makes the reply's delivery race the gate's TrySetResult almost exactly,
-        // exercising the "both tasks already complete" case in CollectAfterGateAsync.
+        // hub this makes the reply race the driver's TX-confirm return — the reply may
+        // already be buffered on our subscription by the time SendSingleFrameAsync returns.
         busB.FrameObserved += (_, e) =>
         {
             if (e.CanFrame.ID == unchecked((int)FunctionalTxId))
@@ -334,8 +335,7 @@ public class IsoTpFunctionalClientTests : IClassFixture<TestCaseProvider>
         using var client = IsoTpFactory.OpenFunctional(busA, FunctionalTxId, 0x7E8, 0x7EF,
             FastOptions());
 
-        // Repeat enough times to stress the ordering race. Each iteration must collect the
-        // one reply — a single miss would fail the assertion.
+        // Repeat enough times to stress the ordering. A single dropped reply fails the assertion.
         const int iterations = 30;
         for (int i = 0; i < iterations; i++)
         {
@@ -344,7 +344,7 @@ public class IsoTpFunctionalClientTests : IClassFixture<TestCaseProvider>
                 .WaitAsync(ShortTimeout);
 
             responses.Should().HaveCount(1,
-                $"iteration {i}: the fast ECU reply must not be discarded as pre-send stale");
+                $"iteration {i}: the fast ECU reply must not be dropped by drain-before-send");
             responses[0].SourceCanId.Should().Be(EcuResponseId);
             responses[0].Data.Should().Equal(realPdu);
         }

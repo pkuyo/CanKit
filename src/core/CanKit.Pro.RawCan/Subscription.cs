@@ -99,6 +99,9 @@ namespace CanKit.Pro.RawCan
 
         public IAsyncEnumerable<CanFrameView> Frames => ReadAsync();
 
+        /// <inheritdoc/>
+        public bool TryRead(out CanFrameView frame) => _channel.Reader.TryRead(out frame);
+
         private async IAsyncEnumerable<CanFrameView> ReadAsync(
             [EnumeratorCancellation] CancellationToken cancellationToken = default)
         {

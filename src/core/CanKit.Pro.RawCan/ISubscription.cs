@@ -32,5 +32,20 @@ namespace CanKit.Pro.RawCan
         /// disposed. (按到达顺序从本订阅自有缓冲区异步产出通过过滤的帧；订阅或其所属服务被释放时结束。)
         /// </summary>
         IAsyncEnumerable<CanFrameView> Frames { get; }
+
+        /// <summary>
+        /// Non-blocking: try to remove one already-buffered frame from this subscription. Returns
+        /// <c>false</c> if the buffer is currently empty.
+        /// </summary>
+        /// <remarks>
+        /// This is the synchronous counterpart to <see cref="Frames"/>: it never awaits and never
+        /// waits for a frame to arrive, it only removes what has already been queued at the moment
+        /// of the call. It is intended for consumers that need to snapshot-then-drop stale traffic
+        /// (for example, a request/reply client draining background chatter before issuing its
+        /// request) without racing an async enumerator against a wall-clock deadline.
+        /// </remarks>
+        /// <param name="frame">The buffered frame, if any; otherwise the default value.</param>
+        /// <returns><c>true</c> if a frame was removed; <c>false</c> if the buffer was empty.</returns>
+        bool TryRead(out CanFrameView frame);
     }
 }

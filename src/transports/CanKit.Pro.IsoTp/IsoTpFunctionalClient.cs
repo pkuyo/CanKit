@@ -125,43 +125,25 @@ public sealed class IsoTpFunctionalClient : IDisposable
         if (pdu.Length == 0)
             throw new ArgumentException("ISO-TP PDU must be non-empty.", nameof(pdu));
 
-        // Subscribe before sending so no early fast response is missed. Every frame that
-        // arrives on the response filter *before* we hand the outbound Single Frame to the
-        // driver is stale bus traffic (a previous request's late reply, background chatter,
-        // an unrelated ECU broadcast, …) and MUST NOT be treated as a reply to the request
-        // we are about to send.
+        // Drain-before-send: subscribe, synchronously discard whatever is already buffered
+        // (background chatter, a previous request's late reply, an unrelated broadcast, …),
+        // then hand the Single Frame to the driver. Every frame that arrives on the
+        // subscription after DrainBuffered — whether during the driver call or after the
+        // TX-echo confirmation returns — is a candidate reply and is collected until the
+        // caller-supplied window expires.
         //
-        // The gate below is signalled from inside SendSingleFrameAsync, immediately before
-        // it calls the driver — anything the subscription has already buffered by that
-        // point is dropped; anything that arrives afterwards is a candidate reply and is
-        // collected until the caller-supplied window expires. Doing this "just before the
-        // driver call" (not "after TX-confirm returns") is important: on very fast buses
-        // (e.g. the in-process Virtual bus, or a hardware ECU with a near-zero P2 time)
-        // the ECU's reply can already be on our RX subscription before the outbound
-        // TX-echo confirmation arrives, and gating on TX-confirm would then discard the
-        // legitimate reply.
+        // Ordering rationale: this preserves the "no fast reply is missed" property that
+        // subscribing before sending was designed for (the ECU's reply cannot arrive before
+        // Subscribe, because we control the send site), while avoiding a wall-clock race
+        // between "send has started" and "frame delivered on RX" — the two events are
+        // resolved by memory ordering on the same subscription buffer instead of by a
+        // TaskCompletionSource gate.
         using var sub = _service.Subscribe(_responseFilter);
-        var gate = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var collectTask = CollectAfterGateAsync(sub, gate.Task, window, cancellationToken);
+        DrainBuffered(sub);
 
-        try
-        {
-            await SendSingleFrameAsync(pdu, gate, cancellationToken).ConfigureAwait(false);
-        }
-        catch
-        {
-            // Ensure the collector unwinds instead of running the whole window on an
-            // aborted send. If the gate was already opened (send failed after TX started)
-            // we still let the collector complete gracefully — cancel via TrySetCanceled
-            // only matters when the gate never opened, in which case the collector was
-            // idling in the pre-gate discard phase and needs to bail out immediately.
-            gate.TrySetCanceled();
-            try { await collectTask.ConfigureAwait(false); }
-            catch { /* observe & swallow — the original send failure is what the caller sees */ }
-            throw;
-        }
+        await SendSingleFrameAsync(pdu, cancellationToken).ConfigureAwait(false);
 
-        return await collectTask.ConfigureAwait(false);
+        return await CollectFromSubscriptionAsync(sub, window, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -220,18 +202,11 @@ public sealed class IsoTpFunctionalClient : IDisposable
     // Internal helpers
     // -----------------------------------------------------------------------------------------
 
-    private Task SendSingleFrameAsync(ReadOnlyMemory<byte> pdu, CancellationToken ct)
-        => SendSingleFrameAsync(pdu, sendStartedGate: null, ct);
-
     /// <summary>
-    /// Sends <paramref name="pdu"/> as a functional Single Frame. If
-    /// <paramref name="sendStartedGate"/> is non-null, it is completed immediately before the
-    /// call to <see cref="ICanBusService.SendConfirmed"/>; <see cref="SendAndCollectAsync"/>
-    /// uses this to demarcate stale frames buffered on the response subscription from
-    /// candidate replies.
+    /// Sends <paramref name="pdu"/> as a functional Single Frame and awaits the CAN driver's
+    /// TX confirmation.
     /// </summary>
-    private async Task SendSingleFrameAsync(ReadOnlyMemory<byte> pdu,
-        TaskCompletionSource<object?>? sendStartedGate, CancellationToken ct)
+    private async Task SendSingleFrameAsync(ReadOnlyMemory<byte> pdu, CancellationToken ct)
     {
         int sfMax = IsoTpFrameCodec.SingleFrameMaxDataLength(_options.UseCanFd,
             _txEndpoint.UsesAddressExtension);
@@ -251,11 +226,6 @@ public sealed class IsoTpFunctionalClient : IDisposable
                 isExtendedFrame: _options.IsExtendedCanId)
             : CanFrame.Classic(unchecked((int)_txEndpoint.TxCanId), payload,
                 isExtendedFrame: _options.IsExtendedCanId);
-
-        // Open the "send has started" gate the moment before we hand the frame to the driver.
-        // From this instant onward, frames matched by the response filter are candidate
-        // replies; anything the collector saw before this point was stale.
-        sendStartedGate?.TrySetResult(null);
 
         var confirmation = await _service.SendConfirmed(frame, _options.NAs, ct)
             .ConfigureAwait(false);
@@ -306,86 +276,13 @@ public sealed class IsoTpFunctionalClient : IDisposable
     }
 
     /// <summary>
-    /// Drains any frames that arrived on the subscription <em>before</em> <paramref name="gateTask"/>
-    /// completes (they belong to earlier bus traffic and must not be treated as replies), then
-    /// arms the <paramref name="window"/> deadline and collects the frames that arrive after
-    /// the gate opens. If the gate is cancelled (send failed), the collector unwinds and returns
-    /// whatever it has (typically empty).
+    /// Non-blocking: synchronously drops every frame currently sitting in
+    /// <paramref name="sub"/>'s buffer. On return, the subscription is empty; any frame the
+    /// caller sees on it afterwards was delivered strictly after this call.
     /// </summary>
-    private static async Task<IReadOnlyList<IsoTpFunctionalResponse>> CollectAfterGateAsync(
-        ISubscription sub, Task gateTask, TimeSpan window, CancellationToken cancellationToken)
+    private static void DrainBuffered(ISubscription sub)
     {
-        var responses = new List<IsoTpFunctionalResponse>();
-
-        // One lifetime CTS drives the enumerator: it is cancelled by the caller's token or,
-        // once the gate opens, by the window timer we arm below.
-        using var lifetimeCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        var enumerator = sub.Frames.GetAsyncEnumerator(lifetimeCts.Token);
-        try
-        {
-            Task<bool> nextMove = enumerator.MoveNextAsync().AsTask();
-            bool gateOpen = false;
-
-            while (true)
-            {
-                if (!gateOpen)
-                {
-                    // Race the next-frame wait against the gate. Note: Task.WhenAny may
-                    // return either task when both have already completed — so we must
-                    // decide based on the *gate's* completion state, not on which task
-                    // "won" the WhenAny. Without this, a fast ECU reply that arrived at
-                    // (or fractionally after) the instant the gate opened could be
-                    // silently dropped as stale traffic (Bugbot 3604407387).
-                    await Task.WhenAny(nextMove, gateTask).ConfigureAwait(false);
-
-                    if (gateTask.IsCompleted)
-                    {
-                        // Send failed → collector aborts and returns nothing new.
-                        if (gateTask.IsCanceled || gateTask.IsFaulted)
-                            return responses.AsReadOnly();
-
-                        gateOpen = true;
-                        // From this instant we are collecting for the caller-supplied window.
-                        lifetimeCts.CancelAfter(window);
-                        // Fall through into the gate-open branch. If nextMove has also
-                        // already completed, its frame arrived at/after send-start and
-                        // must be treated as a real reply, not discarded.
-                        continue;
-                    }
-
-                    // Gate still pending → the frame is truly pre-send stale; discard it.
-                    bool moved;
-                    try { moved = await nextMove.ConfigureAwait(false); }
-                    catch (OperationCanceledException) { throw; }
-                    if (!moved) return responses.AsReadOnly();
-                    nextMove = enumerator.MoveNextAsync().AsTask();
-                    continue;
-                }
-
-                bool got;
-                try
-                {
-                    got = await nextMove.ConfigureAwait(false);
-                }
-                catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-                {
-                    break; // window expired
-                }
-                if (!got) break;
-
-                if (TryParseFunctionalResponse(enumerator.Current, out var response))
-                    responses.Add(response!);
-                nextMove = enumerator.MoveNextAsync().AsTask();
-            }
-        }
-        finally
-        {
-            try { await enumerator.DisposeAsync().ConfigureAwait(false); }
-            catch (OperationCanceledException) { /* enumerator token tripped — cleanup only */ }
-            catch (ObjectDisposedException) { /* subscription already disposed */ }
-        }
-
-        return responses.AsReadOnly();
+        while (sub.TryRead(out _)) { }
     }
 
     private static bool TryParseFunctionalResponse(CanFrameView frame,
