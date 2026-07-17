@@ -248,9 +248,9 @@ public readonly record struct CanReceiveData(CanFrame CanFrame)
     public TimeSpan ReceiveTimestamp { get; init; }
 
     /// <summary>
-    /// System time corresponding to this record. (该记录对应的系统时间。)
+    /// System time corresponding to this record, in UTC (<see cref="DateTimeKind.Utc"/>).
     /// </summary>
-    public DateTime SystemTimestamp { get; init; } = DateTime.Now;
+    public DateTime SystemTimestamp { get; init; } = DateTime.UtcNow;
 
     /// <summary>
     /// Indicates whether this frame is a transmit echo/acknowledgment. (指示此帧是否为发送回显)
