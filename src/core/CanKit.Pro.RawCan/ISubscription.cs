@@ -47,5 +47,23 @@ namespace CanKit.Pro.RawCan
         /// <param name="frame">The buffered frame, if any; otherwise the default value.</param>
         /// <returns><c>true</c> if a frame was removed; <c>false</c> if the buffer was empty.</returns>
         bool TryRead(out CanFrameView frame);
+
+        /// <summary>
+        /// Replaces this subscription's filter with an ID-range/mask fast-path filter (FR-RAW-014).
+        /// Any previously configured predicate is cleared. Frames already buffered are not
+        /// retroactively filtered; only frames observed after this call follow the new criterion.
+        /// </summary>
+        /// <param name="filter">The new filter. Must not be a default-initialized struct when a
+        /// meaningful filter is required — use <see cref="Reconfigure(Func{CanFrameView, bool}?)"/>
+        /// with <c>null</c> to accept all frames.</param>
+        void Reconfigure(CanIdFilter filter);
+
+        /// <summary>
+        /// Replaces this subscription's filter with a generic predicate, or accepts all frames when
+        /// <paramref name="predicate"/> is <c>null</c> (FR-RAW-014). Any previously configured
+        /// <see cref="CanIdFilter"/> is cleared. Frames already buffered are not retroactively
+        /// filtered; only frames observed after this call follow the new criterion.
+        /// </summary>
+        void Reconfigure(Func<CanFrameView, bool>? predicate);
     }
 }
