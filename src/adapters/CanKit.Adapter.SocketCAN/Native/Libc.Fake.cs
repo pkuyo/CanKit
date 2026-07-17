@@ -330,6 +330,10 @@ internal static class Libc
         public int IfIndex;
         public readonly ConcurrentQueue<byte[]> Rx = new();
         public readonly List<EpollFd> Watchers = new();
+        // Cancels the in-flight RunBcmJobAsync loop. Real Linux BCM stops emission on
+        // TX_DELETE; without this, Fake jobs keep EmitFrame()'ing after Stop() and
+        // pollute same-bitrate raw sockets used by parallel matrix tests.
+        public CancellationTokenSource JobCts;
     }
 
     private sealed class CanInterface
@@ -616,8 +620,13 @@ internal static class Libc
                     if (inf && period == TimeSpan.Zero) period = ToTimeSpan(head.ival2);
                     int remaining = inf ? -1 : (int)head.count;
 
+                    // Replace any previous job on this BCM socket (TX_SETUP is upsert).
+                    CancelBcmJob(b);
+                    var cts = new CancellationTokenSource();
+                    b.JobCts = cts;
+
                     // launch a background sender for this job
-                    _ = RunBcmJobAsync(b, canId, payload, isFd, period, remaining);
+                    _ = RunBcmJobAsync(b, canId, payload, isFd, period, remaining, cts.Token);
                     // Match Linux BCM write() semantics: the kernel accepts the entire
                     // user-provided buffer (callers such as BCMPeriodicTx.Update size
                     // the buffer to max-fd-frame + head regardless of the actual
@@ -627,7 +636,7 @@ internal static class Libc
                 }
                 else if (head.opcode == TX_DELETE)
                 {
-                    // No persistent state stored; treat as best-effort stop by enqueuing a TX_EXPIRED signal
+                    CancelBcmJob(b);
                     var done = new bcm_msg_head { opcode = TX_EXPIRED };
                     var bytes = StructureToBytes(done);
                     b.Rx.Enqueue(bytes);
@@ -659,26 +668,59 @@ internal static class Libc
         }
     }
 
-    private static async Task RunBcmJobAsync(BcmSocketFd bc, uint canIdOrPayloadMarker, byte[] payload, bool isFd, TimeSpan period, int remaining)
+    private static void CancelBcmJob(BcmSocketFd bc)
+    {
+        var cts = bc.JobCts;
+        bc.JobCts = null;
+        if (cts is null) return;
+        try { cts.Cancel(); } catch { /* ignore */ }
+        try { cts.Dispose(); } catch { /* ignore */ }
+    }
+
+    private static async Task RunBcmJobAsync(
+        BcmSocketFd bc,
+        uint canIdOrPayloadMarker,
+        byte[] payload,
+        bool isFd,
+        TimeSpan period,
+        int remaining,
+        CancellationToken token)
     {
         // Encode id into payload if not provided
         _ = canIdOrPayloadMarker;
         if (period <= TimeSpan.Zero) period = TimeSpan.FromMilliseconds(1);
         int left = remaining;
-        while (left != 0)
+        try
         {
-            try
+            while (left != 0 && !token.IsCancellationRequested)
             {
-                EmitFrame(bc.IfIndex, payload, isFd, sourceFd: null);
-                if (left > 0) left--;
+                try
+                {
+                    EmitFrame(bc.IfIndex, payload, isFd, sourceFd: null);
+                    if (left > 0) left--;
+                }
+                catch { /* ignore */ }
+
+                try
+                {
+                    await System.Threading.Tasks.Task.Delay(period, token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
             }
-            catch { /* ignore */ }
-            await System.Threading.Tasks.Task.Delay(period).ConfigureAwait(false);
         }
-        // signal complete
-        var done = new bcm_msg_head { opcode = TX_EXPIRED };
-        bc.Rx.Enqueue(StructureToBytes(done));
-        SignalWatchers(bc);
+        finally
+        {
+            if (!token.IsCancellationRequested)
+            {
+                // Natural completion (finite count exhausted).
+                var done = new bcm_msg_head { opcode = TX_EXPIRED };
+                bc.Rx.Enqueue(StructureToBytes(done));
+                SignalWatchers(bc);
+            }
+        }
     }
 
     private static void EmitFrame(int srcIfIndex, byte[] payload, bool isFd, RawSocketFd sourceFd = null)
