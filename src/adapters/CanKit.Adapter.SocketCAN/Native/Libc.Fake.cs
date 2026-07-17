@@ -618,7 +618,12 @@ internal static class Libc
 
                     // launch a background sender for this job
                     _ = RunBcmJobAsync(b, canId, payload, isFd, period, remaining);
-                    return (long)(headSize + (head.nframes > 0 ? frameSize : 0));
+                    // Match Linux BCM write() semantics: the kernel accepts the entire
+                    // user-provided buffer (callers such as BCMPeriodicTx.Update size
+                    // the buffer to max-fd-frame + head regardless of the actual
+                    // FrameKind); returning less caused an artificial short-write
+                    // error under Fake.
+                    return (long)count;
                 }
                 else if (head.opcode == TX_DELETE)
                 {
