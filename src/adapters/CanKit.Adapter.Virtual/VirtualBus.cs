@@ -62,7 +62,7 @@ public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, IOwnership
             stopBackground: () => { },
             failAsyncReceivers: ex =>
             {
-                try { _asyncRx.ExceptionOccured(ex); } catch { /*ignore*/ }
+                try { _asyncRx.ExceptionOccurred(ex); } catch { /*ignore*/ }
             });
 
         // join hub
@@ -296,7 +296,7 @@ public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, IOwnership
         try { CanKitLogger.LogError("Virtual bus occured background exception.", ex); } catch { }
         if (fault)
         {
-            try { _asyncRx.ExceptionOccured(ex); } catch { }
+            try { _asyncRx.ExceptionOccurred(ex); } catch { }
             try
             {
                 var faultSpan = Volatile.Read(ref FaultOccurred);

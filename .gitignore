@@ -367,3 +367,5 @@ global.json
 
 # Claude Code agent scratch space (background-agent worktrees, session-local; never project source)
 /.claude/
+# Local agent worktrees
+.worktrees/

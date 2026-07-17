@@ -8,7 +8,6 @@
   <PropertyGroup Label="PackageVersions">
     <CanKitAbstractionsVersion>0.5.5</CanKitAbstractionsVersion>
     <CanKitCoreVersion>0.5.5</CanKitCoreVersion>
-    <CanKitTransportIsoTpVersion>0.5.4</CanKitTransportIsoTpVersion>
     <CanKitProRawCanVersion>0.1.0</CanKitProRawCanVersion>
     <CanKitProActorVersion>0.1.0</CanKitProActorVersion>
     <CanKitProAddressingVersion>0.1.0</CanKitProAddressingVersion>
@@ -17,6 +16,7 @@
     <CanKitProUdsVersion>0.1.0</CanKitProUdsVersion>
     <CanKitProJ1939TpVersion>0.1.0</CanKitProJ1939TpVersion>
     <CanKitProCANopenVersion>0.1.0</CanKitProCANopenVersion>
+    <CanKitProJ1939Version>0.1.0</CanKitProJ1939Version>
     <CanKitProHaweVersion>0.1.0</CanKitProHaweVersion>
     <CanKitAdapterControlCANVersion>0.5.5</CanKitAdapterControlCANVersion>
     <CanKitAdapterKvaserVersion>0.5.5</CanKitAdapterKvaserVersion>

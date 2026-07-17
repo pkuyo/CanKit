@@ -69,7 +69,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IOwnership
             },
             failAsyncReceivers: ex =>
             {
-                try { _asyncRx.ExceptionOccured(ex); } catch { /*ignore*/ }
+                try { _asyncRx.ExceptionOccurred(ex); } catch { /*ignore*/ }
             });
 
         NativeHandle = new BusNativeHandle((int)_handle);

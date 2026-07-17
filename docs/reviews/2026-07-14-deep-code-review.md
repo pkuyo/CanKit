@@ -109,7 +109,7 @@ Jedes `Update(frame: fdFrame)` endet in `NotSupportedException`. Außerdem: `Rem
 `src/core/CanKit.Core/Utils/AsyncFramePipe.cs`
 - `ReceiveBatchAsync` erzeugt pro Iteration `ReadAsync(...).AsTask()`; gewinnt der Exception-Pulse das `WhenAny` (`:83-105`), bleibt der verwaiste Reader registriert und **konsumiert später einen Frame, der verworfen wird** (Frame-Verlust nach Hintergrundfehlern).
 - Der innere `catch (OperationCanceledException) return list;` (`:91-94`) schluckt auch die **Nutzer**-Cancellation und liefert stillschweigend eine Teil-Liste, während der äußere Filter (`:108`) sie eigentlich propagieren will – inkonsistenter Kontrakt.
-- `ExceptionOccured` (`:154-160`) weckt nur aktuell wartende Leser; ein unmittelbar danach startender `ReceiveBatchAsync` sieht den Fehler nie (verlorene Fehlersignalisierung, je nach Absicht ok – dokumentieren).
+- `ExceptionOccurred` (`:154-160`) weckt nur aktuell wartende Leser; ein unmittelbar danach startender `ReceiveBatchAsync` sieht den Fehler nie (verlorene Fehlersignalisierung, je nach Absicht ok – dokumentieren).
 
 ### 2.3 `SoftwarePeriodicTx`
 
@@ -123,7 +123,7 @@ Jedes `Update(frame: fdFrame)` endet in `NotSupportedException`. Außerdem: `Rem
 ### 2.4 Weitere Adapter-Punkte
 
 - **SocketCAN `ApplyDeviceConfig`** (`SocketCanBus.cs:600-605`): `Encoding.ASCII.GetString(name)` übernimmt die NUL-Padding-Bytes in `_ifName`; alle libsocketcan-Aufrufe und Logs arbeiten mit dem verunreinigten Namen. Bei NUL-terminierter Marshalling-Konvention geht es zufällig gut – trotzdem bis zum ersten `\0` trimmen.
-- **SocketCAN**: `SO_SNDTIMEO` wird aus `ReadTImeOutMs` gesetzt (`:153-162`) – Sende-Timeout aus Lese-Timeout-Option (plus Typo im Property-Namen, s. 3).
+- **SocketCAN**: `SO_SNDTIMEO` wird aus `ReadTimeoutMs` gesetzt (`:153-162`) – Sende-Timeout aus Lese-Timeout-Option (Property-Typo `ReadTImeOutMs` wurde per NFR-011 korrigiert).
 - **ZLG-Transceiver Teil-Erfolg**: Bei fehlgeschlagenem Zwischen-Flush wird `sent` ohne die tatsächlich akzeptierten `re` Frames zurückgegeben (`ZlgCanClassicTransceiver.cs:32-36`) → Aufrufer senden bereits übertragene Frames erneut (Duplikate auf dem Bus). Korrekt: `sent + re` zurückgeben.
 - **ZLG ctor**: `handle.SetDevice(...)`/Logging „Initialize succeeded“ **vor** `ZlgErr.ThrowIfInvalid` (`ZlgCanBus.cs:129-134`); `ZCAN_SetValue`-Aufrufe für `work_mode`/`initenal_resistance` prüfen den Rückgabewert nicht.
 - **ZLG `GetReceiveCount`** (`:588`): `(byte)((byte)ProtocolMode - 1)` – gefährlich, falls `ProtocolMode`-Enum bei 0 beginnt (Underflow zu 255); explizites Mapping wäre robuster.
@@ -145,10 +145,10 @@ Jedes `Update(frame: fdFrame)` endet in `NotSupportedException`. Außerdem: `Rem
 
 | Fundstelle | Problem |
 |---|---|
-| `CanKit.Abstractions/API/Transport/Excpetions/` | Ordner- und Namespace-Typo `Excpetions` (öffentliche API!) |
+| ~~`CanKit.Abstractions/API/Transport/Excpetions/`~~ | ✅ entfällt mit Legacy-ISO-TP-Abbau (Namespace-Typo entfernt) |
 | Namespaces im ISO-TP-Projekt | Mischung `CanKit.Transport.IsoTp.*` und `CanKit.Protocol.IsoTp.*` |
-| `IBusRTOptionsConfigurator.ReadTImeOutMs` | Typo im öffentlichen Property-Namen |
-| `AsyncFramePipe.ExceptionOccured`, div. „occured“ | Typo (`ExceptionOccurred`) |
+| ~~`IBusRTOptionsConfigurator.ReadTImeOutMs`~~ | ✅ umbenannt zu `ReadTimeoutMs` (NFR-011) |
+| ~~`AsyncFramePipe.ExceptionOccured`~~ | ✅ umbenannt zu `ExceptionOccurred` (NFR-011) |
 | `SoftwarePeriodicTx` | toter Code: `_jitterLastNs`-Getter liest unsynchronisiert; `CREATE_WAITABLE_TIMER_MANUAL_RESET` ungenutzt |
 | `Deadline` (`IsoTp/Defines/Deadline.cs`) | `_actived`/`Actived` tot; `actived`-Parameter ohne Wirkung auf Stopwatch-Start |
 | `IsoTpScheduler.Score` | konstant für alle Kandidaten (TODO), Sortierung wirkungslos |
@@ -176,5 +176,5 @@ Jedes `Update(frame: fdFrame)` endet in `NotSupportedException`. Außerdem: `Rem
 5. `BCMPeriodicTx.Update` FD-Zweig (`Can20`→`CanFd`) fixen; `RemainingCount` mit `poll` absichern. *(hoch, trivial)*
 6. ISO-TP-Protokollfehler (invertiertes `canfd`, FC-PCI, FC-Padding, FF-Länge, STmin, SN/FF-Offset, `TryPeek`-netstandard) beheben und mit Virtual-Loopback-Tests abdecken; Scheduler auf ereignisgetrieben (das vorhandene `AsyncAutoResetEvent`) umstellen und Deadline-Prüfung implementieren. *(mittel – zusammen mit Fertigstellung)*
 7. macOS-Fallback in `SoftwarePeriodicTx`; `Completed` außerhalb des Locks feuern. *(mittel)*
-8. Typos in öffentlicher API (`Excpetions`, `ReadTImeOutMs`, `ExceptionOccured`) vor 1.0 bereinigen – danach sind es Breaking Changes. *(mittel)*
+8. ~~Typos in öffentlicher API (`Excpetions`, `ReadTImeOutMs`, `ExceptionOccured`) vor 1.0 bereinigen~~ — `ReadTimeoutMs`/`ExceptionOccurred` umbenannt (NFR-011); `Excpetions` entfällt mit Legacy-ISO-TP-Abbau.
 9. `nuget-pipeline.yml` Branch-Trigger auf `master` korrigieren. *(niedrig, trivial)*
