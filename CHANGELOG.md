@@ -10,6 +10,13 @@
 * The Abstractions namespace typo `Excpetions` is removed together with legacy
   `CanKit.Transport.IsoTp` (separate PR).
 
+### Fixed
+
+* `CanKit.Pro.J1939Tp`: accept TP.CM EndOfMsgAck after the last DT is already on the wire
+  (fast Virtual-loopback race where the peer ACKs before `SendingDt`→`WaitEom`).
+* `J1939TpTests.SecondRts…`: fix `WaitForCmFrameAsync` lock object race
+  (`Collection was modified` while enumerating observed CM frames).
+
 ## 0.5.5
 
 Published packages:
