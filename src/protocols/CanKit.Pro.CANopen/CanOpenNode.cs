@@ -890,9 +890,15 @@ internal sealed class CanOpenNode : ICanOpenNode
         {
             // Segmented download — reply Init-Ack, prepare a growing buffer with declared size.
             uint declaredLen = (uint)(data[4] | (data[5] << 8) | (data[6] << 16) | (data[7] << 24));
-            if (declaredLen > int.MaxValue)
+
+            // Cap the initiator's 32-bit declared length before the `new byte[declaredLen]`
+            // below: a hostile / buggy peer can otherwise drive us into an unbounded allocation
+            // (up to 4 GiB) purely by choosing the bytes in the init frame's size field. Beyond
+            // the option cap the CiA 301 "out of memory" abort code (0x05040005) is the right
+            // signal to send back to the peer. See Bugbot 3600644166.
+            if (declaredLen > (uint)_options.MaxSdoTransferBytes)
             {
-                SendSdoServerAbort(index, subindex, SdoAbortCode.LengthTooHigh);
+                SendSdoServerAbort(index, subindex, SdoAbortCode.OutOfMemory);
                 return;
             }
 
@@ -1225,6 +1231,18 @@ internal sealed class CanOpenNode : ICanOpenNode
             if (cs == SdoFrames.ScsUploadInitSegmented)
             {
                 uint declared = SdoFrames.ReadSegmentedTotalLength(data);
+                // Cap the server's 32-bit declared length before the `new byte[declared]`
+                // below. Mirrors the server-side cap in HandleServerDownloadInit above: a
+                // hostile / buggy server can otherwise coax the client into an unbounded
+                // allocation just by choosing the size bytes in the segmented upload-init
+                // response. Abort back to the server with the CiA 301 "out of memory" code
+                // (0x05040005) and fail the client task with the same abort. See Bugbot
+                // 3600644166.
+                if (declared > (uint)_options.MaxSdoTransferBytes)
+                {
+                    AbortClient(session, SdoAbortCode.OutOfMemory);
+                    return;
+                }
                 session.Payload = declared > 0 ? new byte[declared] : Array.Empty<byte>();
                 session.Offset = 0;
                 session.Toggle = false;

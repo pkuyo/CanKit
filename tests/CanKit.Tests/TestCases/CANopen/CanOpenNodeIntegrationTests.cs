@@ -399,6 +399,97 @@ public class CanOpenNodeIntegrationTests : IClassFixture<TestCaseProvider>
         raw.Should().BeEmpty();
     }
 
+    // Regression for PR #30 Bugbot High 3600644166: the server-side segmented-download path
+    // must cap the initiator's 32-bit declared length before doing `new byte[declaredLen]`. A
+    // hostile / buggy peer can otherwise coax the server into an unbounded allocation (up to
+    // 4 GiB) purely by choosing the size bytes in the init frame. With the fix the server
+    // replies with the CiA 301 "out of memory" abort code (0x05040005) instead of allocating.
+    [Fact]
+    public async Task Sdo_ServerSegmentedDownload_OverMaxTransferBytes_AbortsOutOfMemory()
+    {
+        var session = NewSession();
+        using var busA = Open(session, 0);
+        using var busB = Open(session, 1);
+
+        // Tight per-node cap so the test doesn't have to move megabytes to trip the limit.
+        var opts = new CanOpenNodeOptions().With(maxSdoTransferBytes: 1024);
+        using var master = CanOpen.OpenNode(busA, nodeId: 0x01);
+        using var slave = CanOpen.OpenNode(busB, nodeId: 0x11, opts);
+
+        // Domain slot with generous local capacity; we still expect the initiate to be aborted
+        // solely because the declared *transfer* length exceeds the option cap.
+        slave.ObjectDictionary.AddDomain(0x2800, 0x00, new byte[2048]);
+
+        // Payload comfortably exceeds the cap and forces the segmented path (> 4 bytes).
+        var payload = new byte[opts.MaxSdoTransferBytes + 1];
+        for (int i = 0; i < payload.Length; i++) payload[i] = (byte)i;
+
+        var ex = await Assert.ThrowsAsync<SdoAbortException>(() =>
+            master.SdoDownloadAsync(0x11, 0x2800, 0x00, payload).WithTimeoutAsync(ShortTimeout));
+        ex.AbortCode.Should().Be((uint)SdoAbortCode.OutOfMemory);
+    }
+
+    // Regression for PR #30 Bugbot High 3600644166: the client-side segmented-upload response
+    // path must cap the server's 32-bit declared length before doing `new byte[declared]`. A
+    // hostile / buggy server can otherwise drive the client into an unbounded allocation via
+    // the segmented upload-init response's 32-bit size field. We fake such a response on the
+    // raw wire (no real slave) so we can pin the declared length above the cap without also
+    // having to allocate the underlying OD entry.
+    [Fact]
+    public async Task Sdo_ClientSegmentedUploadResponse_OverMaxTransferBytes_AbortsOutOfMemory()
+    {
+        var session = NewSession();
+        using var busA = Open(session, 0);
+        using var busB = Open(session, 1);
+
+        var opts = new CanOpenNodeOptions().With(maxSdoTransferBytes: 1024);
+        using var master = CanOpen.OpenNode(busA, nodeId: 0x01, opts);
+
+        // Observe the abort the master emits on 0x600+0x11 so we can also assert the wire
+        // side of the fix (the master must abort the transfer back to the peer, not silently
+        // fail its own task).
+        var abortSeen = new TaskCompletionSource<byte[]>(TaskCreationOptions.RunContinuationsAsynchronously);
+        busB.FrameObserved += (_, e) =>
+        {
+            var frame = e.CanFrame;
+            if (frame.IsExtendedFrame) return;
+            if ((uint)frame.ID != 0x600u + 0x11u) return;
+            var data = frame.Data.ToArray();
+            if (data.Length >= 8 && data[0] == 0x80) abortSeen.TrySetResult(data);
+        };
+
+        var uploadTask = master.SdoUploadAsync(serverNodeId: 0x11, index: 0x2900, subindex: 0x00);
+
+        // Give the master a moment to put its upload-init request on the wire.
+        await Task.Delay(30);
+
+        // Fake a segmented upload-init response: cs=0x41 (size-indicated), then (index,
+        // subindex), then a little-endian 32-bit declared length way above the cap. The client
+        // must abort with OutOfMemory instead of allocating that many bytes.
+        uint declared = (uint)opts.MaxSdoTransferBytes + 4096u;
+        var response = new byte[8]
+        {
+            0x41,               // scs=2 (init upload response), size-indicated
+            0x00, 0x29, 0x00,   // index 0x2900, subindex 0x00
+            (byte)(declared & 0xFF),
+            (byte)((declared >> 8) & 0xFF),
+            (byte)((declared >> 16) & 0xFF),
+            (byte)((declared >> 24) & 0xFF),
+        };
+        busB.Transmit(CanFrame.Classic(0x580 + 0x11, response, isExtendedFrame: false));
+
+        var ex = await Assert.ThrowsAsync<SdoAbortException>(() =>
+            uploadTask.WithTimeoutAsync(ShortTimeout));
+        ex.AbortCode.Should().Be((uint)SdoAbortCode.OutOfMemory);
+
+        var abort = await abortSeen.Task.WithTimeoutAsync(ShortTimeout);
+        abort[1].Should().Be((byte)0x00);
+        abort[2].Should().Be((byte)0x29);
+        abort[3].Should().Be((byte)0x00);
+        uint wireCode = (uint)(abort[4] | (abort[5] << 8) | (abort[6] << 16) | (abort[7] << 24));
+        wireCode.Should().Be((uint)SdoAbortCode.OutOfMemory);
+    }
+
     // -----------------------------------------------------------------------------------------
     // FR-CO-007 + FR-CO-008 — NMT master command transitions the slave and the slave's next
     // heartbeat carries the new state.

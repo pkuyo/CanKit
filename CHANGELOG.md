@@ -18,6 +18,14 @@
   * SDO block transfer (FR-CO-004 Should) and Node-Guarding (FR-CO-009 Could) are documented
     open items for a future iteration.
 
+### Fixed
+
+* **CanKit.Pro.CANopen** — cap segmented SDO transfer allocations by the new
+  `CanOpenNodeOptions.MaxSdoTransferBytes` (default 1 MiB) so a hostile / buggy peer cannot
+  drive the server-side segmented download or the client-side segmented upload response into
+  an unbounded `new byte[declaredLen]` allocation via the 32-bit size field. Over-cap
+  initiates now reply with the CiA 301 "out of memory" SDO abort code (`0x05040005`).
+
 ## 0.5.5
 
 Published packages:

@@ -24,6 +24,10 @@ public enum SdoAbortCode : uint
     /// <summary>Invalid block size (only used by block transfer).</summary>
     InvalidBlockSize = 0x05040002u,
 
+    /// <summary>Out of memory — a segmented SDO transfer declared more bytes than the node is
+    /// willing to buffer (see <c>CanOpenNodeOptions.MaxSdoTransferBytes</c>).</summary>
+    OutOfMemory = 0x05040005u,
+
     /// <summary>Unsupported access to an object.</summary>
     UnsupportedAccess = 0x06010000u,
 

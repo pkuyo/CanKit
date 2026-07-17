@@ -38,17 +38,34 @@ public sealed class CanOpenNodeOptions
     /// </summary>
     public int EventQueueCapacity { get; init; } = 64;
 
+    /// <summary>
+    /// Upper bound (in bytes) on the total payload of a single segmented SDO transfer, applied
+    /// both to server-side segmented downloads (initiator's declared 32-bit length) and to
+    /// client-side segmented upload responses (server's declared 32-bit length). Bounds a
+    /// hostile / buggy peer's ability to drive us into an unbounded <c>new byte[declaredLen]</c>
+    /// allocation: any initiate declaring more than this many bytes is aborted with the CiA 301
+    /// "out of memory" SDO abort code (0x05040005) rather than being honored. Fixed-width OD
+    /// entries are additionally capped to their declared size at the type-check layer above;
+    /// this limit only matters for <see cref="OdDataType.Domain"/> payloads (and for the
+    /// client's upload path where the OD type is not yet known). Defaults to 1 MiB, which is
+    /// well above any realistic CiA-301 profile payload but small enough to reject an accidental
+    /// or malicious 4 GiB initiate outright.
+    /// </summary>
+    public int MaxSdoTransferBytes { get; init; } = 1 * 1024 * 1024;
+
     /// <summary>Returns a copy of this options record with the provided overrides.</summary>
     public CanOpenNodeOptions With(
         TimeSpan? sdoTimeout = null,
         TimeSpan? defaultTpdoEventTimerInterval = null,
-        int? eventQueueCapacity = null)
+        int? eventQueueCapacity = null,
+        int? maxSdoTransferBytes = null)
     {
         return new CanOpenNodeOptions
         {
             SdoTimeout = sdoTimeout ?? SdoTimeout,
             DefaultTpdoEventTimerInterval = defaultTpdoEventTimerInterval ?? DefaultTpdoEventTimerInterval,
             EventQueueCapacity = eventQueueCapacity ?? EventQueueCapacity,
+            MaxSdoTransferBytes = maxSdoTransferBytes ?? MaxSdoTransferBytes,
         };
     }
 
@@ -64,5 +81,8 @@ public sealed class CanOpenNodeOptions
         if (EventQueueCapacity < 1)
             throw new ArgumentOutOfRangeException(nameof(EventQueueCapacity), EventQueueCapacity,
                 "EventQueueCapacity must be >= 1.");
+        if (MaxSdoTransferBytes < 1)
+            throw new ArgumentOutOfRangeException(nameof(MaxSdoTransferBytes), MaxSdoTransferBytes,
+                "MaxSdoTransferBytes must be >= 1.");
     }
 }
