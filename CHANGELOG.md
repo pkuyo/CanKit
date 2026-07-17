@@ -2,13 +2,43 @@
 
 ## Unreleased
 
+### Added
+
+* **CanKit.Pro.CANopen 0.1.0 (MVP)** — new experimental L4 package `CanKit.Pro.CANopen`
+  implementing the CiA 301 Must requirements (FR-CO-001/002/003/005/006/007/008/010/011/012):
+  * Local Object Dictionary with typed read/write and data-type enforcement.
+  * SDO client + server (expedited ≤ 4 bytes and segmented > 4 bytes with toggle-bit).
+  * NMT master + slave state machine (Start / Stop / Pre-Op / Reset).
+  * Heartbeat producer + consumer-timeout event.
+  * SYNC producer + consumer, EMCY encode/decode with structured receive event.
+  * Static TPDO/RPDO mapping with event, event-timer and SYNC-triggered transmission.
+  * Composed on the CanKit.Pro L2 pipeline (`ICanBusService`, `IProtocolActor`,
+    `DeadlineScheduler`) exactly like `CanKit.Pro.IsoTp` / `CanKit.Pro.J1939Tp` /
+    `CanKit.Pro.Uds`; ships with a `CanKitProCANopen.slnf` and a `canopen-ci.yml` workflow.
+  * SDO block transfer (FR-CO-004 Should) and Node-Guarding (FR-CO-009 Could) are documented
+    open items for a future iteration.
+
+### Fixed
+
+* **CanKit.Pro.CANopen** — cap segmented SDO transfer allocations by the new
+  `CanOpenNodeOptions.MaxSdoTransferBytes` (default 1 MiB) so a hostile / buggy peer cannot
+  drive the server-side segmented download or the client-side segmented upload response into
+  an unbounded `new byte[declaredLen]` allocation via the 32-bit size field. Over-cap
+  initiates now reply with the CiA 301 "out of memory" SDO abort code (`0x05040005`).
+* **CanKit.Pro.CANopen** — take the `ObjectDictionary` internal lock while snapshotting an
+  entry's raw value on the SDO server upload and TPDO emission paths. Previously
+  `TryGet + OdEntry.GetRawValue()` read `_value` twice (once for length, once for the byte
+  copy) without any coordination with a concurrent `WriteRaw`, and a mid-copy reference swap
+  could either return a length/array mismatch or throw from `Buffer.BlockCopy`. Routed
+  through a new `ObjectDictionary.TryReadRaw` helper.
+
 ### Breaking Changes
 
 * Renamed `AsyncFramePipe.ExceptionOccured` → `ExceptionOccurred` (NFR-011).
 * Renamed SocketCAN `ReadTImeOutMs` → `ReadTimeoutMs` (options, configurator, runtime
   accessors, and string-key config switch) (NFR-011).
 * The Abstractions namespace typo `Excpetions` is removed together with legacy
-  `CanKit.Transport.IsoTp` (separate PR).
+  `CanKit.Transport.IsoTp`.
 
 ### Fixed
 
