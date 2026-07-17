@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
+using System.Threading.Channels;
 using System.Threading.Tasks;
 using CanKit.Abstractions.API.Can;
 using CanKit.Abstractions.API.Can.Definitions;
@@ -49,6 +50,16 @@ internal sealed class CanOpenNode : ICanOpenNode
     private readonly ISubscription _subscription;
     private readonly Task _readerTask;
     private readonly CancellationTokenSource _readerCts = new();
+
+    // Bounded, drop-oldest queue that decouples user event delivery from the actor loop.
+    // Events (RPDO / EMCY / heartbeat / SYNC / NMT / user-facing signals) are enqueued from
+    // the actor thread and drained by a single dispatcher task, so a slow subscriber can never
+    // stall the protocol loop. Bounded by CanOpenNodeOptions.EventQueueCapacity; when full,
+    // the oldest queued event is dropped (matches the option's documented semantics).
+    // BackgroundExceptionOccurred stays synchronous — it is a low-frequency diagnostic signal
+    // that should never be silently dropped by queue backpressure.
+    private readonly Channel<Action> _eventChannel;
+    private readonly Task _eventPumpTask;
 
     private readonly ObjectDictionary _od = new();
 
@@ -133,6 +144,17 @@ internal sealed class CanOpenNode : ICanOpenNode
         _actor = new ProtocolActor();
         _actor.BackgroundExceptionOccurred += (_, ex) => RaiseBackgroundException(ex);
         _deadlines = new DeadlineScheduler(_actor);
+
+        // Bounded event queue: drop-oldest keeps steady-state memory constant when a subscriber
+        // falls behind, exactly matching the CanOpenNodeOptions.EventQueueCapacity contract.
+        _eventChannel = Channel.CreateBounded<Action>(new BoundedChannelOptions(_options.EventQueueCapacity)
+        {
+            FullMode = BoundedChannelFullMode.DropOldest,
+            SingleReader = true,
+            SingleWriter = false,
+            AllowSynchronousContinuations = false,
+        });
+        _eventPumpTask = Task.Run(RunEventPumpAsync);
 
         try
         {
@@ -394,6 +416,14 @@ internal sealed class CanOpenNode : ICanOpenNode
 
         try { _readerTask.Wait(TimeSpan.FromSeconds(2)); } catch { /* observed via task; not fatal */ }
 
+        // Complete the event channel so the pump task exits after draining anything still
+        // queued. This keeps ordering: any event enqueued before Dispose is guaranteed to be
+        // delivered before the pump exits (unless the subscriber itself hangs), while further
+        // TryWrite calls (a stray raise from an actor callback still winding down) simply
+        // return false — dropped rather than kept alive past Dispose.
+        _eventChannel.Writer.TryComplete();
+        try { _eventPumpTask.Wait(TimeSpan.FromSeconds(2)); } catch { /* observed via task; not fatal */ }
+
         _subscription.Dispose();
         _actor.Dispose();
         _readerCts.Dispose();
@@ -419,6 +449,37 @@ internal sealed class CanOpenNode : ICanOpenNode
         }
         catch (OperationCanceledException) { /* Dispose */ }
         catch (Exception ex) { RaiseBackgroundException(ex); }
+    }
+
+    // =========================================================================================
+    // Event pump — dispatches queued RPDO / EMCY / heartbeat / SYNC / NMT events on its own
+    // task so that a slow subscriber never blocks the actor loop or the RX reader. Runs a
+    // single reader so events are delivered in enqueue order.
+    // =========================================================================================
+    private async Task RunEventPumpAsync()
+    {
+        try
+        {
+            while (await _eventChannel.Reader.WaitToReadAsync().ConfigureAwait(false))
+            {
+                while (_eventChannel.Reader.TryRead(out var raise))
+                {
+                    try { raise(); }
+                    catch (Exception ex) { RaiseBackgroundException(ex); }
+                }
+            }
+        }
+        catch (OperationCanceledException) { /* Dispose */ }
+        catch (Exception ex) { RaiseBackgroundException(ex); }
+    }
+
+    private void EnqueueEvent(Action raise)
+    {
+        // DropOldest mode: TryWrite either enqueues or silently discards the oldest queued
+        // event to make room. It never blocks and never throws. Once the channel is completed
+        // (Dispose), TryWrite returns false and the raise is dropped, which is what we want:
+        // no delivery guarantee is documented past disposal.
+        _eventChannel.Writer.TryWrite(raise);
     }
 
     private void HandleIncoming(uint cobId, byte[] data)
@@ -1244,38 +1305,62 @@ internal sealed class CanOpenNode : ICanOpenNode
 
     private void RaiseHeartbeatReceived(byte producer, NmtState state, DateTime ts)
     {
-        try { HeartbeatReceived?.Invoke(this, new HeartbeatReceivedEventArgs(producer, state, ts)); }
-        catch (Exception ex) { RaiseBackgroundException(ex); }
+        var args = new HeartbeatReceivedEventArgs(producer, state, ts);
+        EnqueueEvent(() =>
+        {
+            try { HeartbeatReceived?.Invoke(this, args); }
+            catch (Exception ex) { RaiseBackgroundException(ex); }
+        });
     }
 
     private void RaiseHeartbeatTimeout(byte producer, TimeSpan timeout)
     {
-        try { HeartbeatTimeout?.Invoke(this, new HeartbeatTimeoutEventArgs(producer, timeout)); }
-        catch (Exception ex) { RaiseBackgroundException(ex); }
+        var args = new HeartbeatTimeoutEventArgs(producer, timeout);
+        EnqueueEvent(() =>
+        {
+            try { HeartbeatTimeout?.Invoke(this, args); }
+            catch (Exception ex) { RaiseBackgroundException(ex); }
+        });
     }
 
     private void RaiseEmcyReceived(EmcyMessage msg, DateTime ts)
     {
-        try { EmcyReceived?.Invoke(this, new EmcyReceivedEventArgs(msg, ts)); }
-        catch (Exception ex) { RaiseBackgroundException(ex); }
+        var args = new EmcyReceivedEventArgs(msg, ts);
+        EnqueueEvent(() =>
+        {
+            try { EmcyReceived?.Invoke(this, args); }
+            catch (Exception ex) { RaiseBackgroundException(ex); }
+        });
     }
 
     private void RaiseSyncReceived(DateTime ts)
     {
-        try { SyncReceived?.Invoke(this, new SyncReceivedEventArgs(ts)); }
-        catch (Exception ex) { RaiseBackgroundException(ex); }
+        var args = new SyncReceivedEventArgs(ts);
+        EnqueueEvent(() =>
+        {
+            try { SyncReceived?.Invoke(this, args); }
+            catch (Exception ex) { RaiseBackgroundException(ex); }
+        });
     }
 
     private void RaiseRpdoReceived(int pdoIndex, uint cobId, byte[] payload)
     {
-        try { RpdoReceived?.Invoke(this, new RpdoReceivedEventArgs(pdoIndex, cobId, payload)); }
-        catch (Exception ex) { RaiseBackgroundException(ex); }
+        var args = new RpdoReceivedEventArgs(pdoIndex, cobId, payload);
+        EnqueueEvent(() =>
+        {
+            try { RpdoReceived?.Invoke(this, args); }
+            catch (Exception ex) { RaiseBackgroundException(ex); }
+        });
     }
 
     private void RaiseNmtCommandReceived(NmtCommand cmd, byte target)
     {
-        try { NmtCommandReceived?.Invoke(this, new NmtCommandReceivedEventArgs(cmd, target)); }
-        catch (Exception ex) { RaiseBackgroundException(ex); }
+        var args = new NmtCommandReceivedEventArgs(cmd, target);
+        EnqueueEvent(() =>
+        {
+            try { NmtCommandReceived?.Invoke(this, args); }
+            catch (Exception ex) { RaiseBackgroundException(ex); }
+        });
     }
 
     private void ThrowIfDisposed()

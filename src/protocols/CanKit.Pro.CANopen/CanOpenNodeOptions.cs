@@ -23,8 +23,19 @@ public sealed class CanOpenNodeOptions
     /// with <c>TpdoTransmission.EventTimer</c>. May be overridden per-PDO at configuration time.</summary>
     public TimeSpan DefaultTpdoEventTimerInterval { get; init; } = TimeSpan.FromMilliseconds(100);
 
-    /// <summary>Bounded capacity of the RPDO / EMCY / heartbeat receive event queues. Events
-    /// beyond the bound overwrite the oldest — subscribers should keep up. Defaults to 64.</summary>
+    /// <summary>
+    /// Bounded capacity of the outbound event dispatch queue that feeds
+    /// <see cref="CanOpenNode.HeartbeatReceived"/> / <see cref="CanOpenNode.HeartbeatTimeout"/> /
+    /// <see cref="CanOpenNode.EmcyReceived"/> / <see cref="CanOpenNode.SyncReceived"/> /
+    /// <see cref="CanOpenNode.RpdoReceived"/> / <see cref="CanOpenNode.NmtCommandReceived"/>
+    /// subscribers. The node uses a bounded <see cref="System.Threading.Channels.Channel{T}"/>
+    /// with drop-oldest semantics: when a subscriber cannot keep up, the queue silently
+    /// discards the oldest pending events so it never grows past this bound and the actor
+    /// loop is never blocked by a slow handler. Defaults to 64.
+    /// <see cref="CanOpenNode.BackgroundExceptionOccurred"/> is dispatched synchronously and
+    /// is not subject to this bound — it is a low-frequency diagnostic signal that must not
+    /// be silently dropped by queue backpressure.
+    /// </summary>
     public int EventQueueCapacity { get; init; } = 64;
 
     /// <summary>Returns a copy of this options record with the provided overrides.</summary>

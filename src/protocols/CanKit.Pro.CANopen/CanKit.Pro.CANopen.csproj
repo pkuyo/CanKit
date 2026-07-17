@@ -23,6 +23,10 @@
         <PackageReference Include="Microsoft.Bcl.AsyncInterfaces" Version="9.0.10" />
     </ItemGroup>
 
+    <ItemGroup>
+        <PackageReference Include="System.Threading.Channels" Version="9.0.10" />
+    </ItemGroup>
+
     <ItemGroup Condition="'$(UseLocalProjectReferences)'=='true'">
         <ProjectReference Include="..\..\core\CanKit.Abstractions\CanKit.Abstractions.csproj" />
         <ProjectReference Include="..\..\core\CanKit.Core\CanKit.Core.csproj" />
