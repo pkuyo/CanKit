@@ -24,7 +24,7 @@ before the first NuGet release.
 | FR-UDS-009 | NRC 0x78 responsePending | Yes — client stays inside P2* while the ECU keeps replying 0x78, bounded by `MaxResponsePendingCount` |
 | FR-UDS-010 | Structured NRC | Yes — `UdsNegativeResponseException` carries requested SID + raw NRC byte + named enum |
 | FR-UDS-011 | Multi-DID `0x22` | Yes (SHOULD) — `ReadDataByIdentifierAsync(IReadOnlyList<ushort>, IReadOnlyDictionary<ushort, int>)` (caller supplies per-DID `dataRecord` lengths per ISO 14229-1 §9.3.4.4) |
-| FR-UDS-012 | 0x34 / 0x36 / 0x37 upload/download | **Deferred** (COULD, out of MVP scope) |
+| FR-UDS-012 | 0x34 / 0x35 / 0x36 / 0x37 upload/download | Yes (COULD) — `RequestDownloadAsync` / `RequestUploadAsync` / `TransferDataAsync(byte bsc, ReadOnlyMemory<byte>)` / `RequestTransferExitAsync(ReadOnlyMemory<byte>)`, plus one-shot `DownloadAsync` that negotiates `maxNumberOfBlockLength`, chunks the payload and walks the BSC with `0xFF → 0x00` wrap |
 
 ## Quick start
 
@@ -54,6 +54,15 @@ byte[] vin = await uds.ReadDataByIdentifierAsync(0xF190);
 await uds.SecurityAccessAsync(
     requestSeedLevel: 0x01,
     computeKey: seed => YourAlgorithm.ComputeKey(seed));
+
+// One-shot download (FR-UDS-012): negotiate maxNumberOfBlockLength, chunk the payload,
+// walk the block-sequence counter (0x01..0xFF, wraps to 0x00), close with RequestTransferExit.
+await uds.DownloadAsync(
+    dataFormatIdentifier: 0x00,                            // no compression / no encryption
+    addressAndLengthFormatIdentifier: 0x44,                // 4-byte address, 4-byte size
+    memoryAddress: new byte[] { 0x00, 0x10, 0x00, 0x00 },
+    memorySize:    new byte[] { 0x00, 0x00, 0x02, 0x00 }, // 512 bytes
+    data: firmwareChunk);
 ```
 
 ## Design notes

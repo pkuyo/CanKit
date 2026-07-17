@@ -172,4 +172,93 @@ public interface IUdsClient : IDisposable
     /// </summary>
     Task<byte[]> SendRawAsync(ReadOnlyMemory<byte> request,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Sends RequestDownload (0x34, ISO 14229-1 §14.2, SRS FR-UDS-012). Negotiates a download
+    /// session with the ECU: the tester declares the payload format (compression / encryption
+    /// via <paramref name="dataFormatIdentifier"/>) and the target memory range
+    /// (<paramref name="memoryAddress"/>, <paramref name="memorySize"/>) whose widths are packed
+    /// in <paramref name="addressAndLengthFormatIdentifier"/>. The ECU replies with the maximum
+    /// TransferData block length it will accept, wrapped in <see cref="UdsDownloadResponse"/>.
+    /// </summary>
+    /// <param name="dataFormatIdentifier">Byte encoding the compression method (high nibble)
+    /// and encryption method (low nibble); <c>0x00</c> means "no compression / no
+    /// encryption".</param>
+    /// <param name="addressAndLengthFormatIdentifier">Byte packing the width of
+    /// <paramref name="memoryAddress"/> (low nibble) and <paramref name="memorySize"/>
+    /// (high nibble) in bytes. Both widths MUST be in <c>1..0x0F</c> and MUST match the
+    /// respective buffer lengths.</param>
+    /// <param name="memoryAddress">Big-endian target start address.</param>
+    /// <param name="memorySize">Big-endian target byte count.</param>
+    /// <param name="cancellationToken">Cancels the wait for the ECU response.</param>
+    /// <exception cref="ArgumentOutOfRangeException">A width nibble in
+    /// <paramref name="addressAndLengthFormatIdentifier"/> is zero, or does not match the
+    /// buffer length.</exception>
+    Task<UdsDownloadResponse> RequestDownloadAsync(
+        byte dataFormatIdentifier,
+        byte addressAndLengthFormatIdentifier,
+        ReadOnlyMemory<byte> memoryAddress,
+        ReadOnlyMemory<byte> memorySize,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Sends RequestUpload (0x35, ISO 14229-1 §14.1, SRS FR-UDS-012). Mirror of
+    /// <see cref="RequestDownloadAsync"/> for the tester-reads-from-ECU direction; the returned
+    /// <see cref="UdsUploadResponse.MaxNumberOfBlockLength"/> constrains the size of TransferData
+    /// responses the ECU will emit.
+    /// </summary>
+    Task<UdsUploadResponse> RequestUploadAsync(
+        byte dataFormatIdentifier,
+        byte addressAndLengthFormatIdentifier,
+        ReadOnlyMemory<byte> memoryAddress,
+        ReadOnlyMemory<byte> memorySize,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Sends TransferData (0x36, ISO 14229-1 §14.3, SRS FR-UDS-012) with the caller-supplied
+    /// block sequence counter and payload chunk. Returns the ECU's <c>transferResponseParameterRecord</c>
+    /// (the bytes that follow the echoed block sequence counter in the positive response — may
+    /// be empty). The client validates that the ECU echoes back the exact
+    /// <paramref name="blockSequenceCounter"/>.
+    /// </summary>
+    /// <param name="blockSequenceCounter">Per ISO 14229-1 §14.3.2 the counter starts at
+    /// <c>0x01</c> for the first TransferData following RequestDownload/Upload, is incremented
+    /// on each successful transfer, and wraps from <c>0xFF</c> back to <c>0x00</c>.</param>
+    /// <param name="data">
+    /// Payload chunk. Total request size (SID + BSC + payload = 2 + <c>data.Length</c>) MUST
+    /// NOT exceed the ECU's <see cref="UdsDownloadResponse.MaxNumberOfBlockLength"/>. May be
+    /// empty when the ECU is expected to synthesise data (e.g. the upload direction).
+    /// </param>
+    /// <param name="cancellationToken">Cancels the wait for the ECU response.</param>
+    Task<byte[]> TransferDataAsync(
+        byte blockSequenceCounter,
+        ReadOnlyMemory<byte> data,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Sends RequestTransferExit (0x37, ISO 14229-1 §14.4, SRS FR-UDS-012) to close the current
+    /// transfer session. <paramref name="transferRequestParameterRecord"/> is an optional
+    /// vendor-specific record (e.g. checksum) appended after the SID.
+    /// </summary>
+    Task RequestTransferExitAsync(
+        ReadOnlyMemory<byte> transferRequestParameterRecord = default,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Convenience one-shot download that runs the full 0x34 → N × 0x36 → 0x37 sequence for
+    /// <paramref name="data"/>. The client negotiates <c>maxNumberOfBlockLength</c> with
+    /// RequestDownload, then loops <see cref="TransferDataAsync"/> with an automatically-managed
+    /// block sequence counter (starts at <c>0x01</c>, increments per block, wraps
+    /// <c>0xFF → 0x00</c>), and finally calls <see cref="RequestTransferExitAsync"/>.
+    /// </summary>
+    /// <exception cref="UdsProtocolException">The ECU reported a
+    /// <c>maxNumberOfBlockLength</c> of <c>0</c> or <c>1</c> so no payload byte would fit in a
+    /// TransferData request, or a chunk validation failed.</exception>
+    Task DownloadAsync(
+        byte dataFormatIdentifier,
+        byte addressAndLengthFormatIdentifier,
+        ReadOnlyMemory<byte> memoryAddress,
+        ReadOnlyMemory<byte> memorySize,
+        ReadOnlyMemory<byte> data,
+        CancellationToken cancellationToken = default);
 }

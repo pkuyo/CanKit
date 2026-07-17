@@ -30,6 +30,18 @@ public enum UdsServiceId : byte
     /// <summary>RoutineControl — ISO 14229-1 §9.10 (SRS FR-UDS-004).</summary>
     RoutineControl = 0x31,
 
+    /// <summary>RequestDownload — ISO 14229-1 §14.2 (SRS FR-UDS-012).</summary>
+    RequestDownload = 0x34,
+
+    /// <summary>RequestUpload — ISO 14229-1 §14.1 (SRS FR-UDS-012).</summary>
+    RequestUpload = 0x35,
+
+    /// <summary>TransferData — ISO 14229-1 §14.3 (SRS FR-UDS-012).</summary>
+    TransferData = 0x36,
+
+    /// <summary>RequestTransferExit — ISO 14229-1 §14.4 (SRS FR-UDS-012).</summary>
+    RequestTransferExit = 0x37,
+
     /// <summary>TesterPresent — ISO 14229-1 §9.12 (SRS FR-UDS-007).</summary>
     TesterPresent = 0x3E,
 }
