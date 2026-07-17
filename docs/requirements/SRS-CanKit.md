@@ -294,7 +294,7 @@ Ist-Zustand: nicht vorhanden, Neubau.
 
 #### 4.3.3 J1939 (Applikation)
 
-Ist-Zustand: nicht vorhanden, Neubau; setzt FR-TP-030ff. voraus.
+Ist-Zustand: MVP umgesetzt als eigenständiges Paket `CanKit.Pro.J1939` (`src/protocols/CanKit.Pro.J1939`, `IsPackable=false`, Version 0.1.0). Actor-getriebener Node (`IJ1939Node`) auf Basis der L2-Dienste (`ICanBusService`, `IProtocolActor`, `IDeadlineScheduler`) sowie der J1939-Adressierungshelfer aus `CanKit.Pro.Addressing`; für Nutzlasten > 8 Byte wird automatisch die J1939-TP-Ebene (`CanKit.Pro.J1939Tp`) verwendet. Deckt FR-J1939-001..006 (Must) sowie FR-J1939-007 (Should, periodisches Senden via `PeriodicSchedule`) mittels Virtual-Loopback-Integrationstests in `tests/CanKit.Tests/TestCases/J1939/J1939NodeTests.cs` ab. Weiterhin offen: Feinabstimmung der SAE J1939-81 Arbitrationszeiten gegen reale Hardware sowie erweiterte Multi-Adress-Reservierungen und `IPeriodicTx`-basierte L2-Periodizität statt der aktuellen Software-Schleife.
 
 | ID | Anforderung | Priorität | Verifikation | Quelle |
 |---|---|---|---|---|
@@ -386,7 +386,7 @@ Verweise auf Architektur-Bausteine nutzen die in Abschnitt 2.1 definierten Schic
 | FR-TP-030..035 | L3 – *J1939-Transport* (umgesetzt als eigenständiges `CanKit.Pro.J1939Tp`: `J1939Tp`/`J1939TpChannel`/`J1939TpOptions`/`J1939TpFrames`/`J1939TpAbortReason`, aufbauend auf `CanKit.Pro.Addressing` (`J1939Id`/`J1939Pgn`) sowie `CanKit.Pro.Actor`/`CanKit.Pro.RawCan`/`CanKit.Pro.Reliability`; MVP, `IsPackable=false`) | Virtual-Loopback-Integrationstest |
 | FR-UDS-001..010 | L4 – **UDS-Client-MVP umgesetzt** (`CanKit.Pro.Uds`, `IUdsClient`/`UdsClient` auf `IIsoTpChannel`); FR-UDS-011 (Multi-DID) ebenfalls umgesetzt (SHOULD), FR-UDS-012 (Upload/Download) bewusst als COULD zurückgestellt | Virtual-Loopback-Integrationstest (simulierte ECU, `tests/CanKit.Tests/TestCases/Uds/UdsClientTests.cs`), HIL-Stichprobe |
 | FR-CO-001..012 | L4 – *CANopen-Stack* (geplant, neues Paket auf L2-Demultiplexing + L1 `ICanBus`) | Virtual-Loopback-Integrationstest, HIL-Stichprobe |
-| FR-J1939-001..007 | L4 – *J1939-Applikationsschicht* (geplant, aufbauend auf L3 J1939-TP) | Virtual-Loopback-Integrationstest, HIL-Stichprobe |
+| FR-J1939-001..007 | L4 – *J1939-Applikationsschicht* (`src/protocols/CanKit.Pro.J1939`, MVP; FR-J1939-001..006 Must umgesetzt, FR-J1939-007 Should via Software-Schleife) | Virtual-Loopback-Integrationstest (`tests/CanKit.Tests/TestCases/J1939/J1939NodeTests.cs`), HIL-Stichprobe |
 | FR-HAWE-001..005 | L4 – *HAWE-Erweiterungsrahmen* (`src/protocols/CanKit.Pro.Hawe`, SPI `IHaweCodecRegistry`/`HaweChannel`) | Architekturreview, Virtual-Loopback-Integrationstest (generischer `FakePatternCodec` in `tests/CanKit.Tests/TestCases/HaweFrameworkTests.cs`) |
 | NFR-001..003 | L2/L3 Timing-Infrastruktur, L1 `SoftwarePeriodicTx`/`PreciseDelay` (`src/core/CanKit.Core/Utils/SoftwarePeriodicTx.cs`) | Performance-/Timing-Test |
 | NFR-004, CON-001 | Alle Ebenen – Multi-Targeting (`src/Directory.Build.props`) | CI-Testmatrix |

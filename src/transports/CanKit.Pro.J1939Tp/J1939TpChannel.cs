@@ -698,12 +698,11 @@ internal sealed class J1939TpChannel : IJ1939TpChannel
         }
         else if (control == J1939TpFrames.ControlEomAck)
         {
-            // Accept EOM once the last DT has been handed to the wire. On a fast Virtual
+            // Accept EOM once the last DT has been handed to SendControlFrame. On a fast Virtual
             // loopback the peer can emit EndOfMsgAck before our SendConfirmed callback runs
-            // OnCmDtConfirmed (SendingDt → WaitEom), so treat SendingDt with NextSn >=
-            // TotalPackets as equivalent to WaitEom. Reject truly early EOMs (still mid-block).
-            bool lastDtOnWire = session.State == TxStage.SendingDt
-                                && session.NextSn >= session.TotalPackets;
+            // OnCmDtConfirmed (SendingDt → WaitEom). Do NOT treat NextSn >= TotalPackets alone as
+            // sufficient: CTS for the final SN sets NextSn to TotalPackets before any DT is queued.
+            bool lastDtOnWire = session.State == TxStage.SendingDt && session.LastDtQueued;
             if (session.State != TxStage.WaitEom && !lastDtOnWire)
             {
                 AbortTx(session, J1939TpAbortReason.Unknown,
@@ -774,6 +773,8 @@ internal sealed class J1939TpChannel : IJ1939TpChannel
         int offset = (session.NextSn - 1) * J1939TpFrames.DtDataBytes;
         byte sn = session.NextSn;
         var dt = J1939TpFrames.BuildDt(sn, session.Pdu, offset);
+        if (sn == session.TotalPackets)
+            session.LastDtQueued = true;
         SendControlFrame(J1939Pgn.TpDt, dt, destinationAddress: key.DestinationAddress,
             session, onConfirmed: () => OnCmDtConfirmed(key, sn));
     }
@@ -1067,6 +1068,11 @@ internal sealed class J1939TpChannel : IJ1939TpChannel
         /// </summary>
         public bool HasPendingCts { get; set; }
         public byte PendingCtsNumPackets { get; set; }
+        /// <summary>
+        /// Set when <see cref="TrySendNextCmDt"/> queues the final TP.DT (SN == TotalPackets).
+        /// Used to accept an early EndOfMsgAck that races ahead of SendConfirmed → WaitEom.
+        /// </summary>
+        public bool LastDtQueued { get; set; }
         public byte PendingCtsNextSn { get; set; }
 
         public void Cancel()
