@@ -44,11 +44,46 @@ Experimental ISO 15765-2 (ISO-TP) implementation for [CanKit](https://github.com
 - Timings: `IsoTpChannelOptions.NAs` (TX-confirm), `NBs` (peer-FC wait), `NCr` (next CF wait) and
   `WftMax` (max consecutive `Wait` FCs) are configurable; defaults are conservative 1 s / 10.
 
+## Functional (1:N) addressing — `IsoTpFunctionalClient` (FR-TP-019)
+
+Per ISO 15765-2 §9 / ISO 14229-1 §7.5.4, a tester can broadcast a request to all ECUs on the bus
+using a shared functional CAN identifier and collect Single-Frame responses from multiple ECUs.
+
+```csharp
+// Open a functional client (owns its own CanBusService).
+using var client = IsoTp.OpenFunctional(
+    bus,
+    functionalTxCanId:          0x7DF,
+    responseRxCanIdRangeStart:  0x7E8,
+    responseRxCanIdRangeEnd:    0x7EF);
+
+// Broadcast a UDS DiagnosticSessionControl(DefaultSession) request and collect all replies
+// received within 25 ms.
+IReadOnlyList<IsoTpFunctionalResponse> responses = await client.SendAndCollectAsync(
+    pdu: new byte[] { 0x10, 0x01 },
+    window: TimeSpan.FromMilliseconds(25));
+
+foreach (var r in responses)
+    Console.WriteLine($"ECU 0x{r.SourceCanId:X3}: {BitConverter.ToString(r.Data)}");
+```
+
+- `IsoTp.OpenFunctional(ICanBus, …)` — client owns a private `CanBusService`.
+- `IsoTp.OpenFunctional(ICanBusService, …, leaveOpen)` — shares an existing service with
+  physical `IIsoTpChannel` instances (disjoint ID ranges required, FR-TP-018).
+- **SF-only send** (ISO 15765-2 §9.4 restriction): a PDU that exceeds the Single-Frame capacity
+  for the configured frame kind faults the task with `InvalidOperationException`.
+- **SF-only collection**: First-Frame responses (which would require per-ECU physical Flow-Control
+  addresses) are silently dropped; Single-Frame responses from all ECUs within the range are
+  collected in arrival order.
+- `IsoTpFunctionalOptions` configures `IsExtendedCanId`, `UseCanFd`, `UsePadding`, `PaddingByte`,
+  and `NAs` (TX-confirm timeout).
+
 ## Non-scope (yet)
 
 - Full CAN-FD long-payload TX (>4095 bytes with the escape header) is codec-supported but not yet
   in the integration-test matrix.
-- Functional (1:n) addressing (SRS FR-TP-019, Could).
+- Multi-frame (FF/CF) response reassembly in functional sessions (requires caller to supply a
+  per-ECU physical TX address for Flow-Control replies).
 - No vendor-SDK references, ever.
 - The legacy `CanKit.Transport.IsoTp` prototype (and its Abstractions `API/Transport` surface plus
   the PCAN native ISO-TP register) has been removed; this package is the sole ISO-TP

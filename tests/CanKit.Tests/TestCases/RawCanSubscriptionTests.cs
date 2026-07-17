@@ -134,6 +134,32 @@ public class RawCanSubscriptionTests : IClassFixture<TestCaseProvider>
         service.SubscriptionCount.Should().Be(0);
     }
 
+    // FR-RAW-014: reconfiguring a subscription's filter at runtime applies to subsequent frames only.
+    [Fact]
+    public async Task Reconfigure_Filter_At_Runtime_Subsequent_Frames_Follow_New_Criterion()
+    {
+        var session = NewSession();
+        using var sender = Open(session, 0);
+        using var receiver = Open(session, 1);
+        using var service = new CanBusService(receiver);
+
+        using var sub = service.Subscribe(CanIdFilter.Range(0x100, 0x1FF, CanFilterIDType.Standard));
+
+        sender.Transmit(CanFrame.Classic(0x100, new byte[] { 1 }));
+        sender.Transmit(CanFrame.Classic(0x200, new byte[] { 2 }));
+
+        var before = await Drain(sub, 1, ShortTimeout);
+        before.Select(f => f.ID).Should().Equal(0x100);
+
+        sub.Reconfigure(CanIdFilter.Range(0x200, 0x2FF, CanFilterIDType.Standard));
+
+        sender.Transmit(CanFrame.Classic(0x101, new byte[] { 3 }));
+        sender.Transmit(CanFrame.Classic(0x201, new byte[] { 4 }));
+
+        var after = await Drain(sub, 1, ShortTimeout);
+        after.Select(f => f.ID).Should().Equal(0x201);
+    }
+
     // FR-RAW-013: the ID-range/mask fast path matches and excludes correctly (unit-level, no bus).
     [Fact]
     public void IdFilter_FastPath_Matches_And_Excludes()

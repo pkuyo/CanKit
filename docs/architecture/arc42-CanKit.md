@@ -303,7 +303,7 @@ flowchart TB
 | L1 Raw-CAN-Kern | vorhanden | Herstellerneutraler Frame-Zugriff, Discovery, Utilities, Diagnostics. | `ICanBus`, `CanBus.Open`, `CanRegistry` | `FR-RAW-*` |
 | L2 Raw-CAN-Dienste | NEU | Ein RX-Strom → N unabhängige gefilterte Consumer; Ownership-Vertrag; TX-Confirm; Aktor-Modell. | (neu) `ICanBusService` / `ISubscription` | `FR-RAW-DEMUX-*`, `FR-RAW-OWN-*`, `FR-RAW-TXC-*` |
 | L3 Transport | Prototyp (ISO-TP) / MVP (J1939-TP) | Segmentierung/Reassemblierung (ISO-TP), Sessions (J1939-TP, `CanKit.Pro.J1939Tp`: BAM/CM/DT, T1..T4/Tr/Th, parallele Sessions über gemeinsamen `ICanBusService`). | `IIsoTpChannel`, `IIsoTpScheduler`, `IJ1939TpChannel` | `FR-TP-*` |
-| L4 Anwendungsprotokolle | UDS-MVP vorhanden (`CanKit.Pro.Uds`); CANopen-MVP vorhanden (`CanKit.Pro.CANopen`); J1939-App-MVP vorhanden (`CanKit.Pro.J1939`, FR-J1939-001..006 Must, FR-J1939-007 Should — jede periodische PGN läuft einheitlich über die `SendAsync`-Actor-Schleife des Nodes (L2-Scheduling via `DeadlineScheduler`); Multi-Frame-PGN öffnet dabei pro Emission eine frische J1939-TP-Session, Single-Frame-PGN geht direkt aufs Wire; native L1-`IPeriodicTx`-Optimierung zurückgestellt, bis der L1-Fallback `Transmit`-Fehler zuverlässig meldet); HAWE-Rahmen vorhanden (`CanKit.Pro.Hawe`) | Diagnose-/Applikationssemantik auf L3/L2. | `IUdsClient`/`UdsClient` (UDS); `ICanOpenNode`/`CanOpen`/`ObjectDictionary` (CANopen); `IJ1939Node`/`J1939Node` (J1939-App); HAWE-Rahmen: `IHaweCodec`/`IHaweCodecRegistry`/`HaweChannel` (generisch, kein Protokolldetail; CON-006) | `FR-UDS-*`, `FR-CO-*`, `FR-J1939-*`, `FR-HAWE-*` |
+| L4 Anwendungsprotokolle | UDS-MVP vorhanden (`CanKit.Pro.Uds`); CANopen-MVP vorhanden (`CanKit.Pro.CANopen`, inklusive SDO-Block-Transfer FR-CO-004 in `CanOpenNode.SdoBlock.cs` und Node-Guarding FR-CO-009 in `CanOpenNode.NodeGuarding.cs`); J1939-App-MVP vorhanden (`CanKit.Pro.J1939`, FR-J1939-001..006 Must, FR-J1939-007 Should — jede periodische PGN läuft einheitlich über die `SendAsync`-Actor-Schleife des Nodes (L2-Scheduling via `DeadlineScheduler`); Multi-Frame-PGN öffnet dabei pro Emission eine frische J1939-TP-Session, Single-Frame-PGN geht direkt aufs Wire; native L1-`IPeriodicTx`-Optimierung zurückgestellt, bis der L1-Fallback `Transmit`-Fehler zuverlässig meldet); HAWE-Rahmen vorhanden (`CanKit.Pro.Hawe`) | Diagnose-/Applikationssemantik auf L3/L2. | `IUdsClient`/`UdsClient` (UDS); `ICanOpenNode`/`CanOpen`/`ObjectDictionary` (CANopen); `IJ1939Node`/`J1939Node` (J1939-App); HAWE-Rahmen: `IHaweCodec`/`IHaweCodecRegistry`/`HaweChannel` (generisch, kein Protokolldetail; CON-006) | `FR-UDS-*`, `FR-CO-*`, `FR-J1939-*`, `FR-HAWE-*` |
 
 ## 5.2 Ebene 2 – Zoom L1 (Raw-CAN-Kern, vorhanden)
 
@@ -562,7 +562,10 @@ FR-RAW-052 (reservierte STmin-Werte → 127 ms) und FR-TP-015 (Classic-CAN SF �
 auf dem `CanKit.Pro.IsoTp`-Kanal aufsetzt. MVP-Serviceabdeckung (ISO 14229-1:2020): 0x10
 `DiagnosticSessionControl`, 0x11 `ECUReset`, 0x22 `ReadDataByIdentifier` (single + Multi-DID),
 0x27 `SecurityAccess` (mit Seed→Key-Callback), 0x2E `WriteDataByIdentifier`, 0x31 `RoutineControl`
-(Start/Stop/RequestResults), 0x3E `TesterPresent` inkl. Hintergrund-Keep-Alive. Ein interner
+(Start/Stop/RequestResults), 0x34/0x35 `RequestDownload`/`RequestUpload`, 0x36 `TransferData`,
+0x37 `RequestTransferExit` (inkl. Convenience-`DownloadAsync`, das
+`maxNumberOfBlockLength` aushandelt, die Nutzlast chunk-t und den Block-Sequence-Counter
+0x01..0xFF→0x00 durchläuft), 0x3E `TesterPresent` inkl. Hintergrund-Keep-Alive. Ein interner
 `SemaphoreSlim`-Request-Lock stellt sicher, dass zu jedem Zeitpunkt höchstens eine UDS-Transaktion
 „on the wire" ist (§7.3). P2/P2*-Timing wird durch `UdsClientOptions.P2ClientMax` /
 `P2StarClientMax` konfiguriert und bei jedem NRC 0x78
@@ -570,15 +573,16 @@ auf dem `CanKit.Pro.IsoTp`-Kanal aufsetzt. MVP-Serviceabdeckung (ISO 14229-1:202
 `MaxResponsePendingCount` als Sicherheitsnetz gegen stuck ECUs. Negative Responses werden
 strukturiert als `UdsNegativeResponseException(RequestedService, Code, CodeAsEnum)` gemeldet
 (SRS FR-UDS-010). Timeouts werden als `UdsTimeoutException(Timer=P2|P2Star)` gemeldet
-(FR-UDS-008/009). Adressiert die SRS-Anforderungen **FR-UDS-001..010** (Must) sowie
-**FR-UDS-011** (Should, Multi-DID) vollständig; **FR-UDS-012** (Upload/Download,
-0x34/0x36/0x37, Could) ist bewusst außerhalb des MVP und wird als Folgearbeit geführt.
-`IsPackable=false` bis (a) FR-UDS-012 nachgezogen ist, (b) das Server-Timing aus dem 0x10-Session-
-Parameter-Record automatisch in `P2ClientMax`/`P2StarClientMax` übernommen wird und (c) ein
-Response-Router die aktuelle „passiv verwerfen"-Logik für Fremdresponses durch aktive Korrelation
-über den Request-SID ersetzt. Der Virtual-Loopback-Integrationstest
-(`tests/CanKit.Tests/TestCases/Uds/UdsClientTests.cs`) fährt eine simulierte ECU auf einem zweiten
-ISO-TP-Kanal und deckt sämtliche MVP-Services inklusive 0x78-Pfad ab.
+(FR-UDS-008/009). Adressiert die SRS-Anforderungen **FR-UDS-001..010** (Must),
+**FR-UDS-011** (Should, Multi-DID) sowie **FR-UDS-012** (Could, Upload/Download —
+0x34/0x35/0x36/0x37) vollständig. `IsPackable=false` bis (a) das Server-Timing aus dem
+0x10-Session-Parameter-Record automatisch in `P2ClientMax`/`P2StarClientMax` übernommen wird
+und (b) ein Response-Router die aktuelle „passiv verwerfen"-Logik für Fremdresponses durch
+aktive Korrelation über den Request-SID ersetzt. Die Virtual-Loopback-Integrationstests
+(`tests/CanKit.Tests/TestCases/Uds/UdsClientTests.cs` +
+`tests/CanKit.Tests/TestCases/Uds/UdsTransferTests.cs`) fahren eine simulierte ECU auf einem
+zweiten ISO-TP-Kanal und decken sämtliche Services inklusive 0x78-Pfad und
+Download/Upload-Zyklus (inkl. NRC 0x73 wrongBlockSequenceCounter und BSC-Wrap 0xFF→0x00) ab.
 
 ## 5.5 Ebene 2 – Zoom L4: HAWE-Erweiterungsrahmen (generisch)
 
@@ -1162,7 +1166,7 @@ STmin-Grenzwerte, SN-Folge, N_Bs/N_Cr-Timeouts gegen Virtual.
   `CanKit.Transport.IsoTp` inkl. Abstractions-`API/Transport` und PCAN-native ISO-TP-Register
   wurde entfernt.
 - **Konsequenzen:** + Kern bleibt schlank, unabhängige Release-Kadenz, keine Vendor-SDK-Kopplung
-  im Transportpaket. − Functional Addressing (FR-TP-019) und Long-Payload-FD-Matrix folgen.
+  im Transportpaket. FR-TP-019 (Functional Addressing) ist mit `IsoTpFunctionalClient` umgesetzt (thin client: SF-only TX auf der funktionalen CAN-ID, SF-Antwort-Sammlung aus einem CAN-ID-Bereich innerhalb eines konfigurierbaren Fensters, integriert in die bestehende L2-Demux-Schicht). Long-Payload-FD-Matrix folgt.
 
 ### ADR-5 (umgesetzt): L2-Demux statt konkurrierendem `ReceiveAsync`
 - **Kontext:** Mehrere Protokolle wollen denselben RX-Strom sehen; heute konkurrieren
@@ -1180,8 +1184,10 @@ STmin-Grenzwerte, SN-Folge, N_Bs/N_Cr-Timeouts gegen Virtual.
   (FR-RAW-010/013); `Dispose` meldet Subscriptions deterministisch ab und schließt ihren Channel
   (FR-RAW-012), das Verwerfen des Dienstes hängt sich vom `FrameObserved`-Event ab. Baut rein auf der
   bestehenden `ICanBus`-Oberfläche — kein Adapter-Eingriff. Abgesichert per Virtual-Loopback
-  (`tests/CanKit.Tests/TestCases/RawCanSubscriptionTests.cs`). Offen: Laufzeit-Rekonfiguration der
-  Filterkriterien (FR-RAW-014, Could) ist bewusst nicht Teil dieser Umsetzung.
+  (`tests/CanKit.Tests/TestCases/RawCanSubscriptionTests.cs`). Laufzeit-Rekonfiguration der
+  Filterkriterien (FR-RAW-014, Could) über <c>ISubscription.Reconfigure</c> (atomarer Filtertausch
+  per <c>Interlocked.Exchange</c> auf dem Dispatch-Hot-Path; bereits gepufferte Frames bleiben
+  unverändert).
 
 ### ADR-6 (umgesetzt): Aktor-Modell pro Protokollinstanz
 - **Kontext:** ISO-TP-Prototyp mutiert State über Thread-Grenzen ohne Sync (Datenrennen, Busy-Loop).

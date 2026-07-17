@@ -4,6 +4,14 @@
 
 ### Added
 
+* **CanKit.Pro.Uds** — implement FR-UDS-012 (Upload/Download):
+  `RequestDownloadAsync` (0x34), `RequestUploadAsync` (0x35), `TransferDataAsync` (0x36) and
+  `RequestTransferExitAsync` (0x37) on `IUdsClient`, plus a one-shot convenience
+  `DownloadAsync` that negotiates `maxNumberOfBlockLength`, chunks the payload and walks the
+  block-sequence counter (0x01..0xFF, wraps back to 0x00). `UdsDownloadResponse` /
+  `UdsUploadResponse` expose the parsed `MaxNumberOfBlockLength`. Added
+  `UdsNegativeResponseCode.WrongBlockSequenceCounter` (0x73) plus 0x70/0x71/0x72 and covered by
+  virtual-loopback integration tests in `tests/CanKit.Tests/TestCases/Uds/UdsTransferTests.cs`.
 * **CanKit.Pro.CANopen 0.1.0 (MVP)** — new experimental L4 package `CanKit.Pro.CANopen`
   implementing the CiA 301 Must requirements (FR-CO-001/002/003/005/006/007/008/010/011/012):
   * Local Object Dictionary with typed read/write and data-type enforcement.
