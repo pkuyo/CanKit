@@ -330,23 +330,30 @@ public sealed class IsoTpFunctionalClient : IDisposable
             {
                 if (!gateOpen)
                 {
-                    // Race the next-frame wait against the gate. Whichever finishes first
-                    // determines whether the frame is pre- or post-gate.
-                    var winner = await Task.WhenAny(nextMove, gateTask).ConfigureAwait(false);
-                    if (winner == gateTask)
+                    // Race the next-frame wait against the gate. Note: Task.WhenAny may
+                    // return either task when both have already completed — so we must
+                    // decide based on the *gate's* completion state, not on which task
+                    // "won" the WhenAny. Without this, a fast ECU reply that arrived at
+                    // (or fractionally after) the instant the gate opened could be
+                    // silently dropped as stale traffic (Bugbot 3604407387).
+                    await Task.WhenAny(nextMove, gateTask).ConfigureAwait(false);
+
+                    if (gateTask.IsCompleted)
                     {
                         // Send failed → collector aborts and returns nothing new.
-                        if (gateTask.IsCanceled) return responses.AsReadOnly();
+                        if (gateTask.IsCanceled || gateTask.IsFaulted)
+                            return responses.AsReadOnly();
 
                         gateOpen = true;
                         // From this instant we are collecting for the caller-supplied window.
                         lifetimeCts.CancelAfter(window);
-                        // Fall through: nextMove is still in flight; we now treat its result
-                        // as a real reply (or, if the timer fires first, an OCE we swallow).
+                        // Fall through into the gate-open branch. If nextMove has also
+                        // already completed, its frame arrived at/after send-start and
+                        // must be treated as a real reply, not discarded.
                         continue;
                     }
 
-                    // A frame arrived before the gate opened — discard it as stale traffic.
+                    // Gate still pending → the frame is truly pre-send stale; discard it.
                     bool moved;
                     try { moved = await nextMove.ConfigureAwait(false); }
                     catch (OperationCanceledException) { throw; }

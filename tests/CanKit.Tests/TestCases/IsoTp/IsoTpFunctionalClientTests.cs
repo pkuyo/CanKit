@@ -299,6 +299,58 @@ public class IsoTpFunctionalClientTests : IClassFixture<TestCaseProvider>
     }
 
     // ─────────────────────────────────────────────────────────────────────────────────────────
+    // Bugbot #3604407387 — a Single Frame that arrives at (or immediately after) the instant
+    // the send-started gate opens must NOT be dropped. Task.WhenAny may report either task as
+    // the "winner" when both have already completed; the collector must decide by inspecting
+    // gateTask.IsCompleted, not by which task WhenAny picked. This regression covers a fast
+    // ECU whose reply lands concurrently with the gate: every iteration must yield exactly
+    // one collected reply. Before the fix the race dropped responses intermittently.
+    // ─────────────────────────────────────────────────────────────────────────────────────────
+    [Fact]
+    public async Task Functional_Collect_Accepts_Reply_That_Arrives_At_Gate_Instant()
+    {
+        var session = NewSession();
+        using var busA = OpenClassic(session, 0);
+        using var busB = OpenClassic(session, 1);
+
+        const uint FunctionalTxId = 0x7DF;
+        const uint EcuResponseId = 0x7E8;
+
+        byte[] realPdu = { 0x62, 0xF1, 0x90, 0x01 };
+        var realEp = IsoTpEndpoint.Normal(EcuResponseId, 0);
+        var realFrame = CanFrame.Classic(
+            unchecked((int)EcuResponseId),
+            IsoTpFrameCodec.BuildSingleFrame(realEp, realPdu, isCanFd: false, padding: true));
+
+        // ECU replies inline the moment it observes the functional request. On the virtual
+        // hub this makes the reply's delivery race the gate's TrySetResult almost exactly,
+        // exercising the "both tasks already complete" case in CollectAfterGateAsync.
+        busB.FrameObserved += (_, e) =>
+        {
+            if (e.CanFrame.ID == unchecked((int)FunctionalTxId))
+                busB.Transmit(realFrame);
+        };
+
+        using var client = IsoTpFactory.OpenFunctional(busA, FunctionalTxId, 0x7E8, 0x7EF,
+            FastOptions());
+
+        // Repeat enough times to stress the ordering race. Each iteration must collect the
+        // one reply — a single miss would fail the assertion.
+        const int iterations = 30;
+        for (int i = 0; i < iterations; i++)
+        {
+            byte[] request = { 0x22, 0xF1, 0x90 };
+            var responses = await client.SendAndCollectAsync(request, CollectionWindow)
+                .WaitAsync(ShortTimeout);
+
+            responses.Should().HaveCount(1,
+                $"iteration {i}: the fast ECU reply must not be discarded as pre-send stale");
+            responses[0].SourceCanId.Should().Be(EcuResponseId);
+            responses[0].Data.Should().Equal(realPdu);
+        }
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────────────────────
     // FR-TP-019 — Dispose is idempotent and stops the client.
     // ─────────────────────────────────────────────────────────────────────────────────────────
     [Fact]
