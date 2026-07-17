@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+### Breaking Changes
+
+* Renamed `AsyncFramePipe.ExceptionOccured` → `ExceptionOccurred` (NFR-011).
+* Renamed SocketCAN `ReadTImeOutMs` → `ReadTimeoutMs` (options, configurator, runtime
+  accessors, and string-key config switch) (NFR-011).
+* The Abstractions namespace typo `Excpetions` is removed together with legacy
+  `CanKit.Transport.IsoTp` (separate PR).
+
+### Fixed
+
+* `CanKit.Pro.J1939Tp`: accept TP.CM EndOfMsgAck after the last DT is already on the wire
+  (fast Virtual-loopback race where the peer ACKs before `SendingDt`→`WaitEom`).
+* `J1939TpTests.SecondRts…`: fix `WaitForCmFrameAsync` lock object race
+  (`Collection was modified` while enumerating observed CM frames).
+
 ### Added
 
 * **CanKit.Pro.J1939 0.1.0** (pre-release, not published) — application-layer SAE J1939 node MVP under `src/protocols/CanKit.Pro.J1939`. Covers SRS FR-J1939-001..006 (Must) and FR-J1939-007 (Should):

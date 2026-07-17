@@ -82,7 +82,7 @@ public sealed class ControlCanBus : ICanBus<ControlCanBusRtConfigurator>, IOwner
             },
             failAsyncReceivers: ex =>
             {
-                try { _asyncRx.ExceptionOccured(ex); } catch { /*ignore*/ }
+                try { _asyncRx.ExceptionOccurred(ex); } catch { /*ignore*/ }
             });
 
         // Build and apply initial configuration

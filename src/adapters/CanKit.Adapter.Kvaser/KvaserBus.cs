@@ -71,7 +71,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IOwnership
             },
             failAsyncReceivers: ex =>
             {
-                try { _asyncRx.ExceptionOccured(ex); } catch { /*ignore*/ }
+                try { _asyncRx.ExceptionOccurred(ex); } catch { /*ignore*/ }
             });
 
         // Open channel

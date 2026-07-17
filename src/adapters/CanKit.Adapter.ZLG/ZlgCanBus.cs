@@ -84,7 +84,7 @@ namespace CanKit.Adapter.ZLG
                 },
                 failAsyncReceivers: ex =>
                 {
-                    try { _asyncRx.ExceptionOccured(ex); } catch { /*ignore*/ }
+                    try { _asyncRx.ExceptionOccurred(ex); } catch { /*ignore*/ }
                 });
             CanKitLogger.LogInformation($"ZLG: Initializing channel '{Options.ChannelName?? Options.ChannelIndex.ToString()}', Mode={Options.ProtocolMode}...");
             ApplyConfig(options);

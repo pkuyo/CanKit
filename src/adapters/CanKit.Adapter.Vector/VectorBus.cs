@@ -91,7 +91,7 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
             },
             failAsyncReceivers: ex =>
             {
-                try { _asyncRx.ExceptionOccured(ex); } catch { /*ignore*/ }
+                try { _asyncRx.ExceptionOccurred(ex); } catch { /*ignore*/ }
             });
 
         ulong permissionMask = _accessMask;

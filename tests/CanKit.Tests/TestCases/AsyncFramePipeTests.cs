@@ -17,7 +17,7 @@ public class AsyncFramePipeTests
 
         var waitingRead = pipe.ReceiveBatchAsync(1, Timeout.Infinite, CancellationToken.None);
 
-        pipe.ExceptionOccured(exception);
+        pipe.ExceptionOccurred(exception);
 
         var act = async () => await waitingRead;
         await act.Should().ThrowAsync<InvalidOperationException>()
@@ -55,7 +55,7 @@ public class AsyncFramePipeTests
 
         // Both signals race the wait; caller cancellation must not be masked by the pulse.
         cts.Cancel();
-        pipe.ExceptionOccured(new InvalidOperationException("background"));
+        pipe.ExceptionOccurred(new InvalidOperationException("background"));
 
         var act = async () => await waitingRead;
         await act.Should().ThrowAsync<OperationCanceledException>();
@@ -81,7 +81,7 @@ public class AsyncFramePipeTests
         await using var enumerator = pipe.ReadAllAsync(CancellationToken.None).GetAsyncEnumerator();
         var waitingMove = enumerator.MoveNextAsync().AsTask();
 
-        pipe.ExceptionOccured(exception);
+        pipe.ExceptionOccurred(exception);
 
         var act = async () => await waitingMove;
         await act.Should().ThrowAsync<InvalidOperationException>()
@@ -116,7 +116,7 @@ public class AsyncFramePipeTests
 
         var waitingRead = pipe.ReceiveBatchAsync(1, 5_000, CancellationToken.None);
         await Task.Delay(20);
-        pipe.ExceptionOccured(exception);
+        pipe.ExceptionOccurred(exception);
 
         var act = async () => await waitingRead;
         await act.Should().ThrowAsync<InvalidOperationException>()
@@ -131,7 +131,7 @@ public class AsyncFramePipeTests
 
         var waitingRead = pipe.ReceiveBatchAsync(1, Timeout.Infinite, CancellationToken.None);
 
-        pipe.ExceptionOccured(exception);
+        pipe.ExceptionOccurred(exception);
 
         var act = async () => await waitingRead;
         await act.Should().ThrowAsync<OperationCanceledException>()
@@ -146,7 +146,7 @@ public class AsyncFramePipeTests
 
         var waitingRead = pipe.ReceiveBatchAsync(1, 5_000, CancellationToken.None);
         await Task.Delay(20);
-        pipe.ExceptionOccured(exception);
+        pipe.ExceptionOccurred(exception);
 
         var act = async () => await waitingRead;
         await act.Should().ThrowAsync<TaskCanceledException>()

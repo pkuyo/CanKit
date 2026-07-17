@@ -126,7 +126,7 @@ public sealed class AsyncFramePipe<T>
                 }
                 catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
                 {
-                    // Timeout (or timeout racing ExceptionOccured): prefer an already-signalled
+                    // Timeout (or timeout racing ExceptionOccurred): prefer an already-signalled
                     // fault, including pulsed OCE/TCE, over returning a partial timeout result.
                     if (bgException.Task.IsCompleted)
                     {
@@ -200,7 +200,7 @@ public sealed class AsyncFramePipe<T>
     /// Wakes readers currently waiting on this pipe with <paramref name="ex"/>. The pulse is not
     /// sticky: readers that start after this call wait for the next frame or next exception pulse.
     /// </summary>
-    public void ExceptionOccured(Exception ex)
+    public void ExceptionOccurred(Exception ex)
     {
         var old = Interlocked.Exchange(
             ref _exceptionPulse,
