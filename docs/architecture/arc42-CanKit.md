@@ -302,7 +302,7 @@ flowchart TB
 | L0 Adapter | vorhanden | Vendor-Treiber hinter `ICanBus` kapseln, RX-Loop betreiben, TX ausführen. | `ICanBus`, `ITransceiver`, `ICanDevice` | `FR-RAW-ADAPTER-*` |
 | L1 Raw-CAN-Kern | vorhanden | Herstellerneutraler Frame-Zugriff, Discovery, Utilities, Diagnostics. | `ICanBus`, `CanBus.Open`, `CanRegistry` | `FR-RAW-*` |
 | L2 Raw-CAN-Dienste | NEU | Ein RX-Strom → N unabhängige gefilterte Consumer; Ownership-Vertrag; TX-Confirm; Aktor-Modell. | (neu) `ICanBusService` / `ISubscription` | `FR-RAW-DEMUX-*`, `FR-RAW-OWN-*`, `FR-RAW-TXC-*` |
-| L3 Transport | Prototyp (ISO-TP) / MVP (J1939-TP) | Segmentierung/Reassemblierung (ISO-TP), Sessions (J1939-TP, `CanKit.Pro.J1939Tp`: BAM/CM/DT, T1..T4/Tr/Th, parallele Sessions über gemeinsamen `ICanBusService`). | `IIsoTpChannel`, `IIsoTpScheduler`, `IJ1939TpChannel` | `FR-TP-*` |
+| L3 Transport | MVP (ISO-TP, `CanKit.Pro.IsoTp`) / MVP (J1939-TP, `CanKit.Pro.J1939Tp`) | Segmentierung/Reassemblierung (ISO-TP), Sessions (J1939-TP: BAM/CM/DT, T1..T4/Tr/Th, parallele Sessions über gemeinsamen `ICanBusService`). Legacy-`CanKit.Transport.IsoTp` ist entfernt. | `IIsoTpChannel`, `IJ1939TpChannel` | `FR-TP-*` |
 | L4 Anwendungsprotokolle | UDS-MVP vorhanden (`CanKit.Pro.Uds`); CANopen-MVP vorhanden (`CanKit.Pro.CANopen`, inklusive SDO-Block-Transfer FR-CO-004 in `CanOpenNode.SdoBlock.cs` und Node-Guarding FR-CO-009 in `CanOpenNode.NodeGuarding.cs`); J1939-App-MVP vorhanden (`CanKit.Pro.J1939`, FR-J1939-001..006 Must, FR-J1939-007 Should — jede periodische PGN läuft einheitlich über die `SendAsync`-Actor-Schleife des Nodes (L2-Scheduling via `DeadlineScheduler`); Multi-Frame-PGN öffnet dabei pro Emission eine frische J1939-TP-Session, Single-Frame-PGN geht direkt aufs Wire; native L1-`IPeriodicTx`-Optimierung zurückgestellt, bis der L1-Fallback `Transmit`-Fehler zuverlässig meldet); HAWE-Rahmen vorhanden (`CanKit.Pro.Hawe`) | Diagnose-/Applikationssemantik auf L3/L2. | `IUdsClient`/`UdsClient` (UDS); `ICanOpenNode`/`CanOpen`/`ObjectDictionary` (CANopen); `IJ1939Node`/`J1939Node` (J1939-App); HAWE-Rahmen: `IHaweCodec`/`IHaweCodecRegistry`/`HaweChannel` (generisch, kein Protokolldetail; CON-006) | `FR-UDS-*`, `FR-CO-*`, `FR-J1939-*`, `FR-HAWE-*` |
 
 ## 5.2 Ebene 2 – Zoom L1 (Raw-CAN-Kern, vorhanden)
@@ -417,122 +417,19 @@ flowchart TB
 | Aktor-/Threading-Modell | (3) | Genau ein Bearbeitungs-Thread/Mailbox pro Protokollinstanz; kein geteilter mutabler State. **Umgesetzt** als eigenständiges, abhängigkeitsfreies Paket `CanKit.Pro.Actor` (siehe ADR-6): ereignisgetriebener Loop (kein Busy-Loop, FR-RAW-022), je Instanz wählbarer Ausführungskontext (`ActorExecutionMode`: `DedicatedThread`/`ThreadPool`/`SynchronizationContext`, FR-RAW-024), `BackgroundExceptionOccurred` als einziger Kanal für Hintergrundfehler (FR-RAW-023). Vom ISO-TP-Prototyp noch nicht genutzt. | `IProtocolActor { Post(msg); PostAsync(msg); Schedule(delay, cb); }` | `FR-RAW-ACTOR-*` |
 | Fehler-/Timeout-Infrastruktur | – | Einheitliche Deadline-Verwaltung (ersetzt verstreute ISO-TP-`Deadline`s) und gepushte Bus-Fehlerzustände. **Umgesetzt** als eigenständiges Paket `CanKit.Pro.Reliability` (siehe ADR-11), aufbauend auf `CanKit.Pro.Actor`: `IDeadlineScheduler`/`DeadlineScheduler`/`Deadline` ist eine wiederverwendbare Deadline-Primitive, deren Ablauf über `IProtocolActor.Schedule` auf dem Aktor-Loop tatsächlich eingeplant, geprüft und gemeldet wird — behebt die Klasse „Deadlines werden gepflegt, aber nie geprüft" (Review §1.1 Punkt 10, FR-RAW-050); die Pending→{Expired\|Completed\|Cancelled}-Auflösung ist per `Interlocked`-CAS genau einmal entscheidbar, Ausnahmen aus `onExpired` laufen über den bestehenden `BackgroundExceptionOccurred`-Kanal (kein zweiter Fehlerkanal). `BusStateMonitor`/`BusStateChangedEventArgs`/`BusStateExtensions` pusht `ICanBus.BusState`-Übergänge (ErrWarning/ErrPassive/BusOff sowie Erholung) an Protokollinstanzen — zuverlässig über einen selbst-rearmenden Poll auf dem Aktor-`Schedule` (Standard 50 ms) statt eines freilaufenden Timers, ergänzt um `ErrorFrameReceived`/`FaultOccurred` als Latenz-Hinweise (FR-RAW-051). FR-RAW-052 (reservierte/ungültige Protokollwerte) ist bewusst **zurückgestellt** und dem ISO-TP-Codec-Fix FR-TP-007 zugeordnet, nicht als generische L2-Primitive gebaut. | `IDeadlineScheduler`, `DeadlineScheduler`/`Deadline`, `BusStateMonitor`, `BusStateExtensions` | `FR-RAW-050..051` |
 
-## 5.4 Ebene 2/3 – Zoom L3: ISO-TP-Interna (Prototyp – Klassendiagramm)
+## 5.4 Ebene 2/3 – Zoom L3: ISO-TP-Interna (`CanKit.Pro.IsoTp`)
 
-Das folgende Klassendiagramm bildet den **Ist-Zustand** des ISO-TP-Prototyps ab
-(verifiziert an den Quelldateien). Die markierten Defekte sind in Abschnitt 11 gelistet.
+> **Note (English):** The former "Ist-Prototyp" class diagram documented the legacy
+> `CanKit.Transport.IsoTp` types (`IsoTpScheduler`, `IsoTpChannelCore`, `Router`,
+> `QueuedDeadline`, `Deadline`, `FrameCodec`, …). Those types have been removed from the
+> source tree — the diagram has been deleted to keep this section aligned with the code
+> base. The current ISO-TP implementation is the actor-based `CanKit.Pro.IsoTp` runtime
+> described below; §6.7 continues to document the ISO-TP TX/RX state machine at the
+> protocol level.
 
-```mermaid
-classDiagram
-    class IIsoTpChannel {
-        <<interface>>
-        +IsoTpOptions Options
-        +event DatagramReceived
-        +SendAsync(pdu, ct) Task~bool~
-        +RequestAsync(request, ct) Task~IsoTpDatagram~
-        +ReceiveAsync(count, timeout, ct) Task
-        +GetFramesAsync(ct) IAsyncEnumerable
-    }
-    class IIsoTpScheduler {
-        <<interface>>
-        +AddChannel(ch)
-        +RemoveChannel(ch)
-    }
-    class IsoTpScheduler {
-        -ICanBus _bus
-        -Router _router
-        -List~IsoTpChannelCore~ _channels
-        -AsyncAutoResetEvent _txOrTimeOutEvent
-        +Register(ch)
-        +Unregister(ch)
-        +TransmitTxOperation(op)
-        +RunAsync(ct) Task
-        -Score(ch, f, now) double
-        -OnFrameReceived(sender, e)
-    }
-    class Router {
-        -List~IsoTpChannelCore~ _channels
-        +Route(rx) bool
-        +Route(tx, frame) bool
-        +Route(tx, frame, ex) bool
-    }
-    class IsoTpChannelCore {
-        -TxState _tx
-        -RxState _rx
-        -QueuedDeadline _nAs
-        -Deadline _nBs _nCs _nBr _nCr
-        -ConcurrentQueue~TxOperation~ _pendingFc
-        -ConcurrentQueue~TxOperation~ _pendingOperations
-        +Match(rx) bool
-        +OnRx(rx)
-        +OnTx(op, frame)
-        +OnTxFailed(op, frame, ex)
-        +SendAsync(data, padding, canFd, ct) Task~bool~
-        +IsReadyToSendData(now, guard) bool
-    }
-    class TxOperation {
-        -Queue~TxFrame~ _pendingFrames
-        +TaskCompletionSource~bool~ Tcs
-        +int BS
-        +int TxCount
-        +Enqueue(frame, type)
-        +Dequeue() TxFrame
-        +TryPeek(out frame) bool
-    }
-    class FrameCodec {
-        <<static>>
-        +TryParsePci(rx, ep, out pci) bool
-        +BuildSF(ep, alloc, payload, pad, fd) CanFrame
-        +BuildFF(ep, alloc, total, chunk, fd) CanFrame
-        +BuildCF(ep, alloc, sn, chunk, pad, fd) CanFrame
-        +BuildFC(ep, alloc, fs, bs, stmin, pad, fd) CanFrame
-        +EncodeStmin(st) byte
-        +DecodeStmin(raw) TimeSpan
-    }
-    class Pci {
-        <<record struct>>
-        +PciType Type
-        +int Len
-        +byte SN
-        +FlowStatus FS
-        +byte BS
-        +TimeSpan STmin
-    }
-    class Deadline
-    class QueuedDeadline
-    class IsoTpEndpoint {
-        +int TxId RxId
-        +AddressingFormat AddressingFormat
-        +GetTxId() tuple
-        +GetRxId() tuple
-    }
-
-    IIsoTpScheduler <|.. IsoTpScheduler
-    IsoTpScheduler o-- Router
-    IsoTpScheduler o-- "*" IsoTpChannelCore
-    Router o-- "*" IsoTpChannelCore
-    IsoTpChannelCore *-- "*" TxOperation
-    IsoTpChannelCore ..> FrameCodec : nutzt
-    IsoTpChannelCore o-- IsoTpEndpoint
-    IsoTpChannelCore *-- Deadline
-    IsoTpChannelCore *-- QueuedDeadline
-    FrameCodec ..> Pci : erzeugt
-    IIsoTpChannel <.. IsoTpChannelCore : (DefaultIsoTpChannel Fassade)
-```
-
-**Bausteine L3/ISO-TP (Ist, verifiziert):**
-
-| Baustein | Zweck | Zustände / Kernmethoden | Status |
-|----------|-------|--------------------------|--------|
-| `IsoTpChannelCore` | TX/RX-State-Machine je Endpoint. | TX: `Idle/WaitFc/SendCf/WaitFcAfterBlock/Failed`; RX: `Idle/RecvCf`. `OnRx/OnTx/SendAsync`. | Prototyp, defekt (§11). |
-| `IsoTpScheduler` | Kanal-Auswahl/Scoring, FC-Priorität, BusGuard, Echo-Routing. | `RunAsync` (Busy-Loop!), `TransmitTxOperation`, `Score` (konstant). | Prototyp, defekt. |
-| `Router` | Ordnet RX-Frames und TX-Echo den Kanälen zu (`Match`). | `Route(rx)`, `Route(tx,frame[,ex])`. | Prototyp (List ohne Sync). |
-| `FrameCodec` | Bau/Parsing von SF/FF/CF/FC + STmin-En/Decode. | `BuildSF/FF/CF/FC`, `TryParsePci`, `Encode/DecodeStmin`. | Prototyp, mehrere Bugs. **Wird abgelöst durch `CanKit.Pro.IsoTp.IsoTpFrameCodec`** (siehe Kasten unten). |
-| `Deadline`/`QueuedDeadline` | N_As/N_Bs/N_Cs/N_Ar/N_Br/N_Cr. | Gepflegt, aber nie ausgewertet. | Prototyp. |
-
-**Neu (in Arbeit): Paket `CanKit.Pro.IsoTp` (Codec + Runtime).** Eigenständiges, adapterfreies
-Assembly, das den defekten Prototyp Schritt für Schritt ablösen soll (siehe ADR-Notiz weiter
-unten). Enthält beide Hälften des ISO-TP-Rewrite:
+**Paket `CanKit.Pro.IsoTp` (Codec + Runtime).** Eigenständiges, adapterfreies
+Assembly; der Legacy-Prototyp `CanKit.Transport.IsoTp` ist entfernt und wurde durch dieses
+Paket ersetzt (siehe ADR-4 und §11). Enthält beide Hälften des ISO-TP-Rewrite:
 `IsoTpFrameCodec` mit `BuildSingleFrame`/`BuildFirstFrame`/`BuildConsecutiveFrame`/
 `BuildFlowControl`, `TryParsePci` (bounds-safe, wirft nie `IndexOutOfRangeException` bei kurzen
 Frames), `EncodeStMin`/`DecodeStMin` inklusive korrekter Behandlung reservierter Werte
@@ -841,9 +738,15 @@ sequenceDiagram
     Note over RX: Reassemblierung → PGN-Nachricht
 ```
 
-## 6.7 ISO-TP-State-Machine (Ist-Prototyp)
+## 6.7 ISO-TP-State-Machine (`CanKit.Pro.IsoTp`)
 
-**TX-State-Machine** (`TxState`, verifiziert in `IsoTpChannelCore`):
+> **Note (English):** The diagrams below describe the ISO-TP TX/RX state machine at the
+> protocol level. They previously called out defects of the removed
+> `IsoTpChannelCore` prototype; those notes have been dropped since the legacy
+> `CanKit.Transport.IsoTp` types no longer exist. The state machine is now implemented
+> by `CanKit.Pro.IsoTp` (see §5.4).
+
+**TX-State-Machine** (`TxState`):
 
 ```mermaid
 stateDiagram-v2
@@ -859,12 +762,6 @@ stateDiagram-v2
     WaitFcAfterBlock --> Failed : OnRxFC(FS=OVFLW)
     Failed --> Idle : OnTxFailed (Operation abgeschlossen)
     Idle --> [*]
-
-    note right of Failed
-        Ist-Defekt: OVFLW setzt Failed,
-        schließt Operation aber nicht ab
-        → Task haengt (Review §1.1)
-    end note
 ```
 
 **RX-State-Machine** (`RxState`):
@@ -940,7 +837,7 @@ flowchart TB
 | Bevorzugter Adapter | PCAN/Kvaser/Vector/ZLG/ControlCAN | SocketCAN | vendor-abhängig | USB-Vendor-Adapter |
 | Periodisches TX | Software (Waitable Timer) / Vendor-AutoSend | Hardware-BCM oder Software | Software | Software (`Thread.Sleep`-Fallback) |
 | High-Res-Delay | `Win_PreWait` (Waitable/Spin) | `clock_nanosleep` | plattformabhängig | `SleepCoarse` |
-| `Queue.TryPeek` | vorhanden | vorhanden | via `#if`-Weiche (heute invertiert, §11) | vorhanden |
+| `Queue.TryPeek` | vorhanden | vorhanden | via `#if`-Weiche | vorhanden |
 
 ---
 
@@ -973,8 +870,11 @@ entstehen **Use-after-free** und **Double-Dispose** (Review §1.5, §2.1).
 disposable `CanFrame` statt nur einer `CanFrameView`, was Fehlgebrauch erlaubt (Migration
 auf `FrameObserved` läuft, aber `FrameReceived` bleibt aus Kompatibilitätsgründen bestehen).
 Der TX-Lease-Grundsatz (3) ist für den Virtual-Adapter umgesetzt; für die übrigen L0-Adapter
-und insbesondere den ISO-TP-Scheduler (Echo-Matching, Review §2.1 „Scheduler (ISO-TP)“) steht
-die Umsetzung noch aus (`FR-RAW-005`, Should).
+steht die Umsetzung noch aus (`FR-RAW-005`, Should). Nach der Entfernung des Legacy-
+`CanKit.Transport.IsoTp` beschränkt sich der offene Umfang jetzt auf L0-Sendepfade, die den
+Frame nach `Transmit` weiter referenzieren — insbesondere periodische TX-Pfade (z. B.
+SocketCAN-BCM); die aktorbasierte `CanKit.Pro.IsoTp`-Runtime kopiert Payloads bereits im
+`SendConfirmed`-/`ProtocolActor`-Pfad und hat keinen offenen Echo-Matching-Bedarf hier.
 
 **Ziel-Vertrag (L2, `FR-RAW-OWN-*`):**
 
@@ -1374,7 +1274,7 @@ Priorisierung: **K** = kritisch, **W** = wichtig, **G** = gering.
 | K | ✅ *Behoben.* **BCMPeriodicTx `Update()` FD-Zweig**: `Can20` doppelt (Copy-Paste) statt `CanFd`. | Jedes `Update(fdFrame)` warf `NotSupportedException`; `RemainingCount` unzuverlässig (EAGAIN, weiterhin offen). | FD-Zweig auf `CanFd` korrigiert; `RemainingCount`-Robustheit per `poll` bleibt offen. | §1.4 |
 | W | ✅ *Behoben.* **SoftwarePeriodicTx macOS/Reentrancy**: `clock_nanosleep` fehlt auf macOS, Exception wurde verschluckt; `Completed` lief innerhalb von `_gate`. | `PreWait` kehrte sofort zurück → Bus-Flut; Handler mit `Update`/`Stop` konnten reentrant hängen. | Statische macOS-Delegate-Route auf `SleepCoarse`/`Thread.Sleep`; `Completed` wird erst nach Verlassen von `_gate` ausgelöst. | §2.3 |
 | W | ✅ *Behoben.* **AsyncFramePipe Fehlerpfade**: verwaister Reader konsumierte später Frames; Nutzer-Cancellation wurde geschluckt. | Frame-Verlust nach Hintergrundfehlern; inkonsistenter Cancellation-Kontrakt. | `ReceiveBatchAsync`/`ReadAllAsync` warten auf Lesebereitschaft statt auf ein verwaistes `ReadAsync`; der verlierende Wait wird abgebrochen. Timeout↔Fault-Races bevorzugen bereits signalisierte Faults. Nutzer-Cancellation propagiert, reine Timeouts liefern weiterhin die Teilliste; gepulste `OperationCanceledException`/`TaskCanceledException` werden nicht als Timeout getarnt; `ExceptionOccurred` bleibt ein Wake-only-Pulse. | §2.2 |
-| W | **Nebenläufigkeit im ISO-TP**: `_tx`, `_pendingOperations`, `Router._channels` (List) ohne Sync; `SetResult`/`SetException` statt `Try*`; Scheduler-Busy-Loop (100 % CPU), `RunAsync` nirgends aufgerufen. | Datenrennen (`InvalidOperationException`), CPU-Last, Nichtfunktion. | Aktor-Modell (ADR-6): 1 Mailbox/Loop je Instanz; `TrySet*`; ereignisgetriebenes Warten. | §1.1/9,14 |
+| W | ✅ *Behoben/entfernt.* **Nebenläufigkeit im ISO-TP**: der defekte Legacy-Scheduler (`_tx`, `_pendingOperations`, `Router._channels` als `List` ohne Sync; `SetResult`/`SetException` statt `Try*`; Busy-Loop, `RunAsync` nie aufgerufen) wurde mit `CanKit.Transport.IsoTp` entfernt und durch `CanKit.Pro.IsoTp` ersetzt: Single-Writer-`ProtocolActor` (ADR-6, FR-RAW-020..023), ereignisgetriebenes Warten (FR-RAW-022), `SendConfirmed`-basiertes TX-Confirm (ADR-7) und `DeadlineScheduler` (ADR-11) statt eines eigenen Schedulers. | (historisch) Datenrennen, CPU-Last, Nichtfunktion. | Aktor-Modell (ADR-6): 1 Mailbox/Loop je Instanz; `TrySet*`; ereignisgetriebenes Warten — umgesetzt in `CanKit.Pro.IsoTp`. | §1.1/9,14 |
 | W | ✅ *Behoben.* **Virtual-Hub-Leak & Ownership**: `VirtualBusHub._hubs` (static) entfernte leere Hubs nie; Broadcast ohne Kopie. | Speicher-Leak über Sessions; Use-after-free zwischen Empfängern/Sender. | Leere Hubs werden beim Verlassen des letzten Mitglieds entfernt (`Join`/`Detach`, atomar); `Broadcast` kopiert je Empfänger via `CanFrame.Duplicate(...)` (Lease-Semantik). | §2.4 |
 | W | ✅ *Behoben.* **`CanBus.Open<..>(DeviceType)` Device-Leak**: bei Wurf nach `CreateDevice` wurde Device nicht disposed. | Natives Handle-Leak. | `try/catch` um `Open(device,…)`; Device bei Fehler disposen. | §2.5 |
 | W | ✅ *Behoben.* **`BitTimingSolver.FromSamplePoint`**: `Clamp` warf statt `continue` bei kleinen NTQ. | Gesamte Timing-Suche crashte für bestimmte Limits. | Ungültige NTQ/TSEG-Kandidaten werden übersprungen (`continue`). | §2.5 |
