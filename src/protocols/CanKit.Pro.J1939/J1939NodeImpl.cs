@@ -1035,8 +1035,22 @@ internal sealed class J1939NodeImpl : IJ1939Node
         public PeriodicSchedule(J1939NodeImpl owner, J1939Message message, TimeSpan period)
         {
             _owner = owner;
-            _message = message;
             _period = period;
+
+            // Snapshot the caller's payload into an owned array so the wire traffic is
+            // frozen at Start-time regardless of whether the caller mutates the buffer that
+            // backs message.Payload afterwards (Bugbot 3604566680). J1939Message.Payload is
+            // a ReadOnlyMemory<byte> and its ctor doesn't copy, so re-reading it every
+            // emission would alias the caller's buffer — that is inconsistent with the L1
+            // IPeriodicTx path (SingleFramePeriodicSchedule), which snapshots too, and with
+            // J1939Message's own contract that "payload is copied by the sender". We
+            // rebuild the message once here with the owned array so every LoopAsync
+            // iteration hands SendAsync the same immutable bytes.
+            var owned = new byte[message.Payload.Length];
+            if (message.Payload.Length > 0) message.Payload.Span.CopyTo(owned);
+            _message = new J1939Message(message.Pgn, owned, message.Priority,
+                sourceAddress: message.SourceAddress,
+                destinationAddress: message.DestinationAddress);
         }
 
         public void Start()
@@ -1097,6 +1111,15 @@ internal sealed class J1939NodeImpl : IJ1939Node
     {
         private readonly J1939NodeImpl _owner;
         private readonly J1939Message _message;
+        // Payload snapshot taken at construction, owned by the schedule. J1939Message.Payload
+        // is a ReadOnlyMemory<byte> and its ctor does not copy; storing a caller-owned buffer
+        // in _message would let in-place mutations after Start leak into every emission on
+        // the L1 handle rebuild path (SoftwarePeriodicTx re-reads the frame per fire), so we
+        // freeze the payload once here (Bugbot 3604566680). The wire frame handed to
+        // IPeriodicTx is already a byte-for-byte copy inside CanFrame.Classic; this snapshot
+        // guarantees the same "frozen at Start" semantics for the Update path that runs on
+        // a fresh claim.
+        private readonly byte[] _payload;
         private readonly TimeSpan _period;
         private readonly EventHandler<J1939ClaimEventArgs> _claimHandler;
         private readonly object _gate = new();
@@ -1110,6 +1133,8 @@ internal sealed class J1939NodeImpl : IJ1939Node
         {
             _owner = owner;
             _message = message;
+            _payload = new byte[message.Payload.Length];
+            if (message.Payload.Length > 0) message.Payload.Span.CopyTo(_payload);
             _period = period;
             _currentSa = initialSa;
             _claimHandler = OnClaimChanged;
@@ -1269,9 +1294,10 @@ internal sealed class J1939NodeImpl : IJ1939Node
         {
             uint canId = J1939Id.ComposePgn(_message.Priority, _message.Pgn, sa,
                 destinationAddress: _message.DestinationAddress);
-            var payload = new byte[_message.Payload.Length];
-            if (_message.Payload.Length > 0) _message.Payload.Span.CopyTo(payload);
-            return CanFrame.Classic(unchecked((int)canId), payload, isExtendedFrame: true);
+            // Feed CanFrame.Classic the snapshot taken at Start — no re-read of the caller
+            // buffer, so in-place edits to the source array after StartPeriodicSend are not
+            // observable on either the L1 or SW fallback wire path.
+            return CanFrame.Classic(unchecked((int)canId), _payload, isExtendedFrame: true);
         }
 
         public void Dispose()

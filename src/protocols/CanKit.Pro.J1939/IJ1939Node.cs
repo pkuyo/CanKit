@@ -118,6 +118,16 @@ public interface IJ1939Node : IDisposable, IAsyncDisposable
     /// allowed (callers may want to send the same PGN to two destinations).
     /// The caller supplies <paramref name="period"/>; mapping application PGNs to their
     /// SAE J1939-71 standard rate is the caller's responsibility.
+    /// <para>
+    /// <strong>Payload snapshot:</strong> <paramref name="message"/>'s payload is snapshotted
+    /// into an owned buffer when this method returns, and every emission (single-frame or
+    /// multi-frame, L1 or software fallback) transmits that snapshot. In-place mutation of
+    /// the caller's original buffer after <c>StartPeriodicSend</c> is NOT observed on the
+    /// wire — this matches <see cref="J1939Message"/>'s "payload is copied by the sender"
+    /// contract and keeps the L1 <c>IPeriodicTx</c> path and the software-fallback path
+    /// behaviourally identical (Bugbot 3604566680). To change the transmitted data, dispose
+    /// the returned handle and start a fresh schedule with a new <see cref="J1939Message"/>.
+    /// </para>
     /// </summary>
     /// <exception cref="J1939NoAddressException">The node has not yet claimed an address for
     /// the single-frame path (matches <see cref="SendAsync"/>'s pre-flight gate).</exception>
