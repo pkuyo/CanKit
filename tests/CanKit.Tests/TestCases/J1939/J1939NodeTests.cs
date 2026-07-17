@@ -824,11 +824,12 @@ public class J1939NodeTests : IClassFixture<TestCaseProvider>
     }
 
     // ---------------------------------------------------------------------------------------
-    // FR-J1939-007: periodic single-frame PGN send. The single-frame path (payload ≤ 8 byte)
-    // MUST use the L1 `ICanBus.TransmitPeriodic` / `IPeriodicTx` handle via
-    // `ICanBusService.Bus` so timing does not fight the actor loop. The test collects a run
-    // of frames on a spectator bus and asserts the mean inter-arrival matches the caller's
-    // configured period.
+    // FR-J1939-007: periodic single-frame PGN send. Every periodic PGN flows through the
+    // node's SendAsync / actor loop (L2 scheduling) — the previous dual `IPeriodicTx` path
+    // was collapsed to a single implementation (PR #33) so error handling and claim-gate
+    // semantics are uniform across payload sizes. The test collects a run of frames on a
+    // spectator bus and asserts the mean inter-arrival matches the caller's configured
+    // period.
     // ---------------------------------------------------------------------------------------
     [Fact]
     public async Task StartPeriodicSend_SingleFrame_FiresAtConfiguredPeriod()
@@ -855,9 +856,8 @@ public class J1939NodeTests : IClassFixture<TestCaseProvider>
             lock (stampsLock) stamps.Add(DateTime.UtcNow);
         };
 
-        // 80 ms period is well above SoftwarePeriodicTx's ≥2 ms scheduling guidance and
-        // above the ~1 ms virtual-loopback latency, but short enough to gather ≥8 samples
-        // in a couple of seconds without making the test flaky.
+        // 80 ms period is comfortably above the ~1 ms virtual-loopback latency but short
+        // enough to gather ≥8 samples in a couple of seconds without making the test flaky.
         var period = TimeSpan.FromMilliseconds(80);
         var payload = new byte[] { 0x11, 0x22, 0x33, 0x44 };
         var message = new J1939Message(targetPgn, payload, priority: 6, destinationAddress: 0xFF);
@@ -889,14 +889,13 @@ public class J1939NodeTests : IClassFixture<TestCaseProvider>
         lock (stampsLock) countAfterSettle = stamps.Count;
 
         countAfterSettle.Should().BeLessOrEqualTo(countAtDispose + 1,
-            "disposing the handle must stop the L1 periodic TX so at most an already-in-flight " +
-            "emission may still land after Dispose returns");
+            "disposing the handle must stop the periodic loop so at most an already-in-flight " +
+            "SendAsync may still land after Dispose returns");
 
         // Inter-arrival timing. Compute the mean over the collected samples and assert it
         // matches the requested period to within a generous tolerance to survive CI jitter
         // (Virtual bus is fast but scheduling on shared runners can slip by tens of ms per
-        // sample). The mean is the right statistic here because SoftwarePeriodicTx targets
-        // absolute deadlines, so per-sample jitter averages out.
+        // sample).
         List<DateTime> snapshot;
         lock (stampsLock) snapshot = new List<DateTime>(stamps);
         snapshot.Count.Should().BeGreaterOrEqualTo(8);
@@ -910,9 +909,9 @@ public class J1939NodeTests : IClassFixture<TestCaseProvider>
         mean /= deltas.Count;
 
         double targetMs = period.TotalMilliseconds;
-        // Lower bound: SoftwarePeriodicTx's absolute-deadline scheduler never fires
-        // consistently faster than the requested period, so anything meaningfully below
-        // targetMs*0.7 would be a bug. Upper bound: tolerate CI jitter up to ~1.6x.
+        // Lower bound: the loop awaits Task.Delay(period) after each SendAsync, so mean
+        // inter-arrival cannot be materially below the requested period. Upper bound:
+        // tolerate CI jitter up to ~1.6x (send latency + Task.Delay drift).
         mean.Should().BeInRange(targetMs * 0.7, targetMs * 1.6,
             $"mean inter-arrival ({mean:F1} ms) should approximate the configured period ({targetMs:F0} ms)");
     }
@@ -942,11 +941,11 @@ public class J1939NodeTests : IClassFixture<TestCaseProvider>
     }
 
     // Bugbot 3603876664 regression: once the owning node loses its claim (a higher-priority
-    // peer unseats it and it transitions to CannotClaim), the single-frame periodic schedule
-    // MUST stop emitting within roughly a couple of periods. Before the fix,
-    // SoftwarePeriodicTx would keep ticking under the stale SA because the actor thread was
-    // blocked in Stop()'s ~200 ms Wait AND because Update(repeatCount:0) was never issued
-    // as a soft signal to the loop. Assert the wire goes quiet after unseating.
+    // peer unseats it and it transitions to CannotClaim), the periodic schedule MUST stop
+    // putting stale-SA frames on the wire. With the unified SendAsync path (PR #33),
+    // SendAsync's pre-flight claim gate throws J1939NoAddressException on every subsequent
+    // tick, so no CAN frame is emitted while the node is un-claimed. Assert the wire goes
+    // quiet after unseating.
     [Fact]
     public async Task StartPeriodicSend_SingleFrame_StopsAfterAddressLoss()
     {
@@ -1008,9 +1007,9 @@ public class J1939NodeTests : IClassFixture<TestCaseProvider>
         }
 
         // Peer with lower NAME claims the same SA. HandleIncomingAddressClaim's
-        // "already claimed at SA + peer wins" branch flips the owner to CannotClaim,
-        // clears its address, and fires AddressClaimChanged — SingleFramePeriodicSchedule
-        // must react by tearing down its L1 IPeriodicTx handle.
+        // "already claimed at SA + peer wins" branch flips the owner to CannotClaim and
+        // clears its address, so subsequent SendAsync calls from the periodic loop fail
+        // fast at the claim gate — no more frames go out under the previous SA.
         await peer.ClaimAddressAsync(contendedSa).WithTimeout(ShortTimeout);
         peer.Address.Should().Be(contendedSa);
 
@@ -1021,37 +1020,34 @@ public class J1939NodeTests : IClassFixture<TestCaseProvider>
         owner.ClaimState.Should().NotBe(J1939ClaimState.Claimed);
         owner.Address.Should().BeNull();
 
-        // Give the schedule ~2 periods to actually observe the AddressClaimChanged event
-        // and tear the L1 handle down. Peer traffic on `contendedSa` is filtered by NAME
-        // via peerName == owner._name (owner's Name(0x200) ≠ peer's Name(0x010)), so any
-        // frames on `contendedSa` that arrive here originate from the owner's periodic
-        // schedule *not yet stopping* — that is exactly the bug we are guarding against.
+        // Give the schedule ~2 periods to observe the state transition and let the
+        // in-flight SendAsync (if any) drain. Peer traffic on `contendedSa` is filtered by
+        // NAME (owner's Name(0x200) ≠ peer's Name(0x010)), so any frames on `contendedSa`
+        // that arrive here originate from the owner's periodic loop *not yet stopping* —
+        // that is exactly the bug we are guarding against.
         int countAfterLoss;
         lock (stampsLock) countAfterLoss = stamps.Count;
         await Task.Delay(period + period + TimeSpan.FromMilliseconds(50));
         int countAfterQuiet;
         lock (stampsLock) countAfterQuiet = stamps.Count;
 
-        // We tolerate at most one already-in-flight emission slipping past the async
-        // Stop/Dispose. Anything more means the schedule kept ticking under a stale SA.
+        // We tolerate at most one already-in-flight emission slipping past the state
+        // transition. Anything more means the loop kept sending under a stale SA.
         (countAfterQuiet - countAfterLoss).Should().BeLessOrEqualTo(1,
-            "the L1 periodic must stop within ~2 periods after the owner loses its claim; " +
-            "otherwise stale-SA frames would keep going out under the previous address " +
-            "(Bugbot 3603876664 / 3603876668)");
+            "the periodic loop must stop putting frames on the wire within ~2 periods " +
+            "after the owner loses its claim; otherwise stale-SA frames would keep going " +
+            "out under the previous address (Bugbot 3603876664)");
     }
 
-    // Bugbot 3604386825 regression: on adapters whose ICanBus.TransmitPeriodic routes through
-    // CanKit.Core.Utils.SoftwarePeriodicTx (Virtual, and every adapter that only exposes the
-    // software cyclic-TX fallback), the L1 IPeriodicTx handle can never surface Transmit
-    // exceptions — SoftwarePeriodicTx.TrySendOnce swallows them. StartPeriodicSend must
-    // detect that case and drive the period via the actor/SendAsync PeriodicSchedule so
-    // failures reach the same BackgroundExceptionOccurred sink as the multi-frame path. On
-    // the Virtual adapter that means SendAsync's pre-flight gate throws
-    // J1939NoAddressException after the owner loses its claim, and the schedule surfaces the
-    // exception via BackgroundExceptionOccurred (proving the SendAsync loop is engaged
-    // instead of a silent L1 handle).
+    // Bugbot 3604386825 regression: send failures inside the periodic loop MUST reach the
+    // application via BackgroundExceptionOccurred. Now that every periodic PGN uses the
+    // SendAsync-based PeriodicSchedule (PR #33), that means: after the owner loses its
+    // claim, SendAsync's pre-flight gate throws J1939NoAddressException on the next tick
+    // and the schedule surfaces the exception. The earlier dual-path implementation had a
+    // silent-error hole when the L1 fallback swallowed Transmit exceptions; this test
+    // guards against that regression coming back.
     [Fact]
-    public async Task StartPeriodicSend_SingleFrame_SwFallback_Surfaces_Send_Errors()
+    public async Task StartPeriodicSend_SingleFrame_SurfacesSendErrors()
     {
         var session = NewSession();
         using var busA = Open(session, 0);
@@ -1086,9 +1082,9 @@ public class J1939NodeTests : IClassFixture<TestCaseProvider>
         using var handle = owner.StartPeriodicSend(message, period);
 
         // Peer unseats the owner → SendAsync's claim gate starts throwing
-        // J1939NoAddressException on every scheduled emission. If StartPeriodicSend had
-        // used the L1 IPeriodicTx path on Virtual, these throws would be swallowed inside
-        // SoftwarePeriodicTx and BackgroundExceptionOccurred would stay silent.
+        // J1939NoAddressException on every scheduled emission. PeriodicSchedule.LoopAsync
+        // catches non-cancellation exceptions and forwards them to
+        // BackgroundExceptionOccurred so applications observe the failure.
         await peer.ClaimAddressAsync(contendedSa).WithTimeout(ShortTimeout);
         var lossDeadline = DateTime.UtcNow + ShortTimeout;
         while (owner.ClaimState == J1939ClaimState.Claimed && DateTime.UtcNow < lossDeadline)
@@ -1105,8 +1101,8 @@ public class J1939NodeTests : IClassFixture<TestCaseProvider>
             if (DateTime.UtcNow >= seenDeadline)
                 throw new TimeoutException(
                     "Expected the schedule to surface J1939NoAddressException via " +
-                    "BackgroundExceptionOccurred after address loss (SW-fallback path " +
-                    "must not swallow send errors — Bugbot 3604386825).");
+                    "BackgroundExceptionOccurred after address loss — periodic send " +
+                    "errors must not be silently swallowed (Bugbot 3604386825).");
             await Task.Delay(10);
         }
     }
@@ -1160,9 +1156,9 @@ public class J1939NodeTests : IClassFixture<TestCaseProvider>
             await Task.Delay(10);
         owner.ClaimState.Should().NotBe(J1939ClaimState.Claimed);
 
-        // Owner reclaims on a different SA. The AddressClaimChanged (State=Claimed) event
-        // must re-open the L1 periodic handle bound to the new SA (Update or a fresh
-        // TransmitPeriodic depending on the handle-null state at the time of the event).
+        // Owner reclaims on a different SA. The SendAsync path composes the 29-bit ID
+        // from the currently-claimed SA on every tick, so the periodic emission naturally
+        // resumes under the new SA without any explicit rebind.
         await owner.ClaimAddressAsync(secondSa).WithTimeout(ShortTimeout);
         owner.Address.Should().Be(secondSa);
 
@@ -1171,7 +1167,7 @@ public class J1939NodeTests : IClassFixture<TestCaseProvider>
         while (Volatile.Read(ref newSaStamps) < 3 && DateTime.UtcNow < readyDeadline)
             await Task.Delay(10);
         Volatile.Read(ref newSaStamps).Should().BeGreaterOrEqualTo(3,
-            "the schedule must re-arm on the reclaimed SA so downstream ECUs continue " +
+            "the schedule must resume under the reclaimed SA so downstream ECUs continue " +
             "to observe the PGN under the new (correct) source address");
     }
 }

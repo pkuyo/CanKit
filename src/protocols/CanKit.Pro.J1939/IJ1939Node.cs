@@ -105,14 +105,13 @@ public interface IJ1939Node : IDisposable, IAsyncDisposable
 
     /// <summary>
     /// Starts sending <paramref name="message"/> periodically at the given <paramref name="period"/>
-    /// (SRS FR-J1939-007). Single-frame PGNs (≤ 8 byte payload) are dispatched through the L1
-    /// <c>ICanBus.TransmitPeriodic</c> / <c>IPeriodicTx</c> handle (bus-native cyclic TX where the
-    /// adapter supports it, software fallback otherwise), so timing does not compete with the
-    /// node's actor loop; multi-frame PGNs (&gt; 8 byte) keep a software loop that opens a fresh
-    /// J1939-TP session per emission. The schedule tracks the node's SAE J1939-81 claim state:
-    /// on a fresh claim with a different SA the emitted 29-bit ID is updated in-place via
-    /// <c>IPeriodicTx.Update</c>; on address loss (leaving <see cref="J1939ClaimState.Claimed"/>)
-    /// the periodic handle is stopped, and it is re-armed on the next successful claim.
+    /// (SRS FR-J1939-007). Every emission — single-frame and multi-frame alike — is driven by
+    /// the node's actor / <c>SendAsync</c> loop on top of the L2
+    /// <see cref="CanKit.Pro.Reliability.DeadlineScheduler"/>. Each iteration re-checks the
+    /// SAE J1939-81 claim state through <see cref="SendAsync"/>'s pre-flight gate, so a
+    /// concurrent address loss stops wire traffic automatically and a subsequent successful
+    /// claim (possibly on a different SA) resumes it — the emitted 29-bit ID is composed from
+    /// the currently-claimed SA on every tick.
     /// Send failures are surfaced via <see cref="BackgroundExceptionOccurred"/>. Disposing the
     /// returned handle stops the schedule. Multiple concurrent schedules for the same PGN are
     /// allowed (callers may want to send the same PGN to two destinations).
@@ -120,16 +119,15 @@ public interface IJ1939Node : IDisposable, IAsyncDisposable
     /// SAE J1939-71 standard rate is the caller's responsibility.
     /// <para>
     /// <strong>Payload snapshot:</strong> <paramref name="message"/>'s payload is snapshotted
-    /// into an owned buffer when this method returns, and every emission (single-frame or
-    /// multi-frame, L1 or software fallback) transmits that snapshot. In-place mutation of
-    /// the caller's original buffer after <c>StartPeriodicSend</c> is NOT observed on the
-    /// wire — this matches <see cref="J1939Message"/>'s "payload is copied by the sender"
-    /// contract and keeps the L1 <c>IPeriodicTx</c> path and the software-fallback path
-    /// behaviourally identical (Bugbot 3604566680). To change the transmitted data, dispose
-    /// the returned handle and start a fresh schedule with a new <see cref="J1939Message"/>.
+    /// into an owned buffer when this method returns and every emission transmits that
+    /// snapshot. In-place mutation of the caller's original buffer after
+    /// <c>StartPeriodicSend</c> is NOT observed on the wire — this matches
+    /// <see cref="J1939Message"/>'s "payload is copied by the sender" contract
+    /// (Bugbot 3604566680). To change the transmitted data, dispose the returned handle and
+    /// start a fresh schedule with a new <see cref="J1939Message"/>.
     /// </para>
     /// </summary>
-    /// <exception cref="J1939NoAddressException">The node has not yet claimed an address for
-    /// the single-frame path (matches <see cref="SendAsync"/>'s pre-flight gate).</exception>
+    /// <exception cref="J1939NoAddressException">The node has not yet claimed an address
+    /// (matches <see cref="SendAsync"/>'s pre-flight gate).</exception>
     IDisposable StartPeriodicSend(J1939Message message, TimeSpan period);
 }

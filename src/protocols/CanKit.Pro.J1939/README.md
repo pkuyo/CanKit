@@ -17,27 +17,22 @@ FR-J1939-001..006 (Must) and FR-J1939-007 (Should).
 - **Request-PGN** (PGN 0xEA00) send and receive (**FR-J1939-005**).
 - **Auto-routing** to J1939-TP for payloads > 8 bytes; direct 29-bit frames
   for payloads ≤ 8 bytes (**FR-J1939-006**).
-- **Periodic PGN send** (**FR-J1939-007**): single-frame PGNs (≤ 8 byte)
-  prefer the L1 `ICanBus.TransmitPeriodic` / `IPeriodicTx` handle when
-  the adapter exposes bus-native cyclic TX, so timing does not compete
-  with the node's actor loop. If `TransmitPeriodic` would route through
-  the `SoftwarePeriodicTx` fallback (Virtual and adapters that only
-  offer the SW fallback), the node instead drives the period via a
-  `SendAsync` loop — that path is identical to the multi-frame branch
-  and surfaces `Transmit` failures via
-  `BackgroundExceptionOccurred`; the L1 SW fallback swallows those
-  exceptions inside its timer loop and cannot signal them upstream.
-  Multi-frame PGNs (> 8 byte) always take the software-loop path
-  because it needs a fresh J1939-TP session per emission. The
-  native-L1 schedule tracks the node's SAE J1939-81 claim state — a
-  fresh claim with a new SA updates the emitted frame in place via
-  `IPeriodicTx.Update`; leaving `Claimed` stops the periodic handle
-  until the node claims again. The SW-loop path relies on the same
-  claim gate as `SendAsync`, so post-claim-loss attempts fail fast
-  (no wire traffic) and resume automatically after a fresh claim. The
-  caller supplies the transmit period; mapping application PGNs to
-  their SAE J1939-71 standard rate is the caller's responsibility (no
-  PGN rate catalog is embedded).
+- **Periodic PGN send** (**FR-J1939-007**): every periodic PGN — single-
+  frame and multi-frame alike — is driven by the node's actor / `SendAsync`
+  loop on top of the L2 `DeadlineScheduler` (L2 scheduling). The loop
+  snapshots the caller's payload into an owned buffer at Start-time and
+  hands `SendAsync` the same immutable bytes on every tick, so in-place
+  edits to the caller buffer after `StartPeriodicSend` are not observable
+  on the wire. `SendAsync`'s pre-flight claim gate runs on every emission,
+  so the schedule stops putting frames on the wire as soon as the node
+  leaves `Claimed` and resumes automatically after a fresh claim — the
+  emitted 29-bit ID is composed from the currently-claimed SA. Send
+  failures (including `J1939NoAddressException` from the claim gate) are
+  surfaced via `BackgroundExceptionOccurred`. The caller supplies the
+  transmit period; mapping application PGNs to their SAE J1939-71 standard
+  rate is the caller's responsibility (no PGN rate catalog is embedded).
+  A native L1 `IPeriodicTx` optimization for single-frame PGNs is deferred
+  until the L1 fallback path can surface `Transmit` errors uniformly.
 
 ## Architecture
 
