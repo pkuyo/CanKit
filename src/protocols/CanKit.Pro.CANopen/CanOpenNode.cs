@@ -687,7 +687,14 @@ internal sealed class CanOpenNode : ICanOpenNode
         var value = entry.GetRawValue();
         if (value.Length <= 4)
         {
-            // Expedited upload response.
+            // Expedited upload response — no server-side session survives the initiate, since
+            // the whole value fits in the response frame. Discard any stale segmented session
+            // that was still open against this OD entry (or any other) so a subsequent stray
+            // segment frame can never land in the wrong buffer per CiA 301 §7.2.4.3.4 (an
+            // initiate supersedes any previously open transfer).
+            _sdoServer?.Deadline?.Dispose();
+            _sdoServer = null;
+
             var buf = new byte[8];
             buf[0] = (byte)(SdoFrames.ScsUploadInitExpeditedBase | (((4 - value.Length) & 0x03) << 2) | 0x03);
             buf[1] = (byte)(index & 0xFF);
@@ -803,6 +810,13 @@ internal sealed class CanOpenNode : ICanOpenNode
         // rather than relying on OdEntry field-level memory ordering.
         try { _od.WriteRaw(index, subindex, payload); }
         catch { SendSdoServerAbort(index, subindex, SdoAbortCode.General); return; }
+
+        // Expedited download owns no ongoing segmented state — discard any previously open
+        // segmented session so subsequent stray segment frames can never be applied against
+        // the wrong buffer or block a fresh segmented exchange (CiA 301 §7.2.4.3.4: any
+        // initiate supersedes a previously open transfer against the same SDO server).
+        _sdoServer?.Deadline?.Dispose();
+        _sdoServer = null;
 
         var respBuf = new byte[8];
         respBuf[0] = SdoFrames.ScsDownloadInitAck;

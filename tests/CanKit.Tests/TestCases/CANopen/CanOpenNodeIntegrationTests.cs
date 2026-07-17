@@ -154,6 +154,97 @@ public class CanOpenNodeIntegrationTests : IClassFixture<TestCaseProvider>
         slave.ObjectDictionary.ReadRaw(0x2100, 0x00).Should().Equal(payload);
     }
 
+    // Regression for the "expedited initiate leaves stale server session" bug: a partially
+    // opened segmented download must not leak into a subsequent unrelated segmented transfer
+    // after an expedited initiate has been serviced against the same SDO server. We prove
+    // this two ways:
+    //   1) segmented → expedited → segmented sequential transfers via the high-level client
+    //      still complete correctly (happy-path smoke).
+    //   2) a stray in-flight segment frame delivered *after* an expedited initiate — with a
+    //      previous segmented session still nominally "open" on the server — must NOT be
+    //      applied to the abandoned buffer or committed to the OD. Prior to the fix the
+    //      expedited path did not clear _sdoServer, so the stale download session would still
+    //      accept and commit those segment frames.
+    [Fact]
+    public async Task Sdo_ExpeditedInitiate_ClearsStaleSegmentedServerSession()
+    {
+        var session = NewSession();
+        using var busA = Open(session, 0);
+        using var busB = Open(session, 1);
+
+        using var master = CanOpen.OpenNode(busA, nodeId: 0x01);
+        using var slave = CanOpen.OpenNode(busB, nodeId: 0x11);
+
+        // Three OD slots on the server: two segmented-sized domains and one expedited-sized
+        // U16. All three must stay individually consistent across the sequence.
+        slave.ObjectDictionary.AddDomain(0x2100, 0x00, new byte[20]);
+        slave.ObjectDictionary.AddU16(0x2001, 0x00, 0);
+        slave.ObjectDictionary.AddDomain(0x2200, 0x00, new byte[17]);
+
+        // --- Part (1): sequential segmented → expedited → segmented all round-trip.
+        byte[] seg1 = Enumerable.Range(0, 20).Select(i => (byte)(0x40 + i)).ToArray();
+        byte[] seg2 = Enumerable.Range(0, 17).Select(i => (byte)(0x80 + i)).ToArray();
+
+        await master.SdoDownloadAsync(0x11, 0x2100, 0x00, seg1).WithTimeoutAsync(ShortTimeout);
+        await master.SdoDownloadAsync(0x11, 0x2001, 0x00, new byte[] { 0x34, 0x12 })
+            .WithTimeoutAsync(ShortTimeout);
+        await master.SdoDownloadAsync(0x11, 0x2200, 0x00, seg2).WithTimeoutAsync(ShortTimeout);
+
+        slave.ObjectDictionary.ReadRaw(0x2100, 0x00).Should().Equal(seg1);
+        slave.ObjectDictionary.ReadUnsigned(0x2001, 0x00).Should().Be((uint)0x1234);
+        slave.ObjectDictionary.ReadRaw(0x2200, 0x00).Should().Equal(seg2);
+
+        // --- Part (2): craft a stray segmented-DL init + segment frames on the raw wire so
+        // the client-side abort/timeout that master.SdoDownloadAsync always emits cannot mask
+        // the stale-session leak. If the fix regresses, the two segment frames below get
+        // routed to the still-open segmented session (index 0x3000) and commit the payload
+        // [0xAA×7, 0xBB] to 0x3000:00. With the fix, the expedited initiate for 0x2001 that
+        // ran right before clears _sdoServer, so the segment frames hit an empty session and
+        // are rejected with SdoAbortCode.CommandSpecifierInvalid instead.
+        slave.ObjectDictionary.AddDomain(0x3000, 0x00, new byte[8]);
+
+        // Segmented download initiate (cs=0x21) for 0x3000:00, declared length 8.
+        var initFrame = new byte[8]
+        {
+            0x21,               // ccs=1 (init DL), segmented (s=1, e=0)
+            0x00, 0x30, 0x00,   // index 0x3000, subindex 0x00
+            0x08, 0x00, 0x00, 0x00, // little-endian declared total length = 8
+        };
+        busA.Transmit(CanFrame.Classic(0x600 + 0x11, initFrame, isExtendedFrame: false));
+
+        // Give the actor loop a moment to install the segmented session for 0x3000.
+        await Task.Delay(50);
+
+        // Expedited SDO download to 0x2001 (an unrelated U16 slot). With the fix, this
+        // supersedes the still-open 0x3000 segmented session and clears _sdoServer.
+        await master.SdoDownloadAsync(0x11, 0x2001, 0x00, new byte[] { 0x78, 0x56 })
+            .WithTimeoutAsync(ShortTimeout);
+
+        // Stray segment frames for the now-orphaned 0x3000 transfer. Toggle 0 first, then
+        // toggle 1 + last-segment bit.
+        // cs bit layout for a download-segment frame: base 0x00, toggle bit 0x10, unused-n in
+        // bits 1..3 shifted from n, and continue-bit 0x01 for "no more segments".
+        // Segment 1: toggle=0, n=0 (7 bytes valid), last=false → cs=0x00, data [0xAA×7].
+        var seg1Frame = new byte[8] { 0x00, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA };
+        // Segment 2: toggle=1, n=6 (1 byte valid), last=true → cs = 0x10 | (6<<1) | 0x01 = 0x1D.
+        var seg2Frame = new byte[8] { 0x1D, 0xBB, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
+        busA.Transmit(CanFrame.Classic(0x600 + 0x11, seg1Frame, isExtendedFrame: false));
+        busA.Transmit(CanFrame.Classic(0x600 + 0x11, seg2Frame, isExtendedFrame: false));
+
+        // Wait long enough for both segment frames to be processed on the actor loop.
+        await Task.Delay(100);
+
+        // Verification:
+        //   * With the fix: 0x3000:00 stays untouched (all zeros) because the expedited
+        //     initiate cleared the segmented session before either segment frame arrived.
+        //   * Without the fix (regression): the segment frames commit [0xAA×7, 0xBB] to
+        //     0x3000:00, failing this assertion.
+        slave.ObjectDictionary.ReadRaw(0x3000, 0x00).Should().Equal(new byte[8]);
+
+        // And the expedited value we wrote must still be visible.
+        slave.ObjectDictionary.ReadUnsigned(0x2001, 0x00).Should().Be((uint)0x5678);
+    }
+
     // -----------------------------------------------------------------------------------------
     // FR-CO-007 + FR-CO-008 — NMT master command transitions the slave and the slave's next
     // heartbeat carries the new state.
