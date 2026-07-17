@@ -31,8 +31,15 @@ FR-J1939-001..006 (Must) and FR-J1939-007 (Should).
   surfaced via `BackgroundExceptionOccurred`. The caller supplies the
   transmit period; mapping application PGNs to their SAE J1939-71 standard
   rate is the caller's responsibility (no PGN rate catalog is embedded).
-  A native L1 `IPeriodicTx` optimization for single-frame PGNs is deferred
-  until the L1 fallback path can surface `Transmit` errors uniformly.
+  A native L1 `IPeriodicTx` optimization for single-frame PGNs remains a
+  follow-up. The L1 error-propagation blocker that gated it has been
+  removed: `IPeriodicTx` now exposes a `Faulted` event
+  (`EventHandler<Exception>`) and `SoftwarePeriodicTx` raises it — outside
+  its internal gate — whenever the inner `Transmit` call throws, while
+  keeping the loop alive so transient failures no longer terminate a
+  schedule invisibly. Wiring J1939 to subscribe to `Faulted` and forward
+  through `BackgroundExceptionOccurred` can now be done alongside the
+  native fast-path in a follow-up PR.
 
 ## Architecture
 
