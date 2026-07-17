@@ -604,10 +604,14 @@ internal sealed class CanOpenNode : ICanOpenNode
             case NmtCommand.ResetNode:
             case NmtCommand.ResetCommunication:
                 // MVP: reset acts like re-init → emit a bootup and settle in Pre-Op.
+                // Send bootup (0x00) then Pre-Operational (0x7F) *sequentially* on one Task
+                // so thread-pool reordering cannot put 0x7F ahead of bootup (Bugbot 3600879326).
                 _state = NmtState.Initializing;
-                _ = SendControlFrame(CanOpenCobId.Heartbeat(_nodeId), new byte[] { 0x00 });
                 _state = NmtState.PreOperational;
-                break;
+                _ = SendOrderedControlFrames(
+                    (CanOpenCobId.Heartbeat(_nodeId), new byte[] { 0x00 }),
+                    (CanOpenCobId.Heartbeat(_nodeId), new byte[] { (byte)NmtState.PreOperational }));
+                return;
         }
         // Send a heartbeat immediately reflecting the new state so consumers see the transition
         // without waiting on the periodic tick.
@@ -725,6 +729,11 @@ internal sealed class CanOpenNode : ICanOpenNode
     // =========================================================================================
     private void HandleSdoServerRequest(byte[] data)
     {
+        // CiA 301: SDO is not available in Stopped (or while still Initializing). Drop the
+        // request rather than serving a transfer that should be offline (Bugbot 3600879338).
+        if (_state is NmtState.Stopped or NmtState.Initializing)
+            return;
+
         if (data.Length == 0) return; // nothing to look at — can't even read the CS byte
         if (data.Length < 8)
         {
@@ -1378,15 +1387,23 @@ internal sealed class CanOpenNode : ICanOpenNode
 
     private void HandleRpdo(RpdoConfig config, byte[] payload)
     {
+        // CiA 301 disables PDO communication outside Operational — do not unpack or raise
+        // RpdoReceived in Pre-Operational / Stopped (Bugbot 3600879330).
+        if (_state != NmtState.Operational)
+            return;
+
         // Unpack into OD in mapping order (skip missing OD entries silently — mapping mismatch
         // is a config issue, not a protocol error). Route the write through
         // ObjectDictionary.WriteRaw so it happens under the OD's lock, giving readers on
-        // other threads a proper release/acquire pairing.
+        // other threads a proper release/acquire pairing. Honour OdAccess so read-only
+        // entries cannot be mutated by PDO traffic (Bugbot 3600879347); still advance the
+        // mapping offset so later writable slots stay aligned.
         int offset = 0;
         foreach (var entry in config.Mapping.Entries)
         {
             if (offset + entry.ByteLength > payload.Length) break;
-            if (_od.TryGet(entry.Index, entry.Subindex, out _))
+            if (_od.TryGet(entry.Index, entry.Subindex, out var odEntry)
+                && (odEntry.Access & OdAccess.WriteOnly) != 0)
             {
                 var chunk = new byte[entry.ByteLength];
                 Buffer.BlockCopy(payload, offset, chunk, 0, entry.ByteLength);
@@ -1458,6 +1475,35 @@ internal sealed class CanOpenNode : ICanOpenNode
                 RaiseBackgroundException(ex);
             }
         }, cancellationToken);
+    }
+
+    /// <summary>
+    /// Sends control frames in order on a single background task so Reset bootup (0x00) cannot
+    /// race behind the subsequent Pre-Operational heartbeat (Bugbot 3600879326).
+    /// </summary>
+    private Task SendOrderedControlFrames(params (uint CobId, byte[] Payload)[] frames)
+    {
+        return Task.Run(async () =>
+        {
+            foreach (var (cobId, payload) in frames)
+            {
+                try
+                {
+                    var frame = CanFrame.Classic(unchecked((int)cobId), payload, isExtendedFrame: false);
+                    var conf = await _service.SendConfirmed(frame).ConfigureAwait(false);
+                    if (!conf.Confirmed)
+                    {
+                        RaiseBackgroundException(new CanOpenTransportException(
+                            $"CANopen frame TX on COB-ID 0x{cobId:X3} failed: {conf.FailureReason}."));
+                    }
+                }
+                catch (Exception ex)
+                {
+                    RaiseBackgroundException(ex);
+                    return;
+                }
+            }
+        });
     }
 
     private void RaiseBackgroundException(Exception ex)

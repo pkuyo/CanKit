@@ -533,6 +533,7 @@ public class CanOpenNodeIntegrationTests : IClassFixture<TestCaseProvider>
         consumer.ConfigureRpdo(1, new PdoMapping().Add(0x2B00, 0x00, 64), cobId: producerCobId);
 
         await consumer.SendNmtCommandAsync(NmtCommand.Start, targetNodeId: 0x11);
+        await producer.SendNmtCommandAsync(NmtCommand.Start, targetNodeId: 0x01);
         await Task.Delay(50);
 
         var shortPattern = Enumerable.Repeat((byte)0xAA, 2).ToArray();  // 2 bytes
@@ -832,8 +833,10 @@ public class CanOpenNodeIntegrationTests : IClassFixture<TestCaseProvider>
             if (e.CobId == producerCobId) received.TrySetResult(e.Payload);
         };
 
-        // Bring the producer into Operational so the TPDO fires.
+        // Bring producer and consumer into Operational — CiA 301 disables PDO outside
+        // Operational on both ends (RPDO unpack gated in HandleRpdo).
         await consumer.SendNmtCommandAsync(NmtCommand.Start, targetNodeId: 0x11);
+        await producer.SendNmtCommandAsync(NmtCommand.Start, targetNodeId: 0x01);
         await Task.Delay(50);
         await producer.TriggerTpdoAsync(1);
 
@@ -886,6 +889,7 @@ public class CanOpenNodeIntegrationTests : IClassFixture<TestCaseProvider>
         };
 
         await consumer.SendNmtCommandAsync(NmtCommand.Start, targetNodeId: 0x11);
+        await producer.SendNmtCommandAsync(NmtCommand.Start, targetNodeId: 0x01);
         await Task.Delay(50);
         await producer.TriggerTpdoAsync(1);
 
@@ -918,6 +922,7 @@ public class CanOpenNodeIntegrationTests : IClassFixture<TestCaseProvider>
 
         // Bring producer Operational.
         await consumer.SendNmtCommandAsync(NmtCommand.Start, targetNodeId: 0x11);
+        await producer.SendNmtCommandAsync(NmtCommand.Start, targetNodeId: 0x01);
         await Task.Delay(50);
 
         int rpdoCount = 0;
