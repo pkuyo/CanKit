@@ -583,9 +583,12 @@ internal sealed class CanOpenNode : ICanOpenNode
         var cmd = (NmtCommand)data[0];
         byte target = data[1];
         // 0 = broadcast (all nodes); otherwise apply only when the target is us.
+        // Raise NmtCommandReceived only for matching targets — ICanOpenNode documents the
+        // event for commands that address this node (or broadcast), not every peer NMT on a
+        // shared bus (Bugbot 3600812708).
         bool forUs = target == 0 || target == _nodeId;
-        RaiseNmtCommandReceived(cmd, target);
         if (!forUs) return;
+        RaiseNmtCommandReceived(cmd, target);
 
         switch (cmd)
         {
