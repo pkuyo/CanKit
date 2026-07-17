@@ -490,6 +490,116 @@ public class CanOpenNodeIntegrationTests : IClassFixture<TestCaseProvider>
         wireCode.Should().Be((uint)SdoAbortCode.OutOfMemory);
     }
 
+    // Regression for PR #30 Bugbot Medium 3600644170: TPDO emission used to call
+    // OdEntry.GetRawValue() outside the ObjectDictionary lock, letting a concurrent WriteRaw
+    // swap the backing array between the length read and the byte-copy inside GetRawValue.
+    //
+    //   public byte[] GetRawValue()
+    //   {
+    //       var copy = new byte[_value.Length];                      // read A
+    //       Buffer.BlockCopy(_value, 0, copy, 0, _value.Length);     // read B + read C
+    //       return copy;
+    //   }
+    //
+    // If the reference _value is atomically swapped between read A and read C, and the two
+    // snapshots have DIFFERENT lengths, either (a) the pre-swap length gets copied out of a
+    // post-swap array that is too short, throwing ArgumentException from Buffer.BlockCopy, or
+    // (b) the returned buffer is a stale-length slice of the fresh array. This test ping-pongs
+    // the OD entry between a 4-byte and a 12-byte Domain value while firing the TPDO from a
+    // separate thread, and asserts that (i) EmitTpdo never propagates an exception (no torn
+    // copy crash), (ii) the actor never raises a BackgroundExceptionOccurred out of the OD
+    // path, and (iii) every observed RPDO payload equals the current-length whole-value
+    // pattern rather than an interleaved mix. With the fix, ObjectDictionary.TryReadRaw takes
+    // the OD's internal lock so a whole-value snapshot is always returned.
+    [Fact]
+    public async Task Tpdo_Emission_UnderConcurrentOdWrites_NeverTears()
+    {
+        var session = NewSession();
+        using var busA = Open(session, 0);
+        using var busB = Open(session, 1);
+
+        using var producer = CanOpen.OpenNode(busA, nodeId: 0x11);
+        using var consumer = CanOpen.OpenNode(busB, nodeId: 0x01);
+
+        // Domain slot on the producer side that we will resize between iterations to force
+        // GetRawValue's length-read vs. byte-read race to become observable. Mapping declares
+        // 8 bytes (64 bits, MVP's mapping cap) so both patterns fit inside a single mapped
+        // slot; the OD entry itself gets swapped between two DIFFERENT-length byte[] values.
+        producer.ObjectDictionary.AddDomain(0x2A00, 0x00, new byte[8]);
+        consumer.ObjectDictionary.AddDomain(0x2B00, 0x00, new byte[8]);
+
+        var producerCobId = CanOpenCobId.TpdoDefault(nodeId: 0x11, pdoIndex: 1);
+        producer.ConfigureTpdo(1, new PdoMapping().Add(0x2A00, 0x00, 64));
+        consumer.ConfigureRpdo(1, new PdoMapping().Add(0x2B00, 0x00, 64), cobId: producerCobId);
+
+        await consumer.SendNmtCommandAsync(NmtCommand.Start, targetNodeId: 0x11);
+        await Task.Delay(50);
+
+        var shortPattern = Enumerable.Repeat((byte)0xAA, 2).ToArray();  // 2 bytes
+        var longPattern = Enumerable.Repeat((byte)0xBB, 8).ToArray();   // 8 bytes
+        producer.ObjectDictionary.WriteRaw(0x2A00, 0x00, shortPattern);
+
+        // Prefix layout of an untorn TPDO payload:
+        //   * shortPattern in the slot -> 2 bytes 0xAA, then 6 bytes of default zero (slot's
+        //     unused window is zero-filled by the payload allocation in EmitTpdo).
+        //   * longPattern in the slot  -> 8 bytes 0xBB filling the whole slot.
+        var expectedShortPayload = new byte[8];
+        Buffer.BlockCopy(shortPattern, 0, expectedShortPayload, 0, shortPattern.Length);
+        var expectedLongPayload = longPattern;
+
+        int observedCount = 0;
+        int tornCount = 0;
+        consumer.RpdoReceived += (_, e) =>
+        {
+            if (e.CobId != producerCobId) return;
+            Interlocked.Increment(ref observedCount);
+            if (!e.Payload.SequenceEqual(expectedShortPayload)
+                && !e.Payload.SequenceEqual(expectedLongPayload))
+            {
+                Interlocked.Increment(ref tornCount);
+            }
+        };
+
+        int backgroundExceptions = 0;
+        producer.BackgroundExceptionOccurred += (_, __) => Interlocked.Increment(ref backgroundExceptions);
+
+        using var cts = new CancellationTokenSource();
+        var writer = Task.Run(() =>
+        {
+            var flip = false;
+            while (!cts.IsCancellationRequested)
+            {
+                producer.ObjectDictionary.WriteRaw(0x2A00, 0x00, flip ? shortPattern : longPattern);
+                flip = !flip;
+            }
+        });
+
+        // Fire the TPDO from the test thread on the actor loop. With the pre-fix (unlocked)
+        // GetRawValue this loop reliably surfaces the tear as either an
+        // ArgumentException from Buffer.BlockCopy (short-copy from too-small source) or a
+        // partially-populated payload observed on the consumer side.
+        int emitCrashes = 0;
+        for (int i = 0; i < 2000; i++)
+        {
+            try { await producer.TriggerTpdoAsync(1); }
+            catch (Exception) { Interlocked.Increment(ref emitCrashes); }
+        }
+
+        // Give the RPDO event pump time to drain before we sample counts.
+        await Task.Delay(200);
+        cts.Cancel();
+        await writer;
+
+        observedCount.Should().BeGreaterThan(0,
+            "the consumer must have observed at least one TPDO frame to make the tear check meaningful");
+        emitCrashes.Should().Be(0,
+            "with the OD-lock fix TPDO emission never sees a mid-swap byte[] state, so BlockCopy inside GetRawValue never observes a length/array mismatch");
+        backgroundExceptions.Should().Be(0,
+            "the actor's background exception channel must stay silent when the tear race is closed by the OD lock");
+        tornCount.Should().Be(0,
+            "TPDO emission snapshots the OD value under lock, so payloads must always equal one of the two whole-value patterns");
+    }
+
     // -----------------------------------------------------------------------------------------
     // FR-CO-007 + FR-CO-008 — NMT master command transitions the slave and the slave's next
     // heartbeat carries the new state.

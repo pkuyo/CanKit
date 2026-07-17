@@ -25,6 +25,12 @@
   drive the server-side segmented download or the client-side segmented upload response into
   an unbounded `new byte[declaredLen]` allocation via the 32-bit size field. Over-cap
   initiates now reply with the CiA 301 "out of memory" SDO abort code (`0x05040005`).
+* **CanKit.Pro.CANopen** — take the `ObjectDictionary` internal lock while snapshotting an
+  entry's raw value on the SDO server upload and TPDO emission paths. Previously
+  `TryGet + OdEntry.GetRawValue()` read `_value` twice (once for length, once for the byte
+  copy) without any coordination with a concurrent `WriteRaw`, and a mid-copy reference swap
+  could either return a length/array mismatch or throw from `Buffer.BlockCopy`. Routed
+  through a new `ObjectDictionary.TryReadRaw` helper.
 
 ## 0.5.5
 

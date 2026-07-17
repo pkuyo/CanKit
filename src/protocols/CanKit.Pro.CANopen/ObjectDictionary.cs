@@ -92,6 +92,28 @@ public sealed class ObjectDictionary
         }
     }
 
+    /// <summary>
+    /// Attempts to atomically snapshot the raw little-endian bytes of an entry under the OD's
+    /// internal lock. Preferred over <see cref="TryGet"/> + <see cref="OdEntry.GetRawValue"/>
+    /// for the SDO server and TPDO hot paths: a concurrent <see cref="WriteRaw"/> from another
+    /// thread cannot tear a snapshot taken under the lock, so readers see either the entire
+    /// pre-write value or the entire post-write value — never a mix. Returns
+    /// <see langword="false"/> when the entry does not exist (mirrors <see cref="TryGet"/>).
+    /// </summary>
+    public bool TryReadRaw(ushort index, byte subindex, out byte[] value)
+    {
+        lock (_sync)
+        {
+            if (!_entries.TryGetValue(Key(index, subindex), out var entry))
+            {
+                value = Array.Empty<byte>();
+                return false;
+            }
+            value = entry.GetRawValue();
+            return true;
+        }
+    }
+
     /// <summary>Writes raw bytes to an entry; used both by application code and by the SDO
     /// server. Enforces size-consistency for fixed-width data types.</summary>
     /// <exception cref="KeyNotFoundException">Thrown when the entry does not exist.</exception>

@@ -800,7 +800,19 @@ internal sealed class CanOpenNode : ICanOpenNode
             return;
         }
 
-        var value = entry.GetRawValue();
+        // Snapshot the raw value under the OD's internal lock (via TryReadRaw) instead of
+        // calling OdEntry.GetRawValue() on the reference we already have: a concurrent
+        // application-side ObjectDictionary.WriteRaw on another thread swaps the entry's
+        // backing array without any coordination with the actor loop, and the unlocked
+        // copy path used to read _value.Length and then re-dereference _value byte-by-byte,
+        // which can tear when the write lands between those two reads. See Bugbot 3600644170.
+        if (!_od.TryReadRaw(index, subindex, out var value))
+        {
+            // Race: entry was removed between the TryGet above and this locked snapshot.
+            // Treat that as ObjectDoesNotExist rather than crashing with a KeyNotFound.
+            SendSdoServerAbort(index, subindex, SdoAbortCode.ObjectDoesNotExist);
+            return;
+        }
         // Expedited only makes sense for 1..4 bytes: the 2-bit "n" field in the CS byte cannot
         // distinguish a 0-byte payload from a 4-byte payload (both encode as n=0), so a
         // length-0 OD value would decode as four zeros on the peer. Route empty values through
@@ -1336,9 +1348,15 @@ internal sealed class CanOpenNode : ICanOpenNode
         int offset = 0;
         foreach (var entry in mapping.Entries)
         {
-            if (_od.TryGet(entry.Index, entry.Subindex, out var od))
+            // Snapshot the OD entry's raw value under the OD's internal lock (via TryReadRaw)
+            // so a concurrent WriteRaw from another thread cannot tear the byte-copy below.
+            // The previous TryGet + OdEntry.GetRawValue() sequence read the entry outside the
+            // lock, and GetRawValue itself dereferences the shared _value field twice (once
+            // for its length, once for the BlockCopy source), which can straddle a WriteRaw
+            // that swaps the backing array — mixing the pre-write length with the post-write
+            // bytes. See Bugbot 3600644170.
+            if (_od.TryReadRaw(entry.Index, entry.Subindex, out var raw))
             {
-                var raw = od.GetRawValue();
                 int copy = Math.Min(raw.Length, entry.ByteLength);
                 Buffer.BlockCopy(raw, 0, payload, offset, copy);
             }
