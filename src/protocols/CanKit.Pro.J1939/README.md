@@ -17,8 +17,18 @@ FR-J1939-001..006 (Must) and FR-J1939-007 (Should).
 - **Request-PGN** (PGN 0xEA00) send and receive (**FR-J1939-005**).
 - **Auto-routing** to J1939-TP for payloads > 8 bytes; direct 29-bit frames
   for payloads ≤ 8 bytes (**FR-J1939-006**).
-- **Periodic PGN send** via a lightweight software scheduler
-  (**FR-J1939-007**).
+- **Periodic PGN send** (**FR-J1939-007**): single-frame PGNs (≤ 8 byte)
+  are dispatched through the L1 `ICanBus.TransmitPeriodic` /
+  `IPeriodicTx` handle (bus-native cyclic TX where the adapter supports
+  it, software fallback otherwise), so timing does not compete with the
+  node's actor loop; multi-frame PGNs (> 8 byte) keep a software loop
+  that opens a fresh J1939-TP session per emission. The schedule tracks
+  the node's SAE J1939-81 claim state — a fresh claim with a new SA
+  updates the emitted frame in place via `IPeriodicTx.Update`; leaving
+  `Claimed` stops the periodic handle until the node claims again. The
+  caller supplies the transmit period; mapping application PGNs to
+  their SAE J1939-71 standard rate is the caller's responsibility (no
+  PGN rate catalog is embedded).
 
 ## Architecture
 

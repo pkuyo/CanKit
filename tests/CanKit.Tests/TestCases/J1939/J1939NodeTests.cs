@@ -822,6 +822,124 @@ public class J1939NodeTests : IClassFixture<TestCaseProvider>
         node.ClaimState.Should().Be(J1939ClaimState.Claimed);
         node.Address.Should().Be((byte)0x22);
     }
+
+    // ---------------------------------------------------------------------------------------
+    // FR-J1939-007: periodic single-frame PGN send. The single-frame path (payload ≤ 8 byte)
+    // MUST use the L1 `ICanBus.TransmitPeriodic` / `IPeriodicTx` handle via
+    // `ICanBusService.Bus` so timing does not fight the actor loop. The test collects a run
+    // of frames on a spectator bus and asserts the mean inter-arrival matches the caller's
+    // configured period.
+    // ---------------------------------------------------------------------------------------
+    [Fact]
+    public async Task StartPeriodicSend_SingleFrame_FiresAtConfiguredPeriod()
+    {
+        var session = NewSession();
+        using var busA = Open(session, 0);
+        using var busB = Open(session, 1); // spectator: samples arrival times
+
+        using var sender = J1939Node.Open(busA, new J1939NodeOptions(Name(1)));
+        await sender.ClaimAddressAsync(0xC1).WithTimeout(ShortTimeout);
+
+        // The stamp collection is protected by its own lock; the FrameObserved handler runs
+        // on the bus's dispatch thread and multiple readers might in principle observe the
+        // frame concurrently on some adapters.
+        var stamps = new List<DateTime>();
+        var stampsLock = new object();
+        const uint targetPgn = 0xFEE5u; // PDU2, PS=0xE5 (arbitrary), well-known-ish
+        busB.FrameObserved += (_, e) =>
+        {
+            if (!e.CanFrame.IsExtendedFrame) return;
+            var fields = J1939Id.Decompose((uint)e.CanFrame.ID);
+            if (fields.SourceAddress != 0xC1) return;
+            if (fields.Pgn != targetPgn) return;
+            lock (stampsLock) stamps.Add(DateTime.UtcNow);
+        };
+
+        // 80 ms period is well above SoftwarePeriodicTx's ≥2 ms scheduling guidance and
+        // above the ~1 ms virtual-loopback latency, but short enough to gather ≥8 samples
+        // in a couple of seconds without making the test flaky.
+        var period = TimeSpan.FromMilliseconds(80);
+        var payload = new byte[] { 0x11, 0x22, 0x33, 0x44 };
+        var message = new J1939Message(targetPgn, payload, priority: 6, destinationAddress: 0xFF);
+
+        using (var handle = sender.StartPeriodicSend(message, period))
+        {
+            handle.Should().NotBeNull();
+
+            // Collect until we have enough samples for a stable mean, or bail out with a
+            // clear failure message if the schedule never fires.
+            var deadline = DateTime.UtcNow + ShortTimeout;
+            while (true)
+            {
+                int count;
+                lock (stampsLock) count = stamps.Count;
+                if (count >= 8) break;
+                if (DateTime.UtcNow >= deadline)
+                    throw new TimeoutException(
+                        $"Expected at least 8 periodic emissions within {ShortTimeout.TotalSeconds}s; observed {count}.");
+                await Task.Delay(20);
+            }
+        }
+
+        // Post-Dispose: no additional frames should arrive after a settle window.
+        int countAtDispose;
+        lock (stampsLock) countAtDispose = stamps.Count;
+        await Task.Delay(period + period); // wait 2 periods
+        int countAfterSettle;
+        lock (stampsLock) countAfterSettle = stamps.Count;
+
+        countAfterSettle.Should().BeLessOrEqualTo(countAtDispose + 1,
+            "disposing the handle must stop the L1 periodic TX so at most an already-in-flight " +
+            "emission may still land after Dispose returns");
+
+        // Inter-arrival timing. Compute the mean over the collected samples and assert it
+        // matches the requested period to within a generous tolerance to survive CI jitter
+        // (Virtual bus is fast but scheduling on shared runners can slip by tens of ms per
+        // sample). The mean is the right statistic here because SoftwarePeriodicTx targets
+        // absolute deadlines, so per-sample jitter averages out.
+        List<DateTime> snapshot;
+        lock (stampsLock) snapshot = new List<DateTime>(stamps);
+        snapshot.Count.Should().BeGreaterOrEqualTo(8);
+
+        var deltas = new List<double>(snapshot.Count - 1);
+        for (int i = 1; i < snapshot.Count; i++)
+            deltas.Add((snapshot[i] - snapshot[i - 1]).TotalMilliseconds);
+
+        double mean = 0;
+        foreach (var d in deltas) mean += d;
+        mean /= deltas.Count;
+
+        double targetMs = period.TotalMilliseconds;
+        // Lower bound: SoftwarePeriodicTx's absolute-deadline scheduler never fires
+        // consistently faster than the requested period, so anything meaningfully below
+        // targetMs*0.7 would be a bug. Upper bound: tolerate CI jitter up to ~1.6x.
+        mean.Should().BeInRange(targetMs * 0.7, targetMs * 1.6,
+            $"mean inter-arrival ({mean:F1} ms) should approximate the configured period ({targetMs:F0} ms)");
+    }
+
+    // The single-frame periodic path MUST refuse to start before ClaimAddressAsync completes,
+    // mirroring SendAsync's pre-flight gate (Bugbot 3600377725) so no periodic traffic leaks
+    // out with an invalid SA.
+    [Fact]
+    public async Task StartPeriodicSend_SingleFrame_BeforeClaim_ThrowsNoAddress()
+    {
+        var session = NewSession();
+        using var busA = Open(session, 0);
+
+        using var node = J1939Node.Open(busA, new J1939NodeOptions(Name(1)));
+        node.ClaimState.Should().NotBe(J1939ClaimState.Claimed);
+
+        var message = new J1939Message(0xFEE6u, new byte[] { 1, 2, 3 }, priority: 6,
+            destinationAddress: 0xFF);
+
+        Action act = () => node.StartPeriodicSend(message, TimeSpan.FromMilliseconds(50));
+        act.Should().Throw<J1939NoAddressException>();
+
+        // A subsequent successful claim + StartPeriodicSend must work.
+        await node.ClaimAddressAsync(0xC2).WithTimeout(ShortTimeout);
+        using var handle = node.StartPeriodicSend(message, TimeSpan.FromMilliseconds(80));
+        handle.Should().NotBeNull();
+    }
 }
 
 internal static class J1939NodeTestExtensions

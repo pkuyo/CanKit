@@ -105,11 +105,21 @@ public interface IJ1939Node : IDisposable, IAsyncDisposable
 
     /// <summary>
     /// Starts sending <paramref name="message"/> periodically at the given <paramref name="period"/>
-    /// (SRS FR-J1939-007). Send failures are surfaced via
-    /// <see cref="BackgroundExceptionOccurred"/>; the timer keeps firing after a transient
-    /// failure so a temporary bus condition does not tear the schedule down. Disposing the
+    /// (SRS FR-J1939-007). Single-frame PGNs (≤ 8 byte payload) are dispatched through the L1
+    /// <c>ICanBus.TransmitPeriodic</c> / <c>IPeriodicTx</c> handle (bus-native cyclic TX where the
+    /// adapter supports it, software fallback otherwise), so timing does not compete with the
+    /// node's actor loop; multi-frame PGNs (&gt; 8 byte) keep a software loop that opens a fresh
+    /// J1939-TP session per emission. The schedule tracks the node's SAE J1939-81 claim state:
+    /// on a fresh claim with a different SA the emitted 29-bit ID is updated in-place via
+    /// <c>IPeriodicTx.Update</c>; on address loss (leaving <see cref="J1939ClaimState.Claimed"/>)
+    /// the periodic handle is stopped, and it is re-armed on the next successful claim.
+    /// Send failures are surfaced via <see cref="BackgroundExceptionOccurred"/>. Disposing the
     /// returned handle stops the schedule. Multiple concurrent schedules for the same PGN are
     /// allowed (callers may want to send the same PGN to two destinations).
+    /// The caller supplies <paramref name="period"/>; mapping application PGNs to their
+    /// SAE J1939-71 standard rate is the caller's responsibility.
     /// </summary>
+    /// <exception cref="J1939NoAddressException">The node has not yet claimed an address for
+    /// the single-frame path (matches <see cref="SendAsync"/>'s pre-flight gate).</exception>
     IDisposable StartPeriodicSend(J1939Message message, TimeSpan period);
 }

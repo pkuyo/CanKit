@@ -57,7 +57,7 @@
   * Cannot Claim Address broadcast (SA = 0xFE) and `J1939CannotClaimException` (FR-J1939-004).
   * Request-PGN (PGN 0xEA00) send/receive (FR-J1939-005).
   * Auto-routing: payloads > 8 bytes go through `CanKit.Pro.J1939Tp` (TP.BAM/TP.CM); ≤ 8 bytes take the direct single-frame path (FR-J1939-006).
-  * `StartPeriodicSend` software scheduler for periodic PGN transmission (FR-J1939-007 Should).
+  * `StartPeriodicSend` for periodic PGN transmission (FR-J1939-007 Should): single-frame PGNs (≤ 8 byte) are dispatched via the L1 `ICanBus.TransmitPeriodic` / `IPeriodicTx` handle exposed by `ICanBusService.Bus` (bus-native cyclic TX where the adapter supports it, software fallback otherwise); multi-frame PGNs (> 8 byte) keep a software loop that opens a fresh J1939-TP session per emission. The schedule tracks the node's claim state — a fresh claim with a new SA updates the emitted frame in place via `IPeriodicTx.Update`; leaving `Claimed` stops the periodic handle until the next claim. The caller supplies the transmit period; no SAE J1939-71 PGN rate catalog is embedded.
 * Solution/filter wiring: `CanKitProJ1939.slnf`, `CanKit.sln` entry, `tests/CanKit.Tests/CanKit.Tests.csproj` project reference, `eng/package-versions.props` `CanKitProJ1939Version` = 0.1.0.
 * CI workflow `.github/workflows/j1939-ci.yml` (Ubuntu + Windows net8.0/net48) modeled on `j1939tp-ci.yml`.
 * `tests/CanKit.Tests/TestCases/J1939/J1939NodeTests.cs` — Virtual-loopback integration tests covering every FR-J1939-001..006 requirement plus SPN cross-byte extraction and round-trip.

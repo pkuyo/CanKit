@@ -5,6 +5,7 @@ using System.Threading.Channels;
 using System.Threading.Tasks;
 using CanKit.Abstractions.API.Can;
 using CanKit.Abstractions.API.Can.Definitions;
+using CanKit.Abstractions.API.Common;
 using CanKit.Pro.Actor;
 using CanKit.Pro.Addressing;
 using CanKit.Pro.J1939Tp;
@@ -644,9 +645,46 @@ internal sealed class J1939NodeImpl : IJ1939Node
         ThrowIfDisposed();
         if (period <= TimeSpan.Zero)
             throw new ArgumentOutOfRangeException(nameof(period), period, "Period must be positive.");
-        var schedule = new PeriodicSchedule(this, message, period);
-        schedule.Start();
-        return schedule;
+        if (message.Priority > 7)
+            throw new ArgumentOutOfRangeException(nameof(message.Priority), message.Priority,
+                "J1939 priority must be in [0, 7].");
+
+        // Payload-length split (FR-J1939-006/007): single-frame PGNs (<= 8 bytes) hand off to
+        // the L1 IPeriodicTx (bus-native cyclic TX when the adapter supports it, software
+        // fallback otherwise) so timing does not fight the .NET GC / actor loop for jitter.
+        // Multi-frame PGNs (> 8 bytes) still need the J1939-TP session per emission, which
+        // ICanBus.TransmitPeriodic cannot express, so they keep the software PeriodicSchedule
+        // that calls SendAsync -> the shared J1939-TP channel.
+        if (message.Payload.Length <= 8)
+        {
+            // Match SendAsync's pre-flight gate (Bugbot 3600377725): refuse to arm a periodic
+            // schedule without a currently-claimed SA. Callers can retry StartPeriodicSend
+            // after a successful ClaimAddressAsync, and once running the schedule tracks
+            // subsequent claim state via AddressClaimChanged.
+            if ((J1939ClaimState)Volatile.Read(ref _claimStateStore) != J1939ClaimState.Claimed)
+                throw new J1939NoAddressException();
+            int addr = Volatile.Read(ref _addressStore);
+            if (addr < 0)
+                throw new J1939NoAddressException();
+
+            var schedule = new SingleFramePeriodicSchedule(this, message, period, (byte)addr);
+            try
+            {
+                schedule.Start();
+            }
+            catch
+            {
+                schedule.Dispose();
+                throw;
+            }
+            return schedule;
+        }
+        else
+        {
+            var schedule = new PeriodicSchedule(this, message, period);
+            schedule.Start();
+            return schedule;
+        }
     }
 
     // =========================================================================================
@@ -961,9 +999,13 @@ internal sealed class J1939NodeImpl : IJ1939Node
     }
 
     /// <summary>
-    /// One periodic-send schedule: fires <see cref="_message"/> every <see cref="_period"/>
-    /// on the node's actor loop. Send failures do not tear the schedule down; they surface via
-    /// the node's <see cref="J1939NodeImpl.BackgroundExceptionOccurred"/>.
+    /// Software periodic-send schedule for multi-frame (&gt; 8 byte) PGNs. Fires
+    /// <see cref="J1939NodeImpl.SendAsync"/> in a loop so every emission spins up a fresh
+    /// TP.BAM / TP.CM session on the shared J1939-TP channel (FR-J1939-006/007). Send
+    /// failures do not tear the schedule down; they surface via
+    /// <see cref="J1939NodeImpl.BackgroundExceptionOccurred"/>. Single-frame periodic PGNs
+    /// take the L1 <see cref="IPeriodicTx"/> path via <see cref="SingleFramePeriodicSchedule"/>
+    /// instead.
     /// </summary>
     private sealed class PeriodicSchedule : IDisposable
     {
@@ -1019,6 +1061,139 @@ internal sealed class J1939NodeImpl : IJ1939Node
             try { _cts.Cancel(); } catch { }
             try { _loop?.GetAwaiter().GetResult(); } catch { }
             _cts.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Periodic send for single-frame (&lt;= 8 byte) PGNs backed by the L1
+    /// <see cref="ICanBus.TransmitPeriodic"/> handle exposed by <see cref="ICanBusService.Bus"/>.
+    /// Tracks <see cref="AddressClaimChanged"/> so the emitted 29-bit ID always carries the
+    /// currently-claimed SA: on a fresh claim with a new SA the frame is updated in-place
+    /// via <see cref="IPeriodicTx.Update"/>; on address loss the underlying periodic handle
+    /// is stopped and disposed until the node claims again (FR-J1939-007).
+    /// </summary>
+    /// <remarks>
+    /// The caller supplies the transmit period. The SAE J1939-71 catalog documents a standard
+    /// rate per PGN (e.g. 100 ms for EEC1) — mapping application PGNs to their standard rate is
+    /// the caller's responsibility; this schedule does not embed a PGN rate table.
+    /// </remarks>
+    private sealed class SingleFramePeriodicSchedule : IDisposable
+    {
+        private readonly J1939NodeImpl _owner;
+        private readonly J1939Message _message;
+        private readonly TimeSpan _period;
+        private readonly EventHandler<J1939ClaimEventArgs> _claimHandler;
+        private readonly object _gate = new();
+        private IPeriodicTx? _handle;
+        private byte _currentSa;
+        private int _disposed;
+
+        public SingleFramePeriodicSchedule(J1939NodeImpl owner, J1939Message message, TimeSpan period,
+            byte initialSa)
+        {
+            _owner = owner;
+            _message = message;
+            _period = period;
+            _currentSa = initialSa;
+            _claimHandler = OnClaimChanged;
+        }
+
+        public void Start()
+        {
+            // Subscribe BEFORE opening the handle so a claim-change event that fires during
+            // TransmitPeriodic (e.g. an in-flight ClaimAddressAsync landing on the actor loop
+            // in the same instant) is not missed.
+            _owner.AddressClaimChanged += _claimHandler;
+            try
+            {
+                var options = new PeriodicTxOptions(_period, repeat: -1, fireImmediately: true);
+                lock (_gate)
+                {
+                    _handle = _owner._service.Bus.TransmitPeriodic(BuildFrame(_currentSa), options);
+                }
+            }
+            catch
+            {
+                _owner.AddressClaimChanged -= _claimHandler;
+                throw;
+            }
+        }
+
+        private void OnClaimChanged(object? sender, J1939ClaimEventArgs e)
+        {
+            if (Volatile.Read(ref _disposed) != 0) return;
+            try
+            {
+                if (e.State == J1939ClaimState.Claimed && e.Address.HasValue)
+                {
+                    var newSa = e.Address.Value;
+                    IPeriodicTx? toStart = null;
+                    lock (_gate)
+                    {
+                        if (_disposed != 0) return;
+                        if (_handle is null)
+                        {
+                            // Handle was stopped after a previous address loss; re-arm on the
+                            // freshly claimed SA using the same period/repeat contract.
+                            var options = new PeriodicTxOptions(_period, repeat: -1, fireImmediately: true);
+                            _handle = _owner._service.Bus.TransmitPeriodic(BuildFrame(newSa), options);
+                            toStart = _handle;
+                        }
+                        else if (newSa != _currentSa)
+                        {
+                            _handle.Update(frame: BuildFrame(newSa));
+                        }
+                        _currentSa = newSa;
+                    }
+                    _ = toStart; // reference kept for clarity; ownership stays on _handle
+                }
+                else
+                {
+                    // Any non-Claimed transition (NotClaimed / Claiming / CannotClaim) MUST
+                    // stop the wire traffic — SendAsync's pre-flight gate would reject the
+                    // equivalent one-shot, so the periodic path must not silently emit under
+                    // the previous SA.
+                    lock (_gate)
+                    {
+                        if (_handle is not null)
+                        {
+                            try { _handle.Stop(); }
+                            catch (Exception ex) { _owner.RaiseBackgroundException(ex); }
+                            try { _handle.Dispose(); }
+                            catch (Exception ex) { _owner.RaiseBackgroundException(ex); }
+                            _handle = null;
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _owner.RaiseBackgroundException(ex);
+            }
+        }
+
+        private CanFrame BuildFrame(byte sa)
+        {
+            uint canId = J1939Id.ComposePgn(_message.Priority, _message.Pgn, sa,
+                destinationAddress: _message.DestinationAddress);
+            var payload = new byte[_message.Payload.Length];
+            if (_message.Payload.Length > 0) _message.Payload.Span.CopyTo(payload);
+            return CanFrame.Classic(unchecked((int)canId), payload, isExtendedFrame: true);
+        }
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+            try { _owner.AddressClaimChanged -= _claimHandler; } catch { /* observed on Dispose race */ }
+            lock (_gate)
+            {
+                if (_handle is not null)
+                {
+                    try { _handle.Stop(); } catch { /* ignore */ }
+                    try { _handle.Dispose(); } catch { /* ignore */ }
+                    _handle = null;
+                }
+            }
         }
     }
 }
