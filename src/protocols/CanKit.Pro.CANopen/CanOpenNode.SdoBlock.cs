@@ -503,14 +503,22 @@ internal sealed partial class CanOpenNode
             return true;
         }
 
-        // A block-server session in a segment-receiving phase intercepts every frame on our
-        // SDO Rx (until the peer emits the "end of block" frame). This is what "phase-scoped"
-        // dispatch means: byte 0 = (c<<7)|seq overlaps command specifiers, so we cannot look
-        // at cs to decide "is this a segment".
+        // A block-server session in a segment-receiving phase intercepts segment frames on our
+        // SDO Rx. Byte 0 = (c<<7)|seq overlaps command specifiers, so a peer that starts a
+        // fresh SDO initiate mid-transfer would otherwise be NACK'd as an out-of-order segment.
+        // When seq is 0 (never valid) or the CS looks like a client initiate *and* does not
+        // match the next expected seq, fall through so block/classic initiate handlers can
+        // supersede this session (CiA 301 §7.2.4.3.4).
         if (_sdoBlockServer is { Phase: SdoBlockServerPhase.ReceivingSegments } rx)
         {
-            HandleBlockDownloadServerSegment(rx, data, cs);
-            return true;
+            byte seq = (byte)(cs & 0x7F);
+            bool maybeSupersedingInitiate = seq == 0
+                || (seq != rx.NextExpectedSeq && LooksLikeSdoClientInitiate(cs));
+            if (!maybeSupersedingInitiate)
+            {
+                HandleBlockDownloadServerSegment(rx, data, cs);
+                return true;
+            }
         }
         if (_sdoBlockServer is { Phase: SdoBlockServerPhase.AwaitEnd } awaitingEnd
             && (cs & 0xE3) == CcsBlockDownloadEndMask)
@@ -553,6 +561,24 @@ internal sealed partial class CanOpenNode
             upEndResp.Deadline?.Dispose();
             return true;
         }
+        return false;
+    }
+
+    /// <summary>
+    /// True when <paramref name="cs"/> matches a client→server SDO initiate (or abort) command
+    /// specifier. Used to distinguish a mid-transfer supersede from an ordinary block segment
+    /// when the seq field happens to collide with a CS value.
+    /// </summary>
+    private static bool LooksLikeSdoClientInitiate(byte cs)
+    {
+        if (cs == SdoFrames.CsAbort) return true;
+        if (cs == SdoFrames.CcsUploadInit) return true;
+        if (cs == SdoFrames.CcsDownloadInitSegmented) return true;
+        // Expedited download init: ccs=1 with e=1,s=1 (low two bits set).
+        if ((cs & 0xE0) == SdoFrames.CcsDownloadInitExpeditedBase && (cs & 0x03) == 0x03)
+            return true;
+        if ((cs & 0xE1) == CcsBlockDownloadInitMask) return true;
+        if ((cs & 0xE3) == CcsBlockUploadInitMask) return true;
         return false;
     }
 
