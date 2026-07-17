@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using CanKit.Pro.CANopen.Nmt;
 using CanKit.Pro.CANopen.Sdo;
 using CanKit.Pro.Reliability;
 
