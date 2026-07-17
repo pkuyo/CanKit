@@ -45,6 +45,10 @@ internal sealed partial class CanOpenNode
             }
             var consumer = new NodeGuardingConsumer(producerNodeId, guardTime, lifeTimeFactor);
             _nodeGuardingConsumers[producerNodeId] = consumer;
+            // Send the first RTR immediately so lifeTimeFactor=1 cannot expire before the
+            // initial poll/response is even possible; ScheduleNodeGuardingPoll only arms the
+            // subsequent periodic polls after guardTime.
+            SendNodeGuardingRtr(producerNodeId);
             ScheduleNodeGuardingPoll(consumer);
             var lifeTime = ScaleLifeTime(guardTime, lifeTimeFactor);
             consumer.LifeTimeDeadline = _deadlines.Arm(lifeTime,
@@ -72,8 +76,9 @@ internal sealed partial class CanOpenNode
     // =========================================================================================
     private void ScheduleNodeGuardingPoll(NodeGuardingConsumer consumer)
     {
-        // Fire the first poll immediately on the next actor tick so tests do not have to wait
-        // an entire guardTime interval for the initial RTR.
+        // Subsequent polls fire after each guardTime interval. The initial RTR is sent
+        // synchronously from StartNodeGuardingConsumer so the life-time window starts with a
+        // real request already on the wire.
         var producer = consumer.ProducerNodeId;
         consumer.PollHandle = _actor.Schedule(consumer.GuardTime, () =>
         {
@@ -158,14 +163,24 @@ internal sealed partial class CanOpenNode
             _ => NmtState.Initializing,
         };
 
-        // Rearm life-time deadline on any valid response.
-        var deadline = consumer.LifeTimeDeadline;
-        var lifeTime = ScaleLifeTime(consumer.GuardTime, consumer.LifeTimeFactor);
-        if (deadline is null || deadline.IsExpired || deadline.IsCancelled || !deadline.Rearm(lifeTime))
+        // CiA 301 §7.2.8.3.3: a reply that does not alternate the toggle bit is invalid for
+        // resetting the life-time window (stale/repeated frames must not keep the consumer
+        // alive). The first observed reply establishes the baseline; every later reply must
+        // flip bit 7 relative to the previous accepted response.
+        bool toggleOk = !consumer.HasSeenResponse || toggle != consumer.LastToggle;
+        if (toggleOk)
         {
-            deadline?.Dispose();
-            consumer.LifeTimeDeadline = _deadlines.Arm(lifeTime,
-                () => OnNodeGuardingTimeout(producerNodeId));
+            consumer.HasSeenResponse = true;
+            consumer.LastToggle = toggle;
+
+            var deadline = consumer.LifeTimeDeadline;
+            var lifeTime = ScaleLifeTime(consumer.GuardTime, consumer.LifeTimeFactor);
+            if (deadline is null || deadline.IsExpired || deadline.IsCancelled || !deadline.Rearm(lifeTime))
+            {
+                deadline?.Dispose();
+                consumer.LifeTimeDeadline = _deadlines.Arm(lifeTime,
+                    () => OnNodeGuardingTimeout(producerNodeId));
+            }
         }
 
         RaiseNodeGuardingReceived(producerNodeId, state, toggle, DateTime.UtcNow);
@@ -235,5 +250,9 @@ internal sealed partial class CanOpenNode
         public byte LifeTimeFactor { get; }
         public IDisposable? PollHandle { get; set; }
         public IDeadline? LifeTimeDeadline { get; set; }
+        /// <summary>True after the first response that was accepted for life-time rearm.</summary>
+        public bool HasSeenResponse { get; set; }
+        /// <summary>Toggle bit from the last response that rearmed the life-time deadline.</summary>
+        public bool LastToggle { get; set; }
     }
 }

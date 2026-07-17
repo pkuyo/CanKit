@@ -401,6 +401,11 @@ internal sealed partial class CanOpenNode : ICanOpenNode
 
     /// <inheritdoc />
     public Task<byte[]> SdoUploadAsync(byte serverNodeId, ushort index, byte subindex,
+        CancellationToken cancellationToken)
+        => SdoUploadAsync(serverNodeId, index, subindex, SdoTransferMode.Auto, cancellationToken);
+
+    /// <inheritdoc />
+    public Task<byte[]> SdoUploadAsync(byte serverNodeId, ushort index, byte subindex,
         SdoTransferMode mode = SdoTransferMode.Auto,
         CancellationToken cancellationToken = default)
     {
@@ -426,6 +431,12 @@ internal sealed partial class CanOpenNode : ICanOpenNode
         }
         return tcs.Task;
     }
+
+    /// <inheritdoc />
+    public Task SdoDownloadAsync(byte serverNodeId, ushort index, byte subindex,
+        ReadOnlyMemory<byte> data,
+        CancellationToken cancellationToken)
+        => SdoDownloadAsync(serverNodeId, index, subindex, data, SdoTransferMode.Auto, cancellationToken);
 
     /// <inheritdoc />
     public Task SdoDownloadAsync(byte serverNodeId, ushort index, byte subindex,
@@ -910,8 +921,10 @@ internal sealed partial class CanOpenNode : ICanOpenNode
         // server-side transfer. Emit an abort on the wire for that stale (index, subindex) so
         // its remote client does not have to wait for its own SDO timeout to notice the
         // supersede. Done up-front so this holds even when we go on to reject the new initiate
-        // below (missing entry, wrong access, ...).
+        // below (missing entry, wrong access, ...). Classic and block sessions share the same
+        // SDO TX COB-ID, so both must be cleared.
         AbortSupersededServerSession();
+        AbortSupersededBlockServerSession();
 
         if (entry is null)
         {
@@ -1008,8 +1021,10 @@ internal sealed partial class CanOpenNode : ICanOpenNode
         // server-side transfer. Emit an abort on the wire for that stale (index, subindex) so
         // its remote client does not have to wait for its own SDO timeout to notice the
         // supersede. Done up-front so this holds even when we go on to reject the new initiate
-        // below (missing entry, wrong access, length mismatch, ...).
+        // below (missing entry, wrong access, length mismatch, ...). Classic and block
+        // sessions share the same SDO TX COB-ID, so both must be cleared.
         AbortSupersededServerSession();
+        AbortSupersededBlockServerSession();
 
         if (entry is null)
         {
@@ -1208,6 +1223,14 @@ internal sealed partial class CanOpenNode : ICanOpenNode
             _ = SendControlFrame(CanOpenCobId.SdoRx(serverNodeId),
                 SdoFrames.BuildAbort(session.Index, session.Subindex, (uint)SdoAbortCode.General));
         }
+        else if (_sdoBlockClients.TryGetValue(serverNodeId, out var blockSession)
+                 && ReferenceEquals(blockSession.Tcs, tcsBoxed))
+        {
+            _sdoBlockClients.Remove(serverNodeId);
+            blockSession.Deadline?.Dispose();
+            _ = SendControlFrame(CanOpenCobId.SdoRx(serverNodeId),
+                SdoFrames.BuildAbort(blockSession.Index, blockSession.Subindex, (uint)SdoAbortCode.General));
+        }
         if (tcsBoxed is TaskCompletionSource<byte[]> tcs) tcs.TrySetCanceled(token);
     }
 
@@ -1220,7 +1243,7 @@ internal sealed partial class CanOpenNode : ICanOpenNode
             return;
         }
         if (tcs.Task.IsCompleted) return;
-        if (_sdoClients.ContainsKey(serverNodeId))
+        if (_sdoClients.ContainsKey(serverNodeId) || _sdoBlockClients.ContainsKey(serverNodeId))
         {
             tcs.TrySetException(new InvalidOperationException(
                 $"An SDO transfer with server 0x{serverNodeId:X2} is already in flight."));
@@ -1242,7 +1265,7 @@ internal sealed partial class CanOpenNode : ICanOpenNode
             return;
         }
         if (tcs.Task.IsCompleted) return;
-        if (_sdoClients.ContainsKey(serverNodeId))
+        if (_sdoClients.ContainsKey(serverNodeId) || _sdoBlockClients.ContainsKey(serverNodeId))
         {
             tcs.TrySetException(new InvalidOperationException(
                 $"An SDO transfer with server 0x{serverNodeId:X2} is already in flight."));

@@ -133,15 +133,30 @@ public interface ICanOpenNode : IDisposable
     // SDO client (FR-CO-002 / FR-CO-003)
     // -----------------------------------------------------------------------------------------
 
-    /// <summary>Reads an object from <paramref name="serverNodeId"/>'s OD. The transport is
-    /// auto-selected by default: expedited for <c>≤4</c>-byte results, segmented for larger
-    /// results below <see cref="CanOpenNodeOptions.SdoBlockThresholdBytes"/>, and block transfer
-    /// (CiA 301 §7.2.4.3.15) at or above the threshold. Pass an explicit
-    /// <paramref name="mode"/> to force one specific codec — this is primarily useful for tests
-    /// (FR-CO-002 / FR-CO-003 / FR-CO-004).</summary>
+    /// <summary>Reads an object from <paramref name="serverNodeId"/>'s OD using
+    /// <see cref="SdoTransferMode.Auto"/> (expedited / segmented; size is unknown up front so
+    /// Auto does not select block upload — pass <see cref="SdoTransferMode.Block"/> explicitly).
+    /// Source-compatible overload for callers that pass a positional
+    /// <see cref="CancellationToken"/>.</summary>
+    Task<byte[]> SdoUploadAsync(byte serverNodeId, ushort index, byte subindex,
+        CancellationToken cancellationToken);
+
+    /// <summary>Reads an object from <paramref name="serverNodeId"/>'s OD.
+    /// <see cref="SdoTransferMode.Auto"/> uses the classic expedited/segmented path because the
+    /// payload length is unknown until the server replies; pass
+    /// <see cref="SdoTransferMode.Block"/> to force block transfer (CiA 301 §7.2.4.3.15).
+    /// Explicit <see cref="SdoTransferMode.Expedited"/> / <see cref="SdoTransferMode.Segmented"/>
+    /// also route through the classic client (FR-CO-002 / FR-CO-003 / FR-CO-004).</summary>
     Task<byte[]> SdoUploadAsync(byte serverNodeId, ushort index, byte subindex,
         SdoTransferMode mode = SdoTransferMode.Auto,
         CancellationToken cancellationToken = default);
+
+    /// <summary>Writes an object to <paramref name="serverNodeId"/>'s OD using
+    /// <see cref="SdoTransferMode.Auto"/>. Source-compatible overload for callers that pass a
+    /// positional <see cref="CancellationToken"/> after <paramref name="data"/>.</summary>
+    Task SdoDownloadAsync(byte serverNodeId, ushort index, byte subindex,
+        ReadOnlyMemory<byte> data,
+        CancellationToken cancellationToken);
 
     /// <summary>Writes an object to <paramref name="serverNodeId"/>'s OD. Auto-selects the
     /// transport by <paramref name="data"/> length (expedited / segmented / block per

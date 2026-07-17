@@ -6,11 +6,13 @@ namespace CanKit.Pro.CANopen.Sdo;
 /// </summary>
 /// <remarks>
 /// <see cref="Auto"/> is the recommended default and preserves the historical behaviour of the
-/// public API: payloads up to four bytes go over the expedited codec (CiA 301 §7.2.4.3.3),
-/// larger payloads up to <see cref="CanOpenNodeOptions.SdoBlockThresholdBytes"/> go over the
-/// segmented codec (CiA 301 §7.2.4.3.5..14), and payloads at or above the threshold switch to
-/// block transfer (CiA 301 §7.2.4.3.15). Explicit values force one specific codec: they are
-/// primarily intended for tests and for callers that need to exercise a particular wire
+/// public API for downloads: payloads up to four bytes go over the expedited codec
+/// (CiA 301 §7.2.4.3.3), larger payloads up to <see cref="CanOpenNodeOptions.SdoBlockThresholdBytes"/>
+/// go over the segmented codec (CiA 301 §7.2.4.3.5..14), and download payloads at or above the
+/// threshold switch to block transfer (CiA 301 §7.2.4.3.15). Uploads cannot apply the Auto→Block
+/// heuristic because the payload length is unknown until the server replies — use
+/// <see cref="Block"/> explicitly for block upload. Explicit values force one specific codec:
+/// they are primarily intended for tests and for callers that need to exercise a particular wire
 /// encoding regardless of payload size.
 /// </remarks>
 public enum SdoTransferMode

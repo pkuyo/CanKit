@@ -357,13 +357,13 @@ internal sealed partial class CanOpenNode
         if (seq != session.NextExpectedSeq)
         {
             // Out-of-order segment: NACK by sending an ack for the last good seq and
-            // requesting the same blksize again. The peer will restart from ackseq + 1.
+            // requesting the same blksize again. The peer restarts at ackseq + 1 within
+            // the same sub-block (CiA 301), so keep NextExpectedSeq / SegmentsInFlight —
+            // resetting them to 1/0 would reject the retransmission stream.
             var ack = SdoBlockFrames.BuildSubBlockAck(SdoBlockFrames.CcsBlockUploadSubBlockAck,
                 lastAckedSeq: (byte)(session.NextExpectedSeq - 1),
                 nextBlockSize: session.LocalBlockSize);
             _ = SendControlFrame(CanOpenCobId.SdoRx(session.ServerNodeId), ack);
-            session.NextExpectedSeq = 1;
-            session.SegmentsInFlight = 0;
             return true;
         }
 
@@ -605,8 +605,10 @@ internal sealed partial class CanOpenNode
         _sdoBlockServer = session;
         session.Deadline = _deadlines.Arm(_options.SdoTimeout, OnSdoBlockServerTimeout);
 
+        // Advertise local CRC capability (CiA 301 "sc" bit); CRC stays inactive for this
+        // transfer unless both endpoints set their bits (captured in crcActive above).
         var resp = SdoBlockFrames.BuildBlockDownloadInitResponse(index, subindex,
-            serverCrcSupported: crcActive, blockSize: blkSize);
+            serverCrcSupported: _options.SdoBlockCrcSupported, blockSize: blkSize);
         _ = SendControlFrame(CanOpenCobId.SdoTx(_nodeId), resp);
     }
 
@@ -617,14 +619,13 @@ internal sealed partial class CanOpenNode
 
         if (seq != session.NextExpectedSeq)
         {
-            // NACK by sub-block ACK with lastAckedSeq = seq - 1, prompting retransmission
-            // from seq. The peer restarts from seq = 1 (CiA 301 convention on our MVP).
+            // NACK by sub-block ACK with lastAckedSeq = NextExpectedSeq - 1, prompting
+            // retransmission from ackseq + 1 within the current sub-block (CiA 301). Keep
+            // NextExpectedSeq / SegmentsInSubBlock so a compliant retransmission is accepted.
             var nack = SdoBlockFrames.BuildSubBlockAck(SdoBlockFrames.ScsBlockDownloadSubBlockAck,
                 lastAckedSeq: (byte)(session.NextExpectedSeq - 1),
                 nextBlockSize: session.NegotiatedBlockSize);
             _ = SendControlFrame(CanOpenCobId.SdoTx(_nodeId), nack);
-            session.SegmentsInSubBlock = 0;
-            session.NextExpectedSeq = 1;
             return;
         }
 
@@ -774,8 +775,10 @@ internal sealed partial class CanOpenNode
         _sdoBlockServer = session;
         session.Deadline = _deadlines.Arm(_options.SdoTimeout, OnSdoBlockServerTimeout);
 
+        // Advertise local CRC capability (CiA 301 "sc" bit); CRC stays inactive for this
+        // transfer unless both endpoints set their bits (captured in crcActive above).
         var resp = SdoBlockFrames.BuildBlockUploadInitResponse(index, subindex,
-            serverCrcSupported: crcActive, sizeIndicated: true, totalSize: (uint)value.Length);
+            serverCrcSupported: _options.SdoBlockCrcSupported, sizeIndicated: true, totalSize: (uint)value.Length);
         _ = SendControlFrame(CanOpenCobId.SdoTx(_nodeId), resp);
     }
 

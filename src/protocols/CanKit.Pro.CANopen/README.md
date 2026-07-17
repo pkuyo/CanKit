@@ -35,12 +35,14 @@ Every CiA 301 **Must**, **Should** and (formerly deferred) **Could** requirement
 
 ### SDO block transfer
 
-`SdoDownloadAsync` / `SdoUploadAsync` auto-select the block codec when the payload reaches
-`CanOpenNodeOptions.SdoBlockThresholdBytes` (default 128 bytes); callers can force a specific
-codec by passing `SdoTransferMode.Block` (or `Expedited` / `Segmented`). The block size
-advertised by this node is `CanOpenNodeOptions.SdoBlockSize` (default 127; peers with a
-smaller window renegotiate downward). CRC-16/XMODEM is exchanged when both endpoints set the
-"cc" / "sc" bit (`SdoBlockCrcSupported`, default `true`).
+`SdoDownloadAsync` auto-selects the block codec when the payload reaches
+`CanOpenNodeOptions.SdoBlockThresholdBytes` (default 128 bytes). `SdoUploadAsync` keeps the
+classic expedited/segmented path under `SdoTransferMode.Auto` (size unknown up front); pass
+`SdoTransferMode.Block` to force block upload. Callers can also force `Expedited` /
+`Segmented` / `Block` on either API. The block size advertised by this node is
+`CanOpenNodeOptions.SdoBlockSize` (default 127; peers with a smaller window renegotiate
+downward). CRC-16/XMODEM is exchanged when both endpoints set the "cc" / "sc" bit
+(`SdoBlockCrcSupported`, default `true`).
 
 ### Node-guarding
 
