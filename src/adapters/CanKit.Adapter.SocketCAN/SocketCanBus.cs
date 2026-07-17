@@ -851,7 +851,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IOwnersh
             _exceptions.Report(
                 ex,
                 CanExceptionSource.BackgroundLoop,
-                message: "ControlCAN poll loop canceled.");
+                message: "SocketCAN epoll loop canceled.");
         }
         catch (Exception ex)
         {
