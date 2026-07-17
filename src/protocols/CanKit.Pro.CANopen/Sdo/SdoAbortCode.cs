@@ -24,6 +24,10 @@ public enum SdoAbortCode : uint
     /// <summary>Invalid block size (only used by block transfer).</summary>
     InvalidBlockSize = 0x05040002u,
 
+    /// <summary>CRC error (block transfer only). Set when the CRC-16 carried in the end-of-block
+    /// frame does not match the CRC computed by the receiver over the reassembled payload.</summary>
+    CrcError = 0x05040004u,
+
     /// <summary>Out of memory — a segmented SDO transfer declared more bytes than the node is
     /// willing to buffer (see <c>CanOpenNodeOptions.MaxSdoTransferBytes</c>).</summary>
     OutOfMemory = 0x05040005u,

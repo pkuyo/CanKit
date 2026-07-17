@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using CanKit.Pro.CANopen.Emcy;
 using CanKit.Pro.CANopen.Nmt;
 using CanKit.Pro.CANopen.Pdo;
+using CanKit.Pro.CANopen.Sdo;
 
 namespace CanKit.Pro.CANopen;
 
@@ -59,6 +60,16 @@ public interface ICanOpenNode : IDisposable
     /// <summary>Raised on the actor loop for every NMT master command whose target matches this
     /// node (or the broadcast target 0).</summary>
     event EventHandler<NmtCommandReceivedEventArgs>? NmtCommandReceived;
+
+    /// <summary>Raised whenever a node-guarding response (data frame on <c>0x700 + producer</c>
+    /// with the toggle bit in bit 7 and the NMT state in bits 0..6) is received for a
+    /// configured node-guarding consumer (FR-CO-009 / CiA 301 §7.2.8.3.3).</summary>
+    event EventHandler<NodeGuardingReceivedEventArgs>? NodeGuardingReceived;
+
+    /// <summary>Raised when a configured node-guarding consumer's life-time
+    /// (<c>guardTime × lifeTimeFactor</c>) elapses without seeing an answer to the RTR poll
+    /// (FR-CO-009).</summary>
+    event EventHandler<NodeGuardingTimeoutEventArgs>? NodeGuardingTimeout;
 
     /// <summary>Raised on background exceptions from the actor loop / subscription reader.</summary>
     event EventHandler<Exception>? BackgroundExceptionOccurred;
@@ -122,15 +133,39 @@ public interface ICanOpenNode : IDisposable
     // SDO client (FR-CO-002 / FR-CO-003)
     // -----------------------------------------------------------------------------------------
 
-    /// <summary>Reads an object from <paramref name="serverNodeId"/>'s OD using SDO expedited
-    /// or segmented upload, depending on the entry size.</summary>
+    /// <summary>Reads an object from <paramref name="serverNodeId"/>'s OD using
+    /// <see cref="SdoTransferMode.Auto"/> (expedited / segmented; size is unknown up front so
+    /// Auto does not select block upload — pass <see cref="SdoTransferMode.Block"/> explicitly).
+    /// Source-compatible overload for callers that pass a positional
+    /// <see cref="CancellationToken"/>.</summary>
     Task<byte[]> SdoUploadAsync(byte serverNodeId, ushort index, byte subindex,
+        CancellationToken cancellationToken);
+
+    /// <summary>Reads an object from <paramref name="serverNodeId"/>'s OD.
+    /// <see cref="SdoTransferMode.Auto"/> uses the classic expedited/segmented path because the
+    /// payload length is unknown until the server replies; pass
+    /// <see cref="SdoTransferMode.Block"/> to force block transfer (CiA 301 §7.2.4.3.15).
+    /// Explicit <see cref="SdoTransferMode.Expedited"/> / <see cref="SdoTransferMode.Segmented"/>
+    /// also route through the classic client (FR-CO-002 / FR-CO-003 / FR-CO-004).</summary>
+    Task<byte[]> SdoUploadAsync(byte serverNodeId, ushort index, byte subindex,
+        SdoTransferMode mode = SdoTransferMode.Auto,
         CancellationToken cancellationToken = default);
 
-    /// <summary>Writes an object to <paramref name="serverNodeId"/>'s OD using SDO expedited or
-    /// segmented download, depending on the payload size.</summary>
+    /// <summary>Writes an object to <paramref name="serverNodeId"/>'s OD using
+    /// <see cref="SdoTransferMode.Auto"/>. Source-compatible overload for callers that pass a
+    /// positional <see cref="CancellationToken"/> after <paramref name="data"/>.</summary>
     Task SdoDownloadAsync(byte serverNodeId, ushort index, byte subindex,
-        ReadOnlyMemory<byte> data, CancellationToken cancellationToken = default);
+        ReadOnlyMemory<byte> data,
+        CancellationToken cancellationToken);
+
+    /// <summary>Writes an object to <paramref name="serverNodeId"/>'s OD. Auto-selects the
+    /// transport by <paramref name="data"/> length (expedited / segmented / block per
+    /// <see cref="CanOpenNodeOptions.SdoBlockThresholdBytes"/>); an explicit
+    /// <paramref name="mode"/> forces one codec.</summary>
+    Task SdoDownloadAsync(byte serverNodeId, ushort index, byte subindex,
+        ReadOnlyMemory<byte> data,
+        SdoTransferMode mode = SdoTransferMode.Auto,
+        CancellationToken cancellationToken = default);
 
     // -----------------------------------------------------------------------------------------
     // PDO (FR-CO-005 / FR-CO-006)
@@ -153,4 +188,21 @@ public interface ICanOpenNode : IDisposable
     /// <summary>Manually triggers a TPDO transmission. The node still respects the current
     /// NMT state (only fires when the node is in <see cref="NmtState.Operational"/>).</summary>
     Task TriggerTpdoAsync(int pdoIndex, CancellationToken cancellationToken = default);
+
+    // -----------------------------------------------------------------------------------------
+    // Node-Guarding (FR-CO-009, CiA 301 §7.2.8.3.3)
+    // -----------------------------------------------------------------------------------------
+
+    /// <summary>
+    /// Starts the node-guarding consumer for <paramref name="producerNodeId"/>: sends an RTR
+    /// on <c>0x700 + producerNodeId</c> every <paramref name="guardTime"/> and expects the peer
+    /// to reply with a one-byte data frame (toggle bit in bit 7, NMT state in bits 0..6). If
+    /// <c>guardTime × lifeTimeFactor</c> elapses without a valid response the node raises
+    /// <see cref="NodeGuardingTimeout"/>. Replaces any existing consumer for the same peer.
+    /// </summary>
+    void StartNodeGuardingConsumer(byte producerNodeId, TimeSpan guardTime, byte lifeTimeFactor);
+
+    /// <summary>Stops the node-guarding consumer for <paramref name="producerNodeId"/>. No-op
+    /// when none is running.</summary>
+    void StopNodeGuardingConsumer(byte producerNodeId);
 }
