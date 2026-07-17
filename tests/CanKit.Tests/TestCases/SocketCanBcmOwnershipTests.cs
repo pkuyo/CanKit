@@ -24,6 +24,12 @@ namespace CanKit.Tests.TestCases;
 /// adapter loads its in-memory Libc.Fake backend, which lets us exercise the
 /// BCM code paths without vcan or a real kernel.
 ///
+/// Important: use <see cref="BcmOnlyEndpoint"/> (<c>vcan2</c>) rather than the
+/// shared <c>vcan0</c>/<c>vcan1</c> pair that matrix throughput tests open.
+/// Infinite BCM jobs on Fake still inject frames onto the bound iface; running
+/// them on vcan0 races parallel FD batch tests and produces spurious Lost-frame
+/// failures.
+///
 /// Fake caveat: the Fake backend replies to TX_READ synchronously by
 /// pre-enqueuing a TX_STATUS onto the query socket, so the read() in
 /// RemainingCount does not actually hit EAGAIN under Fake. These tests
@@ -31,8 +37,12 @@ namespace CanKit.Tests.TestCases;
 /// only the "TX_READ never throws" contract. The poll()/EAGAIN retry loop
 /// is exercised on real Linux/vcan hardware CI.
 /// </summary>
+[Collection("SocketCanBcmOwnership")]
 public class SocketCanBcmOwnershipTests
 {
+    /// <summary>Dedicated Fake iface so BCM emissions never collide with vcan0/vcan1 matrix tests.</summary>
+    private const string BcmOnlyEndpoint = "socketcan://vcan2";
+
     private static bool ShouldRun()
     {
         var env = Environment.GetEnvironmentVariable("CANKIT_TEST_ADAPTERS");
@@ -89,7 +99,7 @@ public class SocketCanBcmOwnershipTests
         // any RX rentals; we only track the caller's allocator, so the assertion
         // measures pure caller-side ownership without RX noise polluting it.
         var callerAllocator = new CountingBufferAllocator();
-        using var bus = OpenClassic("socketcan://vcan0", new DefaultBufferAllocator());
+        using var bus = OpenClassic(BcmOnlyEndpoint, new DefaultBufferAllocator());
 
         IPeriodicTx? handle = null;
         try
@@ -102,7 +112,7 @@ public class SocketCanBcmOwnershipTests
                 // Dispose is a no-op; we're relying on the block's `using` for the
                 // owner to be the sole disposer.
                 using var callerFrame = CanFrame.Classic(0x321, callerOwner, ownMemory: false);
-                handle = bus.TransmitPeriodic(callerFrame, new PeriodicTxOptions(TimeSpan.FromMilliseconds(10), -1));
+                handle = bus.TransmitPeriodic(callerFrame, new PeriodicTxOptions(TimeSpan.FromMilliseconds(10), 2));
 
                 // Pre-fix behavior: `_frame = frame` would leave BCM referencing
                 // this same allocator's rental via `_frame._memoryOwner`. Post-fix,
@@ -129,10 +139,10 @@ public class SocketCanBcmOwnershipTests
     {
         if (!ShouldRun()) return;
 
-        using var bus = OpenClassic("socketcan://vcan0", new DefaultBufferAllocator());
+        using var bus = OpenClassic(BcmOnlyEndpoint, new DefaultBufferAllocator());
         using var frame = CanFrame.Classic(0x123, new byte[] { 1, 2, 3 });
 
-        using var handle = bus.TransmitPeriodic(frame, new PeriodicTxOptions(TimeSpan.FromMilliseconds(10), -1));
+        using var handle = bus.TransmitPeriodic(frame, new PeriodicTxOptions(TimeSpan.FromMilliseconds(10), 2));
 
         // Pre-fix: this would throw with EAGAIN from ThrowErrno("read(BCM TX_STATUS)")
         // whenever the kernel hadn't yet enqueued a TX_STATUS reply on the non-blocking
@@ -149,7 +159,7 @@ public class SocketCanBcmOwnershipTests
         if (!ShouldRun()) return;
 
         var callerAllocator = new CountingBufferAllocator();
-        using var bus = OpenClassic("socketcan://vcan0", new DefaultBufferAllocator());
+        using var bus = OpenClassic(BcmOnlyEndpoint, new DefaultBufferAllocator());
 
         IPeriodicTx? handle = null;
         try
@@ -196,7 +206,7 @@ public class SocketCanBcmOwnershipTests
         // Fake libc still routes BCM emissions but filter-rejected deliveries
         // are dropped without renting.
         var busAllocator = new CountingBufferAllocator();
-        using var bus = CanBus.Open("socketcan://vcan0", cfg => cfg
+        using var bus = CanBus.Open(BcmOnlyEndpoint, cfg => cfg
             .SetProtocolMode(CanProtocolMode.Can20)
             .Baud(500_000)
             .BufferAllocator(busAllocator)
@@ -210,7 +220,7 @@ public class SocketCanBcmOwnershipTests
         IPeriodicTx? handle = null;
         try
         {
-            handle = bus.TransmitPeriodic(first, new PeriodicTxOptions(TimeSpan.FromMilliseconds(20), -1));
+            handle = bus.TransmitPeriodic(first, new PeriodicTxOptions(TimeSpan.FromMilliseconds(20), 2));
             var afterCtor = busAllocator.Outstanding;
 
             handle.Update(frame: second);
