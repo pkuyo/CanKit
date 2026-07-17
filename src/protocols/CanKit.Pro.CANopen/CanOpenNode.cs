@@ -1269,10 +1269,18 @@ internal sealed class CanOpenNode : ICanOpenNode
                     AbortClient(session, SdoAbortCode.ToggleBitNotAlternated);
                     return;
                 }
-                // If we did not know the length up front (declared=0), grow lazily.
-                if (session.Payload!.Length < session.Offset + payload.Length)
+                // If we did not know the length up front (declared=0), grow lazily — but still
+                // enforce MaxSdoTransferBytes so a zero-size init cannot bypass the cap by
+                // streaming unbounded segments (Bugbot 3600783860).
+                int needed = session.Offset + payload.Length;
+                if (needed > _options.MaxSdoTransferBytes)
                 {
-                    var grown = new byte[session.Offset + payload.Length];
+                    AbortClient(session, SdoAbortCode.OutOfMemory);
+                    return;
+                }
+                if (session.Payload!.Length < needed)
+                {
+                    var grown = new byte[needed];
                     Buffer.BlockCopy(session.Payload, 0, grown, 0, session.Payload.Length);
                     session.Payload = grown;
                 }
