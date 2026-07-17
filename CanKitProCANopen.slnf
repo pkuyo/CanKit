@@ -11,7 +11,7 @@
             "src\\core\\CanKit.Pro.Reliability\\CanKit.Pro.Reliability.csproj",
             "src\\protocols\\CanKit.Pro.CANopen\\CanKit.Pro.CANopen.csproj",
             "src\\adapters\\CanKit.Adapter.Virtual\\CanKit.Adapter.Virtual.csproj",
-            "tests\\CanKit.Tests\\CanKit.Tests.csproj",
+            "tests\\CanKit.Tests\\CanKit.Tests.csproj"
         ]
     }
 }
