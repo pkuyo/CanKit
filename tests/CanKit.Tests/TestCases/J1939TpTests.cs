@@ -295,7 +295,9 @@ public class J1939TpTests : IClassFixture<TestCaseProvider>
             using var cts = new CancellationTokenSource(timeout);
             while (true)
             {
-                lock (cmFrames)
+                // Must lock the same object the FrameObserved handler uses when mutating
+                // cmFrames (lock (observed)); locking cmFrames alone races Add vs. foreach.
+                lock (observed)
                 {
                     foreach (var (_, data) in cmFrames)
                         if (predicate(data)) return data;
@@ -332,7 +334,7 @@ public class J1939TpTests : IClassFixture<TestCaseProvider>
         abort[1].Should().Be((byte)J1939TpAbortReason.SessionAlreadyOpen);
 
         // Receiver must not have started tearing down / re-CTSing the active session.
-        lock (cmFrames)
+        lock (observed)
         {
             cmFrames.Should().NotContain(t =>
                 t.data[0] == J1939TpFrames.ControlAbort && J1939TpFrames.ReadDataPgn(t.data) == activePgn,
