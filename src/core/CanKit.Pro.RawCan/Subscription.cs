@@ -83,14 +83,14 @@ namespace CanKit.Pro.RawCan
         /// <inheritdoc />
         public void Reconfigure(CanIdFilter filter)
         {
-            ThrowIfNotDisposed();
+            ThrowIfDisposed();
             Interlocked.Exchange(ref _criteria, new FilterCriteria(filter, null));
         }
 
         /// <inheritdoc />
         public void Reconfigure(Func<CanFrameView, bool>? predicate)
         {
-            ThrowIfNotDisposed();
+            ThrowIfDisposed();
             Interlocked.Exchange(
                 ref _criteria,
                 predicate is null ? FilterCriteria.AcceptAll : new FilterCriteria(null, predicate));
@@ -162,7 +162,7 @@ namespace CanKit.Pro.RawCan
             _channel.Writer.TryComplete();
         }
 
-        private void ThrowIfNotDisposed()
+        private void ThrowIfDisposed()
         {
             if (Volatile.Read(ref _disposed) != 0)
                 throw new ObjectDisposedException(nameof(ISubscription));
