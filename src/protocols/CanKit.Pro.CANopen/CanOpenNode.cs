@@ -1446,7 +1446,13 @@ internal sealed class CanOpenNode : ICanOpenNode
                         $"CANopen frame TX on COB-ID 0x{cobId:X3} failed: {conf.FailureReason}."));
                 }
             }
-            catch (OperationCanceledException) { /* caller-cancelled */ }
+            catch (OperationCanceledException)
+            {
+                // Propagate so SendNmtCommandAsync / SendSyncAsync / SendEmcyAsync (and any
+                // other awaiters of this Task) observe cancellation instead of a silent
+                // success (Bugbot 3600845875).
+                throw;
+            }
             catch (Exception ex)
             {
                 RaiseBackgroundException(ex);
