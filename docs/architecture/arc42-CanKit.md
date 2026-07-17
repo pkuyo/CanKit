@@ -30,7 +30,7 @@ Diese Nomenklatur ist identisch zur SRS und wird im gesamten Dokument verwendet:
 | **L1** | Raw-CAN-Kern | vorhanden | `ICanBus`, `CanFrame`, Registry, Utilities, Diagnostics |
 | **L2** | Raw-CAN-Dienstebene | **NEU / Ziel** | Multi-Consumer-Demux, Ownership-Vertrag, TX-Confirm, Adressierung, Aktor-Modell, Fehler-/Timeout-Infrastruktur |
 | **L3** | Transport-Ebene | Prototyp (ISO-TP) / MVP (J1939-TP, Paket `CanKit.Pro.J1939Tp`) | ISO-TP (ISO 15765-2), J1939-TP (BAM/CM) |
-| **L4** | Anwendungsprotokoll-Ebene | **NEU / Ziel** (HAWE-Rahmen vorhanden, generisch – kein Protokolldetail; CON-006) | UDS, CANopen, J1939-App, HAWE-Privatprotokoll |
+| **L4** | Anwendungsprotokoll-Ebene | MVP (UDS-MVP `CanKit.Pro.Uds`, J1939-App-MVP `CanKit.Pro.J1939`); HAWE-Rahmen vorhanden (generisch – kein Protokolldetail; CON-006); CANopen NEU / Ziel | UDS, CANopen, J1939-App (`CanKit.Pro.J1939`, FR-J1939-001..006 Must), HAWE-Privatprotokoll |
 
 ### Auflösung der Requirement-Referenzen (arc42 ↔ SRS)
 
@@ -123,10 +123,11 @@ Zero-Copy) erhöhen den Aufwand für Q4 und für einen sicheren **Frame-Ownershi
 
 - **OSS-Paket** (Apache-2.0), veröffentlicht als NuGet (`GeneratePackageOnBuild`, `snupkg`-Symbole).
 - **Adapterweise CI** (`.github/workflows`) mit **Pfadfiltern**; Solution-Filter
-  `CanKitAdapters.slnf` / `CanKitTransports.slnf`.
+  `CanKitAdapters.slnf` sowie Pro-Filter (`CanKitProIsoTp.slnf`, `CanKitProJ1939Tp.slnf`, …).
+  Legacy-`CanKitTransports.slnf` wurde mit dem Legacy-ISO-TP-Paket entfernt.
 - **Default-Branch `master`** – einige Pipelines triggern noch auf `main` (toter Trigger, Review §3).
-- Entwicklung durch kleines Team; Reife-Gefälle zwischen Kern (produktionsnah) und
-  Transport (experimentell) muss durch `IsPackable`/„experimental"-Markierung sichtbar sein.
+- Entwicklung durch kleines Team; unfertige Pro-Pakete bleiben über `IsPackable=false`
+  von der Release-Pipeline ausgeschlossen.
 
 ## 2.3 Konventionen
 
@@ -134,8 +135,8 @@ Zero-Copy) erhöhen den Aufwand für Q4 und für einen sicheren **Frame-Ownershi
   `<Vendor>Options`/`OptionsConfigurator`, `Native/` (P/Invoke + Fake), `Registers/` mit
   `[CanRegistryEntry]`, `Providers/`, `<Vendor>Endpoint`.
 - **Namespaces:** `CanKit.Abstractions.API.*` (öffentlich), `.SPI.*` (Erweiterungspunkte),
-  `CanKit.Core.*`, `CanKit.Adapter.<Vendor>`, `CanKit.Transport.IsoTp`.
-  (Ausnahme/Schuld: ISO-TP mischt `CanKit.Transport.IsoTp.*` und `CanKit.Protocol.IsoTp.*` – Review §3.)
+  `CanKit.Core.*`, `CanKit.Adapter.<Vendor>`, `CanKit.Pro.*` (L2–L4).
+  Legacy-`CanKit.Transport.IsoTp` (inkl. gemischter `CanKit.Protocol.IsoTp.*`-Namespaces) ist entfernt.
 - **Diagnostics:** zentral über `CanKitLogger` und `CanBusExceptionDispatcher`.
 - **Zeitbasis:** gemischt `DateTime.Now`/`UtcNow` (Ist-Schuld, Review §2.5) – Ziel: einheitlich UTC.
 
@@ -302,7 +303,7 @@ flowchart TB
 | L1 Raw-CAN-Kern | vorhanden | Herstellerneutraler Frame-Zugriff, Discovery, Utilities, Diagnostics. | `ICanBus`, `CanBus.Open`, `CanRegistry` | `FR-RAW-*` |
 | L2 Raw-CAN-Dienste | NEU | Ein RX-Strom → N unabhängige gefilterte Consumer; Ownership-Vertrag; TX-Confirm; Aktor-Modell. | (neu) `ICanBusService` / `ISubscription` | `FR-RAW-DEMUX-*`, `FR-RAW-OWN-*`, `FR-RAW-TXC-*` |
 | L3 Transport | Prototyp (ISO-TP) / MVP (J1939-TP) | Segmentierung/Reassemblierung (ISO-TP), Sessions (J1939-TP, `CanKit.Pro.J1939Tp`: BAM/CM/DT, T1..T4/Tr/Th, parallele Sessions über gemeinsamen `ICanBusService`). | `IIsoTpChannel`, `IIsoTpScheduler`, `IJ1939TpChannel` | `FR-TP-*` |
-| L4 Anwendungsprotokolle | UDS-MVP vorhanden (`CanKit.Pro.Uds`); HAWE-Rahmen vorhanden (`CanKit.Pro.Hawe`); Rest NEU | Diagnose-/Applikationssemantik auf L3/L2. | `IUdsClient`/`UdsClient` (UDS); HAWE-Rahmen: `IHaweCodec`/`IHaweCodecRegistry`/`HaweChannel` (generisch, kein Protokolldetail; CON-006); sonst neu, protokollspezifisch | `FR-UDS-*`, `FR-CO-*`, `FR-J1939-*`, `FR-HAWE-*` |
+| L4 Anwendungsprotokolle | UDS-MVP vorhanden (`CanKit.Pro.Uds`); J1939-App-MVP vorhanden (`CanKit.Pro.J1939`, FR-J1939-001..006 Must, FR-J1939-007 Should); HAWE-Rahmen vorhanden (`CanKit.Pro.Hawe`); CANopen NEU | Diagnose-/Applikationssemantik auf L3/L2. | `IUdsClient`/`UdsClient` (UDS); `IJ1939Node`/`J1939Node` (J1939-App); HAWE-Rahmen: `IHaweCodec`/`IHaweCodecRegistry`/`HaweChannel` (generisch, kein Protokolldetail; CON-006); CANopen neu, protokollspezifisch | `FR-UDS-*`, `FR-CO-*`, `FR-J1939-*`, `FR-HAWE-*` |
 
 ## 5.2 Ebene 2 – Zoom L1 (Raw-CAN-Kern, vorhanden)
 
@@ -890,7 +891,7 @@ flowchart TB
             Abstr["CanKit.Abstractions (netstandard2.0)"]
             Core["CanKit.Core (netstandard2.0/net8.0/net8.0-windows)"]
             AdapterDll["CanKit.Adapter.&lt;Vendor&gt;"]
-            IsoTpDll["CanKit.Transport.IsoTp (experimentell)"]
+            IsoTpDll["CanKit.Pro.IsoTp (MVP, IsPackable=false)"]
         end
     end
 
@@ -1156,8 +1157,12 @@ STmin-Grenzwerte, SN-Folge, N_Bs/N_Cr-Timeouts gegen Virtual.
 
 ### ADR-4: ISO-TP als separates Transportpaket
 - **Kontext:** ISO-TP ist optional und reifer als der Kern werden muss; Vendor-SDK-Kopplung vermeiden.
-- **Entscheidung:** eigenes Paket `CanKit.Transport.IsoTp` (L3), unabhängig versioniert.
-- **Konsequenzen:** + Kern bleibt schlank, unabhängige Release-Kadenz. + Release-Schutz setzt nun `IsPackable=false`, entfernt die versehentliche `Peak.PCANBasic.NET`-Abhängigkeit und kennzeichnet den Prototyp als experimentell. − Funktionale ISO-TP-Defekte blockieren weiterhin den Produktionseinsatz (§11).
+- **Entscheidung (aktualisiert):** eigenes Paket `CanKit.Pro.IsoTp` (L3) auf den L2-Diensten,
+  unabhängig versioniert (`IsPackable=false` bis zur Reife). Der Legacy-Prototyp
+  `CanKit.Transport.IsoTp` inkl. Abstractions-`API/Transport` und PCAN-native ISO-TP-Register
+  wurde entfernt.
+- **Konsequenzen:** + Kern bleibt schlank, unabhängige Release-Kadenz, keine Vendor-SDK-Kopplung
+  im Transportpaket. − Functional Addressing (FR-TP-019) und Long-Payload-FD-Matrix folgen.
 
 ### ADR-5 (umgesetzt): L2-Demux statt konkurrierendem `ReceiveAsync`
 - **Kontext:** Mehrere Protokolle wollen denselben RX-Strom sehen; heute konkurrieren
@@ -1356,7 +1361,7 @@ Priorisierung: **K** = kritisch, **W** = wichtig, **G** = gering.
 
 | Prio | Risiko / Schuld | Auswirkung | Gegenmaßnahme | Review § |
 |------|------------------|-----------|---------------|----------|
-| K | **ISO-TP funktional defekt (WIP)**: `IsoTp.Open` wirft `NotImplementedException`; invertiertes `canfd` in allen 4 Buildern; FC trägt FF-PCI; FC-Padding nullt BS/STmin; FF-Längenparsing verliert High-Nibble; `EncodeStmin` wirft bei 0/1 ms; CF-Segmentierung (Byte 6 verloren, SN=0 statt 1); Multi-Frame-TX startet nie (`WaitFc`+`IsReadyToSendData=false`). | Jede ISO-TP-Übertragung schlägt fehl bzw. hängt; Paket nicht funktionsfähig. | Protokollfehler beheben; Scheduler ereignisgetrieben (`AsyncAutoResetEvent`) + Deadline-Prüfung; Virtual-Loopback-Tests; **bis dahin `IsPackable=false`/„experimental"**. *Update:* Codec-Fix als Paket `CanKit.Pro.IsoTp` (PR §Codec-Foundation). *Update 2:* aktorgetriebener Laufzeit-Teil (`IIsoTpChannel`/`IsoTp.Open(...)`) im selben Paket ergänzt: nutzt `CanKit.Pro.RawCan` (Demux + `SendConfirmed`), `CanKit.Pro.Actor` (Single-Writer-Loop, ereignisgetrieben) und `CanKit.Pro.Reliability` (N_As/N_Bs/N_Cr-Deadlines) — deckt FR-TP-001/002/008/009/010/011/012/016..018 über Virtual-Loopback-Integrationstests ab; SendConfirmed-basiertes Confirm-Tracking macht FR-TP-013 (`TryPeek`-Polyfill) im neuen Paket gegenstandslos. Der **Legacy-Prototyp `CanKit.Transport.IsoTp` selbst bleibt in diesem PR unverändert** und wird in einem eigenen Folge-PR entfernt. | §1.1 |
+| K | ✅ *Behoben/entfernt.* **ISO-TP Legacy-Prototyp**: durch `CanKit.Pro.IsoTp` (Codec + Actor-Runtime auf L2) ersetzt; Legacy-`CanKit.Transport.IsoTp`, Abstractions-`API/Transport` (inkl. `Excpetions`) und PCAN-`PcanIsoTp*` entfernt. | Produktionseinsatz blockiert durch defekten Prototyp. | Ausschließlich `CanKit.Pro.IsoTp` nutzen; Virtual-Loopback-Tests in `CanKitProIsoTp.slnf`. | §1.1 |
 | K | ✅ *Behoben.* **Frame-Ownership**: `CanFrame.Dispose()` ignorierte `OwnMemory` (gab Owner immer frei). | Use-after-free / Double-Dispose bei gepoolten Buffern über Events/Pipe/Virtual-Hub. | `Dispose()` → `if (OwnMemory) _memoryOwner?.Dispose();`; `CanFrame.Duplicate(IBufferAllocator)` ergänzt; Ownership-Vertrag (8.1/ADR-9) durchgesetzt. | §1.5, §2.1 |
 | K | ✅ *Behoben.* **`QueuedCanBus`-Retry-Stau**: Batch-Reste blieben bis zum nächsten `Enqueue` liegen (blockierte in `WaitToReadAsync`). | Frames wurden verspätet oder nie gesendet; Backoff wirkungslos. | `WaitToReadAsync` nur bei `index==0`; sonst direkter Retry mit Backoff; nur die gültige Batch-Teilmenge wird an `Transmit` übergeben. | §1.2 |
 | K | ✅ *Behoben.* **SocketCAN/ZLG Stopwatch nie gestartet**: `remainingTime` blieb konstant. | Sende-`poll()`-Endlosschleife bei nicht-annehmendem, schreibbarem Bus; unbegrenzte Wartezeit. | `Stopwatch.StartNew()` in `SocketCanBus.Transmit` (2×) und 3 ZLG-Transceivern. | §1.3 |
@@ -1369,16 +1374,14 @@ Priorisierung: **K** = kritisch, **W** = wichtig, **G** = gering.
 | W | ✅ *Behoben.* **`BitTimingSolver.FromSamplePoint`**: `Clamp` warf statt `continue` bei kleinen NTQ. | Gesamte Timing-Suche crashte für bestimmte Limits. | Ungültige NTQ/TSEG-Kandidaten werden übersprungen (`continue`). | §2.5 |
 | W | **`CanEndpoint.Parse` lowercased Host**: `zlg://USBCANFD-200U` → `usbcanfd-200u`; Sonderzeichen werfen. | Adapter müssen case-insensitiv sein (nicht garantiert); Namen mit Leerzeichen scheitern. | Host case-preserving parsen; Namensregeln dokumentieren. | §2.5 |
 | G | ✅ *Behoben.* **Typos in öffentlicher API**: `ExceptionOccured`→`ExceptionOccurred`, `ReadTImeOutMs`→`ReadTimeoutMs`; Namespace `Excpetions` entfällt mit Legacy-ISO-TP-Abbau. | Nach 1.0 nur als Breaking Change korrigierbar. | Vor 1.0 bereinigt (NFR-011). | §3 |
-| G | **ISO-TP-Packaging-Release-Schutz**: `IsPackable=false` ist gesetzt, `Peak.PCANBasic.NET` ist entfernt, und die Metadaten kennzeichnen das Projekt als experimentell; gemischte Namespaces bleiben unverändert. | Der unfertige Prototyp wird nicht als NuGet-Paket veröffentlicht und zieht das PEAK-SDK nicht mehr transitiv ein. | Projekt bis zur Ablösung durch das künftige produktionsreife ISO-TP-Paket nicht packbar halten; Namespace-Bereinigung bleibt eine separate Breaking-Change-Entscheidung. | §1.1/16, §3 |
+| G | ✅ *Behoben.* **ISO-TP-Packaging**: Legacy-Paket entfernt; `CanKit.Pro.IsoTp` bleibt `IsPackable=false` bis zur Reife und ohne Vendor-SDK-Referenzen. | — | Pro-ISO-TP über `CanKitProIsoTp.slnf` / `pro-isotp-ci.yml` testen. | §1.1/16, §3 |
 | G | **Zeitbasis gemischt** (`DateTime.Now` vs. `UtcNow`) und Copy-Paste-Logtexte („Vector CAN bus", „ControlCAN poll loop"). | Korrelation erschwert; irreführende Logs. | Einheitlich UTC; Logtexte korrigieren. | §2.4, §2.5 |
-| G | **CI-Transportabdeckung**: Adapter-/Core-Workflows haben weiterhin Altlasten bei Triggern, aber `CanKitTransports.slnf` besitzt jetzt einen reinen Build-Transport-Workflow. | Transport-Änderungen erhalten einen hardwarefreien Release-Build auf Ubuntu und Windows (inkl. `net8.0-windows`). | Transport-CI bis zur Existenz von ISO-TP-Verhaltenstests build-only lassen. | §3, §4 |
+| G | ✅ *Aktualisiert.* **CI-Transportabdeckung**: Legacy-`CanKitTransports.slnf` entfernt; Pro-Transports haben eigene Filter/Workflows (`CanKitProIsoTp.slnf`, `CanKitProJ1939Tp.slnf`). | Pro-Transport-Änderungen erhalten Virtual-Loopback-CI. | Weitere L3/L4-Pakete analog anbinden. | §3, §4 |
 
 **Gesamtbewertung:** L0/L1 sind produktionsnah; die punktuellen kritischen Bugs
 (Stopwatch, BCM, QueuedCanBus, Frame-Ownership, Virtual-Hub) sind behoben (siehe ✅-Markierungen
-oben). L3 (ISO-TP) ist weiterhin ein nicht funktionsfähiger Prototyp. Von den vier
-strukturellen L2-Lücken ist der Frame-Ownership-Vertrag (FR-RAW-001..005) für L1-Kern und
-Virtual-Adapter umgesetzt (siehe §8.1); Demux, Threading/Aktor und TX-Confirm sind weiterhin
-Ziel-Architektur und Voraussetzung für belastbare L3/L4-Stacks.
+oben). L3 ISO-TP und J1939-TP existieren als Pro-MVPs auf L2; der Legacy-ISO-TP-Prototyp ist
+entfernt. L2 Demux/Actor/TX-Confirm/Addressing/Reliability sind Grundlage der Pro-Stacks.
 
 ---
 

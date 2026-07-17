@@ -5,7 +5,7 @@ namespace CanKit.Pro.Hawe
 {
     /// <summary>
     /// A registry of <see cref="IHaweCodec"/> factories keyed by codec <see cref="IHaweCodec.Name"/>
-    /// (SRS FR-HAWE-001). Its role is exactly analogous to <c>IIsoTpRegister</c> for ISO-TP: a
+    /// (SRS FR-HAWE-001). Its role is analogous to the former ISO-TP register SPI: a
     /// public discovery/registration surface that lets an application (or a private HAWE module
     /// assembly) plug in a proprietary codec without touching the framework itself.
     /// </summary>

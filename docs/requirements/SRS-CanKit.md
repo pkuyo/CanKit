@@ -81,7 +81,7 @@ CanKit wird in fünf Ebenen strukturiert. Diese Nomenklatur ist verbindlich und 
 | L0 | Adapter-Ebene | 7 Vendor-Adapter (SocketCAN, ZLG, PCAN, Kvaser, Vector, ControlCAN, Virtual) + Fake-Native-Schicht für CI | **vorhanden**, produktionsnah |
 | L1 | Raw-CAN-Kern | `ICanBus`, `CanFrame`/`CanFrameView`, `ITransceiver`, `ICanDevice`, `IPeriodicTx`, `CanRegistry`, Utilities (`AsyncFramePipe`, `QueuedTxCanBus`, `SoftwarePeriodicTx`, `PreciseDelay`, `BitTimingSolver`) | **vorhanden**, mit bekannten Defekten (siehe Review) |
 | L2 | Raw-CAN-Dienstebene | Multi-Consumer-Demultiplexing, Frame-Ownership-Vertrag, TX-Bestätigung, Adressierungs-Helfer, Threading-Modell je Protokollinstanz, Fehler-/Timeout-Infrastruktur | **neu zu bauen** – Gegenstand dieser SRS |
-| L3 | Transport-Ebene | ISO-TP (ISO 15765-2), J1939-TP (TP.BAM/TP.CM) | ISO-TP: **unfertiger, funktional defekter Prototyp** (`CanKit.Transport.IsoTp`); J1939-TP: **nicht vorhanden** |
+| L3 | Transport-Ebene | ISO-TP (ISO 15765-2), J1939-TP (TP.BAM/TP.CM) | ISO-TP: **MVP vorhanden** (`CanKit.Pro.IsoTp`); J1939-TP: **MVP vorhanden** (`CanKit.Pro.J1939Tp`); Legacy-`CanKit.Transport.IsoTp` entfernt |
 | L4 | Anwendungsprotokoll-Ebene | UDS (auf ISO-TP), CANopen, J1939 (Applikation), HAWE-Privatprotokoll | **nicht vorhanden** |
 
 L2 ist die vom Auftraggeber geforderte zusätzliche „raw-CAN“-Schicht: Sie kapselt alles, was mehrere Protokoll-Stacks gemeinsam benötigen und was heute nicht (oder nicht korrekt) in L1 existiert.
@@ -109,8 +109,8 @@ Siehe Abschnitt 6 (`CON-xxx`). Zentral: Multi-Targeting (netstandard2.0, net8.0,
 | ID | Annahme/Abhängigkeit |
 |---|---|
 | A-1 | Die vier in Abschnitt 4.1 hergeleiteten L2-Architekturlücken (Frame-Ownership, Demultiplexing, Threading-Modell, TX-Confirm) müssen geschlossen sein, bevor L3/L4-Stacks produktiv gebaut werden; L3/L4-Anforderungen in dieser SRS setzen eine funktionsfähige L2 voraus. |
-| A-2 | Der bestehende ISO-TP-Prototyp (`CanKit.Transport.IsoTp`) wird als Ausgangsbasis für L3 wiederverwendet, nicht komplett neu geschrieben; die in Review §1.1 gelisteten Defekte werden als Korrekturaufwand in L3 eingeplant. |
-| A-3 | J1939-TP wird als eigenständiger Transport nach demselben SPI-Muster wie ISO-TP (`IIsoTpRegister`-Analogon) realisiert. |
+| A-2 | Der defekte ISO-TP-Prototyp (`CanKit.Transport.IsoTp`) wurde zugunsten von `CanKit.Pro.IsoTp` (Codec + aktorgetriebene Runtime auf L2) ersetzt und aus dem Tree entfernt; die Review-§1.1-Defekte gelten als durch den Neubau adressiert. |
+| A-3 | J1939-TP wird als eigenständiger Transport (`CanKit.Pro.J1939Tp`) nach demselben L2-Kompositionsmuster wie `CanKit.Pro.IsoTp` realisiert. |
 | A-4 | Vendor-SDK-Lizenzen (Peak PCANBasic, Kvaser CANlib, Vector XL-Driver) bleiben proprietär und werden nicht Teil dieser Spezifikation; nur die Integrationspunkte werden betrachtet. |
 | A-5 | HIL-Testinfrastruktur mit realer Hardware wird für Abnahmetests der L3/L4-Ebenen benötigt, ist aber nicht Gegenstand dieser SRS (siehe Abschnitt 7). |
 | A-6 | Das HAWE-Protokoll ist vertraulich und dem Requirements-Team nicht im Detail bekannt; entsprechende Anforderungen (`FR-HAWE-xxx`) sind bewusst generisch als Rahmen mit Erweiterungspunkten formuliert und müssen bei Verfügbarkeit der Protokollspezifikation verfeinert werden. |
@@ -206,27 +206,17 @@ Hintergrund: Zustandsautomaten in L3/L4 (z. B. ISO-TP-Sendepfad, CANopen-SDO) be
 
 #### 4.2.1 ISO-TP (ISO 15765-2)
 
-Ist-Zustand: unfertiger, funktional defekter Prototyp (`CanKit.Transport.IsoTp`); öffentlicher Einstieg wirft `NotImplementedException` (Review §1.1). Die folgenden Anforderungen umfassen sowohl die Fertigstellung/Fehlerbehebung als auch die vollständige Spezifikation des Zielverhaltens.
+Ist-Zustand: MVP umgesetzt als `CanKit.Pro.IsoTp` (`src/transports/CanKit.Pro.IsoTp`, `IsPackable=false`).
+Der Legacy-Prototyp `CanKit.Transport.IsoTp` sowie die zugehörige Abstractions-`API/Transport`-Oberfläche
+(inkl. Namespace-Typo `Excpetions`), `IIsoTpRegister` und der PCAN-native ISO-TP-Register-Pfad
+(`PcanIsoTp*`) wurden entfernt. ISO-TP läuft ausschließlich über `CanKit.Pro.IsoTp` auf den L2-Diensten
+(RawCan-Demux, `SendConfirmed`, `IProtocolActor`, `IDeadlineScheduler`).
 
-> **Fortschritt (in Arbeit):** Die deterministische Codec-Grundlage (SF/FF/CF/FC-Bau,
-> `TryParsePci`, `EncodeStMin`/`DecodeStMin` inkl. reservierter Bänder) wird als eigenständiges
-> Paket `CanKit.Pro.IsoTp` (`IsPackable=false`, 0.1.x/0.2.x) aufgebaut und soll den defekten Codec
-> des Prototyps ablösen. Damit sind aktuell die Anforderungen **FR-TP-003, FR-TP-004, FR-TP-005,
-> FR-TP-006, FR-TP-007, FR-TP-015 und FR-RAW-052** unit-testabgedeckt (Codec-Anteil).
->
-> **Runtime-Increment (in Arbeit):** In derselben Assembly wurden zusätzlich `IIsoTpChannel` /
-> `IsoTpChannelOptions` / `IsoTp.Open(...)` sowie der aktorgetriebene Laufzeit-Scheduler ergänzt.
-> Der Scheduler setzt auf den bestehenden L2-Bausteinen auf (RawCan-Demux/Subscription für RX,
-> `ICanBusService.SendConfirmed` für die TX-Bestätigung, `IProtocolActor` für den Single-Writer-
-> Loop, `IDeadlineScheduler` für N_As/N_Bs/N_Cr). Damit sind über Virtual-Loopback-Integrationstests
-> zusätzlich **FR-TP-001, FR-TP-002, FR-TP-008, FR-TP-009, FR-TP-010, FR-TP-011, FR-TP-012,
-> FR-TP-016, FR-TP-017 und FR-TP-018** abgedeckt. **FR-TP-013** (netstandard2.0-`TryPeek`-Polyfill
-> im TX-Queue-Ablauf) bleibt formal offen — das neue Paket verwendet keine solche Queue, sondern
-> `SendConfirmed` + einen `SemaphoreSlim`-Send-Gate, und trägt daher die Anforderung nicht mehr. Der
-> Bug im Legacy-Prototypen (`CanKit.Transport.IsoTp`) ist nicht adressiert; das Legacy-Paket wird in
-> einem separaten PR entfernt. **FR-TP-014** (mehrere inhaltsgleiche Frames im Confirm-Tracking) ist
-> durch die L2-Implementierung von `SendConfirmed` (FIFO-Matching je (ID, Payload)) bereits im
-> Framework gewährleistet.
+> **Abdeckung:** Codec-Unit-Tests decken **FR-TP-003..007, FR-TP-015, FR-RAW-052** ab; Virtual-Loopback-
+> Integrationstests decken **FR-TP-001/002/008..012/016..018** ab. **FR-TP-013** (netstandard2.0-
+> `TryPeek`-Polyfill im alten TX-Queue-Ablauf) entfällt mit dem Legacy-Paket — `CanKit.Pro.IsoTp`
+> nutzt `SendConfirmed` + `SemaphoreSlim`-Send-Gate. **FR-TP-014** ist durch L2-`SendConfirmed`
+> (FIFO-Matching je (ID, Payload)) abgedeckt. **FR-TP-019** (Functional Addressing, Could) bleibt offen.
 
 | ID | Anforderung | Priorität | Verifikation | Quelle |
 |---|---|---|---|---|
@@ -249,7 +239,7 @@ Ist-Zustand: unfertiger, funktional defekter Prototyp (`CanKit.Transport.IsoTp`)
 | FR-TP-017 | Das System MUSS die TX-Bestätigung für ISO-TP-Sendevorgänge über die in FR-RAW-030..033 definierte Abstraktion realisieren (kein direktes `SetResult`/`SetException` in Race-Situationen mit Cancellation). | Must | Unit-Test: gleichzeitige Cancellation und TX-Fehlschlag führen zu genau einem konsistenten Ergebnis, keine `InvalidOperationException`. | Review §1.1 Punkt 14 |
 | FR-TP-018 | Das System SOLLTE dem Protokollentwickler erlauben, mehrere ISO-TP-Kanäle mit unterschiedlichen Adresspaaren gleichzeitig über denselben physischen Bus zu betreiben (Nutzung des L2-Demultiplexing gemäß FR-RAW-010ff.). | Should | Integrationstest: zwei ISO-TP-Kanäle mit unterschiedlichen CAN-IDs auf demselben Virtual-Bus arbeiten unabhängig und korrekt. | Abgeleitet aus L2-Anforderungen |
 | FR-TP-019 | Das System KANN Funktionale Adressierung (Functional Addressing, 1:n-Anfragen gemäß ISO 15765-2/ISO 14229) unterstützen. | Could | Integrationstest: funktionale Anfrage wird von mehreren simulierten ECUs beantwortet. | ISO 15765-2 |
-| FR-TP-020 | Das System MUSS das ISO-TP-Paket in seiner Abhängigkeitsliste keine unnötigen Vendor-SDK-Referenzen (z. B. `Peak.PCANBasic.NET`) enthalten. | Must | Build-/Paketprüfung: `CanKit.Transport.IsoTp.csproj` referenziert keine Adapter-spezifischen Vendor-Pakete. | Review §1.1 Punkt 16 |
+| FR-TP-020 | Das System MUSS das ISO-TP-Paket in seiner Abhängigkeitsliste keine unnötigen Vendor-SDK-Referenzen (z. B. `Peak.PCANBasic.NET`) enthalten. | Must | Build-/Paketprüfung: `CanKit.Pro.IsoTp.csproj` referenziert keine Adapter-spezifischen Vendor-Pakete. | Review §1.1 Punkt 16 |
 
 #### 4.2.2 J1939-TP (TP.BAM/TP.CM)
 
@@ -304,7 +294,7 @@ Ist-Zustand: nicht vorhanden, Neubau.
 
 #### 4.3.3 J1939 (Applikation)
 
-Ist-Zustand: nicht vorhanden, Neubau; setzt FR-TP-030ff. voraus.
+Ist-Zustand: MVP umgesetzt als eigenständiges Paket `CanKit.Pro.J1939` (`src/protocols/CanKit.Pro.J1939`, `IsPackable=false`, Version 0.1.0). Actor-getriebener Node (`IJ1939Node`) auf Basis der L2-Dienste (`ICanBusService`, `IProtocolActor`, `IDeadlineScheduler`) sowie der J1939-Adressierungshelfer aus `CanKit.Pro.Addressing`; für Nutzlasten > 8 Byte wird automatisch die J1939-TP-Ebene (`CanKit.Pro.J1939Tp`) verwendet. Deckt FR-J1939-001..006 (Must) sowie FR-J1939-007 (Should, periodisches Senden via `PeriodicSchedule`) mittels Virtual-Loopback-Integrationstests in `tests/CanKit.Tests/TestCases/J1939/J1939NodeTests.cs` ab. Weiterhin offen: Feinabstimmung der SAE J1939-81 Arbitrationszeiten gegen reale Hardware sowie erweiterte Multi-Adress-Reservierungen und `IPeriodicTx`-basierte L2-Periodizität statt der aktuellen Software-Schleife.
 
 | ID | Anforderung | Priorität | Verifikation | Quelle |
 |---|---|---|---|---|
@@ -322,7 +312,7 @@ Ist-Zustand: Der generische Rahmen (`src/protocols/CanKit.Pro.Hawe`) existiert u
 
 | ID | Anforderung | Priorität | Verifikation | Quelle |
 |---|---|---|---|---|
-| FR-HAWE-001 | Das System MUSS dem Applikationsentwickler einen Erweiterungspunkt (SPI, analog `IIsoTpRegister`) bieten, über den ein HAWE-spezifisches Frame-Codec-Modul (Kodierung/Dekodierung proprietärer Nachrichtenformate) eingebunden werden kann, ohne den L2/L3-Kern zu verändern. | Must | Architekturtest: Referenz-Dummy-Codec wird über SPI registriert und im Registry-Auto-Discovery gefunden. | Auftrag, Annahme A-6 |
+| FR-HAWE-001 | Das System MUSS dem Applikationsentwickler einen Erweiterungspunkt (SPI, analog `IHaweCodecRegistry`) bieten, über den ein HAWE-spezifisches Frame-Codec-Modul (Kodierung/Dekodierung proprietärer Nachrichtenformate) eingebunden werden kann, ohne den L2/L3-Kern zu verändern. | Must | Architekturtest: Referenz-Dummy-Codec wird über SPI registriert und im Registry gefunden. | Auftrag, Annahme A-6 |
 | FR-HAWE-002 | Das System MUSS dem Applikationsentwickler die Möglichkeit bieten, beliebige rohe CAN-Frame-Payloads gemäß einem konfigurierbaren, frame-basierten Muster (ID-Bereich, Payload-Layout) zu senden und zu empfangen, ohne dass CanKit-Kern das konkrete HAWE-Format kennen muss. | Must | Integrationstest: generisches Frame-Muster wird über Virtual-Loopback korrekt gesendet/empfangen. | Auftrag |
 | FR-HAWE-003 | Das System SOLLTE dem HAWE-Erweiterungsmodul Zugriff auf die L2-Dienste (Demultiplexing, TX-Confirm, Threading-Modell) auf gleicher Grundlage wie ISO-TP/CANopen/J1939 gewähren. | Should | Architekturreview: HAWE-Referenzmodul nutzt dieselben L2-SPI-Schnittstellen wie ISO-TP. | Konsistenzanforderung |
 | FR-HAWE-004 | Das System KANN einen Platzhalter-Zustandsautomaten (Session/Handshake) als Vorlage für die spätere Umsetzung der tatsächlichen HAWE-Protokolllogik bereitstellen, sobald die Spezifikation verfügbar ist. | Could | Nicht verifizierbar vor Vorliegen der HAWE-Spezifikation; Platzhalter-Vorhandensein per Codereview. | Annahme A-6 |
@@ -343,7 +333,7 @@ Ist-Zustand: Der generische Rahmen (`src/protocols/CanKit.Pro.Hawe`) existiert u
 | NFR-007 | Ressourcenkritische Pfade (Frame-Erzeugung/-Versand in L2/L3 bei hoher Bus-Last) SOLLTEN Allokationen minimieren (Pooling gemäß Ownership-Vertrag, kein `ArrayPool.Rent` ohne Rückgabe). | Should | Benchmark: Allokationsmessung (Bytes/Frame) für ISO-TP-SF/CF-Pfad vor/nach Umsetzung. | Review §1.1 Punkt 13 |
 | NFR-008 | Das System MUSS Thread-Safety für alle von mehreren Protokollinstanzen gleichzeitig genutzten L2-Komponenten (Demultiplex-Hub, Registry, Scheduler) gewährleisten. | Must | Stresstest mit parallelen Registrierungen/Abmeldungen und gleichzeitigem RX/TX-Verkehr ohne Datenrennen. | Review §1.1 Punkt 14; §2.5 (`CanRegistry` ohne Lock) |
 | NFR-009 | Alle L2/L3/L4-Komponenten MÜSSEN gegen den bestehenden Virtual-Adapter (Loopback, ohne reale Hardware) testbar sein, um CI-taugliche Regressionstests zu ermöglichen. | Must | CI-Lauf: vollständige L2/L3/L4-Testsuite läuft ohne Hardware-Abhängigkeit gegen `CanKit.Adapter.Virtual`. | Auftrag; bestehendes Fake-Native-Muster (Review, Gesamteinschätzung) |
-| NFR-010 | Neue Protokoll-Ebenen (L3/L4) MÜSSEN dem bestehenden SPI-Erweiterbarkeitsmuster folgen (eigenständiges Paket, Registrierung über `[CanRegistryEntry]`/`ICanRegistryEntry`-Analogon), um Wartbarkeit und lose Kopplung zum Kern zu sichern. | Must | Architekturreview: neues Transport-/Protokollpaket registriert sich ausschließlich über SPI, ohne Änderungen an `CanKit.Core`. | Bestehendes Muster `IIsoTpRegister`/`CanRegistryEntry` |
+| NFR-010 | Neue Protokoll-Ebenen (L3/L4) MÜSSEN dem bestehenden SPI-Erweiterbarkeitsmuster folgen (eigenständiges Paket, Registrierung über `[CanRegistryEntry]`/`ICanRegistryEntry`-Analogon bzw. Pro-Factory/`Open`-Einstieg), um Wartbarkeit und lose Kopplung zum Kern zu sichern. | Must | Architekturreview: neues Transport-/Protokollpaket registriert sich ausschließlich über SPI bzw. Factory, ohne Änderungen an `CanKit.Core`. | Bestehendes Muster `CanRegistryEntry` / Pro-`Open`-Factories |
 | NFR-011 | Öffentliche APIs neuer Ebenen (L2/L3/L4) SOLLTEN von Anfang an konsistente Namensgebung verwenden. **Umgesetzt (vor 1.0):** `ExceptionOccured`→`ExceptionOccurred`, `ReadTImeOutMs`→`ReadTimeoutMs`; Namespace-Typo `Excpetions` entfällt mit dem Legacy-ISO-TP-Abbau. | Should | API-Review/Linting-Checkliste vor 1.0-Release; Rename-Diff + Tests. | Review §3, Empfehlung Pkt. 8 |
 | NFR-012 | Zeitstempel in neu geschaffenen L2/L3/L4-Datenstrukturen MÜSSEN einheitlich UTC verwenden (Korrektur der Inkonsistenz `DateTime.Now` vs. `DateTime.UtcNow` in L1). | Should | Codereview-Checkliste; Unit-Test auf `DateTimeKind.Utc`. | Review §2.5 |
 
@@ -359,7 +349,7 @@ Ist-Zustand: Der generische Rahmen (`src/protocols/CanKit.Pro.Hawe`) existiert u
 | CON-004 | Neue Pakete (L3/L4) MÜSSEN, solange sie funktional unvollständig sind, klar als experimentell gekennzeichnet oder von der Release-Pipeline ausgeschlossen werden (`IsPackable=false`), analog der Review-Empfehlung für den aktuellen ISO-TP-Stand. Stand: Der aktuelle ISO-TP-Prototyp ist als experimentell gekennzeichnet und mit `IsPackable=false` vom Packaging ausgeschlossen. | organisatorisch | Review §1.1, Empfehlung Pkt. 1 |
 | CON-005 | Das Projekt verwendet Apache-2.0-Lizenzierung (`PackageLicenseExpression` in `Directory.Build.props`); neue L3/L4-Pakete MÜSSEN dieselbe Lizenz führen, sofern keine abweichende vertragliche Regelung (z. B. HAWE-Vertraulichkeit) entgegensteht. | rechtlich/organisatorisch | `src/Directory.Build.props` |
 | CON-006 | Das HAWE-Protokoll ist vertraulich; jegliche konkrete Protokolldetails DÜRFEN NICHT in öffentlichen CanKit-Repositories oder NuGet-Paketen offengelegt werden. Nur der generische Rahmen (FR-HAWE-xxx) ist öffentlich. | rechtlich | Auftrag, Annahme A-6 |
-| CON-007 | CI-Workflows testen aktuell projektweise über `.slnf`-Filterdateien (z. B. `CanKitAdapters.slnf`, `CanKitTransports.slnf`); neue L3/L4-Pakete MÜSSEN in eine passende `.slnf`-Datei mit eigenem CI-Workflow aufgenommen werden. Stand: `CanKitTransports.slnf` wird bis zur Einführung von ISO-TP-Tests von einem reinen Build-Transport-Workflow abgedeckt. | organisatorisch | Review §4 („ISO-TP-Projekt hat keinen eigenen Workflow“) |
+| CON-007 | CI-Workflows testen aktuell projektweise über `.slnf`-Filterdateien (z. B. `CanKitAdapters.slnf`, `CanKitProIsoTp.slnf`); neue L3/L4-Pakete MÜSSEN in eine passende `.slnf`-Datei mit eigenem CI-Workflow aufgenommen werden. Stand: Legacy-`CanKitTransports.slnf` wurde mit dem Legacy-ISO-TP-Paket entfernt; Pro-Transports nutzen eigene Filter (`CanKitProIsoTp.slnf`, `CanKitProJ1939Tp.slnf`, …). | organisatorisch | Review §4 („ISO-TP-Projekt hat keinen eigenen Workflow“) |
 | CON-008 | Der Standard-Git-Branch ist `master`; Release-/Paket-Pipelines MÜSSEN konsistent auf diesen Branch referenzieren. | organisatorisch | Review §3, §5 Pkt. 9 (`nuget-pipeline.yml` Branch-Trigger-Fehler) |
 
 ---
@@ -388,16 +378,16 @@ Verweise auf Architektur-Bausteine nutzen die in Abschnitt 2.1 definierten Schic
 |---|---|---|
 | FR-RAW-001..005 | L2 – *Frame-Ownership-Vertrag* (geplant), aufbauend auf L1 `CanFrame`/`CanFrameView` (`src/core/CanKit.Abstractions/API/Can/Definitions/CanFrame.cs`) | Unit-Test, Virtual-Loopback-Integrationstest |
 | FR-RAW-010..014 | L2 – *Demultiplex-Hub/Subscription-Manager* (umgesetzt in `CanKit.Pro.RawCan`), aufbauend auf L1 `ICanBus.FrameObserved` (`src/core/CanKit.Abstractions/API/Can/ICanBus.cs`) | Virtual-Loopback-Integrationstest, Lasttest |
-| FR-RAW-020..024 | L2 – *Protokollinstanz-Aktor/Scheduler* (umgesetzt als eigenständiges `CanKit.Pro.Actor`, `IProtocolActor`/`ProtocolActor`); Referenzimplementierung noch **nicht** umgestellt in L3 `IsoTpScheduler` (`src/transports/CanKit.Transport.IsoTp/IsoTpScheduler.cs`, funktional defekt, s. Review §1.1) | Stress-/Nebenläufigkeitstest |
+| FR-RAW-020..024 | L2 – *Protokollinstanz-Aktor/Scheduler* (umgesetzt als eigenständiges `CanKit.Pro.Actor`, `IProtocolActor`/`ProtocolActor`); von `CanKit.Pro.IsoTp` / `CanKit.Pro.J1939Tp` genutzt | Stress-/Nebenläufigkeitstest |
 | FR-RAW-030..034 | L2 – *TX-Confirm-Abstraktion* (umgesetzt in `CanKit.Pro.RawCan`), aufbauend auf L1 `CanFeature.Echo`, `ITransceiver.Transmit` | Virtual-Loopback-Integrationstest (mit/ohne Echo) |
 | FR-RAW-040..041 | L2 – *Adressierungs-Helfer* (umgesetzt als eigenständiges `CanKit.Pro.Addressing`: `CanIdRange`, `J1939Id`/`J1939Fields`; FR-RAW-041 als `CanIdFilter.Overlaps`/`ICanBusService.FindOverlappingFilterSubscriptions()` in `CanKit.Pro.RawCan`) | Unit-Test |
 | FR-RAW-050..052 | L2 – *Fehler-/Timeout-Infrastruktur* (FR-RAW-050/051 umgesetzt als eigenständiges `CanKit.Pro.Reliability`: `IDeadlineScheduler`/`DeadlineScheduler`/`Deadline` als aktorgetriebene Deadline-Primitive, deren Ablauf über `IProtocolActor.Schedule` tatsächlich geprüft und gemeldet wird (FR-RAW-050); `BusStateMonitor`/`BusStateChangedEventArgs`/`BusStateExtensions` für gepushte `ICanBus.BusState`-Übergänge (FR-RAW-051), aufbauend auf `CanKit.Pro.Actor` und L1 `ICanBus.BusState`). FR-RAW-052 (reservierte/ungültige Protokollwerte) bleibt **zurückgestellt** und dem künftigen ISO-TP-Codec-Fix FR-TP-007 zugeordnet (Review §1.1 Punkt 6), da protokollspezifisch statt generische L2-Primitive. | Unit-Test, Integrationstest |
-| FR-TP-001..020 | L3 – ISO-TP-Transport, `CanKit.Transport.IsoTp` (`IsoTpChannelCore`, `IsoTpScheduler`, `FrameCodec`, `Router`, `Deadline`/`QueuedDeadline`) | Unit-Test (Codec/Timing), Virtual-Loopback-Integrationstest, HIL-Stichprobe |
+| FR-TP-001..020 | L3 – ISO-TP-Transport, `CanKit.Pro.IsoTp` (`IIsoTpChannel`, `IsoTpFrameCodec`, Actor-Runtime) | Unit-Test (Codec/Timing), Virtual-Loopback-Integrationstest, HIL-Stichprobe |
 | FR-TP-030..035 | L3 – *J1939-Transport* (umgesetzt als eigenständiges `CanKit.Pro.J1939Tp`: `J1939Tp`/`J1939TpChannel`/`J1939TpOptions`/`J1939TpFrames`/`J1939TpAbortReason`, aufbauend auf `CanKit.Pro.Addressing` (`J1939Id`/`J1939Pgn`) sowie `CanKit.Pro.Actor`/`CanKit.Pro.RawCan`/`CanKit.Pro.Reliability`; MVP, `IsPackable=false`) | Virtual-Loopback-Integrationstest |
 | FR-UDS-001..010 | L4 – **UDS-Client-MVP umgesetzt** (`CanKit.Pro.Uds`, `IUdsClient`/`UdsClient` auf `IIsoTpChannel`); FR-UDS-011 (Multi-DID) ebenfalls umgesetzt (SHOULD), FR-UDS-012 (Upload/Download) bewusst als COULD zurückgestellt | Virtual-Loopback-Integrationstest (simulierte ECU, `tests/CanKit.Tests/TestCases/Uds/UdsClientTests.cs`), HIL-Stichprobe |
 | FR-CO-001..012 | L4 – *CANopen-Stack* (geplant, neues Paket auf L2-Demultiplexing + L1 `ICanBus`) | Virtual-Loopback-Integrationstest, HIL-Stichprobe |
-| FR-J1939-001..007 | L4 – *J1939-Applikationsschicht* (geplant, aufbauend auf L3 J1939-TP) | Virtual-Loopback-Integrationstest, HIL-Stichprobe |
-| FR-HAWE-001..005 | L4 – *HAWE-Erweiterungsrahmen* (`src/protocols/CanKit.Pro.Hawe`, SPI-Erweiterungspunkt analog `IIsoTpRegister`, `src/core/CanKit.Abstractions/SPI/Registry/Transports/IIsoTpRegister.cs`) | Architekturreview, Virtual-Loopback-Integrationstest (generischer `FakePatternCodec` in `tests/CanKit.Tests/TestCases/HaweFrameworkTests.cs`) |
+| FR-J1939-001..007 | L4 – *J1939-Applikationsschicht* (`src/protocols/CanKit.Pro.J1939`, MVP; FR-J1939-001..006 Must umgesetzt, FR-J1939-007 Should via Software-Schleife) | Virtual-Loopback-Integrationstest (`tests/CanKit.Tests/TestCases/J1939/J1939NodeTests.cs`), HIL-Stichprobe |
+| FR-HAWE-001..005 | L4 – *HAWE-Erweiterungsrahmen* (`src/protocols/CanKit.Pro.Hawe`, SPI `IHaweCodecRegistry`/`HaweChannel`) | Architekturreview, Virtual-Loopback-Integrationstest (generischer `FakePatternCodec` in `tests/CanKit.Tests/TestCases/HaweFrameworkTests.cs`) |
 | NFR-001..003 | L2/L3 Timing-Infrastruktur, L1 `SoftwarePeriodicTx`/`PreciseDelay` (`src/core/CanKit.Core/Utils/SoftwarePeriodicTx.cs`) | Performance-/Timing-Test |
 | NFR-004, CON-001 | Alle Ebenen – Multi-Targeting (`src/Directory.Build.props`) | CI-Testmatrix |
 | NFR-005, CON-002, CON-003 | L0 – Vendor-Adapter (`src/adapters/*`) | Buildmatrix, Codereview |

@@ -17,6 +17,36 @@
 * `J1939TpTests.SecondRts…`: fix `WaitForCmFrameAsync` lock object race
   (`Collection was modified` while enumerating observed CM frames).
 
+### Added
+
+* **CanKit.Pro.J1939 0.1.0** (pre-release, not published) — application-layer SAE J1939 node MVP under `src/protocols/CanKit.Pro.J1939`. Covers SRS FR-J1939-001..006 (Must) and FR-J1939-007 (Should):
+  * `IJ1939Node` / `J1939Node` factory built on top of `ICanBusService`, `IProtocolActor`, `DeadlineScheduler` and the `CanKit.Pro.Addressing` helpers, with `IsPackable=false`.
+  * PGN send/receive with `J1939Id` / `J1939Pgn` / `J1939Fields` (FR-J1939-001).
+  * `J1939Spn` scale/offset SPN extraction and byte-level packer (FR-J1939-002).
+  * SAE J1939-81 Address Claim (PGN 0xEE00) with 250 ms arbitration window and NAME-priority arbitration (FR-J1939-003).
+  * Cannot Claim Address broadcast (SA = 0xFE) and `J1939CannotClaimException` (FR-J1939-004).
+  * Request-PGN (PGN 0xEA00) send/receive (FR-J1939-005).
+  * Auto-routing: payloads > 8 bytes go through `CanKit.Pro.J1939Tp` (TP.BAM/TP.CM); ≤ 8 bytes take the direct single-frame path (FR-J1939-006).
+  * `StartPeriodicSend` software scheduler for periodic PGN transmission (FR-J1939-007 Should).
+* Solution/filter wiring: `CanKitProJ1939.slnf`, `CanKit.sln` entry, `tests/CanKit.Tests/CanKit.Tests.csproj` project reference, `eng/package-versions.props` `CanKitProJ1939Version` = 0.1.0.
+* CI workflow `.github/workflows/j1939-ci.yml` (Ubuntu + Windows net8.0/net48) modeled on `j1939tp-ci.yml`.
+* `tests/CanKit.Tests/TestCases/J1939/J1939NodeTests.cs` — Virtual-loopback integration tests covering every FR-J1939-001..006 requirement plus SPN cross-byte extraction and round-trip.
+
+### Removed
+
+* Legacy `CanKit.Transport.IsoTp` prototype (functionally defective; superseded by `CanKit.Pro.IsoTp`).
+* Abstractions ISO-TP surface `CanKit.Abstractions.API.Transport.*` (including the `Excpetions`
+  typo namespace) and `IIsoTpRegister`.
+* PCAN native ISO-TP register path (`PcanIsoTp*`, `PcanIsoTpRegister`) that depended on the
+  removed Abstractions transport API.
+* `CanKitTransports.slnf` and `.github/workflows/transports-ci.yml` (replaced by Pro IsoTp CI).
+
+### Changed
+
+* ISO-TP is exclusively provided by `CanKit.Pro.IsoTp` on the L2 services.
+* `docs/requirements/SRS-CanKit.md` (§4.3.3 J1939): Ist-Zustand aktualisiert (MVP umgesetzt, offene Punkte dokumentiert); Traceability-Tabelle aktualisiert.
+* `docs/architecture/arc42-CanKit.md`: L4-Zeile in der Schichtenübersicht und der Umsetzungstabelle aktualisiert (J1939-App-MVP als vorhanden markiert).
+
 ## 0.5.5
 
 Published packages:
