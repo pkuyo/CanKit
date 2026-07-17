@@ -38,7 +38,7 @@ namespace CanKit.Pro.CANopen;
 /// same threading model that the J1939-TP / IsoTp / UDS clients rely on.
 /// </para>
 /// </remarks>
-internal sealed class CanOpenNode : ICanOpenNode
+internal sealed partial class CanOpenNode : ICanOpenNode
 {
     private readonly ICanBusService _service;
     private readonly bool _ownsService;
@@ -78,6 +78,19 @@ internal sealed class CanOpenNode : ICanOpenNode
     // supported (each has its own state entry).
     private readonly Dictionary<byte, SdoClientSession> _sdoClients = new();
 
+    // SDO block-transfer sessions (FR-CO-004). Block transfer has enough state and enough
+    // dispatch differences (segment stream vs. control frames) that we keep it in a dedicated
+    // partial file (CanOpenNode.SdoBlock.cs) with its own session types. A client-side or
+    // server-side block session for a given peer occupies the same "one transfer at a time
+    // per peer" slot as the classical SDO client / server; the two are mutually exclusive by
+    // construction (BeginSdoBlockDownload / BeginSdoBlockUpload each check both dictionaries).
+    private readonly Dictionary<byte, SdoBlockClientSession> _sdoBlockClients = new();
+    private SdoBlockServerSession? _sdoBlockServer;
+
+    // Node-guarding consumers (FR-CO-009): keyed by producer node-id, each with its own
+    // guardTime deadline (RTR poll) and life-time deadline (timeout).
+    private readonly Dictionary<byte, NodeGuardingConsumer> _nodeGuardingConsumers = new();
+
     // Heartbeat producer.
     private IDisposable? _heartbeatProducerHandle;
     private TimeSpan _heartbeatProducerInterval;
@@ -92,6 +105,11 @@ internal sealed class CanOpenNode : ICanOpenNode
     // PDO tables.
     private readonly Dictionary<int, TpdoConfig> _tpdos = new();
     private readonly Dictionary<uint, RpdoConfig> _rpdosByCobId = new();
+
+    // Node-guarding producer toggle bit (FR-CO-009). CiA 301 §7.2.8.3.3 requires the producer
+    // to start with toggle=0 and flip it on every reply so the consumer can distinguish a
+    // fresh answer from a stale duplicate.
+    private bool _nodeGuardingProducerToggle;
 
     private int _disposed;
 
@@ -134,6 +152,10 @@ internal sealed class CanOpenNode : ICanOpenNode
     public event EventHandler<RpdoReceivedEventArgs>? RpdoReceived;
     /// <inheritdoc />
     public event EventHandler<NmtCommandReceivedEventArgs>? NmtCommandReceived;
+    /// <inheritdoc />
+    public event EventHandler<NodeGuardingReceivedEventArgs>? NodeGuardingReceived;
+    /// <inheritdoc />
+    public event EventHandler<NodeGuardingTimeoutEventArgs>? NodeGuardingTimeout;
     /// <inheritdoc />
     public event EventHandler<Exception>? BackgroundExceptionOccurred;
 
@@ -379,19 +401,37 @@ internal sealed class CanOpenNode : ICanOpenNode
 
     /// <inheritdoc />
     public Task<byte[]> SdoUploadAsync(byte serverNodeId, ushort index, byte subindex,
+        SdoTransferMode mode = SdoTransferMode.Auto,
         CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
         CanOpenCobId.ValidateNodeId(serverNodeId);
         var tcs = new TaskCompletionSource<byte[]>(TaskCreationOptions.RunContinuationsAsynchronously);
         RegisterSdoCancellation(tcs, cancellationToken, serverNodeId);
-        _actor.Post(() => BeginSdoUpload(serverNodeId, index, subindex, tcs));
+        if (mode == SdoTransferMode.Block)
+        {
+            // Block upload path — a separate client-side session shape from expedited /
+            // segmented, but ownership rules (one in-flight transfer per remote server) are
+            // shared with the existing SDO client and enforced inside BeginSdoBlockUpload.
+            _actor.Post(() => BeginSdoBlockUpload(serverNodeId, index, subindex, tcs));
+        }
+        else
+        {
+            // For Auto uploads we do not know the size up front, so the segmented path is the
+            // conservative default; the SDO server chooses expedited-vs-segmented for us. The
+            // Auto → Block auto-switch is applied on the *download* path where we know the
+            // payload length. Explicit Expedited / Segmented also route through the classical
+            // client (segmented server responses handle both encodings transparently).
+            _actor.Post(() => BeginSdoUpload(serverNodeId, index, subindex, tcs));
+        }
         return tcs.Task;
     }
 
     /// <inheritdoc />
     public Task SdoDownloadAsync(byte serverNodeId, ushort index, byte subindex,
-        ReadOnlyMemory<byte> data, CancellationToken cancellationToken = default)
+        ReadOnlyMemory<byte> data,
+        SdoTransferMode mode = SdoTransferMode.Auto,
+        CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
         CanOpenCobId.ValidateNodeId(serverNodeId);
@@ -414,7 +454,23 @@ internal sealed class CanOpenNode : ICanOpenNode
         var payload = data.ToArray();
         var tcs = new TaskCompletionSource<byte[]>(TaskCreationOptions.RunContinuationsAsynchronously);
         RegisterSdoCancellation(tcs, cancellationToken, serverNodeId);
-        _actor.Post(() => BeginSdoDownload(serverNodeId, index, subindex, payload, tcs));
+
+        // Auto-select rules (FR-CO-004):
+        //   * Block was explicitly requested → always block.
+        //   * Auto and payload ≥ SdoBlockThresholdBytes → block.
+        //   * Auto and payload < threshold → expedited / segmented via the classic client.
+        //   * Explicit Expedited / Segmented → classic client (segmented tolerates ≤4-byte
+        //     payloads through the same BuildDownloadInit fallback).
+        bool useBlock = mode == SdoTransferMode.Block
+                        || (mode == SdoTransferMode.Auto && payload.Length >= _options.SdoBlockThresholdBytes);
+        if (useBlock)
+        {
+            _actor.Post(() => BeginSdoBlockDownload(serverNodeId, index, subindex, payload, tcs));
+        }
+        else
+        {
+            _actor.Post(() => BeginSdoDownload(serverNodeId, index, subindex, payload, tcs));
+        }
         return tcs.Task;
     }
 
@@ -446,6 +502,22 @@ internal sealed class CanOpenNode : ICanOpenNode
                     kv.Value.Tcs.TrySetException(new ObjectDisposedException(nameof(CanOpenNode)));
                 }
                 _sdoClients.Clear();
+
+                _sdoBlockServer?.Deadline?.Dispose();
+                _sdoBlockServer = null;
+                foreach (var kv in _sdoBlockClients)
+                {
+                    kv.Value.Deadline?.Dispose();
+                    kv.Value.Tcs.TrySetException(new ObjectDisposedException(nameof(CanOpenNode)));
+                }
+                _sdoBlockClients.Clear();
+
+                foreach (var kv in _nodeGuardingConsumers)
+                {
+                    kv.Value.PollHandle?.Dispose();
+                    kv.Value.LifeTimeDeadline?.Dispose();
+                }
+                _nodeGuardingConsumers.Clear();
             });
         }
         catch (ObjectDisposedException)
@@ -482,8 +554,13 @@ internal sealed class CanOpenNode : ICanOpenNode
             {
                 if (frame.IsExtendedFrame) continue;
                 uint id = (uint)frame.ID;
+                // Node-guarding (FR-CO-009) piggy-backs on the heartbeat COB-ID and uses a
+                // *remote* frame from consumer → producer. Preserve the RTR flag through to
+                // the actor loop so HandleIncoming can distinguish an RTR poll from a genuine
+                // heartbeat / node-guarding data frame that happens to share the same COB-ID.
+                bool isRtr = frame.IsRemoteFrame;
                 var data = frame.Data.ToArray();
-                _actor.Post(() => HandleIncoming(id, data));
+                _actor.Post(() => HandleIncoming(id, data, isRtr));
             }
         }
         catch (OperationCanceledException) { /* Dispose */ }
@@ -521,7 +598,7 @@ internal sealed class CanOpenNode : ICanOpenNode
         _eventChannel.Writer.TryWrite(raise);
     }
 
-    private void HandleIncoming(uint cobId, byte[] data)
+    private void HandleIncoming(uint cobId, byte[] data, bool isRtr)
     {
         try
         {
@@ -541,15 +618,46 @@ internal sealed class CanOpenNode : ICanOpenNode
                 HandleEmcy(cobId, data);
                 return;
             }
-            // Heartbeat / bootup 0x701..0x77F.
+            // Heartbeat / bootup / node-guarding 0x701..0x77F. Both heartbeat producers and
+            // node-guarding producers share this COB-ID range; the distinction is: an RTR
+            // targeting *our* node-id asks the node-guarding producer to reply, and a data
+            // frame is either a heartbeat / bootup broadcast from a peer or a node-guarding
+            // response we requested. Bit 7 of the data byte carries the node-guarding toggle
+            // bit — the existing heartbeat consumer already masks it off via <c>data[0] &amp; 0x7F</c>.
             if (cobId is >= 0x701 and <= 0x77F)
             {
+                if (isRtr)
+                {
+                    // Producer role (FR-CO-009): only answer polls addressed to *our* node id.
+                    if (cobId == CanOpenCobId.Heartbeat(_nodeId))
+                        HandleNodeGuardingRtrForSelf();
+                    return;
+                }
+
+                byte producer = (byte)(cobId - CanOpenCobId.HeartbeatBase);
+                // Consumer role (FR-CO-009): if we have a node-guarding consumer registered
+                // for this producer, treat the incoming data frame as a node-guarding reply
+                // (toggle + state). Otherwise fall through to the heartbeat consumer, which is
+                // wire-compatible (both frames are 1 byte on 0x700 + node-id, and the toggle
+                // bit is bit 7). Node-guarding consumers take precedence because a node that
+                // was set up for node-guarding still wants heartbeat handling elsewhere gated.
+                if (_nodeGuardingConsumers.ContainsKey(producer))
+                {
+                    HandleNodeGuardingResponse(producer, data);
+                    return;
+                }
                 HandleHeartbeat(cobId, data);
                 return;
             }
             // SDO client request: 0x600 + our nodeId — targeted at *our* SDO server.
             if (cobId == CanOpenCobId.SdoRx(_nodeId))
             {
+                // Block-download server-side session (if any) intercepts incoming frames while
+                // it is in a "receiving segments" phase, because a raw block segment's byte 0
+                // overlaps ordinary segmented-download client-segment / control-frame values.
+                // The block-server handler returns true if it consumed the frame; false means
+                // fall through to the plain SDO server.
+                if (HandleSdoServerRequestBlock(data)) return;
                 HandleSdoServerRequest(data);
                 return;
             }
@@ -558,6 +666,10 @@ internal sealed class CanOpenNode : ICanOpenNode
                 and <= CanOpenCobId.SdoTxBase + CanOpenCobId.MaxNodeId)
             {
                 byte serverNodeId = (byte)(cobId - CanOpenCobId.SdoTxBase);
+                // Symmetric to the server-side path above: while a client-side block session
+                // (upload or download) is in a "receiving segments" phase, incoming frames on
+                // this COB-ID are block segments rather than ordinary SDO responses.
+                if (HandleSdoClientResponseBlock(serverNodeId, data)) return;
                 HandleSdoClientResponse(serverNodeId, data);
                 return;
             }

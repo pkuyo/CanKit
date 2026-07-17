@@ -53,12 +53,50 @@ public sealed class CanOpenNodeOptions
     /// </summary>
     public int MaxSdoTransferBytes { get; init; } = 1 * 1024 * 1024;
 
+    /// <summary>
+    /// Auto-select threshold (bytes) at or above which the SDO client uses block transfer
+    /// (FR-CO-004 / CiA 301 §7.2.4.3.15) for an <see cref="Sdo.SdoTransferMode.Auto"/> upload or
+    /// download instead of the segmented protocol. Below the threshold the existing expedited /
+    /// segmented codecs are used. Callers can bypass the threshold by explicitly passing
+    /// <see cref="Sdo.SdoTransferMode.Block"/>. Defaults to 128 bytes.
+    /// </summary>
+    public int SdoBlockThresholdBytes { get; init; } = 128;
+
+    /// <summary>
+    /// Preferred block size (segments per sub-block, 1..127) that this node advertises when it
+    /// acts as a block-transfer receiver (server for download, client for upload). CiA 301
+    /// §7.2.4.3.15 permits the receiver to choose any value in [1,127]; peers with a smaller
+    /// window will re-negotiate downward via their own initiate. Defaults to 127.
+    /// </summary>
+    public byte SdoBlockSize { get; init; } = 127;
+
+    /// <summary>
+    /// When <c>true</c> this node advertises CRC-16/XMODEM support on block-transfer initiates
+    /// (cc / sc bit) and both computes and validates the CRC on the end-of-block frame. The peer
+    /// must also set its CRC bit for the CRC to be exchanged (per CiA 301 §7.2.4.3.15 the CRC is
+    /// only carried when both endpoints advertise support). Defaults to <c>true</c>.
+    /// </summary>
+    public bool SdoBlockCrcSupported { get; init; } = true;
+
+    /// <summary>
+    /// When <c>true</c> this node answers a Node-Guarding RTR (COB-ID <c>0x700 + own node-id</c>)
+    /// with a one-byte data frame carrying the current NMT state (bits 0..6) and an alternating
+    /// toggle bit (bit 7), per CiA 301 §7.2.8.3.3. Ignored when the heartbeat producer is active
+    /// (CiA 301 §7.2.8.3 makes heartbeat and node-guarding mutually exclusive on the same node).
+    /// Defaults to <c>true</c> so slaves are answered out of the box.
+    /// </summary>
+    public bool RespondToNodeGuardingRtr { get; init; } = true;
+
     /// <summary>Returns a copy of this options record with the provided overrides.</summary>
     public CanOpenNodeOptions With(
         TimeSpan? sdoTimeout = null,
         TimeSpan? defaultTpdoEventTimerInterval = null,
         int? eventQueueCapacity = null,
-        int? maxSdoTransferBytes = null)
+        int? maxSdoTransferBytes = null,
+        int? sdoBlockThresholdBytes = null,
+        byte? sdoBlockSize = null,
+        bool? sdoBlockCrcSupported = null,
+        bool? respondToNodeGuardingRtr = null)
     {
         return new CanOpenNodeOptions
         {
@@ -66,6 +104,10 @@ public sealed class CanOpenNodeOptions
             DefaultTpdoEventTimerInterval = defaultTpdoEventTimerInterval ?? DefaultTpdoEventTimerInterval,
             EventQueueCapacity = eventQueueCapacity ?? EventQueueCapacity,
             MaxSdoTransferBytes = maxSdoTransferBytes ?? MaxSdoTransferBytes,
+            SdoBlockThresholdBytes = sdoBlockThresholdBytes ?? SdoBlockThresholdBytes,
+            SdoBlockSize = sdoBlockSize ?? SdoBlockSize,
+            SdoBlockCrcSupported = sdoBlockCrcSupported ?? SdoBlockCrcSupported,
+            RespondToNodeGuardingRtr = respondToNodeGuardingRtr ?? RespondToNodeGuardingRtr,
         };
     }
 
@@ -84,5 +126,11 @@ public sealed class CanOpenNodeOptions
         if (MaxSdoTransferBytes < 1)
             throw new ArgumentOutOfRangeException(nameof(MaxSdoTransferBytes), MaxSdoTransferBytes,
                 "MaxSdoTransferBytes must be >= 1.");
+        if (SdoBlockThresholdBytes < 1)
+            throw new ArgumentOutOfRangeException(nameof(SdoBlockThresholdBytes), SdoBlockThresholdBytes,
+                "SdoBlockThresholdBytes must be >= 1.");
+        if (SdoBlockSize is < 1 or > 127)
+            throw new ArgumentOutOfRangeException(nameof(SdoBlockSize), SdoBlockSize,
+                "SdoBlockSize must be in [1, 127] per CiA 301 §7.2.4.3.15.");
     }
 }

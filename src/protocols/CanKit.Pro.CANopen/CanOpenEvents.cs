@@ -109,6 +109,62 @@ public sealed class RpdoReceivedEventArgs : EventArgs
 }
 
 /// <summary>
+/// Argument type for the <c>NodeGuardingReceived</c> event: a valid node-guarding response was
+/// received from <see cref="ProducerNodeId"/> (FR-CO-009, CiA 301 §7.2.8.3.3).
+/// </summary>
+public sealed class NodeGuardingReceivedEventArgs : EventArgs
+{
+    /// <summary>Producer node-id (derived from COB-ID <c>0x700 + node-id</c>).</summary>
+    public byte ProducerNodeId { get; }
+
+    /// <summary>Reported NMT state (bits 0..6 of the response byte).</summary>
+    public NmtState State { get; }
+
+    /// <summary>Toggle bit (bit 7 of the response byte). CiA 301 §7.2.8.3.3 requires the
+    /// producer to flip this on every reply so consumers can distinguish a stale duplicate from
+    /// a fresh answer.</summary>
+    public bool Toggle { get; }
+
+    /// <summary>UTC timestamp captured when the response was processed on the actor loop.</summary>
+    public DateTime Timestamp { get; }
+
+    /// <summary>Constructs a new event.</summary>
+    public NodeGuardingReceivedEventArgs(byte producerNodeId, NmtState state, bool toggle, DateTime timestamp)
+    {
+        ProducerNodeId = producerNodeId;
+        State = state;
+        Toggle = toggle;
+        Timestamp = timestamp;
+    }
+}
+
+/// <summary>
+/// Argument type for the <c>NodeGuardingTimeout</c> event: the configured life-time
+/// (<c>guardTime × lifeTimeFactor</c>) elapsed without a fresh response from
+/// <see cref="ProducerNodeId"/> (FR-CO-009).
+/// </summary>
+public sealed class NodeGuardingTimeoutEventArgs : EventArgs
+{
+    /// <summary>Producer node-id whose life-time elapsed.</summary>
+    public byte ProducerNodeId { get; }
+
+    /// <summary>Configured guard-time interval used for the RTR poll.</summary>
+    public TimeSpan GuardTime { get; }
+
+    /// <summary>Configured life-time factor. The effective life-time is
+    /// <c>GuardTime × LifeTimeFactor</c>.</summary>
+    public byte LifeTimeFactor { get; }
+
+    /// <summary>Constructs a new event.</summary>
+    public NodeGuardingTimeoutEventArgs(byte producerNodeId, TimeSpan guardTime, byte lifeTimeFactor)
+    {
+        ProducerNodeId = producerNodeId;
+        GuardTime = guardTime;
+        LifeTimeFactor = lifeTimeFactor;
+    }
+}
+
+/// <summary>
 /// Argument type for the <c>NmtCommandReceived</c> event: a decoded incoming NMT master command.
 /// </summary>
 public sealed class NmtCommandReceivedEventArgs : EventArgs
