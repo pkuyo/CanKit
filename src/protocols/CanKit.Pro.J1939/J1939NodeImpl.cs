@@ -1100,21 +1100,65 @@ internal sealed class J1939NodeImpl : IJ1939Node
 
         public void Start()
         {
-            // Subscribe BEFORE opening the handle so a claim-change event that fires during
-            // TransmitPeriodic (e.g. an in-flight ClaimAddressAsync landing on the actor loop
-            // in the same instant) is not missed.
+            // Subscribe BEFORE opening the handle so a claim-change event that fires between
+            // now and the open below is not missed. StartPeriodicSend already ran a pre-flight
+            // gate on the caller thread; we must re-check under _gate after subscribing to
+            // close the gap between "pre-flight saw Claimed" and "handler is wired up" —
+            // an address loss that landed in that window would otherwise leave us armed to
+            // emit on a stale SA (Bugbot 3603876664).
             _owner.AddressClaimChanged += _claimHandler;
+            IPeriodicTx? handleOnFailure = null;
             try
             {
-                var options = new PeriodicTxOptions(_period, repeat: -1, fireImmediately: true);
                 lock (_gate)
                 {
-                    _handle = _owner._service.Bus.TransmitPeriodic(BuildFrame(_currentSa), options);
+                    if (_disposed != 0) return;
+
+                    // Re-read the node's claim state / SA under _gate. Both fields are the
+                    // canonical single-writer stores mutated only on the actor loop; a
+                    // Volatile read here observes the latest committed value. If the node is
+                    // no longer Claimed we must throw so the caller sees the same failure as
+                    // SendAsync's pre-flight, and never leak a subscription that would fire
+                    // later (see below — the catch unsubscribes _claimHandler).
+                    var state = (J1939ClaimState)Volatile.Read(ref _owner._claimStateStore);
+                    int addr = Volatile.Read(ref _owner._addressStore);
+                    if (state != J1939ClaimState.Claimed || addr < 0)
+                        throw new J1939NoAddressException();
+
+                    // Bugbot 3603876664: OnClaimChanged may have raced ahead on the actor
+                    // loop between `+= _claimHandler` and this lock and already opened a
+                    // handle on the current SA. In that case ownership of the L1 handle is
+                    // the handler's — do NOT open a second one (that would orphan the first
+                    // and both would ship the same PGN concurrently).
+                    if (_handle is null)
+                    {
+                        _currentSa = (byte)addr;
+                        var options = new PeriodicTxOptions(_period, repeat: -1, fireImmediately: true);
+                        _handle = _owner._service.Bus.TransmitPeriodic(BuildFrame(_currentSa), options);
+                    }
                 }
             }
             catch
             {
                 _owner.AddressClaimChanged -= _claimHandler;
+                // If OnClaimChanged raced in and opened a handle (or we opened one just
+                // before a subsequent throw path), dispose it off the caller thread so we
+                // never leak an L1 periodic subscription tied to a schedule the caller is
+                // about to see fail.
+                lock (_gate)
+                {
+                    handleOnFailure = _handle;
+                    _handle = null;
+                }
+                if (handleOnFailure is not null)
+                {
+                    var toDispose = handleOnFailure;
+                    _ = Task.Run(() =>
+                    {
+                        try { toDispose.Stop(); } catch { /* observed via BackgroundExceptionOccurred */ }
+                        try { toDispose.Dispose(); } catch { /* observed via BackgroundExceptionOccurred */ }
+                    });
+                }
                 throw;
             }
         }
@@ -1127,7 +1171,6 @@ internal sealed class J1939NodeImpl : IJ1939Node
                 if (e.State == J1939ClaimState.Claimed && e.Address.HasValue)
                 {
                     var newSa = e.Address.Value;
-                    IPeriodicTx? toStart = null;
                     lock (_gate)
                     {
                         if (_disposed != 0) return;
@@ -1137,7 +1180,6 @@ internal sealed class J1939NodeImpl : IJ1939Node
                             // freshly claimed SA using the same period/repeat contract.
                             var options = new PeriodicTxOptions(_period, repeat: -1, fireImmediately: true);
                             _handle = _owner._service.Bus.TransmitPeriodic(BuildFrame(newSa), options);
-                            toStart = _handle;
                         }
                         else if (newSa != _currentSa)
                         {
@@ -1145,7 +1187,6 @@ internal sealed class J1939NodeImpl : IJ1939Node
                         }
                         _currentSa = newSa;
                     }
-                    _ = toStart; // reference kept for clarity; ownership stays on _handle
                 }
                 else
                 {
@@ -1153,16 +1194,39 @@ internal sealed class J1939NodeImpl : IJ1939Node
                     // stop the wire traffic — SendAsync's pre-flight gate would reject the
                     // equivalent one-shot, so the periodic path must not silently emit under
                     // the previous SA.
+                    //
+                    // Bugbot 3603876668 / 3603876664: OnClaimChanged runs on the J1939 actor
+                    // loop (SetClaimState fires AddressClaimChanged inline). SoftwarePeriodicTx
+                    // .Stop() calls _task.Wait(200) so calling Stop/Dispose synchronously here
+                    // would stall address-claim processing for up to 200 ms per transition.
+                    //   1. Under _gate detach the handle to a local (so a racing OnClaimChanged
+                    //      -> Claimed cannot see the stale reference and skip re-opening).
+                    //   2. Update(repeatCount: 0) *while still under the lock* signals the
+                    //      SW loop to stop after the current emission (best-effort — no-op
+                    //      on adapters whose Update ignores repeatCount, benign otherwise).
+                    //   3. Hand Stop()/Dispose() off to Task.Run so the actor thread is free
+                    //      to keep servicing subsequent address-claim / TP events.
+                    IPeriodicTx? detached;
                     lock (_gate)
                     {
-                        if (_handle is not null)
+                        detached = _handle;
+                        _handle = null;
+                        if (detached is not null)
                         {
-                            try { _handle.Stop(); }
+                            try { detached.Update(repeatCount: 0); }
                             catch (Exception ex) { _owner.RaiseBackgroundException(ex); }
-                            try { _handle.Dispose(); }
-                            catch (Exception ex) { _owner.RaiseBackgroundException(ex); }
-                            _handle = null;
                         }
+                    }
+                    if (detached is not null)
+                    {
+                        var toDispose = detached;
+                        _ = Task.Run(() =>
+                        {
+                            try { toDispose.Stop(); }
+                            catch (Exception ex) { _owner.RaiseBackgroundException(ex); }
+                            try { toDispose.Dispose(); }
+                            catch (Exception ex) { _owner.RaiseBackgroundException(ex); }
+                        });
                     }
                 }
             }

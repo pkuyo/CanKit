@@ -940,6 +940,169 @@ public class J1939NodeTests : IClassFixture<TestCaseProvider>
         using var handle = node.StartPeriodicSend(message, TimeSpan.FromMilliseconds(80));
         handle.Should().NotBeNull();
     }
+
+    // Bugbot 3603876664 regression: once the owning node loses its claim (a higher-priority
+    // peer unseats it and it transitions to CannotClaim), the single-frame periodic schedule
+    // MUST stop emitting within roughly a couple of periods. Before the fix,
+    // SoftwarePeriodicTx would keep ticking under the stale SA because the actor thread was
+    // blocked in Stop()'s ~200 ms Wait AND because Update(repeatCount:0) was never issued
+    // as a soft signal to the loop. Assert the wire goes quiet after unseating.
+    [Fact]
+    public async Task StartPeriodicSend_SingleFrame_StopsAfterAddressLoss()
+    {
+        var session = NewSession();
+        using var busA = Open(session, 0);
+        using var busB = Open(session, 1);
+        using var busC = Open(session, 2); // spectator: counts periodic emissions
+
+        // Owner has a HIGHER numeric NAME → lower priority → will be unseated when the
+        // peer with a lower NAME claims the same SA per SAE J1939-81 §4.4.3.2.
+        var ownerOpts = new J1939NodeOptions(Name(0x000200))
+        {
+            ClaimAnnounceTimeout = TimeSpan.FromMilliseconds(80),
+        };
+        var peerOpts = new J1939NodeOptions(Name(0x000010))
+        {
+            ClaimAnnounceTimeout = TimeSpan.FromMilliseconds(80),
+        };
+
+        using var owner = J1939Node.Open(busA, ownerOpts);
+        using var peer = J1939Node.Open(busB, peerOpts);
+
+        const byte contendedSa = 0x50;
+        await owner.ClaimAddressAsync(contendedSa).WithTimeout(ShortTimeout);
+        owner.ClaimState.Should().Be(J1939ClaimState.Claimed);
+        owner.Address.Should().Be(contendedSa);
+
+        // Watch for the periodic PGN on the spectator bus so the schedule's "still emitting"
+        // assertion is independent of the owner node's internal state and matches what
+        // downstream ECUs actually observe.
+        const uint targetPgn = 0xFEE7u;
+        var stamps = new List<DateTime>();
+        var stampsLock = new object();
+        busC.FrameObserved += (_, e) =>
+        {
+            if (!e.CanFrame.IsExtendedFrame) return;
+            var fields = J1939Id.Decompose((uint)e.CanFrame.ID);
+            if (fields.Pgn != targetPgn) return;
+            if (fields.SourceAddress != contendedSa) return;
+            lock (stampsLock) stamps.Add(DateTime.UtcNow);
+        };
+
+        var period = TimeSpan.FromMilliseconds(40);
+        var message = new J1939Message(targetPgn, new byte[] { 0xA1, 0xA2 }, priority: 6,
+            destinationAddress: 0xFF);
+        using var handle = owner.StartPeriodicSend(message, period);
+
+        // Wait until the schedule has actually put a few frames on the wire so the
+        // "stop" assertion below is meaningful (the schedule really was running).
+        var readyDeadline = DateTime.UtcNow + ShortTimeout;
+        while (true)
+        {
+            int c;
+            lock (stampsLock) c = stamps.Count;
+            if (c >= 3) break;
+            if (DateTime.UtcNow >= readyDeadline)
+                throw new TimeoutException("Expected ≥3 periodic frames from owner before contest.");
+            await Task.Delay(10);
+        }
+
+        // Peer with lower NAME claims the same SA. HandleIncomingAddressClaim's
+        // "already claimed at SA + peer wins" branch flips the owner to CannotClaim,
+        // clears its address, and fires AddressClaimChanged — SingleFramePeriodicSchedule
+        // must react by tearing down its L1 IPeriodicTx handle.
+        await peer.ClaimAddressAsync(contendedSa).WithTimeout(ShortTimeout);
+        peer.Address.Should().Be(contendedSa);
+
+        // Wait for the owner's state machine to observe the contest.
+        var lossDeadline = DateTime.UtcNow + ShortTimeout;
+        while (owner.ClaimState == J1939ClaimState.Claimed && DateTime.UtcNow < lossDeadline)
+            await Task.Delay(10);
+        owner.ClaimState.Should().NotBe(J1939ClaimState.Claimed);
+        owner.Address.Should().BeNull();
+
+        // Give the schedule ~2 periods to actually observe the AddressClaimChanged event
+        // and tear the L1 handle down. Peer traffic on `contendedSa` is filtered by NAME
+        // via peerName == owner._name (owner's Name(0x200) ≠ peer's Name(0x010)), so any
+        // frames on `contendedSa` that arrive here originate from the owner's periodic
+        // schedule *not yet stopping* — that is exactly the bug we are guarding against.
+        int countAfterLoss;
+        lock (stampsLock) countAfterLoss = stamps.Count;
+        await Task.Delay(period + period + TimeSpan.FromMilliseconds(50));
+        int countAfterQuiet;
+        lock (stampsLock) countAfterQuiet = stamps.Count;
+
+        // We tolerate at most one already-in-flight emission slipping past the async
+        // Stop/Dispose. Anything more means the schedule kept ticking under a stale SA.
+        (countAfterQuiet - countAfterLoss).Should().BeLessOrEqualTo(1,
+            "the L1 periodic must stop within ~2 periods after the owner loses its claim; " +
+            "otherwise stale-SA frames would keep going out under the previous address " +
+            "(Bugbot 3603876664 / 3603876668)");
+    }
+
+    // Optional coverage for the reclaim-with-new-SA path: after the schedule stops on
+    // address loss, a subsequent successful claim (potentially on a different SA) MUST
+    // re-arm the periodic emission and the wire ID MUST carry the new SA.
+    [Fact]
+    public async Task StartPeriodicSend_SingleFrame_ReclaimResumesUnderNewSa()
+    {
+        var session = NewSession();
+        using var busA = Open(session, 0);
+        using var busB = Open(session, 1);
+        using var busC = Open(session, 2); // spectator
+
+        var ownerOpts = new J1939NodeOptions(Name(0x000200))
+        {
+            ClaimAnnounceTimeout = TimeSpan.FromMilliseconds(80),
+        };
+        var peerOpts = new J1939NodeOptions(Name(0x000010))
+        {
+            ClaimAnnounceTimeout = TimeSpan.FromMilliseconds(80),
+        };
+
+        using var owner = J1939Node.Open(busA, ownerOpts);
+        using var peer = J1939Node.Open(busB, peerOpts);
+
+        const byte firstSa = 0x51;
+        const byte secondSa = 0x52;
+        await owner.ClaimAddressAsync(firstSa).WithTimeout(ShortTimeout);
+
+        const uint targetPgn = 0xFEE8u;
+        var newSaStamps = 0;
+        busC.FrameObserved += (_, e) =>
+        {
+            if (!e.CanFrame.IsExtendedFrame) return;
+            var fields = J1939Id.Decompose((uint)e.CanFrame.ID);
+            if (fields.Pgn != targetPgn) return;
+            if (fields.SourceAddress == secondSa) Interlocked.Increment(ref newSaStamps);
+        };
+
+        var period = TimeSpan.FromMilliseconds(40);
+        var message = new J1939Message(targetPgn, new byte[] { 0xB1 }, priority: 6,
+            destinationAddress: 0xFF);
+        using var handle = owner.StartPeriodicSend(message, period);
+
+        // Peer contests the first SA; owner is unseated → schedule tears down.
+        await peer.ClaimAddressAsync(firstSa).WithTimeout(ShortTimeout);
+        var lossDeadline = DateTime.UtcNow + ShortTimeout;
+        while (owner.ClaimState == J1939ClaimState.Claimed && DateTime.UtcNow < lossDeadline)
+            await Task.Delay(10);
+        owner.ClaimState.Should().NotBe(J1939ClaimState.Claimed);
+
+        // Owner reclaims on a different SA. The AddressClaimChanged (State=Claimed) event
+        // must re-open the L1 periodic handle bound to the new SA (Update or a fresh
+        // TransmitPeriodic depending on the handle-null state at the time of the event).
+        await owner.ClaimAddressAsync(secondSa).WithTimeout(ShortTimeout);
+        owner.Address.Should().Be(secondSa);
+
+        // Wait for a handful of frames under the new SA to confirm the schedule resumed.
+        var readyDeadline = DateTime.UtcNow + ShortTimeout;
+        while (Volatile.Read(ref newSaStamps) < 3 && DateTime.UtcNow < readyDeadline)
+            await Task.Delay(10);
+        Volatile.Read(ref newSaStamps).Should().BeGreaterOrEqualTo(3,
+            "the schedule must re-arm on the reclaimed SA so downstream ECUs continue " +
+            "to observe the PGN under the new (correct) source address");
+    }
 }
 
 internal static class J1939NodeTestExtensions
