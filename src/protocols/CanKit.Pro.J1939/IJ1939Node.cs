@@ -105,11 +105,29 @@ public interface IJ1939Node : IDisposable, IAsyncDisposable
 
     /// <summary>
     /// Starts sending <paramref name="message"/> periodically at the given <paramref name="period"/>
-    /// (SRS FR-J1939-007). Send failures are surfaced via
-    /// <see cref="BackgroundExceptionOccurred"/>; the timer keeps firing after a transient
-    /// failure so a temporary bus condition does not tear the schedule down. Disposing the
+    /// (SRS FR-J1939-007). Every emission — single-frame and multi-frame alike — is driven by
+    /// the node's actor / <c>SendAsync</c> loop on top of the L2
+    /// <see cref="CanKit.Pro.Reliability.DeadlineScheduler"/>. Each iteration re-checks the
+    /// SAE J1939-81 claim state through <see cref="SendAsync"/>'s pre-flight gate, so a
+    /// concurrent address loss stops wire traffic automatically and a subsequent successful
+    /// claim (possibly on a different SA) resumes it — the emitted 29-bit ID is composed from
+    /// the currently-claimed SA on every tick.
+    /// Send failures are surfaced via <see cref="BackgroundExceptionOccurred"/>. Disposing the
     /// returned handle stops the schedule. Multiple concurrent schedules for the same PGN are
     /// allowed (callers may want to send the same PGN to two destinations).
+    /// The caller supplies <paramref name="period"/>; mapping application PGNs to their
+    /// SAE J1939-71 standard rate is the caller's responsibility.
+    /// <para>
+    /// <strong>Payload snapshot:</strong> <paramref name="message"/>'s payload is snapshotted
+    /// into an owned buffer when this method returns and every emission transmits that
+    /// snapshot. In-place mutation of the caller's original buffer after
+    /// <c>StartPeriodicSend</c> is NOT observed on the wire — this matches
+    /// <see cref="J1939Message"/>'s "payload is copied by the sender" contract
+    /// (Bugbot 3604566680). To change the transmitted data, dispose the returned handle and
+    /// start a fresh schedule with a new <see cref="J1939Message"/>.
+    /// </para>
     /// </summary>
+    /// <exception cref="J1939NoAddressException">The node has not yet claimed an address
+    /// (matches <see cref="SendAsync"/>'s pre-flight gate).</exception>
     IDisposable StartPeriodicSend(J1939Message message, TimeSpan period);
 }

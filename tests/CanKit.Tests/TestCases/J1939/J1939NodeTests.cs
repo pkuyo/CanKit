@@ -822,6 +822,354 @@ public class J1939NodeTests : IClassFixture<TestCaseProvider>
         node.ClaimState.Should().Be(J1939ClaimState.Claimed);
         node.Address.Should().Be((byte)0x22);
     }
+
+    // ---------------------------------------------------------------------------------------
+    // FR-J1939-007: periodic single-frame PGN send. Every periodic PGN flows through the
+    // node's SendAsync / actor loop (L2 scheduling) — the previous dual `IPeriodicTx` path
+    // was collapsed to a single implementation (PR #33) so error handling and claim-gate
+    // semantics are uniform across payload sizes. The test collects a run of frames on a
+    // spectator bus and asserts the mean inter-arrival matches the caller's configured
+    // period.
+    // ---------------------------------------------------------------------------------------
+    [Fact]
+    public async Task StartPeriodicSend_SingleFrame_FiresAtConfiguredPeriod()
+    {
+        var session = NewSession();
+        using var busA = Open(session, 0);
+        using var busB = Open(session, 1); // spectator: samples arrival times
+
+        using var sender = J1939Node.Open(busA, new J1939NodeOptions(Name(1)));
+        await sender.ClaimAddressAsync(0xC1).WithTimeout(ShortTimeout);
+
+        // The stamp collection is protected by its own lock; the FrameObserved handler runs
+        // on the bus's dispatch thread and multiple readers might in principle observe the
+        // frame concurrently on some adapters.
+        var stamps = new List<DateTime>();
+        var stampsLock = new object();
+        const uint targetPgn = 0xFEE5u; // PDU2, PS=0xE5 (arbitrary), well-known-ish
+        busB.FrameObserved += (_, e) =>
+        {
+            if (!e.CanFrame.IsExtendedFrame) return;
+            var fields = J1939Id.Decompose((uint)e.CanFrame.ID);
+            if (fields.SourceAddress != 0xC1) return;
+            if (fields.Pgn != targetPgn) return;
+            lock (stampsLock) stamps.Add(DateTime.UtcNow);
+        };
+
+        // 80 ms period is comfortably above the ~1 ms virtual-loopback latency but short
+        // enough to gather ≥8 samples in a couple of seconds without making the test flaky.
+        var period = TimeSpan.FromMilliseconds(80);
+        var payload = new byte[] { 0x11, 0x22, 0x33, 0x44 };
+        var message = new J1939Message(targetPgn, payload, priority: 6, destinationAddress: 0xFF);
+
+        using (var handle = sender.StartPeriodicSend(message, period))
+        {
+            handle.Should().NotBeNull();
+
+            // Collect until we have enough samples for a stable mean, or bail out with a
+            // clear failure message if the schedule never fires.
+            var deadline = DateTime.UtcNow + ShortTimeout;
+            while (true)
+            {
+                int count;
+                lock (stampsLock) count = stamps.Count;
+                if (count >= 8) break;
+                if (DateTime.UtcNow >= deadline)
+                    throw new TimeoutException(
+                        $"Expected at least 8 periodic emissions within {ShortTimeout.TotalSeconds}s; observed {count}.");
+                await Task.Delay(20);
+            }
+        }
+
+        // Post-Dispose: no additional frames should arrive after a settle window.
+        int countAtDispose;
+        lock (stampsLock) countAtDispose = stamps.Count;
+        await Task.Delay(period + period); // wait 2 periods
+        int countAfterSettle;
+        lock (stampsLock) countAfterSettle = stamps.Count;
+
+        countAfterSettle.Should().BeLessOrEqualTo(countAtDispose + 1,
+            "disposing the handle must stop the periodic loop so at most an already-in-flight " +
+            "SendAsync may still land after Dispose returns");
+
+        // Inter-arrival timing. Compute the mean over the collected samples and assert it
+        // matches the requested period to within a generous tolerance to survive CI jitter
+        // (Virtual bus is fast but scheduling on shared runners can slip by tens of ms per
+        // sample).
+        List<DateTime> snapshot;
+        lock (stampsLock) snapshot = new List<DateTime>(stamps);
+        snapshot.Count.Should().BeGreaterOrEqualTo(8);
+
+        var deltas = new List<double>(snapshot.Count - 1);
+        for (int i = 1; i < snapshot.Count; i++)
+            deltas.Add((snapshot[i] - snapshot[i - 1]).TotalMilliseconds);
+
+        double mean = 0;
+        foreach (var d in deltas) mean += d;
+        mean /= deltas.Count;
+
+        double targetMs = period.TotalMilliseconds;
+        // Lower bound: the loop awaits Task.Delay(period) after each SendAsync, so mean
+        // inter-arrival cannot be materially below the requested period. Upper bound:
+        // tolerate CI jitter up to ~1.6x (send latency + Task.Delay drift).
+        mean.Should().BeInRange(targetMs * 0.7, targetMs * 1.6,
+            $"mean inter-arrival ({mean:F1} ms) should approximate the configured period ({targetMs:F0} ms)");
+    }
+
+    // The single-frame periodic path MUST refuse to start before ClaimAddressAsync completes,
+    // mirroring SendAsync's pre-flight gate (Bugbot 3600377725) so no periodic traffic leaks
+    // out with an invalid SA.
+    [Fact]
+    public async Task StartPeriodicSend_SingleFrame_BeforeClaim_ThrowsNoAddress()
+    {
+        var session = NewSession();
+        using var busA = Open(session, 0);
+
+        using var node = J1939Node.Open(busA, new J1939NodeOptions(Name(1)));
+        node.ClaimState.Should().NotBe(J1939ClaimState.Claimed);
+
+        var message = new J1939Message(0xFEE6u, new byte[] { 1, 2, 3 }, priority: 6,
+            destinationAddress: 0xFF);
+
+        Action act = () => node.StartPeriodicSend(message, TimeSpan.FromMilliseconds(50));
+        act.Should().Throw<J1939NoAddressException>();
+
+        // A subsequent successful claim + StartPeriodicSend must work.
+        await node.ClaimAddressAsync(0xC2).WithTimeout(ShortTimeout);
+        using var handle = node.StartPeriodicSend(message, TimeSpan.FromMilliseconds(80));
+        handle.Should().NotBeNull();
+    }
+
+    // Bugbot 3603876664 regression: once the owning node loses its claim (a higher-priority
+    // peer unseats it and it transitions to CannotClaim), the periodic schedule MUST stop
+    // putting stale-SA frames on the wire. With the unified SendAsync path (PR #33),
+    // SendAsync's pre-flight claim gate throws J1939NoAddressException on every subsequent
+    // tick, so no CAN frame is emitted while the node is un-claimed. Assert the wire goes
+    // quiet after unseating.
+    [Fact]
+    public async Task StartPeriodicSend_SingleFrame_StopsAfterAddressLoss()
+    {
+        var session = NewSession();
+        using var busA = Open(session, 0);
+        using var busB = Open(session, 1);
+        using var busC = Open(session, 2); // spectator: counts periodic emissions
+
+        // Owner has a HIGHER numeric NAME → lower priority → will be unseated when the
+        // peer with a lower NAME claims the same SA per SAE J1939-81 §4.4.3.2.
+        var ownerOpts = new J1939NodeOptions(Name(0x000200))
+        {
+            ClaimAnnounceTimeout = TimeSpan.FromMilliseconds(80),
+        };
+        var peerOpts = new J1939NodeOptions(Name(0x000010))
+        {
+            ClaimAnnounceTimeout = TimeSpan.FromMilliseconds(80),
+        };
+
+        using var owner = J1939Node.Open(busA, ownerOpts);
+        using var peer = J1939Node.Open(busB, peerOpts);
+
+        const byte contendedSa = 0x50;
+        await owner.ClaimAddressAsync(contendedSa).WithTimeout(ShortTimeout);
+        owner.ClaimState.Should().Be(J1939ClaimState.Claimed);
+        owner.Address.Should().Be(contendedSa);
+
+        // Watch for the periodic PGN on the spectator bus so the schedule's "still emitting"
+        // assertion is independent of the owner node's internal state and matches what
+        // downstream ECUs actually observe.
+        const uint targetPgn = 0xFEE7u;
+        var stamps = new List<DateTime>();
+        var stampsLock = new object();
+        busC.FrameObserved += (_, e) =>
+        {
+            if (!e.CanFrame.IsExtendedFrame) return;
+            var fields = J1939Id.Decompose((uint)e.CanFrame.ID);
+            if (fields.Pgn != targetPgn) return;
+            if (fields.SourceAddress != contendedSa) return;
+            lock (stampsLock) stamps.Add(DateTime.UtcNow);
+        };
+
+        var period = TimeSpan.FromMilliseconds(40);
+        var message = new J1939Message(targetPgn, new byte[] { 0xA1, 0xA2 }, priority: 6,
+            destinationAddress: 0xFF);
+        using var handle = owner.StartPeriodicSend(message, period);
+
+        // Wait until the schedule has actually put a few frames on the wire so the
+        // "stop" assertion below is meaningful (the schedule really was running).
+        var readyDeadline = DateTime.UtcNow + ShortTimeout;
+        while (true)
+        {
+            int c;
+            lock (stampsLock) c = stamps.Count;
+            if (c >= 3) break;
+            if (DateTime.UtcNow >= readyDeadline)
+                throw new TimeoutException("Expected ≥3 periodic frames from owner before contest.");
+            await Task.Delay(10);
+        }
+
+        // Peer with lower NAME claims the same SA. HandleIncomingAddressClaim's
+        // "already claimed at SA + peer wins" branch flips the owner to CannotClaim and
+        // clears its address, so subsequent SendAsync calls from the periodic loop fail
+        // fast at the claim gate — no more frames go out under the previous SA.
+        await peer.ClaimAddressAsync(contendedSa).WithTimeout(ShortTimeout);
+        peer.Address.Should().Be(contendedSa);
+
+        // Wait for the owner's state machine to observe the contest.
+        var lossDeadline = DateTime.UtcNow + ShortTimeout;
+        while (owner.ClaimState == J1939ClaimState.Claimed && DateTime.UtcNow < lossDeadline)
+            await Task.Delay(10);
+        owner.ClaimState.Should().NotBe(J1939ClaimState.Claimed);
+        owner.Address.Should().BeNull();
+
+        // Give the schedule ~2 periods to observe the state transition and let the
+        // in-flight SendAsync (if any) drain. Peer traffic on `contendedSa` is filtered by
+        // NAME (owner's Name(0x200) ≠ peer's Name(0x010)), so any frames on `contendedSa`
+        // that arrive here originate from the owner's periodic loop *not yet stopping* —
+        // that is exactly the bug we are guarding against.
+        int countAfterLoss;
+        lock (stampsLock) countAfterLoss = stamps.Count;
+        await Task.Delay(period + period + TimeSpan.FromMilliseconds(50));
+        int countAfterQuiet;
+        lock (stampsLock) countAfterQuiet = stamps.Count;
+
+        // We tolerate at most one already-in-flight emission slipping past the state
+        // transition. Anything more means the loop kept sending under a stale SA.
+        (countAfterQuiet - countAfterLoss).Should().BeLessOrEqualTo(1,
+            "the periodic loop must stop putting frames on the wire within ~2 periods " +
+            "after the owner loses its claim; otherwise stale-SA frames would keep going " +
+            "out under the previous address (Bugbot 3603876664)");
+    }
+
+    // Bugbot 3604386825 regression: send failures inside the periodic loop MUST reach the
+    // application via BackgroundExceptionOccurred. Now that every periodic PGN uses the
+    // SendAsync-based PeriodicSchedule (PR #33), that means: after the owner loses its
+    // claim, SendAsync's pre-flight gate throws J1939NoAddressException on the next tick
+    // and the schedule surfaces the exception. The earlier dual-path implementation had a
+    // silent-error hole when the L1 fallback swallowed Transmit exceptions; this test
+    // guards against that regression coming back.
+    [Fact]
+    public async Task StartPeriodicSend_SingleFrame_SurfacesSendErrors()
+    {
+        var session = NewSession();
+        using var busA = Open(session, 0);
+        using var busB = Open(session, 1);
+
+        var ownerOpts = new J1939NodeOptions(Name(0x000200))
+        {
+            ClaimAnnounceTimeout = TimeSpan.FromMilliseconds(80),
+        };
+        var peerOpts = new J1939NodeOptions(Name(0x000010))
+        {
+            ClaimAnnounceTimeout = TimeSpan.FromMilliseconds(80),
+        };
+
+        using var owner = J1939Node.Open(busA, ownerOpts);
+        using var peer = J1939Node.Open(busB, peerOpts);
+
+        var backgroundExceptions = new List<Exception>();
+        var exLock = new object();
+        owner.BackgroundExceptionOccurred += (_, ex) =>
+        {
+            lock (exLock) backgroundExceptions.Add(ex);
+        };
+
+        const byte contendedSa = 0x53;
+        await owner.ClaimAddressAsync(contendedSa).WithTimeout(ShortTimeout);
+        owner.Address.Should().Be(contendedSa);
+
+        var period = TimeSpan.FromMilliseconds(40);
+        var message = new J1939Message(0xFEE9u, new byte[] { 0xC1, 0xC2 }, priority: 6,
+            destinationAddress: 0xFF);
+        using var handle = owner.StartPeriodicSend(message, period);
+
+        // Peer unseats the owner → SendAsync's claim gate starts throwing
+        // J1939NoAddressException on every scheduled emission. PeriodicSchedule.LoopAsync
+        // catches non-cancellation exceptions and forwards them to
+        // BackgroundExceptionOccurred so applications observe the failure.
+        await peer.ClaimAddressAsync(contendedSa).WithTimeout(ShortTimeout);
+        var lossDeadline = DateTime.UtcNow + ShortTimeout;
+        while (owner.ClaimState == J1939ClaimState.Claimed && DateTime.UtcNow < lossDeadline)
+            await Task.Delay(10);
+        owner.ClaimState.Should().NotBe(J1939ClaimState.Claimed);
+
+        // Give the schedule a few periods to attempt emissions under the lost claim.
+        var seenDeadline = DateTime.UtcNow + ShortTimeout;
+        while (true)
+        {
+            bool seen;
+            lock (exLock) seen = backgroundExceptions.Exists(e => e is J1939NoAddressException);
+            if (seen) break;
+            if (DateTime.UtcNow >= seenDeadline)
+                throw new TimeoutException(
+                    "Expected the schedule to surface J1939NoAddressException via " +
+                    "BackgroundExceptionOccurred after address loss — periodic send " +
+                    "errors must not be silently swallowed (Bugbot 3604386825).");
+            await Task.Delay(10);
+        }
+    }
+
+    // Optional coverage for the reclaim-with-new-SA path: after the schedule stops on
+    // address loss, a subsequent successful claim (potentially on a different SA) MUST
+    // re-arm the periodic emission and the wire ID MUST carry the new SA.
+    [Fact]
+    public async Task StartPeriodicSend_SingleFrame_ReclaimResumesUnderNewSa()
+    {
+        var session = NewSession();
+        using var busA = Open(session, 0);
+        using var busB = Open(session, 1);
+        using var busC = Open(session, 2); // spectator
+
+        var ownerOpts = new J1939NodeOptions(Name(0x000200))
+        {
+            ClaimAnnounceTimeout = TimeSpan.FromMilliseconds(80),
+        };
+        var peerOpts = new J1939NodeOptions(Name(0x000010))
+        {
+            ClaimAnnounceTimeout = TimeSpan.FromMilliseconds(80),
+        };
+
+        using var owner = J1939Node.Open(busA, ownerOpts);
+        using var peer = J1939Node.Open(busB, peerOpts);
+
+        const byte firstSa = 0x51;
+        const byte secondSa = 0x52;
+        await owner.ClaimAddressAsync(firstSa).WithTimeout(ShortTimeout);
+
+        const uint targetPgn = 0xFEE8u;
+        var newSaStamps = 0;
+        busC.FrameObserved += (_, e) =>
+        {
+            if (!e.CanFrame.IsExtendedFrame) return;
+            var fields = J1939Id.Decompose((uint)e.CanFrame.ID);
+            if (fields.Pgn != targetPgn) return;
+            if (fields.SourceAddress == secondSa) Interlocked.Increment(ref newSaStamps);
+        };
+
+        var period = TimeSpan.FromMilliseconds(40);
+        var message = new J1939Message(targetPgn, new byte[] { 0xB1 }, priority: 6,
+            destinationAddress: 0xFF);
+        using var handle = owner.StartPeriodicSend(message, period);
+
+        // Peer contests the first SA; owner is unseated → schedule tears down.
+        await peer.ClaimAddressAsync(firstSa).WithTimeout(ShortTimeout);
+        var lossDeadline = DateTime.UtcNow + ShortTimeout;
+        while (owner.ClaimState == J1939ClaimState.Claimed && DateTime.UtcNow < lossDeadline)
+            await Task.Delay(10);
+        owner.ClaimState.Should().NotBe(J1939ClaimState.Claimed);
+
+        // Owner reclaims on a different SA. The SendAsync path composes the 29-bit ID
+        // from the currently-claimed SA on every tick, so the periodic emission naturally
+        // resumes under the new SA without any explicit rebind.
+        await owner.ClaimAddressAsync(secondSa).WithTimeout(ShortTimeout);
+        owner.Address.Should().Be(secondSa);
+
+        // Wait for a handful of frames under the new SA to confirm the schedule resumed.
+        var readyDeadline = DateTime.UtcNow + ShortTimeout;
+        while (Volatile.Read(ref newSaStamps) < 3 && DateTime.UtcNow < readyDeadline)
+            await Task.Delay(10);
+        Volatile.Read(ref newSaStamps).Should().BeGreaterOrEqualTo(3,
+            "the schedule must resume under the reclaimed SA so downstream ECUs continue " +
+            "to observe the PGN under the new (correct) source address");
+    }
 }
 
 internal static class J1939NodeTestExtensions

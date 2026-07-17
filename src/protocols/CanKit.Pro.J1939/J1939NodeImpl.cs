@@ -5,6 +5,7 @@ using System.Threading.Channels;
 using System.Threading.Tasks;
 using CanKit.Abstractions.API.Can;
 using CanKit.Abstractions.API.Can.Definitions;
+using CanKit.Abstractions.API.Common;
 using CanKit.Pro.Actor;
 using CanKit.Pro.Addressing;
 using CanKit.Pro.J1939Tp;
@@ -644,8 +645,41 @@ internal sealed class J1939NodeImpl : IJ1939Node
         ThrowIfDisposed();
         if (period <= TimeSpan.Zero)
             throw new ArgumentOutOfRangeException(nameof(period), period, "Period must be positive.");
+        if (message.Priority > 7)
+            throw new ArgumentOutOfRangeException(nameof(message.Priority), message.Priority,
+                "J1939 priority must be in [0, 7].");
+
+        // Every periodic PGN — single-frame and multi-frame alike — is driven by the actor /
+        // SendAsync loop in PeriodicSchedule. The earlier attempt to route single-frame
+        // payloads through the L1 IPeriodicTx handle was reverted (PR #33): the SW-fallback
+        // path swallowed Transmit exceptions (Bugbot 3604386825), and every attempted work-
+        // around (reclaim-time handle rebind, address-loss teardown on the actor loop,
+        // payload snapshot, handle-detach on dispose, …) revealed yet another edge case.
+        // Collapsing to one path removes an entire class of races at the cost of the L1
+        // jitter optimization — FR-J1939-007 (SRS Should) still holds via the L2 actor /
+        // DeadlineScheduler path, which is what IJ1939Node.StartPeriodicSend documents.
+        //
+        // Pre-flight claim gate mirrors SendAsync (Bugbot 3600377725): refuse to arm a
+        // schedule without a currently-claimed SA so callers see the same failure mode as
+        // a one-shot SendAsync before ClaimAddressAsync completes. Once running, the loop's
+        // per-emission SendAsync call re-checks the claim state on every tick, so an
+        // address loss after Start stops wire traffic (SendAsync throws
+        // J1939NoAddressException, which surfaces via BackgroundExceptionOccurred).
+        if ((J1939ClaimState)Volatile.Read(ref _claimStateStore) != J1939ClaimState.Claimed)
+            throw new J1939NoAddressException();
+        if (Volatile.Read(ref _addressStore) < 0)
+            throw new J1939NoAddressException();
+
         var schedule = new PeriodicSchedule(this, message, period);
-        schedule.Start();
+        try
+        {
+            schedule.Start();
+        }
+        catch
+        {
+            schedule.Dispose();
+            throw;
+        }
         return schedule;
     }
 
@@ -961,9 +995,15 @@ internal sealed class J1939NodeImpl : IJ1939Node
     }
 
     /// <summary>
-    /// One periodic-send schedule: fires <see cref="_message"/> every <see cref="_period"/>
-    /// on the node's actor loop. Send failures do not tear the schedule down; they surface via
-    /// the node's <see cref="J1939NodeImpl.BackgroundExceptionOccurred"/>.
+    /// Software periodic-send schedule used for every periodic PGN — single-frame and
+    /// multi-frame alike (FR-J1939-006/007). Each iteration calls
+    /// <see cref="J1939NodeImpl.SendAsync"/>, which re-checks the claim gate before
+    /// touching the wire (so address loss stops emission automatically) and, for
+    /// multi-frame PGNs, spins up a fresh TP.BAM / TP.CM session on the shared J1939-TP
+    /// channel. Send failures do not tear the schedule down; they surface via
+    /// <see cref="J1939NodeImpl.BackgroundExceptionOccurred"/>. The payload is snapshotted
+    /// into an owned buffer at construction so in-place caller mutation after Start is not
+    /// observable on the wire (Bugbot 3604566680).
     /// </summary>
     private sealed class PeriodicSchedule : IDisposable
     {
@@ -977,8 +1017,21 @@ internal sealed class J1939NodeImpl : IJ1939Node
         public PeriodicSchedule(J1939NodeImpl owner, J1939Message message, TimeSpan period)
         {
             _owner = owner;
-            _message = message;
             _period = period;
+
+            // Snapshot the caller's payload into an owned array so the wire traffic is
+            // frozen at Start-time regardless of whether the caller mutates the buffer that
+            // backs message.Payload afterwards (Bugbot 3604566680). J1939Message.Payload is
+            // a ReadOnlyMemory<byte> and its ctor doesn't copy, so re-reading it every
+            // emission would alias the caller's buffer — J1939Message's own contract is
+            // "payload is copied by the sender". We rebuild the message once here with the
+            // owned array so every LoopAsync iteration hands SendAsync the same immutable
+            // bytes.
+            var owned = new byte[message.Payload.Length];
+            if (message.Payload.Length > 0) message.Payload.Span.CopyTo(owned);
+            _message = new J1939Message(message.Pgn, owned, message.Priority,
+                sourceAddress: message.SourceAddress,
+                destinationAddress: message.DestinationAddress);
         }
 
         public void Start()
@@ -1021,4 +1074,14 @@ internal sealed class J1939NodeImpl : IJ1939Node
             _cts.Dispose();
         }
     }
+
+    // Historical note: an earlier revision routed single-frame (<= 8 byte) periodic PGNs
+    // through the L1 ICanBus.TransmitPeriodic / IPeriodicTx handle for lower jitter. That
+    // dual-path design was reverted (PR #33) because the SW-fallback branch swallowed
+    // Transmit exceptions and every attempted work-around opened a new race (reclaim-time
+    // rebind, dispose-of-detached-handle, payload aliasing, actor stall, claim gate). All
+    // periodic PGNs now flow through PeriodicSchedule (SendAsync + Task.Delay). FR-J1939-007
+    // (Should) is still satisfied via L2 actor / DeadlineScheduler timing; a native
+    // IPeriodicTx optimization can be reintroduced once the underlying L1 fallback surfaces
+    // Transmit errors consistently.
 }
