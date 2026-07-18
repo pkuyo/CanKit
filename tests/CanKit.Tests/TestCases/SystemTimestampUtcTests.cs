@@ -12,9 +12,11 @@ using Xunit;
 namespace CanKit.Tests.TestCases;
 
 /// <summary>
-/// NFR-012 (Should): received-frame <see cref="CanReceiveData.SystemTimestamp"/> must be UTC
-/// so downstream logging/tracing has a single monotonic time base regardless of the host's
-/// local zone or daylight-saving transitions.
+/// NFR-012 (Should): received-frame <see cref="CanReceiveData.SystemTimestamp"/> must carry
+/// <see cref="DateTimeKind.Utc"/> so downstream logging/tracing has a single wall-clock UTC
+/// time base regardless of the host's local zone or daylight-saving transitions.
+/// UTC is not monotonic (leap seconds / manual clock adjustments still apply); the goal here
+/// is a zone-independent, comparable stamp, not a monotonic clock.
 /// </summary>
 public class SystemTimestampUtcTests : IClassFixture<TestCaseProvider>
 {
