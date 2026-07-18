@@ -590,7 +590,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IOwnership
                             CanProtocolViolationType.Unknown,
                             FrameErrorLocation.Invalid,
                             CanTransceiverStatus.Unknown,
-                            DateTime.Now,
+                            DateTime.UtcNow,
                             0,
                             null,
                             FrameDirection.Unknown,

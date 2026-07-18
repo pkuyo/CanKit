@@ -138,7 +138,7 @@ Zero-Copy) erhöhen den Aufwand für Q4 und für einen sicheren **Frame-Ownershi
   `CanKit.Core.*`, `CanKit.Adapter.<Vendor>`, `CanKit.Pro.*` (L2–L4).
   Legacy-`CanKit.Transport.IsoTp` (inkl. gemischter `CanKit.Protocol.IsoTp.*`-Namespaces) ist entfernt.
 - **Diagnostics:** zentral über `CanKitLogger` und `CanBusExceptionDispatcher`.
-- **Zeitbasis:** gemischt `DateTime.Now`/`UtcNow` (Ist-Schuld, Review §2.5) – Ziel: einheitlich UTC.
+- **Zeitbasis:** auf den von NFR-012 berührten Pfaden auf `DateTime.UtcNow` vereinheitlicht — betrifft `CanReceiveData.SystemTimestamp` sowie Diagnose- und Hot-Path-Aufrufe in ZLG, Kvaser, PCAN, ControlCAN und dem SocketCAN-Fallback; verbleibende Alt-Aufrufstellen sind die in Review §2.5 nachverfolgte Restschuld.
 
 ---
 
@@ -1381,7 +1381,7 @@ Priorisierung: **K** = kritisch, **W** = wichtig, **G** = gering.
 | W | **`CanEndpoint.Parse` lowercased Host**: `zlg://USBCANFD-200U` → `usbcanfd-200u`; Sonderzeichen werfen. | Adapter müssen case-insensitiv sein (nicht garantiert); Namen mit Leerzeichen scheitern. | Host case-preserving parsen; Namensregeln dokumentieren. | §2.5 |
 | G | ✅ *Behoben.* **Typos in öffentlicher API**: `ExceptionOccured`→`ExceptionOccurred`, `ReadTImeOutMs`→`ReadTimeoutMs`; Namespace `Excpetions` entfällt mit Legacy-ISO-TP-Abbau. | Nach 1.0 nur als Breaking Change korrigierbar. | Vor 1.0 bereinigt (NFR-011). | §3 |
 | G | ✅ *Behoben.* **ISO-TP-Packaging**: Legacy-Paket entfernt; `CanKit.Pro.IsoTp` bleibt `IsPackable=false` bis zur Reife und ohne Vendor-SDK-Referenzen. | — | Pro-ISO-TP über `CanKitProIsoTp.slnf` / `pro-isotp-ci.yml` testen. | §1.1/16, §3 |
-| G | **Zeitbasis gemischt** (`DateTime.Now` vs. `UtcNow`) und Copy-Paste-Logtexte („Vector CAN bus", „ControlCAN poll loop"). | Korrelation erschwert; irreführende Logs. | Einheitlich UTC; Logtexte korrigieren. | §2.4, §2.5 |
+| G | ✅ *Adressiert (Zeitbasis).* **Zeitbasis gemischt** (`DateTime.Now` vs. `UtcNow`) und Copy-Paste-Logtexte („Vector CAN bus", „ControlCAN poll loop"). Zeitbasis ist jetzt vereinheitlicht: `CanReceiveData.SystemTimestamp` verwendet standardmäßig `DateTime.UtcNow` (NFR-012), und die Diagnose-/Hot-Path-Aufrufe der Adapter ZLG, Kvaser, PCAN, ControlCAN sowie des SocketCAN-Fallbacks liefern UTC; abgesichert durch `SystemTimestampUtcTests` auf dem Virtual-Adapter. Die Bereinigung der Logtexte steht weiterhin aus. | Korrelation erschwert; irreführende Logs. | Einheitlich UTC (erledigt für berührte Pfade); Logtexte weiterhin korrigieren. | §2.4, §2.5 |
 | G | ✅ *Aktualisiert.* **CI-Transportabdeckung**: Legacy-`CanKitTransports.slnf` entfernt; Pro-Transports haben eigene Filter/Workflows (`CanKitProIsoTp.slnf`, `CanKitProJ1939Tp.slnf`). | Pro-Transport-Änderungen erhalten Virtual-Loopback-CI. | Weitere L3/L4-Pakete analog anbinden. | §3, §4 |
 
 **Gesamtbewertung:** L0/L1 sind produktionsnah; die punktuellen kritischen Bugs

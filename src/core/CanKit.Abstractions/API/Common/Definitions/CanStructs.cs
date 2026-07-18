@@ -248,9 +248,12 @@ public readonly record struct CanReceiveData(CanFrame CanFrame)
     public TimeSpan ReceiveTimestamp { get; init; }
 
     /// <summary>
-    /// System time corresponding to this record. (该记录对应的系统时间。)
+    /// System time corresponding to this record, in UTC (<see cref="DateTimeKind.Utc"/>).
+    /// Defaults to <see cref="DateTime.UtcNow"/> so downstream logging has a zone-independent
+    /// time base. (对应此记录的系统时间，使用 UTC（<see cref="DateTimeKind.Utc"/>）；
+    /// 默认值为 <see cref="DateTime.UtcNow"/>，为下游日志提供与时区无关的时间基准。)
     /// </summary>
-    public DateTime SystemTimestamp { get; init; } = DateTime.Now;
+    public DateTime SystemTimestamp { get; init; } = DateTime.UtcNow;
 
     /// <summary>
     /// Indicates whether this frame is a transmit echo/acknowledgment. (指示此帧是否为发送回显)

@@ -884,7 +884,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IOwnersh
                     var sysTs = Options.PreferKernelTimestamp && rec.ReceiveTimestamp != TimeSpan.Zero
                         ? new DateTimeOffset(new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc))
                             .Add(rec.ReceiveTimestamp).UtcDateTime
-                        : DateTime.Now;
+                        : DateTime.UtcNow;
                     var info = new DefaultCanErrorInfo(
                         SocketCanErr.ToFrameErrorType(err),
                         SocketCanErr.ToControllerStatus(span),
