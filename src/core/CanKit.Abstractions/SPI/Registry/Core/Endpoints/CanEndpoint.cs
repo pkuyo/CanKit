@@ -10,7 +10,7 @@ namespace CanKit.Abstractions.SPI.Registry.Core.Endpoints;
 /// The endpoint is parsed with a small hand-written tokenizer instead of <see cref="Uri"/>
 /// so that device names such as <c>zlg://USBCANFD-200U</c> keep their original case and
 /// characters like <c>-</c>, <c>_</c>, <c>.</c> and percent-encoded sequences are accepted
-/// in the host and path (see review §2.5 in <c>docs/reviews/2026-07-14-deep-code-review.md</c>).
+/// in the host and path (see internal deep code review §2.5).
 /// </remarks>
 public readonly struct CanEndpoint
 {
@@ -110,11 +110,24 @@ public readonly struct CanEndpoint
         }
 
         if (hostRaw.Length == 0)
-            throw new FormatException($"Endpoint '{endpoint}' is missing a host between '://' and the next delimiter.");
+        {
+            // Allow "scheme://?..." and "scheme://#..." (query/fragment-only endpoints);
+            // some adapters (kvaser, pcan, controlcan) read channel/type from the query
+            // when no host is supplied. Reject "scheme://" alone and "scheme:///path"
+            // (empty host followed by a slash-delimited path), which the prior
+            // System.Uri-based parser also rejected.
+            bool hasQueryOrFragment = qIdx >= 0 || hashIdx >= 0;
+            bool hasSlashPath = slashIdx >= 0;
+            if (!hasQueryOrFragment || hasSlashPath)
+                throw new FormatException(
+                    $"Endpoint '{endpoint}' is missing a host between '://' and the next delimiter.");
+        }
 
-        string host = Unescape(hostRaw);
+        string host = hostRaw.Length == 0 ? string.Empty : Unescape(hostRaw);
         string path = pathRaw.Length == 0 ? string.Empty : Unescape(pathRaw);
-        string combined = path.Length == 0 ? host : host + "/" + path;
+        string combined = host.Length == 0
+            ? path
+            : (path.Length == 0 ? host : host + "/" + path);
 
         string? fragment = null;
         if (hashIdx >= 0)
@@ -177,5 +190,33 @@ public readonly struct CanEndpoint
         return count <= 0 ? -1 : s.IndexOf(c, start, count);
     }
 
-    private static string Unescape(string s) => s.Length == 0 ? s : Uri.UnescapeDataString(s);
+    private static string Unescape(string s)
+    {
+        if (s.Length == 0) return s;
+
+        // Uri.UnescapeDataString silently keeps malformed escapes on some runtimes
+        // and throws ArgumentException on others; validate up front so callers get
+        // a consistent FormatException for bad "%XY" sequences.
+        for (int i = 0; i < s.Length; i++)
+        {
+            if (s[i] != '%') continue;
+            if (i + 2 >= s.Length || !IsHex(s[i + 1]) || !IsHex(s[i + 2]))
+                throw new FormatException(
+                    $"Endpoint contains malformed percent-encoding at position {i} in '{s}'.");
+            i += 2;
+        }
+
+        try
+        {
+            return Uri.UnescapeDataString(s);
+        }
+        catch (ArgumentException ex)
+        {
+            throw new FormatException(
+                $"Endpoint contains malformed percent-encoding in '{s}'.", ex);
+        }
+    }
+
+    private static bool IsHex(char c) =>
+        (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
 }

@@ -156,4 +156,66 @@ public class CanEndpointParseTests
         Action act = () => CanEndpoint.Parse("zlg:///path");
         act.Should().Throw<FormatException>();
     }
+
+    [Fact]
+    public void Rejects_Empty_Authority_With_Nothing_Else()
+    {
+        Action act = () => CanEndpoint.Parse("zlg://");
+        act.Should().Throw<FormatException>();
+    }
+
+    // Query-only endpoints: some adapters (kvaser, pcan, controlcan) accept
+    // `scheme://?...` where the channel/type comes from the query string and the
+    // host is intentionally empty. The prior System.Uri-based parser allowed this.
+    [Theory]
+    [InlineData("kvaser://?ch=1", "kvaser", "ch", "1")]
+    [InlineData("pcan://?ch=0", "pcan", "ch", "0")]
+    [InlineData("controlcan://?type=USBCAN", "controlcan", "type", "USBCAN")]
+    public void Parses_Query_Only_Endpoint_Without_Host(
+        string endpoint, string expectedScheme, string queryKey, string expectedValue)
+    {
+        var ep = CanEndpoint.Parse(endpoint);
+
+        ep.Scheme.Should().Be(expectedScheme);
+        ep.Path.Should().Be(string.Empty);
+        ep.Fragment.Should().BeNull();
+        ep.TryGet(queryKey, out var v).Should().BeTrue();
+        v.Should().Be(expectedValue);
+    }
+
+    [Fact]
+    public void Parses_Fragment_Only_Endpoint_Without_Host()
+    {
+        var ep = CanEndpoint.Parse("kvaser://#note");
+
+        ep.Scheme.Should().Be("kvaser");
+        ep.Path.Should().Be(string.Empty);
+        ep.Query.Should().BeEmpty();
+        ep.Fragment.Should().Be("note");
+    }
+
+    [Fact]
+    public void Query_Only_Endpoint_Supports_Multiple_Pairs()
+    {
+        var ep = CanEndpoint.Parse("pcan://?ch=1&Bitrate=500000");
+
+        ep.Scheme.Should().Be("pcan");
+        ep.Path.Should().Be(string.Empty);
+        ep.Query.Should().HaveCount(2);
+        ep.TryGet("ch", out var ch).Should().BeTrue();
+        ch.Should().Be("1");
+        ep.TryGet("bitrate", out var br).Should().BeTrue();
+        br.Should().Be("500000");
+    }
+
+    [Theory]
+    [InlineData("zlg://Device?bad=%")]
+    [InlineData("zlg://Device?bad=%2")]
+    [InlineData("zlg://Device?bad=%ZZ")]
+    [InlineData("zlg://Bad%GG")]
+    public void Rejects_Malformed_Percent_Encoding_With_FormatException(string endpoint)
+    {
+        Action act = () => CanEndpoint.Parse(endpoint);
+        act.Should().Throw<FormatException>();
+    }
 }
