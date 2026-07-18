@@ -22,13 +22,28 @@ public sealed class BCMPeriodicTx : IPeriodicTx
     private EventHandler? _completed;
 
     private SocketCanBusRtConfigurator _configurator;
-    private FileDescriptorHandle _fd;
-    private FileDescriptorHandle _queryFd;
-    private FileDescriptorHandle _cancelFd;
+    // Pre-initialize handles to invalid so a ctor failure path can safely
+    // Dispose() them regardless of how far initialization progressed.
+    private FileDescriptorHandle _fd = new();
+    private FileDescriptorHandle _queryFd = new();
+    private FileDescriptorHandle _cancelFd = new();
     private FileDescriptorHandle _epfd = new();
     private Libc.epoll_event[] _events = new Libc.epoll_event[4];
 
+    // Owned copy of the caller's frame. We must not keep a reference to the
+    // caller's memory owner (TX-lease, FR-RAW-005 / arc42 §8.1): the BCM socket
+    // keeps re-emitting this payload for the lifetime of the timer, whereas the
+    // caller may dispose their own owner as soon as TransmitPeriodic returns.
+    // We rent a private buffer via the bus's IBufferAllocator and dispose it on
+    // Update (replace)/Stop/Dispose.
     private CanFrame _frame;
+
+    // Last observed remaining count from a TX_READ round-trip. Serves as a
+    // best-effort fallback whenever the kernel does not reply in time or
+    // replies with an unexpected opcode, so callers never observe a spurious
+    // EAGAIN throw from a healthy periodic transmission.
+    private int _lastKnownCount;
+
     private CancellationTokenSource? _readCts;
     private Task? _readTask;
 
@@ -40,81 +55,112 @@ public sealed class BCMPeriodicTx : IPeriodicTx
     {
         _configurator = configurator;
 
-        _fd = Libc.socket(Libc.AF_CAN, Libc.SOCK_DGRAM, Libc.CAN_BCM);
-        if (_fd.IsInvalid)
-            Libc.ThrowErrno("socket(AF_CAN, SOCK_DGRAM, CAN_BCM)", "Failed to create BCM socket");
-
-        var addr = new Libc.sockaddr_can { can_family = (ushort)Libc.AF_CAN, can_ifindex = configurator.ChannelIndex };
-        var saSize = Marshal.SizeOf<Libc.sockaddr_can>();
-        if (Libc.connect(_fd, ref addr, saSize) < 0)
-            Libc.ThrowErrno("connect(SOCKADDR_CAN)", $"Failed to connect BCM socket to '{configurator.ChannelIndex}'");
-        TrySetNonBlocking(_fd);
-
-
-        _queryFd = Libc.socket(Libc.AF_CAN, Libc.SOCK_DGRAM, Libc.CAN_BCM);
-        if (_queryFd.IsInvalid)
-            Libc.ThrowErrno("socket(AF_CAN, SOCK_DGRAM, CAN_BCM)", "Failed to create BCM query socket");
-        if (Libc.connect(_queryFd, ref addr, saSize) < 0)
-            Libc.ThrowErrno("connect(SOCKADDR_CAN)", $"Failed to connect BCM query socket to '{configurator.ChannelIndex}'");
-        TrySetNonBlocking(_queryFd);
-
-
-        _cancelFd = Libc.eventfd(0, Libc.EFD_CLOEXEC | Libc.EFD_NONBLOCK);
-        if (_cancelFd.IsInvalid)
-            Libc.ThrowErrno("eventfd", "Failed to create cancel eventfd");
-
-        if (frame.FrameKind is CanFrameType.Can20 && configurator.ProtocolMode != CanProtocolMode.Can20)
-            throw new CanFeatureNotSupportedException(CanFeature.CanClassic, configurator.Features);
-        if (frame.FrameKind is CanFrameType.CanFd && configurator.ProtocolMode != CanProtocolMode.CanFd)
-            throw new CanFeatureNotSupportedException(CanFeature.CanFd, configurator.Features);
-
-
-        var period = options.Period <= TimeSpan.Zero ? TimeSpan.FromMilliseconds(1) : options.Period;
-        var ival1 = (options.Repeat < 0) ? TimeSpan.Zero : period; // repeat config times and stop
-        var ival2 = (options.Repeat < 0) ? period : TimeSpan.Zero; // immediately enter ival2 infinite inf loop
-
-        var head = new Libc.bcm_msg_head
+        // Track construction success so we can dispose any partially-acquired
+        // native resources (sockets, eventfd, duplicated frame) on failure.
+        // Without this, an exception after `frame.Duplicate(...)` — e.g. an
+        // errno throw from write(TX_SETUP) — would leak the rented copy and
+        // the FDs, since a ctor that throws does not run the caller's Dispose.
+        var success = false;
+        try
         {
-            opcode = Libc.TX_SETUP,
-            flags = Libc.SETTIMER | Libc.STARTTIMER | Libc.TX_COUNTEVT
-                    | (frame.FrameKind is CanFrameType.CanFd ? Libc.CAN_FD_FRAME : 0u),
-            count = (options.Repeat < 0) ? 0u : (uint)options.Repeat,
-            ival1 = SocketCanUtils.ToTimeval(ival1),
-            ival2 = SocketCanUtils.ToTimeval(ival2),
-            can_id = frame.ToCanID(),
-            nframes = 1
-        };
+            _fd = Libc.socket(Libc.AF_CAN, Libc.SOCK_DGRAM, Libc.CAN_BCM);
+            if (_fd.IsInvalid)
+                Libc.ThrowErrno("socket(AF_CAN, SOCK_DGRAM, CAN_BCM)", "Failed to create BCM socket");
 
-        _frame = frame;
-        RepeatCount = options.Repeat;
-        Period = period;
+            var addr = new Libc.sockaddr_can { can_family = (ushort)Libc.AF_CAN, can_ifindex = configurator.ChannelIndex };
+            var saSize = Marshal.SizeOf<Libc.sockaddr_can>();
+            if (Libc.connect(_fd, ref addr, saSize) < 0)
+                Libc.ThrowErrno("connect(SOCKADDR_CAN)", $"Failed to connect BCM socket to '{configurator.ChannelIndex}'");
+            TrySetNonBlocking(_fd);
 
-        var headSize = Marshal.SizeOf<Libc.bcm_msg_head>();
-        var frameSize = (_frame.FrameKind is CanFrameType.CanFd) ? Marshal.SizeOf<Libc.canfd_frame>() : Marshal.SizeOf<Libc.can_frame>();
 
-        unsafe
+            _queryFd = Libc.socket(Libc.AF_CAN, Libc.SOCK_DGRAM, Libc.CAN_BCM);
+            if (_queryFd.IsInvalid)
+                Libc.ThrowErrno("socket(AF_CAN, SOCK_DGRAM, CAN_BCM)", "Failed to create BCM query socket");
+            if (Libc.connect(_queryFd, ref addr, saSize) < 0)
+                Libc.ThrowErrno("connect(SOCKADDR_CAN)", $"Failed to connect BCM query socket to '{configurator.ChannelIndex}'");
+            TrySetNonBlocking(_queryFd);
+
+
+            _cancelFd = Libc.eventfd(0, Libc.EFD_CLOEXEC | Libc.EFD_NONBLOCK);
+            if (_cancelFd.IsInvalid)
+                Libc.ThrowErrno("eventfd", "Failed to create cancel eventfd");
+
+            if (frame.FrameKind is CanFrameType.Can20 && configurator.ProtocolMode != CanProtocolMode.Can20)
+                throw new CanFeatureNotSupportedException(CanFeature.CanClassic, configurator.Features);
+            if (frame.FrameKind is CanFrameType.CanFd && configurator.ProtocolMode != CanProtocolMode.CanFd)
+                throw new CanFeatureNotSupportedException(CanFeature.CanFd, configurator.Features);
+
+
+            var period = options.Period <= TimeSpan.Zero ? TimeSpan.FromMilliseconds(1) : options.Period;
+            var ival1 = (options.Repeat < 0) ? TimeSpan.Zero : period; // repeat config times and stop
+            var ival2 = (options.Repeat < 0) ? period : TimeSpan.Zero; // immediately enter ival2 infinite inf loop
+
+            var head = new Libc.bcm_msg_head
+            {
+                opcode = Libc.TX_SETUP,
+                flags = Libc.SETTIMER | Libc.STARTTIMER | Libc.TX_COUNTEVT
+                        | (frame.FrameKind is CanFrameType.CanFd ? Libc.CAN_FD_FRAME : 0u),
+                count = (options.Repeat < 0) ? 0u : (uint)options.Repeat,
+                ival1 = SocketCanUtils.ToTimeval(ival1),
+                ival2 = SocketCanUtils.ToTimeval(ival2),
+                can_id = frame.ToCanID(),
+                nframes = 1
+            };
+
+            _frame = frame.Duplicate(configurator.BufferAllocator);
+            RepeatCount = options.Repeat;
+            Period = period;
+            // IPeriodicTx contract: RemainingCount == -1 signals infinite. The
+            // BCM kernel uses count==0 for infinite jobs, so we cannot round-
+            // trip that value through _lastKnownCount without losing the
+            // infinite distinction (see RemainingCount getter and Update).
+            _lastKnownCount = RepeatCount < 0 ? -1 : RepeatCount;
+
+            var headSize = Marshal.SizeOf<Libc.bcm_msg_head>();
+            var frameSize = (_frame.FrameKind is CanFrameType.CanFd) ? Marshal.SizeOf<Libc.canfd_frame>() : Marshal.SizeOf<Libc.can_frame>();
+
+            unsafe
+            {
+                var buf = stackalloc byte[headSize + frameSize];
+
+                if (_frame.FrameKind is CanFrameType.Can20)
+                {
+                    var fr = _frame.ToCanFrame();
+                    Unsafe.CopyBlockUnaligned(buf + headSize, &fr, (uint)frameSize);
+                }
+                else if (_frame.FrameKind is CanFrameType.CanFd)
+                {
+                    var fr = _frame.ToCanFdFrame();
+                    Unsafe.CopyBlockUnaligned(buf + headSize, &fr, (uint)frameSize);
+                }
+                else
+                {
+                    throw new NotSupportedException("protocol mode not supported");
+                }
+
+                Unsafe.CopyBlockUnaligned(buf, &head, (uint)headSize);
+                var wrote = Libc.write(_fd, buf, (ulong)(headSize + frameSize));
+                if (wrote != headSize + frameSize)
+                    Libc.ThrowErrno("write(BCM TX_SETUP)", "Failed to setup BCM periodic transmission");
+            }
+
+            success = true;
+        }
+        finally
         {
-            var buf = stackalloc byte[headSize + frameSize];
-
-            if (_frame.FrameKind is CanFrameType.Can20)
+            if (!success)
             {
-                var fr = _frame.ToCanFrame();
-                Unsafe.CopyBlockUnaligned(buf + headSize, &fr, (uint)frameSize);
+                // _frame is a struct; if we threw before the Duplicate assignment
+                // it stays default(CanFrame) with a null _memoryOwner, so Dispose
+                // is a no-op. Post-Duplicate, this releases the rental we took
+                // from the bus allocator.
+                try { _frame.Dispose(); } catch { /* allocator-tolerant */ }
+                _fd.Dispose();
+                _queryFd.Dispose();
+                _cancelFd.Dispose();
+                _epfd.Dispose();
             }
-            else if (_frame.FrameKind is CanFrameType.CanFd)
-            {
-                var fr = _frame.ToCanFdFrame();
-                Unsafe.CopyBlockUnaligned(buf + headSize, &fr, (uint)frameSize);
-            }
-            else
-            {
-                throw new NotSupportedException("protocol mode not supported");
-            }
-
-            Unsafe.CopyBlockUnaligned(buf, &head, (uint)headSize);
-            var wrote = Libc.write(_fd, buf, (ulong)(headSize + frameSize));
-            if (wrote != headSize + frameSize)
-                Libc.ThrowErrno("write(BCM TX_SETUP)", "Failed to setup BCM periodic transmission");
         }
     }
 
@@ -130,6 +176,12 @@ public sealed class BCMPeriodicTx : IPeriodicTx
         {
             RepeatCount = repeatCount.Value;
             newCount = RepeatCount;
+            // Keep the cached remaining-count in sync with what we just
+            // programmed into the kernel. Without this, a subsequent
+            // RemainingCount call before TX_STATUS arrives (or on a fallback
+            // path) would return a stale value from before the reprogramming.
+            // Follow the IPeriodicTx contract: -1 signals infinite, never 0.
+            _lastKnownCount = RepeatCount < 0 ? -1 : RepeatCount;
         }
         else
         {
@@ -137,7 +189,13 @@ public sealed class BCMPeriodicTx : IPeriodicTx
         }
         if (frame is not null)
         {
-            _frame = frame.Value;
+            // TX-lease: rent an independent copy backed by our allocator, then
+            // dispose the previously-owned copy. The caller keeps ownership of
+            // the frame they passed in.
+            var newOwned = frame.Value.Duplicate(_configurator.BufferAllocator);
+            var previous = _frame;
+            _frame = newOwned;
+            try { previous.Dispose(); } catch { /* ignore double-dispose from custom allocators */ }
         }
 
         var flags = 0u;
@@ -202,6 +260,20 @@ public sealed class BCMPeriodicTx : IPeriodicTx
         {
             if (_queryFd.IsInvalid) throw new CanBusDisposedException();
 
+            // The kernel replies to TX_READ asynchronously by enqueuing a TX_STATUS
+            // message onto the query socket. Because _queryFd is non-blocking, a
+            // naive read() right after write() races the kernel and returns EAGAIN,
+            // which the previous implementation surfaced as an unconditional
+            // ThrowErrno (Review §1.4, second half). We now:
+            //   1. Try a non-blocking read first (works on Fake and on real Linux
+            //      when the reply is already in the socket queue).
+            //   2. On EAGAIN, poll with a short timeout and retry.
+            //   3. Cap retries to bound total wait; skip stray non-TX_STATUS
+            //      messages and fall back to the last known count on
+            //      unrecoverable failures rather than raising to the caller.
+            const int PollTimeoutMs = 100;
+            const int MaxAttempts = 5;
+
             Libc.bcm_msg_head head = new Libc.bcm_msg_head
             {
                 opcode = Libc.TX_READ,
@@ -215,15 +287,53 @@ public sealed class BCMPeriodicTx : IPeriodicTx
                 if (Libc.write(_queryFd, &head, headSize) < 0)
                     Libc.ThrowErrno("write(BCM TX_READ)", "Failed to query BCM status");
 
-                var n = Libc.read(_queryFd, &head, headSize);
-                if (n != headSize)
-                    Libc.ThrowErrno("read(BCM TX_STATUS)", "Failed to read BCM status");
+                int fdInt = _queryFd.DangerousGetHandle().ToInt32();
 
-                if (head.opcode != Libc.TX_STATUS)
+                for (int attempt = 0; attempt < MaxAttempts; attempt++)
                 {
-                    // No-op; non-TX_STATUS is ignored
+                    var n = Libc.read(_queryFd, &head, headSize);
+                    if (n < 0)
+                    {
+                        var errno = Libc.Errno();
+                        if (errno == Libc.EAGAIN)
+                        {
+                            var pfd = new Libc.pollfd
+                            {
+                                fd = fdInt,
+                                events = Libc.POLLIN,
+                                revents = 0
+                            };
+                            int pr = Libc.poll(ref pfd, 1, PollTimeoutMs);
+                            if (pr < 0)
+                            {
+                                var perrno = Libc.Errno();
+                                if (perrno == Libc.EINTR) continue;
+                                return _lastKnownCount;
+                            }
+                            if (pr == 0) continue;
+                            if ((pfd.revents & Libc.POLLIN) == 0)
+                                return _lastKnownCount;
+                            continue;
+                        }
+                        if (errno == Libc.EINTR) continue;
+                        return _lastKnownCount;
+                    }
+
+                    if (n != headSize) continue;
+                    if (head.opcode != Libc.TX_STATUS) continue;
+
+                    // BCM kernel encodes an infinite job's remaining count as
+                    // 0. The IPeriodicTx contract instead reserves -1 for
+                    // infinite (0 means "finite job that has finished"), so
+                    // remap the value based on the configured RepeatCount.
+                    if (RepeatCount < 0 && head.count == 0)
+                        _lastKnownCount = -1;
+                    else
+                        _lastKnownCount = (int)head.count;
+                    return _lastKnownCount;
                 }
-                return (int)head.count;
+
+                return _lastKnownCount;
             }
         }
     }
@@ -265,6 +375,7 @@ public sealed class BCMPeriodicTx : IPeriodicTx
             _queryFd.Dispose();
             _cancelFd.Dispose();
             _epfd.Dispose();
+            try { _frame.Dispose(); } catch { /* built-in allocators tolerate redundant disposal */ }
         }
     }
 
