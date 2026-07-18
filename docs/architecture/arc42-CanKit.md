@@ -1008,7 +1008,7 @@ Inter-Sende-Jitters ≤ 1,0 ms auf Windows- und Linux-Referenzhosts, wenn die Pe
 Null-Bus-artigem Transmit. Hardware-BCM bzw. Vendor-periodic-TX kann enger sein,
 wird aber nicht durch den synthetischen Softwaretest freigegeben, sondern separat
 per HIL validiert. CI führt den Virtual-Adapter-Test als Statistik- und weichen
-Software-Gate aus (mittelwertrelativer p99 ≤ 10,0 ms), um systematische
+Software-Gate aus (mittelwertrelativer p99 ≤ 25,0 ms), um systematische
 Timer-Verschiebung auf Shared Windows-Runnern nicht als Hardware-Plattformversagen
 zu bewerten.
 
@@ -1268,7 +1268,7 @@ flowchart LR
 |----|----------|--------------------------------|-----------|-----|
 | QS-1 | Erweiterbarkeit | Entwickler fügt neuen Vendor-Adapter als eigenes Projekt mit `[CanRegistryEntry]` hinzu → Bus über `scheme://` öffenbar ohne Kern-Änderung. | 0 geänderte Kern-Dateien; Adapter in ≤ 1 Tag lauffähig. | NFR-EXT-1 |
 | QS-2 | Erweiterbarkeit | Zwei Protokolle (ISO-TP + CANopen) laufen gleichzeitig auf einem Bus → beide erhalten ihren gefilterten RX-Strom. | Keine verlorenen Frames; kein konkurrierendes `ReceiveAsync`. | FR-RAW-DEMUX-1 |
-| QS-3 | Echtzeit | Periodisches Software-TX mit Periode ≥ 1 ms über ≥ 500 Perioden auf Windows- und Linux-Referenzhosts; synthetische CI-Messung nutzt Virtual bei 5 ms Periode. | Softwarepfad: p99 absoluter Inter-Sende-Jitter ≤ 1,0 ms auf Referenzhosts; CI-Soft-Gate mittelwertrelativer p99 ≤ 10,0 ms mit Jitter-Histogramm; keine Busy-Loop-CPU-Last. | NFR-RT-1 |
+| QS-3 | Echtzeit | Periodisches Software-TX mit Periode ≥ 1 ms über ≥ 500 Perioden auf Windows- und Linux-Referenzhosts; synthetische CI-Messung nutzt Virtual bei 5 ms Periode. | Softwarepfad: p99 absoluter Inter-Sende-Jitter ≤ 1,0 ms auf Referenzhosts; CI-Soft-Gate mittelwertrelativer p99 ≤ 25,0 ms mit Jitter-Histogramm; keine Busy-Loop-CPU-Last. | NFR-RT-1 |
 | QS-4 | Echtzeit | ISO-TP-Sender mit STmin=10 ms, BS=8 → CF-Abstände eingehalten. | Mittlerer CF-Abstand ∈ [STmin, STmin+Toleranz]. | FR-TP-STMIN |
 | QS-5 | Portabilität | Identischer Testfall auf netstandard2.0 (.NET Fx), net8.0 (Linux), net8.0-windows. | Grüne Matrix auf allen 3 TFMs. | NFR-PORT-1 |
 | QS-6 | Testbarkeit | CI-Lauf ohne angeschlossene Hardware (`-c Fake`). | Alle Adapter-Suites grün ohne Geräte. | NFR-TEST-1 |

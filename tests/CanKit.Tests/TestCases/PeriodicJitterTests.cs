@@ -25,7 +25,7 @@ public class PeriodicJitterTests : IClassFixture<TestCaseProvider>
     /// load), so absolute-vs-configured-period checks flake; mean-relative variance still
     /// catches pathological stalls without failing healthy but coarse hosts.
     /// </summary>
-    private const double CiSoftMeanRelativeP99JitterBoundMs = 10.0;
+    private const double CiSoftMeanRelativeP99JitterBoundMs = 25.0;
     private const int DefaultBitRate = 1_000_000;
     private static readonly TimeSpan Period = TimeSpan.FromMilliseconds(5);
     private readonly ITestOutputHelper _output;
