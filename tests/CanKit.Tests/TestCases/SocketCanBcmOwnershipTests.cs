@@ -154,6 +154,54 @@ public class SocketCanBcmOwnershipTests
     }
 
     [Fact]
+    public void RemainingCount_For_Infinite_Job_Reports_Negative_One()
+    {
+        if (!ShouldRun()) return;
+
+        // IPeriodicTx contract: RemainingCount == -1 iff the job is infinite.
+        // The BCM kernel uses count==0 for infinite jobs; without the explicit
+        // remap, callers would observe 0 here and mistake an infinite job for
+        // a completed finite one.
+        using var bus = OpenClassic(BcmOnlyEndpoint, new DefaultBufferAllocator());
+        using var frame = CanFrame.Classic(0x456, new byte[] { 1, 2, 3 });
+
+        using var handle = bus.TransmitPeriodic(frame, new PeriodicTxOptions(TimeSpan.FromMilliseconds(20), -1));
+
+        handle.RepeatCount.Should().Be(-1, "the caller requested an infinite periodic job.");
+
+        // Initial read (from _lastKnownCount seed and/or fresh TX_STATUS).
+        handle.RemainingCount.Should().Be(-1,
+            "an infinite BCM job must never report 0 remaining (that means 'finished').");
+
+        // After the timer ticks a few times the kernel-reported count is still 0;
+        // the mapping to -1 must persist.
+        System.Threading.Thread.Sleep(60);
+        handle.RemainingCount.Should().Be(-1,
+            "infinite semantics must be stable across TX_STATUS refreshes.");
+    }
+
+    [Fact]
+    public void Update_To_Infinite_Repaves_Remaining_Count_As_Negative_One()
+    {
+        if (!ShouldRun()) return;
+
+        // Guard the Update-side of the invariant: switching a finite job to
+        // infinite via Update(repeatCount: -1) must refresh the cached
+        // RemainingCount so it reflects the new contract immediately, without
+        // waiting for a TX_STATUS round-trip.
+        using var bus = OpenClassic(BcmOnlyEndpoint, new DefaultBufferAllocator());
+        using var frame = CanFrame.Classic(0x789, new byte[] { 4, 5, 6 });
+
+        using var handle = bus.TransmitPeriodic(frame, new PeriodicTxOptions(TimeSpan.FromMilliseconds(20), 5));
+
+        handle.Update(repeatCount: -1);
+        handle.RepeatCount.Should().Be(-1);
+        handle.RemainingCount.Should().Be(-1,
+            "Update(repeatCount: -1) must update _lastKnownCount to -1, not leave a stale finite value or a raw 0.");
+    }
+
+
+    [Fact]
     public async Task Update_And_Stop_Are_Safe_After_Caller_Disposes_Their_Frame()
     {
         if (!ShouldRun()) return;
