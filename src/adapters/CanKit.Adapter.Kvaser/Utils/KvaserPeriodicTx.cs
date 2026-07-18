@@ -95,6 +95,19 @@ public sealed class KvaserPeriodicTx : IPeriodicTx
         remove => throw new NotSupportedException("Kvaser hardware periodic Completed event is not supported.");
     }
 
+    /// <summary>
+    /// Kvaser programs the driver's periodic object buffer and any transmit-time failure
+    /// is surfaced via the driver return code at configuration time (thrown from
+    /// <see cref="TryStart"/> / <see cref="Update"/>). There is no software transmit loop
+    /// for this wrapper to observe, so this event is never raised by the Kvaser
+    /// implementation.
+    /// </summary>
+    public event EventHandler<Exception>? Faulted
+    {
+        add { /* never raised — see XML docs */ }
+        remove { /* never raised — see XML docs */ }
+    }
+
     public void Dispose()
     {
         Stop();

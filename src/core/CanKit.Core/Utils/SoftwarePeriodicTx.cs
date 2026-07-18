@@ -58,6 +58,17 @@ namespace CanKit.Core.Utils
         public event EventHandler? Completed;
 
         /// <summary>
+        /// Raised when an inner-bus <c>Transmit</c> call throws while the periodic loop
+        /// is running. The loop is intentionally kept alive after the event fires so
+        /// transient errors (bus-off recovery, single dropped frame) do not silently
+        /// end long-running schedules; subscribers should call <see cref="Stop"/>
+        /// themselves if the schedule must terminate on the first failure. The event
+        /// is raised outside the internal lock, matching the reentrancy behaviour of
+        /// <see cref="Completed"/>.
+        /// </summary>
+        public event EventHandler<Exception>? Faulted;
+
+        /// <summary>
         /// Create a stopped handle so callers can subscribe to <see cref="Completed"/> before starting.
         /// </summary>
         public static SoftwarePeriodicTx Create(ICanBus bus, CanFrame frame, PeriodicTxOptions options)
@@ -180,6 +191,7 @@ namespace CanKit.Core.Utils
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private bool TrySendOnce()
         {
+            Exception? faulted = null;
             try
             {
                 lock (_gate)
@@ -189,11 +201,19 @@ namespace CanKit.Core.Utils
                     return re == 1;
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                /*ignore*/
-                return false;
+                faulted = ex;
             }
+
+            // Raise Faulted outside _gate to avoid reentrancy deadlock (a handler that calls
+            // Update/Stop reacquires the lock). Keep loop-alive semantics: return false so the
+            // caller skips this tick and re-anchors on the next scheduled boundary.
+            if (faulted is not null)
+            {
+                try { Faulted?.Invoke(this, faulted); } catch { /*Ignore*/ }
+            }
+            return false;
         }
 
         private bool DecreaseAndMaybeFinish()

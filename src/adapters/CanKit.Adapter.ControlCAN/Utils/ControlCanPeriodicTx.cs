@@ -134,4 +134,16 @@ public sealed class ControlCanPeriodicTx : IPeriodicTx
                 "ControlCAN periodic transmit does not support Completed event notifications.");
         }
     }
+
+    /// <summary>
+    /// ControlCAN programs the auto-send list on the device and any transmit-time failure
+    /// is surfaced via the device return code at configuration time (thrown from the
+    /// constructor / <see cref="Update"/>). There is no software transmit loop for this
+    /// wrapper to observe, so this event is never raised by the ControlCAN implementation.
+    /// </summary>
+    public event EventHandler<Exception>? Faulted
+    {
+        add { /* never raised — see XML docs */ }
+        remove { /* never raised — see XML docs */ }
+    }
 }

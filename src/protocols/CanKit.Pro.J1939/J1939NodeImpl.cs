@@ -1080,8 +1080,15 @@ internal sealed class J1939NodeImpl : IJ1939Node
     // dual-path design was reverted (PR #33) because the SW-fallback branch swallowed
     // Transmit exceptions and every attempted work-around opened a new race (reclaim-time
     // rebind, dispose-of-detached-handle, payload aliasing, actor stall, claim gate). All
-    // periodic PGNs now flow through PeriodicSchedule (SendAsync + Task.Delay). FR-J1939-007
-    // (Should) is still satisfied via L2 actor / DeadlineScheduler timing; a native
-    // IPeriodicTx optimization can be reintroduced once the underlying L1 fallback surfaces
-    // Transmit errors consistently.
+    // periodic PGNs currently flow through PeriodicSchedule (SendAsync + Task.Delay).
+    // FR-J1939-007 (Should) is still satisfied via L2 actor / DeadlineScheduler timing.
+    //
+    // The specific L1 blocker — SoftwarePeriodicTx.TrySendOnce silently swallowing every
+    // Transmit exception — has now been removed: IPeriodicTx exposes a Faulted event
+    // (EventHandler<Exception>) that SoftwarePeriodicTx raises outside its internal gate
+    // whenever the inner Transmit call throws, and the loop stays alive so transient
+    // failures no longer terminate a schedule invisibly. Wiring J1939 to subscribe to
+    // Faulted and forward exceptions through BackgroundExceptionOccurred (mirroring the
+    // current actor-loop path) can be done as a follow-up when the native optimization
+    // is reintroduced; the L1 error-propagation prerequisite itself is resolved.
 }

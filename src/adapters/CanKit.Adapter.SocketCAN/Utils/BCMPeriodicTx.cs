@@ -384,6 +384,19 @@ public sealed class BCMPeriodicTx : IPeriodicTx
     public TimeSpan Period { get; private set; }
     public int RepeatCount { get; private set; }
 
+    /// <summary>
+    /// BCM programs the kernel periodic timer directly and any transmit-time failure is
+    /// surfaced via the initial <c>write(BCM TX_SETUP)</c> return code (thrown from the
+    /// constructor / <see cref="Update"/>). There is no background retry loop for the
+    /// software to observe once the hardware timer is armed, so this event is never
+    /// raised by the SocketCAN BCM implementation.
+    /// </summary>
+    public event EventHandler<Exception>? Faulted
+    {
+        add { /* never raised — see XML docs */ }
+        remove { /* never raised — see XML docs */ }
+    }
+
     public event EventHandler? Completed
     {
         add
