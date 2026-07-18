@@ -85,7 +85,7 @@ Kernanliegen:
 |---|---------------|-----------|-----------|
 | Q1 | **Erweiterbarkeit** | Neue Vendoren/Protokolle ohne Kern-Änderung via SPI + reflexionsbasierter Registry. | `NFR-EXT-*`, `CON-SPI` |
 | Q2 | **Portabilität** | Identisches Verhalten über 3 TFMs und 3 Betriebssysteme; P/Invoke gekapselt. | `NFR-PORT-*`, `CON-TFM` |
-| Q3 | **Echtzeitnähe / geringer Jitter** | Periodisches Senden und ISO-TP-STmin/BS-Timing brauchen präzises, plattformabhängiges High-Res-Timing. | `NFR-RT-*` |
+| Q3 | **Echtzeitnähe / geringer Jitter** | Periodisches Senden und ISO-TP-STmin/BS-Timing brauchen präzises, plattformabhängiges High-Res-Timing; der Softwarepfad `SoftwarePeriodicTx` zielt auf p99 absoluter Inter-Sende-Jitter ≤ 1,0 ms bei Periode ≥ 1 ms auf Windows-/Linux-Referenzhosts. | `NFR-RT-*` |
 | Q4 | **Testbarkeit** | Hardwarelose CI (Fake + Virtual-Loopback), deterministische Matrix-Tests. | `NFR-TEST-*` |
 | Q5 | **Ressourceneffizienz** | Zero-Alloc-Ansätze via `readonly record struct CanFrame`, `IMemoryOwner`-Pooling, `Span`-basierte Codecs. | `NFR-RES-*` |
 
@@ -1002,6 +1002,16 @@ Kernel-**BCM** für hardwarenahes periodisches TX. Die macOS-Busy-Loop-Schuld au
 §2.3 ist behoben; `Completed`-Callbacks verlassen außerdem vor dem Event `_gate`, damit
 Handler `Update`/`Stop` reentrant aufrufen können.
 
+Für NFR-RT/NFR-001 ist der Software-Akzeptanzwert festgelegt: p99 des absoluten
+Inter-Sende-Jitters ≤ 1,0 ms auf Windows- und Linux-Referenzhosts, wenn die Periode
+≥ 1 ms ist, gemessen über ≥ 500 Perioden bei idle Prozess und Virtual- oder
+Null-Bus-artigem Transmit. Hardware-BCM bzw. Vendor-periodic-TX kann enger sein,
+wird aber nicht durch den synthetischen Softwaretest freigegeben, sondern separat
+per HIL validiert. CI führt den Virtual-Adapter-Test als Statistik- und weichen
+Software-Gate aus (mittelwertrelativer p99 ≤ 25,0 ms), um systematische
+Timer-Verschiebung auf Shared Windows-Runnern nicht als Hardware-Plattformversagen
+zu bewerten.
+
 ## 8.8 Erweiterbarkeit via SPI (Registry-Pipeline)
 
 Adapter registrieren sich deklarativ: eine `[CanRegistryEntry]`-annotierte Klasse
@@ -1258,7 +1268,7 @@ flowchart LR
 |----|----------|--------------------------------|-----------|-----|
 | QS-1 | Erweiterbarkeit | Entwickler fügt neuen Vendor-Adapter als eigenes Projekt mit `[CanRegistryEntry]` hinzu → Bus über `scheme://` öffenbar ohne Kern-Änderung. | 0 geänderte Kern-Dateien; Adapter in ≤ 1 Tag lauffähig. | NFR-EXT-1 |
 | QS-2 | Erweiterbarkeit | Zwei Protokolle (ISO-TP + CANopen) laufen gleichzeitig auf einem Bus → beide erhalten ihren gefilterten RX-Strom. | Keine verlorenen Frames; kein konkurrierendes `ReceiveAsync`. | FR-RAW-DEMUX-1 |
-| QS-3 | Echtzeit | Periodisches TX mit 1 ms Periode über 60 s auf `net8.0-windows`. | Jitter p99 ≤ definierte Grenze; keine Busy-Loop-CPU-Last. | NFR-RT-1 |
+| QS-3 | Echtzeit | Periodisches Software-TX mit Periode ≥ 1 ms über ≥ 500 Perioden auf Windows- und Linux-Referenzhosts; synthetische CI-Messung nutzt Virtual bei 5 ms Periode. | Softwarepfad: p99 absoluter Inter-Sende-Jitter ≤ 1,0 ms auf Referenzhosts; CI-Soft-Gate mittelwertrelativer p99 ≤ 25,0 ms mit Jitter-Histogramm; keine Busy-Loop-CPU-Last. | NFR-RT-1 |
 | QS-4 | Echtzeit | ISO-TP-Sender mit STmin=10 ms, BS=8 → CF-Abstände eingehalten. | Mittlerer CF-Abstand ∈ [STmin, STmin+Toleranz]. | FR-TP-STMIN |
 | QS-5 | Portabilität | Identischer Testfall auf netstandard2.0 (.NET Fx), net8.0 (Linux), net8.0-windows. | Grüne Matrix auf allen 3 TFMs. | NFR-PORT-1 |
 | QS-6 | Testbarkeit | CI-Lauf ohne angeschlossene Hardware (`-c Fake`). | Alle Adapter-Suites grün ohne Geräte. | NFR-TEST-1 |
