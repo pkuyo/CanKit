@@ -49,11 +49,17 @@ public class SoftwarePeriodicTxFaultedTests
         faultObserved.Wait(TimeSpan.FromSeconds(2)).Should().BeTrue(
             "Faulted must fire when the inner bus Transmit throws");
 
-        // Give the loop a few more ticks to prove it survives the initial fault.
-        Thread.Sleep(60);
+        // Poll for further transmit attempts to prove the loop survives the initial fault.
+        // Uses SpinWait with a generous timeout so slow/loaded CI hosts don't flake here,
+        // in contrast to a fixed Thread.Sleep which either bloats runtime or races.
+        var loopKeptRunning = SpinWait.SpinUntil(
+            () => bus.TransmitCount > 1,
+            TimeSpan.FromSeconds(2));
 
         periodic.Stop();
         periodic.IsRunning.Should().BeFalse();
+        loopKeptRunning.Should().BeTrue(
+            "the periodic loop must keep attempting transmits after a fault (loop-alive semantics)");
         bus.TransmitCount.Should().BeGreaterThan(1,
             "the periodic loop must keep attempting transmits after a fault (loop-alive semantics)");
 
