@@ -860,7 +860,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IOwnersh
                 ex,
                 CanExceptionSource.BackgroundLoop,
                 severity: CanExceptionSeverity.Fault,
-                message: "SocketCAN poll loop faulted.");
+                message: "SocketCAN epoll loop faulted.");
         }
     }
 
