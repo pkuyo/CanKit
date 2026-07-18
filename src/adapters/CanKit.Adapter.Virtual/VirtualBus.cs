@@ -49,7 +49,7 @@ public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, IOwnership
 
         _exceptionPolicy = options.ExceptionPolicy ?? CanExceptionPolicy.Default;
         _exceptions = new CanBusExceptionDispatcher(
-            "Vector CAN bus",
+            "Virtual CAN bus",
             _exceptionPolicy,
             raiseBackground: ex =>
             {
