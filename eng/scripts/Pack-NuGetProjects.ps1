@@ -19,6 +19,11 @@ Get-ChildItem -Path $outputDirectory -Filter *.nupkg -File -ErrorAction Silently
 Get-ChildItem -Path $outputDirectory -Filter *.snupkg -File -ErrorAction SilentlyContinue | Remove-Item -Force
 
 foreach ($package in @($manifest.packages)) {
+    if ($package.PSObject.Properties.Name -contains 'publish' -and -not [bool]$package.publish) {
+        Write-Host "Skipping $($package.id): publish=false in manifest (project is IsPackable=false, no package is produced)."
+        continue
+    }
+
     $projectPath = Join-Path $repoRoot ([string]$package.project)
     Write-Host "Packing $($package.id)"
     & dotnet pack $projectPath -c $Configuration --no-restore -o $outputDirectory -p:UseLocalProjectReferences=true -p:GeneratePackageOnBuild=false

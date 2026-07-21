@@ -42,6 +42,11 @@ $packageDirectoryPath = Join-Path $repoRoot $PackageDirectory
 $smokeProjectPath = Join-Path $repoRoot $SmokeProject
 
 foreach ($package in $packages) {
+    if ($package.PSObject.Properties.Name -contains 'publish' -and -not [bool]$package.publish) {
+        Write-Host "Skipping $($package.id): publish=false in manifest (no package artifact expected)."
+        continue
+    }
+
     $packageId = [string]$package.id
     $version = [string]$versionMap[$packageId]
     $nupkgPath = Join-Path $packageDirectoryPath "$packageId.$version.nupkg"

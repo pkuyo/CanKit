@@ -21,6 +21,146 @@
       ]
     },
     {
+      "id": "CanKit.Pro.Actor",
+      "project": "src/core/CanKit.Pro.Actor/CanKit.Pro.Actor.csproj",
+      "versionProperty": "CanKitProActorVersion",
+      "pathPrefixes": [
+        "src/core/CanKit.Pro.Actor/"
+      ],
+      "dependsOn": []
+    },
+    {
+      "id": "CanKit.Pro.Addressing",
+      "project": "src/core/CanKit.Pro.Addressing/CanKit.Pro.Addressing.csproj",
+      "versionProperty": "CanKitProAddressingVersion",
+      "pathPrefixes": [
+        "src/core/CanKit.Pro.Addressing/"
+      ],
+      "dependsOn": []
+    },
+    {
+      "id": "CanKit.Pro.RawCan",
+      "project": "src/core/CanKit.Pro.RawCan/CanKit.Pro.RawCan.csproj",
+      "versionProperty": "CanKitProRawCanVersion",
+      "pathPrefixes": [
+        "src/core/CanKit.Pro.RawCan/"
+      ],
+      "dependsOn": [
+        "CanKit.Core"
+      ]
+    },
+    {
+      "id": "CanKit.Pro.Reliability",
+      "project": "src/core/CanKit.Pro.Reliability/CanKit.Pro.Reliability.csproj",
+      "versionProperty": "CanKitProReliabilityVersion",
+      "pathPrefixes": [
+        "src/core/CanKit.Pro.Reliability/"
+      ],
+      "dependsOn": [
+        "CanKit.Core",
+        "CanKit.Pro.Actor"
+      ]
+    },
+    {
+      "id": "CanKit.Pro.IsoTp",
+      "project": "src/transports/CanKit.Pro.IsoTp/CanKit.Pro.IsoTp.csproj",
+      "versionProperty": "CanKitProIsoTpVersion",
+      "pathPrefixes": [
+        "src/transports/CanKit.Pro.IsoTp/"
+      ],
+      "dependsOn": [
+        "CanKit.Abstractions",
+        "CanKit.Core",
+        "CanKit.Pro.Actor",
+        "CanKit.Pro.RawCan",
+        "CanKit.Pro.Reliability"
+      ],
+      "publish": false
+    },
+    {
+      "id": "CanKit.Pro.J1939Tp",
+      "project": "src/transports/CanKit.Pro.J1939Tp/CanKit.Pro.J1939Tp.csproj",
+      "versionProperty": "CanKitProJ1939TpVersion",
+      "pathPrefixes": [
+        "src/transports/CanKit.Pro.J1939Tp/"
+      ],
+      "dependsOn": [
+        "CanKit.Abstractions",
+        "CanKit.Core",
+        "CanKit.Pro.Actor",
+        "CanKit.Pro.Addressing",
+        "CanKit.Pro.RawCan",
+        "CanKit.Pro.Reliability"
+      ],
+      "publish": false
+    },
+    {
+      "id": "CanKit.Pro.Uds",
+      "project": "src/protocols/CanKit.Pro.Uds/CanKit.Pro.Uds.csproj",
+      "versionProperty": "CanKitProUdsVersion",
+      "pathPrefixes": [
+        "src/protocols/CanKit.Pro.Uds/"
+      ],
+      "dependsOn": [
+        "CanKit.Abstractions",
+        "CanKit.Core",
+        "CanKit.Pro.Actor",
+        "CanKit.Pro.RawCan",
+        "CanKit.Pro.Reliability",
+        "CanKit.Pro.IsoTp"
+      ],
+      "publish": false
+    },
+    {
+      "id": "CanKit.Pro.CANopen",
+      "project": "src/protocols/CanKit.Pro.CANopen/CanKit.Pro.CANopen.csproj",
+      "versionProperty": "CanKitProCANopenVersion",
+      "pathPrefixes": [
+        "src/protocols/CanKit.Pro.CANopen/"
+      ],
+      "dependsOn": [
+        "CanKit.Abstractions",
+        "CanKit.Core",
+        "CanKit.Pro.Actor",
+        "CanKit.Pro.RawCan",
+        "CanKit.Pro.Reliability"
+      ],
+      "publish": false
+    },
+    {
+      "id": "CanKit.Pro.J1939",
+      "project": "src/protocols/CanKit.Pro.J1939/CanKit.Pro.J1939.csproj",
+      "versionProperty": "CanKitProJ1939Version",
+      "pathPrefixes": [
+        "src/protocols/CanKit.Pro.J1939/"
+      ],
+      "dependsOn": [
+        "CanKit.Abstractions",
+        "CanKit.Core",
+        "CanKit.Pro.Actor",
+        "CanKit.Pro.Addressing",
+        "CanKit.Pro.RawCan",
+        "CanKit.Pro.Reliability",
+        "CanKit.Pro.J1939Tp"
+      ],
+      "publish": false
+    },
+    {
+      "id": "CanKit.Pro.Hawe",
+      "project": "src/protocols/CanKit.Pro.Hawe/CanKit.Pro.Hawe.csproj",
+      "versionProperty": "CanKitProHaweVersion",
+      "pathPrefixes": [
+        "src/protocols/CanKit.Pro.Hawe/"
+      ],
+      "dependsOn": [
+        "CanKit.Core",
+        "CanKit.Pro.Actor",
+        "CanKit.Pro.RawCan",
+        "CanKit.Pro.Reliability"
+      ],
+      "publish": false
+    },
+    {
       "id": "CanKit.Adapter.ControlCAN",
       "project": "src/adapters/CanKit.Adapter.ControlCAN/CanKit.Adapter.ControlCAN.csproj",
       "versionProperty": "CanKitAdapterControlCANVersion",

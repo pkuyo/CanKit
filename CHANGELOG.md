@@ -25,6 +25,20 @@
     `CanKit.Pro.Uds`; ships with a `CanKitProCANopen.slnf` and a `canopen-ci.yml` workflow.
   * SDO block transfer (FR-CO-004 Should) and Node-Guarding (FR-CO-009 Could) are documented
     open items for a future iteration.
+* **CanKit.Pro L2 stack 0.1.0 — first published Pro packages** — `CanKit.Pro.Actor`,
+  `CanKit.Pro.Addressing`, `CanKit.Pro.RawCan` and `CanKit.Pro.Reliability` are now
+  release-ready: registered in `eng/packages.json` together with the full Pro dependency
+  graph, per-package release notes under `eng/release-notes/<PackageId>/0.1.0.md`, and
+  covered by the `eng/package-smoke` package-validation project. This is the first release
+  of the CanKit.Pro L2 stack; no publishing is performed yet (the NuGet pipeline stays
+  disabled).
+* The remaining six Pro packages — `CanKit.Pro.IsoTp`, `CanKit.Pro.J1939Tp`,
+  `CanKit.Pro.Uds`, `CanKit.Pro.CANopen`, `CanKit.Pro.J1939` and `CanKit.Pro.Hawe` — stay
+  experimental and unpublished (`IsPackable=false`, marked `publish=false` in
+  `eng/packages.json`): they are part of the release plan but are skipped by the
+  pack/publish scripts until their surface stabilizes.
+* CI: `rawcan-ci.yml` now also runs the Virtual-adapter test suite (including
+  `PeriodicJitterTests`) on `macos-latest` (NFR-002).
 
 ### Fixed
 

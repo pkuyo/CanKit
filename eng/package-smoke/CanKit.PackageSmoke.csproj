@@ -12,6 +12,10 @@
   <ItemGroup Condition="'$(UseLocalProjectReferences)' == 'true'">
     <ProjectReference Include="..\..\src\core\CanKit.Abstractions\CanKit.Abstractions.csproj" />
     <ProjectReference Include="..\..\src\core\CanKit.Core\CanKit.Core.csproj" />
+    <ProjectReference Include="..\..\src\core\CanKit.Pro.Actor\CanKit.Pro.Actor.csproj" />
+    <ProjectReference Include="..\..\src\core\CanKit.Pro.Addressing\CanKit.Pro.Addressing.csproj" />
+    <ProjectReference Include="..\..\src\core\CanKit.Pro.RawCan\CanKit.Pro.RawCan.csproj" />
+    <ProjectReference Include="..\..\src\core\CanKit.Pro.Reliability\CanKit.Pro.Reliability.csproj" />
     <ProjectReference Include="..\..\src\adapters\CanKit.Adapter.ControlCAN\CanKit.Adapter.ControlCAN.csproj" />
     <ProjectReference Include="..\..\src\adapters\CanKit.Adapter.Kvaser\CanKit.Adapter.Kvaser.csproj" />
     <ProjectReference Include="..\..\src\adapters\CanKit.Adapter.PCAN\CanKit.Adapter.PCAN.csproj" />
@@ -24,6 +28,10 @@
   <ItemGroup Condition="'$(UseLocalProjectReferences)' != 'true'">
     <PackageReference Include="CanKit.Abstractions" Version="$(CanKitAbstractionsVersion)" />
     <PackageReference Include="CanKit.Core" Version="$(CanKitCoreVersion)" />
+    <PackageReference Include="CanKit.Pro.Actor" Version="$(CanKitProActorVersion)" />
+    <PackageReference Include="CanKit.Pro.Addressing" Version="$(CanKitProAddressingVersion)" />
+    <PackageReference Include="CanKit.Pro.RawCan" Version="$(CanKitProRawCanVersion)" />
+    <PackageReference Include="CanKit.Pro.Reliability" Version="$(CanKitProReliabilityVersion)" />
     <PackageReference Include="CanKit.Adapter.ControlCAN" Version="$(CanKitAdapterControlCANVersion)" />
     <PackageReference Include="CanKit.Adapter.Kvaser" Version="$(CanKitAdapterKvaserVersion)" />
     <PackageReference Include="CanKit.Adapter.PCAN" Version="$(CanKitAdapterPCANVersion)" />
