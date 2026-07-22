@@ -44,6 +44,17 @@ Experimental ISO 15765-2 (ISO-TP) implementation for [CanKit](https://github.com
 - Timings: `IsoTpChannelOptions.NAs` (TX-confirm), `NBs` (peer-FC wait), `NCr` (next CF wait) and
   `WftMax` (max consecutive `Wait` FCs) are configurable; defaults are conservative 1 s / 10.
 
+## Timing accuracy — STmin pacing (NFR-003)
+
+The sender paces Consecutive Frames by the peer's advertised STmin using the L2
+`DeadlineScheduler` (actor-driven, event-based — no busy wait). On general-purpose
+operating systems the effective CF spacing is **STmin + OS scheduling latency**: typically
+within ±1 ms of the configured value on idle Windows/Linux/macOS hosts, with no hard
+real-time guarantee under load. Sub-millisecond STmin values (`0xF1..0xF9`, 100–900 µs)
+are honored as-is but bottom out at the platform timer resolution. Verified end-to-end by
+`tests/CanKit.Tests/TestCases/IsoTp/IsoTpStminTimingTests.cs` (Virtual-loopback CF-spacing
+measurement with CI-tolerant soft bounds).
+
 ## Functional (1:N) addressing — `IsoTpFunctionalClient` (FR-TP-019)
 
 Per ISO 15765-2 §9 / ISO 14229-1 §7.5.4, a tester can broadcast a request to all ECUs on the bus
@@ -80,8 +91,6 @@ foreach (var r in responses)
 
 ## Non-scope (yet)
 
-- Full CAN-FD long-payload TX (>4095 bytes with the escape header) is codec-supported but not yet
-  in the integration-test matrix.
 - Multi-frame (FF/CF) response reassembly in functional sessions (requires caller to supply a
   per-ECU physical TX address for Flow-Control replies).
 - No vendor-SDK references, ever.
