@@ -869,15 +869,17 @@ entstehen **Use-after-free** und **Double-Dispose** (Review §1.5, §2.1).
 **Noch offen:** Event-Beobachter (`FrameReceived`, deprecated) erhalten weiterhin den
 disposable `CanFrame` statt nur einer `CanFrameView`, was Fehlgebrauch erlaubt (Migration
 auf `FrameObserved` läuft, aber `FrameReceived` bleibt aus Kompatibilitätsgründen bestehen).
-Der TX-Lease-Grundsatz (3) ist für den Virtual-Adapter und für **SocketCAN/BCM**
-(`BCMPeriodicTx` dupliziert den Aufrufer-Frame per `CanFrame.Duplicate(BufferAllocator)`
-und gibt die eigene Kopie in `Stop`/`Dispose`/`Update` frei) umgesetzt. Nach der Entfernung
-des Legacy-`CanKit.Transport.IsoTp` beschränkt sich der offene Umfang (`FR-RAW-005`, Should)
-auf weitere L0-Periodic-TX-Pfade (`ZlgPeriodicTx`, `ControlCanPeriodicTx`,
-`SoftwarePeriodicTx` als Vector/PCAN-Fallback); Kvaser kopiert die Nutzlast bereits per
-`ToArray()` und ist nicht betroffen. Die aktorbasierte `CanKit.Pro.IsoTp`-Runtime kopiert
-Payloads bereits im `SendConfirmed`-/`ProtocolActor`-Pfad und hat keinen offenen
-Echo-Matching-Bedarf hier.
+Der TX-Lease-Grundsatz (3) ist inzwischen auf **allen** Periodic-TX-Pfaden umgesetzt
+(`FR-RAW-005`, Should — damit geschlossen): **SocketCAN/BCM** (`BCMPeriodicTx`),
+**`SoftwarePeriodicTx`** (Virtual-Adapter sowie Software-Fallback von Vector/PCAN/Kvaser/
+ZLG/ControlCAN) und die nativen **`ZlgPeriodicTx`**/**`ControlCanPeriodicTx`** duplizieren
+den Aufrufer-Frame jeweils per `CanFrame.Duplicate(BufferAllocator)` und geben die eigene
+Kopie in `Update` (beim Tausch) bzw. `Stop`/`Dispose` wieder frei. Kvaser kopiert die
+Nutzlast ohnehin per `ToArray()` und war nicht betroffen. Abgesichert durch die
+Poison-on-Dispose-Regressionstests in
+`tests/CanKit.Tests/TestCases/SoftwarePeriodicTxOwnershipTests.cs`. Die aktorbasierte
+`CanKit.Pro.IsoTp`-Runtime kopiert Payloads bereits im `SendConfirmed`-/`ProtocolActor`-Pfad
+und hat keinen offenen Echo-Matching-Bedarf hier.
 
 **Ziel-Vertrag (L2, `FR-RAW-OWN-*`):**
 

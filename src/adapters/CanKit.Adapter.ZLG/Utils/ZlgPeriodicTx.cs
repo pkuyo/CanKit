@@ -38,26 +38,39 @@ public sealed class ZlgPeriodicTx : IPeriodicTx
         if (frame.FrameKind is CanFrameType.CanFd && bus.Options.ProtocolMode is not CanProtocolMode.CanFd)
             throw new CanFeatureNotSupportedException(CanFeature.CanFd, bus.Options.Features);
 
-        _frame = frame;
-        Period = options.Period <= TimeSpan.Zero ? TimeSpan.FromMilliseconds(1) : options.Period;
-        RepeatCount = options.Repeat;
-        _remaining = options.Repeat;
-
-        // Unique index (best effort, ushort range)
-        _index = (ushort)bus.GetAutoSendIndex();
-
-        // Fire once immediately if requested
-        if (options.FireImmediately)
+        // TX-lease (FR-RAW-005 / arc42 §8.1): _frame is read again by Update/StopHardware
+        // long after TransmitPeriodic returned, so keep an owned copy instead of sharing
+        // the caller's memory owner (which the caller may dispose right after the call).
+        _frame = frame.Duplicate(bus.Options.BufferAllocator);
+        try
         {
-            try
-            {
-                _ = _bus.Transmit(new[] { frame }.AsSpan(), 0);
-            }
-            catch { }
-        }
+            Period = options.Period <= TimeSpan.Zero ? TimeSpan.FromMilliseconds(1) : options.Period;
+            RepeatCount = options.Repeat;
+            _remaining = options.Repeat;
 
-        // Program device auto transmit; repeat is managed by software monitor if finite
-        ApplyHardware(true, _frame, Period);
+            // Unique index (best effort, ushort range)
+            _index = (ushort)bus.GetAutoSendIndex();
+
+            // Fire once immediately if requested
+            if (options.FireImmediately)
+            {
+                try
+                {
+                    _ = _bus.Transmit(new[] { frame }.AsSpan(), 0);
+                }
+                catch { }
+            }
+
+            // Program device auto transmit; repeat is managed by software monitor if finite
+            ApplyHardware(true, _frame, Period);
+        }
+        catch
+        {
+            // A constructor that throws is never Disposed by the caller: release the copy.
+            try { _frame.Dispose(); } catch { /* allocator-tolerant */ }
+            _frame = default;
+            throw;
+        }
     }
 
     public TimeSpan Period { get; private set; }
@@ -75,6 +88,12 @@ public sealed class ZlgPeriodicTx : IPeriodicTx
         catch
         {
         }
+        finally
+        {
+            // Release the owned TX-lease copy (idempotent: default(CanFrame) is a no-op Dispose).
+            try { _frame.Dispose(); } catch { /* allocator-tolerant */ }
+            _frame = default;
+        }
     }
 
     public void Update(CanFrame? frame = null, TimeSpan? period = null, int? repeatCount = null)
@@ -87,7 +106,15 @@ public sealed class ZlgPeriodicTx : IPeriodicTx
         if (frame?.FrameKind is CanFrameType.CanFd && _bus.Options.ProtocolMode is not CanProtocolMode.CanFd)
             throw new CanFeatureNotSupportedException(CanFeature.CanFd, _bus.Options.Features);
 
-        if (frame is not null) _frame = frame.Value;
+        if (frame is not null)
+        {
+            // TX-lease (FR-RAW-005 / arc42 §8.1): swap in an owned copy of the new frame,
+            // then release the previously owned copy — the caller keeps theirs.
+            var newOwned = frame.Value.Duplicate(_bus.Options.BufferAllocator);
+            var previous = _frame;
+            _frame = newOwned;
+            try { previous.Dispose(); } catch { /* allocator-tolerant */ }
+        }
 
         if (period is not null) Period = period.Value <= TimeSpan.Zero ? TimeSpan.FromMilliseconds(1) : period.Value;
         if (repeatCount is not null)

@@ -6,7 +6,9 @@ using CanKit.Abstractions.API.Can;
 using CanKit.Abstractions.API.Can.Definitions;
 using CanKit.Abstractions.API.Common;
 using CanKit.Abstractions.API.Common.Definitions;
+using CanKit.Abstractions.SPI.Common;
 using CanKit.Core.Definitions;
+using CanKit.Core.Diagnostics;
 using CanKit.Core.Utils;
 using FluentAssertions;
 using Xunit;
@@ -119,7 +121,7 @@ public class SoftwarePeriodicTxFaultedTests
 
         public int TransmitCount => Volatile.Read(ref _transmitCount);
 
-        public IBusRTOptionsConfigurator Options => throw new NotImplementedException();
+        public IBusRTOptionsConfigurator Options { get; } = new MinimalRtOptionsConfigurator();
         public BusState BusState => BusState.Unknown;
         public BusNativeHandle NativeHandle => default;
 
@@ -183,5 +185,31 @@ public class SoftwarePeriodicTxFaultedTests
 #pragma warning restore CS0067
 
         public void Dispose() { }
+    }
+
+    /// <summary>
+    /// Minimal <see cref="IBusRTOptionsConfigurator"/> stub: only the members reached by
+    /// <see cref="SoftwarePeriodicTx"/> (the buffer allocator used for the owned TX-lease
+    /// frame copy, FR-RAW-005) are implemented; the rest throw
+    /// <see cref="NotImplementedException"/> to fail loudly if the loop starts touching
+    /// APIs it does not need.
+    /// </summary>
+    private sealed class MinimalRtOptionsConfigurator : IBusRTOptionsConfigurator
+    {
+        public CanFeature Features => throw new NotImplementedException();
+        public Capability Capabilities => throw new NotImplementedException();
+        public int ChannelIndex => throw new NotImplementedException();
+        public string? ChannelName => throw new NotImplementedException();
+        public CanBusTiming BitTiming => throw new NotImplementedException();
+        public TxRetryPolicy TxRetryPolicy => throw new NotImplementedException();
+        public ChannelWorkMode WorkMode => throw new NotImplementedException();
+        public bool InternalResistance => throw new NotImplementedException();
+        public CanProtocolMode ProtocolMode => throw new NotImplementedException();
+        public ICanFilter Filter => throw new NotImplementedException();
+        public CanFeature EnabledSoftwareFallback => throw new NotImplementedException();
+        public bool AllowErrorInfo => throw new NotImplementedException();
+        public int AsyncBufferCapacity => throw new NotImplementedException();
+        public IBufferAllocator BufferAllocator { get; } = new DefaultBufferAllocator();
+        public CanExceptionPolicy? ExceptionPolicy { get; set; }
     }
 }
