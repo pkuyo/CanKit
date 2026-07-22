@@ -8,6 +8,7 @@ using CanKit.Abstractions.API.Common.Definitions;
 using CanKit.Core;
 using CanKit.Core.Definitions;
 using CanKit.Pro.RawCan;
+using CanKit.Tests.Utils;
 using FluentAssertions;
 using Xunit;
 
@@ -198,5 +199,35 @@ public class TxConfirmTests : IClassFixture<TestCaseProvider>
         Func<Task> act = async () => await service.SendConfirmed(CanFrame.Classic(0x123, new byte[] { 1 }), TimeSpan.Zero);
 
         await act.Should().ThrowAsync<ArgumentOutOfRangeException>();
+    }
+
+    // FR-RAW-033: a bus-off transition while a confirmation is outstanding must resolve it
+    // immediately with FailureReason = BusOff -- not leave the caller hanging until the
+    // configured timeout. This was the only TX-confirm failure mode without a test.
+    [Fact]
+    public async Task Outstanding_SendConfirmed_Resolves_As_BusOff_Immediately_On_Fault()
+    {
+        var session = NewSession();
+        using var sender = OpenEchoThatNeverArrives(session, 0);
+        using var service = new CanBusService(sender);
+
+        var pendingTask = service.SendConfirmed(CanFrame.Classic(0x123, new byte[] { 1 }),
+            TimeSpan.FromSeconds(30));
+
+        // Drive the hub into BusOff, then report a Fault-severity exception through the bus's
+        // own dispatcher (the same path a real adapter's error handler uses); the service's
+        // OnFaultOccurred must then fail every outstanding confirmation.
+        VirtualBusControl.DriveBusState(session, BusState.BusOff);
+        VirtualBusControl.DriveFault(sender, new InvalidOperationException("simulated bus-off"));
+
+        var sw = Stopwatch.StartNew();
+        var result = await pendingTask;
+        sw.Stop();
+
+        result.Confirmed.Should().BeFalse();
+        result.IsApproximated.Should().BeFalse();
+        result.FailureReason.Should().Be(TxConfirmFailureReason.BusOff);
+        sw.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(5),
+            "the BusOff path must resolve the confirmation immediately, not via the 30 s timeout");
     }
 }
