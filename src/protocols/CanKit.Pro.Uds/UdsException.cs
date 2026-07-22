@@ -1,4 +1,5 @@
 using System;
+using CanKit.Core.Exceptions;
 
 namespace CanKit.Pro.Uds;
 
@@ -8,15 +9,22 @@ namespace CanKit.Pro.Uds;
 /// (<see cref="UdsNegativeResponseException"/>), an ECU that failed to respond within its P2/P2*
 /// budget (<see cref="UdsTimeoutException"/>), and a malformed / mismatched response
 /// (<see cref="UdsProtocolException"/>). Transport-layer failures are re-thrown as-is (they are
-/// already typed as <see cref="IsoTp.IsoTpException"/> subclasses).
+/// already typed as <see cref="IsoTp.IsoTpException"/> subclasses). Derives from
+/// <see cref="CanKitException"/> so L2/L3/L4 failures can be caught uniformly across the
+/// library (NFR-006 error architecture, arc42 ADR-12).
 /// </summary>
-public class UdsException : Exception
+public class UdsException : CanKitException
 {
     /// <summary>Creates a new UDS error with the given message.</summary>
-    public UdsException(string message) : base(message) { }
+    public UdsException(string message)
+        : base(CanKitErrorCode.TransportOperationFailed, message) { }
 
     /// <summary>Creates a new UDS error wrapping an inner cause.</summary>
-    public UdsException(string message, Exception innerException) : base(message, innerException) { }
+    public UdsException(string message, Exception innerException)
+        : base(CanKitErrorCode.TransportOperationFailed, message, innerException: innerException) { }
+
+    /// <summary>Creates a new UDS error with a specific library error code.</summary>
+    protected UdsException(CanKitErrorCode errorCode, string message) : base(errorCode, message) { }
 }
 
 /// <summary>
@@ -50,7 +58,8 @@ public sealed class UdsNegativeResponseException : UdsException
 
     /// <summary>Creates a structured NRC exception.</summary>
     public UdsNegativeResponseException(UdsServiceId requestedService, byte code)
-        : base($"UDS negative response: service=0x{(byte)requestedService:X2} ({requestedService}), NRC=0x{code:X2} ({(System.Enum.IsDefined(typeof(UdsNegativeResponseCode), code) ? (UdsNegativeResponseCode)code : (object)"unknown")})")
+        : base(CanKitErrorCode.ProtocolNegativeResponse,
+            $"UDS negative response: service=0x{(byte)requestedService:X2} ({requestedService}), NRC=0x{code:X2} ({(System.Enum.IsDefined(typeof(UdsNegativeResponseCode), code) ? (UdsNegativeResponseCode)code : (object)"unknown")})")
     {
         RequestedService = requestedService;
         Code = code;
@@ -80,7 +89,8 @@ public sealed class UdsTimeoutException : UdsException
 
     /// <summary>Creates a P2 or P2* timeout exception.</summary>
     public UdsTimeoutException(UdsServiceId requestedService, UdsTimeoutTimer timer, TimeSpan elapsed)
-        : base($"UDS {(timer == UdsTimeoutTimer.P2 ? "P2" : "P2*")} timeout after {elapsed.TotalMilliseconds:F0} ms waiting for response to service 0x{(byte)requestedService:X2} ({requestedService}).")
+        : base(CanKitErrorCode.ProtocolTimeout,
+            $"UDS {(timer == UdsTimeoutTimer.P2 ? "P2" : "P2*")} timeout after {elapsed.TotalMilliseconds:F0} ms waiting for response to service 0x{(byte)requestedService:X2} ({requestedService}).")
     {
         RequestedService = requestedService;
         Timer = timer;

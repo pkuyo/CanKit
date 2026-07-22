@@ -1,17 +1,25 @@
 using System;
+using CanKit.Core.Exceptions;
 
 namespace CanKit.Pro.IsoTp;
 
 /// <summary>
-/// Base type for ISO-TP protocol errors surfaced by <see cref="IIsoTpChannel"/>.
+/// Base type for ISO-TP protocol errors surfaced by <see cref="IIsoTpChannel"/>. Derives from
+/// <see cref="CanKitException"/> so L2/L3/L4 failures can be caught uniformly across the
+/// library (NFR-006 error architecture, arc42 ADR-12).
 /// </summary>
-public class IsoTpException : Exception
+public class IsoTpException : CanKitException
 {
     /// <summary>Creates a new <see cref="IsoTpException"/>.</summary>
-    public IsoTpException(string message) : base(message) { }
+    public IsoTpException(string message)
+        : base(CanKitErrorCode.TransportOperationFailed, message) { }
 
     /// <summary>Creates a new <see cref="IsoTpException"/> with an inner exception.</summary>
-    public IsoTpException(string message, Exception innerException) : base(message, innerException) { }
+    public IsoTpException(string message, Exception innerException)
+        : base(CanKitErrorCode.TransportOperationFailed, message, innerException: innerException) { }
+
+    /// <summary>Creates a new <see cref="IsoTpException"/> with a specific library error code.</summary>
+    protected IsoTpException(CanKitErrorCode errorCode, string message) : base(errorCode, message) { }
 }
 
 /// <summary>
@@ -24,7 +32,8 @@ public sealed class IsoTpTimeoutException : IsoTpException
     public IsoTpTimer Timer { get; }
 
     /// <summary>Creates a timeout exception naming which timer expired.</summary>
-    public IsoTpTimeoutException(IsoTpTimer timer, string message) : base(message)
+    public IsoTpTimeoutException(IsoTpTimer timer, string message)
+        : base(CanKitErrorCode.ProtocolTimeout, message)
     {
         Timer = timer;
     }
@@ -37,7 +46,7 @@ public sealed class IsoTpTimeoutException : IsoTpException
 public sealed class IsoTpOverflowException : IsoTpException
 {
     /// <summary>Creates an overflow exception.</summary>
-    public IsoTpOverflowException(string message) : base(message) { }
+    public IsoTpOverflowException(string message) : base(CanKitErrorCode.ProtocolPeerAbort, message) { }
 }
 
 /// <summary>
@@ -54,7 +63,8 @@ public sealed class IsoTpWaitFrameLimitExceededException : IsoTpException
 
     /// <summary>Creates a WFTmax exception.</summary>
     public IsoTpWaitFrameLimitExceededException(int received, int limit)
-        : base($"Peer sent {received} consecutive Flow-Control Wait frames, exceeding WFTmax={limit}.")
+        : base(CanKitErrorCode.ProtocolPeerAbort,
+            $"Peer sent {received} consecutive Flow-Control Wait frames, exceeding WFTmax={limit}.")
     {
         WaitFramesReceived = received;
         Limit = limit;

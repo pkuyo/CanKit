@@ -1,15 +1,23 @@
 using System;
+using CanKit.Core.Exceptions;
 
 namespace CanKit.Pro.J1939;
 
-/// <summary>Base class for exceptions thrown by <see cref="IJ1939Node"/> operations.</summary>
-public class J1939NodeException : Exception
+/// <summary>Base class for exceptions thrown by <see cref="IJ1939Node"/> operations. Derives
+/// from <see cref="CanKitException"/> so L2/L3/L4 failures can be caught uniformly across the
+/// library (NFR-006 error architecture, arc42 ADR-12).</summary>
+public class J1939NodeException : CanKitException
 {
     /// <summary>Constructs an exception with a message.</summary>
-    public J1939NodeException(string message) : base(message) { }
+    public J1939NodeException(string message)
+        : base(CanKitErrorCode.TransportOperationFailed, message) { }
 
     /// <summary>Constructs an exception with a message and cause.</summary>
-    public J1939NodeException(string message, Exception innerException) : base(message, innerException) { }
+    public J1939NodeException(string message, Exception innerException)
+        : base(CanKitErrorCode.TransportOperationFailed, message, innerException: innerException) { }
+
+    /// <summary>Constructs an exception with a specific library error code.</summary>
+    protected J1939NodeException(CanKitErrorCode errorCode, string message) : base(errorCode, message) { }
 }
 
 /// <summary>
@@ -21,7 +29,8 @@ public sealed class J1939NoAddressException : J1939NodeException
 {
     /// <summary>Constructs the exception.</summary>
     public J1939NoAddressException()
-        : base("This J1939 node has no claimed address; ClaimAddressAsync must succeed before sending.")
+        : base(CanKitErrorCode.AddressClaimFailed,
+            "This J1939 node has no claimed address; ClaimAddressAsync must succeed before sending.")
     {
     }
 }
@@ -37,7 +46,8 @@ public sealed class J1939CannotClaimException : J1939NodeException
 {
     /// <summary>Constructs the exception with the preferred address that was lost.</summary>
     public J1939CannotClaimException(byte preferredAddress)
-        : base($"J1939 node could not claim preferred address 0x{preferredAddress:X2}: contested by a peer with higher-priority NAME.")
+        : base(CanKitErrorCode.AddressClaimFailed,
+            $"J1939 node could not claim preferred address 0x{preferredAddress:X2}: contested by a peer with higher-priority NAME.")
     {
         PreferredAddress = preferredAddress;
     }

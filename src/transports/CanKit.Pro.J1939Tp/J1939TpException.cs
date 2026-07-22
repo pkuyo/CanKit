@@ -1,15 +1,23 @@
 using System;
+using CanKit.Core.Exceptions;
 
 namespace CanKit.Pro.J1939Tp;
 
-/// <summary>Base class for every exception raised by the J1939-TP channel.</summary>
-public class J1939TpException : Exception
+/// <summary>Base class for every exception raised by the J1939-TP channel. Derives from
+/// <see cref="CanKitException"/> so L2/L3/L4 failures can be caught uniformly across the
+/// library (NFR-006 error architecture, arc42 ADR-12).</summary>
+public class J1939TpException : CanKitException
 {
     /// <summary>Creates a new <see cref="J1939TpException"/>.</summary>
-    public J1939TpException(string message) : base(message) { }
+    public J1939TpException(string message)
+        : base(CanKitErrorCode.TransportOperationFailed, message) { }
 
     /// <summary>Creates a new <see cref="J1939TpException"/> wrapping an underlying exception.</summary>
-    public J1939TpException(string message, Exception innerException) : base(message, innerException) { }
+    public J1939TpException(string message, Exception innerException)
+        : base(CanKitErrorCode.TransportOperationFailed, message, innerException: innerException) { }
+
+    /// <summary>Creates a new <see cref="J1939TpException"/> with a specific library error code.</summary>
+    protected J1939TpException(CanKitErrorCode errorCode, string message) : base(errorCode, message) { }
 }
 
 /// <summary>
@@ -20,7 +28,9 @@ public sealed class J1939TpAbortException : J1939TpException
 {
     /// <summary>Creates a new <see cref="J1939TpAbortException"/>.</summary>
     public J1939TpAbortException(J1939TpAbortReason reason, uint pgn, string message)
-        : base(message)
+        : base(reason == J1939TpAbortReason.Timeout
+            ? CanKitErrorCode.ProtocolTimeout
+            : CanKitErrorCode.ProtocolPeerAbort, message)
     {
         Reason = reason;
         Pgn = pgn;

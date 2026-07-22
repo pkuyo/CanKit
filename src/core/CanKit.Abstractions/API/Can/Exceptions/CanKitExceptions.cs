@@ -78,6 +78,28 @@ namespace CanKit.Core.Exceptions
         TransportOperationFailed = 6001,
 
         /// <summary>
+        /// A protocol-level timer expired (e.g., ISO-TP N_As/N_Bs/N_Cr, J1939-TP T1..T4/Tr,
+        /// UDS P2/P2*, SDO timeouts). NFR-006 error-architecture code (ADR-12).
+        /// </summary>
+        ProtocolTimeout = 6002,
+
+        /// <summary>
+        /// The peer actively aborted/rejected the protocol transfer (e.g., ISO-TP FC Overflow
+        /// or WFTmax exceeded, J1939-TP Connection Abort, SDO abort). NFR-006 (ADR-12).
+        /// </summary>
+        ProtocolPeerAbort = 6003,
+
+        /// <summary>
+        /// The peer answered with a protocol negative response (e.g., UDS NRC). NFR-006 (ADR-12).
+        /// </summary>
+        ProtocolNegativeResponse = 6004,
+
+        /// <summary>
+        /// J1939-81 address claiming failed (no address available / claim lost). NFR-006 (ADR-12).
+        /// </summary>
+        AddressClaimFailed = 6005,
+
+        /// <summary>
         /// Native call failed with vendor status (原生调用失败，带返回状态)。
         /// </summary>
         NativeCallFailed = 9000,
