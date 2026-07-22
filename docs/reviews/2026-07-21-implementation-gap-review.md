@@ -196,3 +196,25 @@ FR-J1939-007 Fixed-Rate, FR-J1939-004 Arbitrary-Address, NFR-005-Plattform-Guard
 NFR-006-Fehlerarchitektur-ADR, NFR-007-Allokations-Benchmark, Hygiene-Punkte,
 SRS/arc42-Doc-Drift-Bereinigung) sowie Phase D (§8: Samples/Getting-Started L2–L4,
 Coverage/vcan-CI, 1.0-Fahrplan, HIL-Strategie).
+
+---
+
+## Nachtrag 2026-07-21 (2): Umsetzung Phase C (Robustheit, Hygiene, Doc-Drift)
+
+Auch die P3-Liste wurde am selben Tag abgearbeitet:
+
+| Plan-Item | Umsetzung |
+|---|---|
+| C1 SDO-Block-Retransmission | CiA-301-konformer Rewind auf das erste unbestätigte Segment mit **originalen Sub-Block-Seqnos** (kumulativ pro Sub-Block — ein Neustart bei 1 würde vom Peer endlos ge-NACKt), client- (Download) und serverseitig (Upload), gebunden über neue Option `SdoBlockMaxRetransmissions` (Default 3, 0 = altes Abbruchverhalten). Fake-Peer-Tests für Rewind (beide Richtungen) und Retry-Bound. |
+| C2 FR-J1939-007 Fixed-Rate | `PeriodicSchedule` von `Task.Delay`-Schleife auf festes Zeitraster über `DeadlineScheduler` umgestellt (t0 + n × Periode; In-Flight-Ticks übersprungen, Nachhänge-Ticks koalesziert) — keine Drift durch Sendezeit mehr. Drift-sensitiver TP.BAM-Test; SRS §4.3.3-Text stimmt jetzt mit dem Code überein. |
+| C3 FR-J1939-004 Arbitrary-Address | Fallback-Scan über das Arbitrary-Address-Feld (0x80..0xF7, einmalig wrapend) nach verlorenem Contest; Cannot-Claim erst bei Erschöpfung. Option `EnableArbitraryAddressClaiming` (Default: aus NAME-AAC-Bit). Tests: erfolgreiche Fallback-Claim sowie Erschöpfung („alle Adressen belegt", SRS-Verifikation). |
+| C4 NFR-005 Plattform-Guards | `PlatformNotSupportedException` mit Adapter-Hinweis vor dem ersten P/Invoke in Kvaser/Vector/ControlCAN (Windows-only) und PCAN (Windows+Linux), `#if !FAKE`-geschützt. Smoke-Tests `AdapterPlatformGuardTests` (TestCaseProvider lädt Vendor-Assemblies jetzt, damit ihre Endpunkte im Testhost registriert sind). |
+| C5 NFR-006 Fehlerarchitektur | ADR-12 in arc42 §9: alle L3/L4-Ausnahmen leiten von `CanKitException` ab; neue Fehlercodes `ProtocolTimeout=6002`, `ProtocolPeerAbort=6003`, `ProtocolNegativeResponse=6004`, `AddressClaimFailed=6005`; paketlokale Basistypen mit strukturierten Nutzdaten bleiben. Reflexions-/Mapping-Test `Nfr006ErrorArchitectureTests`. |
+| C6 NFR-007 Allokations-Benchmark | `--alloc`-Modus im Benchmark-Sample (`GC.GetTotalAllocatedBytes` über alle Threads — BenchmarkDotNet-MemoryDiagnoser würde die Aktor-Threads nicht erfassen; bewusste Abweichung vom Plan-Wortlaut, keine neue Paketabhängigkeit). Baseline: L1 ~404 B/op, ISO-TP-SF ~2,1 kB/op, ISO-TP-MF(200 B) ~50 kB/op. |
+| C7 Hygiene | `CanKitProHawe.slnf` Trailing-Comma; `RepositoryUrl` aller 19 csproj auf `dborgards/CanKit.Pro`; veraltete csproj-Kommentare (IsoTp/Uds); `_errorOccured`→`_errorOccurred`; `clock_nanosleep`-Catch-All → Log + dauerhafter Coarse-Sleep-Fallback (NFR-002); Demux-Prädikat-Exceptions jetzt über `ICanBusService.BackgroundExceptionOccurred` beobachtbar (Interface-Erweiterung, Wrapper angepasst, Test). |
+| C8 Kleinere Testlücken | ISO-TP N_As direkt (`NeverConfirmService` honoriert das N_As-Timeout), RX-seitige Block-FC-Generierung (`LocalBlockSize>0`), UDS voller Upload-Zyklus + One-shot `UploadAsync`, SDO-Toggle-Negativtest, NMT ResetCommunication. |
+| C9 Doc-Drift | SRS: §4.3.3 auf Fixed-Rate + Arbitrary-Address gezogen, §4.3.1-Ist-Zustand ergänzt, FR-TP-002 `GetFramesAsync`→`ReceiveAsync`, CON-008 `master`→`main`, Anhang Pkt. 4 Traceability-Gegenprüfung dokumentiert. arc42: ADR-9 auf „umgesetzt" (Ownership vollständig; einziger Design-Restpunkt deprecated `FrameReceived`), ADR-12 neu. READMEs (CANopen/J1939) nachgezogen. |
+
+**Damit verbleiben offen:** nur Phase D (§8: Samples/Getting-Started L2–L4, Coverage/vcan-CI,
+1.0-Fahrplan mit Public-API-Tracking, HIL-Strategie) sowie der dokumentierte Restpunkt pst>0
+(Block→segmented-Fallback) und HAWE-Nachverfeinerung bei Spez-Verfügbarkeit.

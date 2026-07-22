@@ -1163,21 +1163,28 @@ STmin-Grenzwerte, SN-Folge, N_Bs/N_Cr-Timeouts gegen Virtual.
 - **Konsequenzen:** + hardwarelose Matrix-CI (Q4). − Fake bildet Timing/Fehlerfälle nur
   begrenzt ab; Virtual-Hub hat heute Ownership-/Leak-Schulden (§11).
 
-### ADR-9 (teilweise umgesetzt): Verbindlicher Frame-Ownership-/Lifetime-Vertrag
+### ADR-9 (umgesetzt): Verbindlicher Frame-Ownership-/Lifetime-Vertrag
 - **Kontext:** geteilte `CanFrame`-Werte mit Owner → Use-after-free/Double-Dispose.
 - **Entscheidung:** RX-Lease (Pipe besitzt; Beobachter → View), TX-Lease (Aufrufer besitzt;
   Adapter kopiert); `Dispose()` respektiert `OwnMemory`.
 - **Konsequenzen:** + sichere Grundlage für L2–L4 (Q1/Q5). − erfordert Anpassung von Pipe,
   QueuedCanBus, Virtual-Hub, ISO-TP-Scheduler.
-- **Status:** `Dispose()`/`OwnMemory`, Virtual-Hub (`CanFrame.Duplicate`, Broadcast-Kopie,
-  `_hubs`-Leak-Fix) und **SocketCAN-BCM** (`BCMPeriodicTx` dupliziert den Aufrufer-Frame
-  über `CanFrame.Duplicate(configurator.BufferAllocator)` und gibt die eigene Kopie in
-  `Update`/`Stop`/`Dispose` frei) sind umgesetzt und per Unit-/Virtual-Loopback- bzw.
-  SocketCAN-Fake-Test abgesichert (`tests/CanKit.Tests/TestCases/CanFrameTests.cs`,
+- **Status:** umgesetzt: `Dispose()`/`OwnMemory`, Virtual-Hub (`CanFrame.Duplicate`,
+  Broadcast-Kopie, `_hubs`-Leak-Fix), SocketCAN-BCM (`BCMPeriodicTx`) sowie alle übrigen
+  Periodic-TX-Pfade (`SoftwarePeriodicTx` — damit auch der Virtual-Adapter und die
+  Vector/PCAN/Kvaser-Software-Fallbacks — und die nativen `ZlgPeriodicTx`/
+  `ControlCanPeriodicTx`) duplizieren den Aufrufer-Frame per `CanFrame.Duplicate(allocator)`
+  und geben die eigene Kopie in `Update`/`Stop`/`Dispose` frei. Abgesichert per
+  Unit-/Virtual-Loopback- bzw. SocketCAN-Fake-Test
+  (`tests/CanKit.Tests/TestCases/CanFrameTests.cs`,
   `tests/CanKit.Tests/TestCases/VirtualBusOwnershipTests.cs`,
-  `tests/CanKit.Tests/TestCases/SocketCanBcmOwnershipTests.cs`). Offen: TX-Lease-Kopie
-  in den übrigen L0-Adaptern (`ZlgPeriodicTx`, `ControlCanPeriodicTx`,
-  `SoftwarePeriodicTx` als Vector/PCAN-Fallback) und im ISO-TP-Scheduler (Echo-Matching).
+  `tests/CanKit.Tests/TestCases/SocketCanBcmOwnershipTests.cs`,
+  `tests/CanKit.Tests/TestCases/SoftwarePeriodicTxOwnershipTests.cs`). Die aktorbasierte
+  `CanKit.Pro.IsoTp`-Runtime kopiert Payloads im `SendConfirmed`-/`ProtocolActor`-Pfad
+  (kein Echo-Matching-Bedarf mehr, anders als beim entfernten Legacy-Scheduler). Einziger
+  bewusst offener Restpunkt (Design, kein Defekt): das deprecated `FrameReceived`-Event
+  liefert weiterhin disposable `CanFrame` statt `CanFrameView` (Migration auf
+  `FrameObserved`, siehe §8.1).
 
 ### ADR-10 (umgesetzt): Adressierungs-Helfer als eigenständiges Paket
 - **Kontext:** 11-/29-Bit-ID- und J1939-PGN-Logik existierte nur als ein einziger, fest auf eine
@@ -1236,6 +1243,32 @@ STmin-Grenzwerte, SN-Folge, N_Bs/N_Cr-Timeouts gegen Virtual.
   Protokollwerte, z. B. reservierte ISO-TP-STmin-Werte) ist bewusst **nicht** hier umgesetzt,
   sondern als protokoll-codec-spezifische Aufgabe dem künftigen ISO-TP-Fix FR-TP-007 (Review §1.1
   Punkt 6) zugeordnet — eine generische „Reserved-Value"-Abstraktion wäre hier spekulativ.
+
+### ADR-12 (umgesetzt): Einheitliche Fehlerarchitektur über `CanKitException` (NFR-006)
+- **Kontext:** L1 besitzt mit `CanKitException` (+ `CanKitErrorCode`) eine strukturierte
+  Ausnahmehierarchie, doch die L2–L4-Pakete definierten sechs eigenständige Hierarchien direkt
+  ab `System.Exception` (`IsoTp*`, `J1939Tp*`, `Uds*`, `J1939Node*`, `SdoAbortException`,
+  `CanOpenTransportException`) — ein Nutzer konnte Fehler der Protokoll-Stacks nicht einheitlich
+  fangen oder per Fehlercode klassifizieren (NFR-006 verlangt konsistente strukturierte
+  Ausnahmen statt verlorener oder falsch-threadiger Fehler).
+- **Entscheidung:** alle L3/L4-Ausnahmen leiten von `CanKitException` ab. Paketlokale
+  Basisklassen bleiben (sie tragen die strukturierten Nutzdaten: `Timer`, NRC-`Code`,
+  SDO-`AbortCode`, `Reason`+`Pgn`, …), mappen aber auf neue 6xxx-Fehlercodes:
+  `ProtocolTimeout=6002` (ISO-TP N_*, J1939-TP T*/Tr, UDS P2/P2*, SDO-Timeouts),
+  `ProtocolPeerAbort=6003` (ISO-TP FC-Overflow/WFTmax, J1939-TP-Abort, SDO-Abort),
+  `ProtocolNegativeResponse=6004` (UDS-NRC), `AddressClaimFailed=6005` (J1939-81-Claiming);
+  generische Transport-/Treiber-Fehlschläge bleiben `TransportOperationFailed=6001`. Die
+  paketlokalen Basistypen erhalten einen `protected`-Ctor für den Code, öffentliche Signaturen
+  bleiben unverändert. Der einheitliche **asynchrone** Fehlerkanal bleibt
+  `BackgroundExceptionOccurred` (durchgängig in allen Paketen), der **Ergebnis-Kanal** für
+  Sendebestätigungen bleibt der Result-Typ `TxConfirmation` (statt Ausnahmen).
+- **Konsequenzen:** + `catch (CanKitException)` deckt jetzt L1–L4 ab, Fehlerklassen sind per
+  `ErrorCode` maschinenlesbar, NFR-006-Verifikation ist als Reflexionstest möglich
+  (`tests/CanKit.Tests/TestCases/Nfr006ErrorArchitectureTests.cs`); − die Basisklassen-Änderung
+  ist binär-brechend für vorkompilierte Konsumenten (akzeptabel: alle betroffenen Pakete sind
+  `IsPackable=false`, 0.1.x, unveröffentlicht); − `SdoAbortException` bleibt bewusst
+  `ProtocolPeerAbort` auch im lokalen Timeout-Fall (der Abort-Code selbst bleibt der
+  primäre, spezifischere Klassifikator).
 
 ---
 
