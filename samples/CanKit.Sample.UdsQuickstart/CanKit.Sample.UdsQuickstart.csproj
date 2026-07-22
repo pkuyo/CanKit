@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>CanKit.Sample.UdsQuickstart</RootNamespace>
+    <Platforms>AnyCPU;x64;x86</Platforms>
+    <Configurations>Debug;Release;Fake</Configurations>
+  </PropertyGroup>
+
+  <!-- L4 UDS sample (pulls L3 ISO-TP and the L2 Pro packages transitively). -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\protocols\CanKit.Pro.Uds\CanKit.Pro.Uds.csproj" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>CanKit.Sample.J1939Quickstart</RootNamespace>
+    <Platforms>AnyCPU;x64;x86</Platforms>
+    <Configurations>Debug;Release;Fake</Configurations>
+  </PropertyGroup>
+
+  <!-- L4 J1939 sample (pulls J1939-TP and Addressing transitively). -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\protocols\CanKit.Pro.J1939\CanKit.Pro.J1939.csproj" />
+  </ItemGroup>
+</Project>

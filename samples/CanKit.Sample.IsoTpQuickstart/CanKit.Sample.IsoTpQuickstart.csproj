@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>CanKit.Sample.IsoTpQuickstart</RootNamespace>
+    <Platforms>AnyCPU;x64;x86</Platforms>
+    <Configurations>Debug;Release;Fake</Configurations>
+  </PropertyGroup>
+
+  <!-- L3 ISO-TP sample (pulls the L2 Pro packages transitively). -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\transports\CanKit.Pro.IsoTp\CanKit.Pro.IsoTp.csproj" />
+  </ItemGroup>
+</Project>
