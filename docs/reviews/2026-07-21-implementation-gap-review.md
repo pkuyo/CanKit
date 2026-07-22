@@ -218,3 +218,25 @@ Auch die P3-Liste wurde am selben Tag abgearbeitet:
 **Damit verbleiben offen:** nur Phase D (§8: Samples/Getting-Started L2–L4, Coverage/vcan-CI,
 1.0-Fahrplan mit Public-API-Tracking, HIL-Strategie) sowie der dokumentierte Restpunkt pst>0
 (Block→segmented-Fallback) und HAWE-Nachverfeinerung bei Spez-Verfügbarkeit.
+
+---
+
+## Nachtrag 2026-07-21 (3): Umsetzung Phase D (§8, ohne HAWE)
+
+| Plan-Item | Umsetzung |
+|---|---|
+| D1 Adoption | Vier Quickstart-Samples (`samples/CanKit.Sample.IsoTpQuickstart`, `UdsQuickstart`, `CanOpenQuickstart`, `J1939Quickstart`) — alle hardwarefrei über Virtual-Loopback, lauffähig und in die Solution aufgenommen. Getting-Started-Kapitel „Protocol Stacks (L2–L4)" in `docs/getting-started.md` und `docs/zh/getting-started.md` (L2-Dienste, IsoTp, UDS, CANopen, J1939 mit Beispielen und Sample-Verweisen). |
+| D2 CI | Neuer `coverage-ci.yml` (coverlet XPlat, Cobertura-Artefakt; `coverlet.collector` im Testprojekt). `socketcan-ci.yml` erhält einen echten **vcan-Job** (Kernel-SocketCAN statt Fake-Native; der Testprovider zielt bereits auf `socketcan://vcan0/vcan1`). Laufzeit-Optimierung: alle 10 Pro-Workflows testen jetzt bereichsgefiltert (z. B. UDS+IsoTp 168 statt 545 Tests); Vollabdeckung bleibt über die Adapter-Workflows (komplette Suite, `-c Fake`) und den Coverage-Workflow erhalten. |
+| D3 1.0-Fahrplan | `docs/release-1.0-criteria.md` (Pack-Gates G1–G7 mit Ist-Stand je Paket, SemVer-Politik, verbindliche API-Tracking-Regel). Reflexionsbasierter API-Snapshot-Test `PublicApiSurfaceTests` für die vier packbaren L2-Pakete mit Approvals unter `tests/CanKit.Tests/ApiApprovals/` (ohne neue Abhängigkeit). |
+| D4 HIL-Strategie | `docs/hil-test-strategy.md` (Stufen S0–S2, Hardware-Matrix, Stichproben je Stack, NFR-001-Hardware-Validierung, Abnahmekriterien, Protokollierung unter `docs/reviews/hil/`). |
+| D5 Vertiefung | J1939-SPN-Katalog: `J1939SpnDefinition`/`J1939SpnCatalog` mit vorbelegten SAE-J1939-71-Definitionen (EEC1/EEC2/CCVS: SPN 512/513/190/91/92/84) und `Extract(payload, spn)` (Tests 4/4). UDS-over-CAN-FD: FD-Varianten der Kern-Diagnoseflüsse (Session+DID-Read, 300-Byte-Multi-Frame-Write) in `UdsClientTests` — Tests 34/34. Arbitrary-Address-Claiming lag bereits in Phase C. |
+
+**Nicht umgesetzt (bewusst):** HAWE-Nachverfeinerung (FR-HAWE-005 — wartet auf die
+vertrauliche Spezifikation, CON-006) und pst>0 (Block→segmented-Fallback, im CANopen-README
+dokumentierter Restpunkt).
+
+**Endstand zum SRS-Zielbild:** alle Must- und Should-Anforderungen der SRS sind implementiert
+und verifiziert (Ausnahmen nur dokumentierte, bewusste Restpunkte: pst>0, HAWE-Spezifikation,
+HIL-Stichproben vor Produktivfreigabe). Die vier L2-Pakete sind release-fähig und in
+`eng/packages.json` registriert; L3/L4 sind fachlich vollständig und warten auf Pack-Gate-
+Entscheidung (HIL-Stichprobe + API-Snapshot, siehe `docs/release-1.0-criteria.md`).

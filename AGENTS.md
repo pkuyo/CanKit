@@ -14,7 +14,7 @@ The architecture follows a canonical layer nomenclature (**L0–L4**), defined i
 - **L3 – Transports** (`src/transports/`): `CanKit.Pro.IsoTp` (ISO 15765-2), `CanKit.Pro.J1939Tp` (TP.BAM/TP.CM).
 - **L4 – Application protocols** (`src/protocols/`): `CanKit.Pro.Uds` (ISO 14229 over ISO-TP), `CanKit.Pro.CANopen` (CiA 301: OD, SDO expedited/segmented/block, PDO, NMT, Heartbeat, SYNC, EMCY, node guarding), `CanKit.Pro.J1939`, `CanKit.Pro.Hawe`. L4/L3 packages compose on the L2 pipeline (`ICanBusService` + `IProtocolActor` + `DeadlineScheduler`).
 
-Other top-level dirs: `tests/CanKit.Tests/` (single xUnit test project covering everything), `samples/` (7 console samples), `eng/` (version props, release scripts, package smoke test), `docs/` (see "Documentation" below), `.github/workflows/` (per-package CI).
+Other top-level dirs: `tests/CanKit.Tests/` (single xUnit test project covering everything), `samples/` (7 raw-CAN console samples + 4 Pro quickstarts `IsoTp/Uds/CanOpen/J1939Quickstart`), `eng/` (version props, release scripts, package smoke test), `docs/` (see "Documentation" below), `.github/workflows/` (per-package CI).
 
 ## Toolchain
 
@@ -55,6 +55,15 @@ dotnet run --project samples/CanKit.Sample.ListEndpoints -f net8.0
 dotnet run --project samples/CanKit.Sample.QuickStartTxRx -f net8.0 -- --src virtual://alpha/0 --dst virtual://alpha/1 --count 5
 ```
 
+Pro protocol-stack quickstarts (all run hardware-free on the Virtual loopback and exit on their own):
+
+```bash
+dotnet run --project samples/CanKit.Sample.IsoTpQuickstart -f net8.0
+dotnet run --project samples/CanKit.Sample.UdsQuickstart -f net8.0
+dotnet run --project samples/CanKit.Sample.CanOpenQuickstart -f net8.0
+dotnet run --project samples/CanKit.Sample.J1939Quickstart -f net8.0
+```
+
 Several samples (`QuickStartTxRx`, `Sniffer`, …) end with `Console.ReadLine()` ("Press Enter to exit"). When running non-interactively, pipe empty stdin so they exit cleanly:
 
 ```bash
@@ -71,10 +80,12 @@ echo "" | dotnet run --project samples/CanKit.Sample.QuickStartTxRx -c Release -
 
 ## Documentation
 
-- `docs/getting-started.md` — English user guide (states English is the primary docs language); `docs/zh/` has the Chinese version.
+- `docs/getting-started.md` — English user guide (states English is the primary docs language), incl. an L2–L4 protocol-stack chapter with quickstart pointers; `docs/zh/` has the Chinese version.
 - `docs/architecture/arc42-CanKit.md` — German arc42 architecture doc; **the source of truth for the L0–L4 model and ADRs**. Note it deliberately describes both current state and target state (marked "NEU / Ziel").
 - `docs/requirements/SRS-CanKit.md` — German SRS with the requirement IDs used throughout the code.
-- `docs/reviews/` — deep code review findings that motivated L2 hardening.
+- `docs/reviews/` — deep code review findings that motivated L2 hardening, plus the 2026-07-21 implementation gap review; HIL run reports go to `docs/reviews/hil/` (see `docs/hil-test-strategy.md`).
+- `docs/release-1.0-criteria.md` — pack gates per Pro package, breaking-change policy, and the public-API tracking rule (`tests/CanKit.Tests/ApiApprovals/`, enforced by `PublicApiSurfaceTests`).
+- `docs/hil-test-strategy.md` — the hardware-in-the-loop sampling plan (SRS assumption A-5) for L3/L4 packages before first productive release.
 - Each package directory has its own English `README.md` describing its scope and usage.
 - The root `README.md` (German) is partly aspirational — trust the actual `src/` layout and this file over its "Projektstruktur" section.
 

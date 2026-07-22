@@ -146,3 +146,77 @@ foreach (var ep in BusEndpointEntry.Enumerate("pcan", "kvaser", "socketcan", "zl
     Console.WriteLine($"{ep.Title ?? ep.Endpoint} -> {ep.Endpoint}");
 }
 ```
+
+## 9) Protocol Stacks (L2–L4)
+
+Beyond raw CAN, the CanKit.Pro packages build a hardened service layer (L2) and complete
+protocol stacks on top: ISO-TP (L3) and UDS / CANopen / J1939 (L4). Everything below runs
+without hardware on the Virtual adapter; the identical calls work on any vendor adapter.
+
+> Status: the L2 packages (`CanKit.Pro.Actor`, `CanKit.Pro.Addressing`, `CanKit.Pro.RawCan`,
+> `CanKit.Pro.Reliability`) are published (0.1.x). The L3/L4 packages
+> (`CanKit.Pro.IsoTp`, `CanKit.Pro.J1939Tp`, `CanKit.Pro.Uds`, `CanKit.Pro.CANopen`,
+> `CanKit.Pro.J1939`, `CanKit.Pro.Hawe`) are still experimental (`IsPackable=false`) —
+> reference their projects directly for now. Each stack has a quickstart under `samples/`.
+
+### L2 — Raw-CAN service layer
+
+- `CanBusService` demultiplexes one `ICanBus` into any number of independent, filtered
+  subscriptions (multi-protocol on one bus), each with its own bounded buffer.
+- `SendConfirmed` gives a uniform TX confirmation, with or without adapter echo.
+- `ProtocolActor` gives each protocol instance a single-writer mailbox loop;
+  `DeadlineScheduler` arms timeouts on it; `BusStateMonitor` pushes BusState edges.
+
+```csharp
+using var service = new CanBusService(bus);
+using var sub = service.Subscribe(CanIdFilter.Range(0x700, 0x7FF, CanFilterIDType.Standard));
+var confirm = await service.SendConfirmed(CanFrame.Classic(0x701, new byte[] { 1 }));
+```
+
+### L3 — ISO-TP (ISO 15765-2)
+
+Full program: `samples/CanKit.Sample.IsoTpQuickstart`.
+
+```csharp
+using var sender = IsoTp.Open(busA, IsoTpEndpoint.Normal(txCanId: 0x7E0, rxCanId: 0x7E8));
+using var receiver = IsoTp.Open(busB, IsoTpEndpoint.Normal(txCanId: 0x7E8, rxCanId: 0x7E0));
+var receive = receiver.ReceiveAsync(cts.Token);
+await sender.SendAsync(pdu /* 1..4095+ bytes, classic CAN or CAN FD */, cts.Token);
+var datagram = await receive;
+```
+
+### L4 — UDS, CANopen, J1939
+
+UDS client (full program: `samples/CanKit.Sample.UdsQuickstart`):
+
+```csharp
+using var client = UdsClient.Create(isoTpChannel);
+await client.DiagnosticSessionControlAsync(UdsSessionType.Extended, cts.Token);
+var vin = await client.ReadDataByIdentifierAsync(0xF190, cts.Token);
+```
+
+CANopen node (full program: `samples/CanKit.Sample.CanOpenQuickstart`): local object
+dictionary, SDO client/server (expedited/segmented/block), TPDO/RPDO mapping (static or
+rewritten over SDO), NMT master/slave, heartbeat, SYNC, EMCY, node guarding.
+
+```csharp
+using var node = CanOpen.OpenNode(bus, nodeId: 0x11);
+node.ObjectDictionary.AddU16(0x2000, 0x00, 0xBEEF);
+node.ConfigureTpdo(1, new PdoMapping().Add(0x2000, 0x00, bitLength: 16),
+    transmission: TpdoTransmission.EventTimer, eventTimerInterval: TimeSpan.FromMilliseconds(100));
+```
+
+J1939 node (full program: `samples/CanKit.Sample.J1939Quickstart`): address claiming incl.
+arbitrary-address fallback, PGN send/receive (auto TP.BAM/TP.CM above 8 bytes), fixed-rate
+periodic send, SPN extraction.
+
+```csharp
+using var node = J1939Node.Open(bus, new J1939NodeOptions(name));
+await node.ClaimAddressAsync(0x30);
+var rpm = J1939Spn.Extract(msg.Payload.Span, byteOffset: 3, startBit: 0, bitLength: 16,
+    resolution: 0.125, offset: 0.0);
+```
+
+Every stack composes the same L2 services and shares the `BackgroundExceptionOccurred`
+pattern for asynchronous faults; protocol errors derive from `CanKitException` with a
+library-wide error code (arc42 ADR-12).

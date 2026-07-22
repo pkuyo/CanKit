@@ -144,3 +144,77 @@ foreach (var ep in BusEndpointEntry.Enumerate("pcan", "kvaser", "socketcan", "zl
     Console.WriteLine($"{ep.Title ?? ep.Endpoint} -> {ep.Endpoint}");
 }
 ```
+
+## 9）协议栈（L2–L4）
+
+在原始 CAN 之上，CanKit.Pro 系列包构建了加固的服务层（L2）以及完整的协议栈：
+ISO-TP（L3）和 UDS / CANopen / J1939（L4）。以下全部内容都可以在无硬件的 Virtual
+适配器上运行；同样的调用方式在任何厂商适配器上都适用。
+
+> 状态：L2 包（`CanKit.Pro.Actor`、`CanKit.Pro.Addressing`、`CanKit.Pro.RawCan`、
+> `CanKit.Pro.Reliability`）已发布（0.1.x）。L3/L4 包（`CanKit.Pro.IsoTp`、
+> `CanKit.Pro.J1939Tp`、`CanKit.Pro.Uds`、`CanKit.Pro.CANopen`、`CanKit.Pro.J1939`、
+> `CanKit.Pro.Hawe`）仍为实验性质（`IsPackable=false`）——目前请直接引用相应项目。
+> 每个协议栈在 `samples/` 下都有快速上手示例。
+
+### L2 —— 原始 CAN 服务层
+
+- `CanBusService` 把一个 `ICanBus` 解复用为任意多个相互独立、带过滤条件的订阅
+  （同一总线上并存多种协议），每个订阅拥有独立的有界缓冲。
+- `SendConfirmed` 提供统一的发送确认，无论适配器是否支持硬件回显。
+- `ProtocolActor` 为每个协议实例提供单写者邮箱循环；`DeadlineScheduler` 在其上
+  装备超时；`BusStateMonitor` 推送总线状态边沿变化。
+
+```csharp
+using var service = new CanBusService(bus);
+using var sub = service.Subscribe(CanIdFilter.Range(0x700, 0x7FF, CanFilterIDType.Standard));
+var confirm = await service.SendConfirmed(CanFrame.Classic(0x701, new byte[] { 1 }));
+```
+
+### L3 —— ISO-TP（ISO 15765-2）
+
+完整示例：`samples/CanKit.Sample.IsoTpQuickstart`。
+
+```csharp
+using var sender = IsoTp.Open(busA, IsoTpEndpoint.Normal(txCanId: 0x7E0, rxCanId: 0x7E8));
+using var receiver = IsoTp.Open(busB, IsoTpEndpoint.Normal(txCanId: 0x7E8, rxCanId: 0x7E0));
+var receive = receiver.ReceiveAsync(cts.Token);
+await sender.SendAsync(pdu /* 1..4095+ 字节，经典 CAN 或 CAN FD */, cts.Token);
+var datagram = await receive;
+```
+
+### L4 —— UDS、CANopen、J1939
+
+UDS 客户端（完整示例：`samples/CanKit.Sample.UdsQuickstart`）：
+
+```csharp
+using var client = UdsClient.Create(isoTpChannel);
+await client.DiagnosticSessionControlAsync(UdsSessionType.Extended, cts.Token);
+var vin = await client.ReadDataByIdentifierAsync(0xF190, cts.Token);
+```
+
+CANopen 节点（完整示例：`samples/CanKit.Sample.CanOpenQuickstart`）：本地对象字典、
+SDO 客户端/服务器（快速/分段/块传输）、TPDO/RPDO 映射（静态或通过 SDO 改写）、
+NMT 主/从、心跳、SYNC、EMCY、节点守护。
+
+```csharp
+using var node = CanOpen.OpenNode(bus, nodeId: 0x11);
+node.ObjectDictionary.AddU16(0x2000, 0x00, 0xBEEF);
+node.ConfigureTpdo(1, new PdoMapping().Add(0x2000, 0x00, bitLength: 16),
+    transmission: TpdoTransmission.EventTimer, eventTimerInterval: TimeSpan.FromMilliseconds(100));
+```
+
+J1939 节点（完整示例：`samples/CanKit.Sample.J1939Quickstart`）：地址声明（含
+Arbitrary-Address 回退）、PGN 收发（超过 8 字节自动走 TP.BAM/TP.CM）、定速率周期
+发送、SPN 提取。
+
+```csharp
+using var node = J1939Node.Open(bus, new J1939NodeOptions(name));
+await node.ClaimAddressAsync(0x30);
+var rpm = J1939Spn.Extract(msg.Payload.Span, byteOffset: 3, startBit: 0, bitLength: 16,
+    resolution: 0.125, offset: 0.0);
+```
+
+所有协议栈都组合同一套 L2 服务，并通过统一的 `BackgroundExceptionOccurred` 模式
+上报异步故障；协议异常都派生自 `CanKitException`，带有全库统一的错误码
+（arc42 ADR-12）。

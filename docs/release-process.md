@@ -7,6 +7,12 @@
 - Validate generated `.nupkg` artifacts before publication.
 - Publish from GitHub Actions only when a package version actually changes.
 
+> **CanKit.Pro packages:** the gates for flipping a Pro package from `IsPackable=false` to
+> published, the public-API tracking rule (`tests/CanKit.Tests/ApiApprovals/`) and the
+> pre-/post-1.0 breaking-change policy are defined in `docs/release-1.0-criteria.md`;
+> the HIL sampling plan required before a first productive L3/L4 release lives in
+> `docs/hil-test-strategy.md`.
+
 ## Versioning Model
 
 Shared package versions live in `eng/package-versions.props`.
