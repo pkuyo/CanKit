@@ -679,6 +679,67 @@ internal sealed class UdsClientImpl : IUdsClient
         }
     }
 
+    public async Task<byte[]> UploadAsync(
+        byte dataFormatIdentifier,
+        byte addressAndLengthFormatIdentifier,
+        ReadOnlyMemory<byte> memoryAddress,
+        ReadOnlyMemory<byte> memorySize,
+        CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken, _lifetimeCts.Token);
+        var linkedToken = linked.Token;
+
+        // Declared byte count to read: big-endian, same wire layout as in RequestDownload/Upload.
+        ulong totalBytes = 0;
+        for (int i = 0; i < memorySize.Length; i++)
+            totalBytes = (totalBytes << 8) | memorySize.Span[i];
+        if (totalBytes > int.MaxValue)
+            throw new UdsProtocolException(
+                $"Declared memorySize {totalBytes} exceeds what a single upload can buffer.");
+
+        // Same lock discipline as DownloadAsync: one continuous 0x35 → 0x36…0x36 → 0x37
+        // sequence, so keep-alive traffic cannot desynchronise the ECU's block-sequence counter.
+        await _requestLock.WaitAsync(linkedToken).ConfigureAwait(false);
+        try
+        {
+            _ = await RequestTransferSetupCoreAsync(
+                UdsServiceId.RequestUpload,
+                dataFormatIdentifier,
+                addressAndLengthFormatIdentifier,
+                memoryAddress,
+                memorySize,
+                (lfid, maxBlock) => new UdsUploadResponse(lfid, maxBlock),
+                linkedToken).ConfigureAwait(false);
+
+            var result = new List<byte>();
+            byte bsc = 0x01; // ISO 14229-1 §14.3.2: first TransferData uses BSC=0x01.
+            while ((ulong)result.Count < totalBytes)
+            {
+                var chunk = await TransferDataCoreAsync(bsc, ReadOnlyMemory<byte>.Empty,
+                    linkedToken).ConfigureAwait(false);
+                if (chunk.Length == 0)
+                    throw new UdsProtocolException(
+                        "ECU returned an empty TransferData payload before the declared memorySize was reached.");
+                result.AddRange(chunk);
+                unchecked { bsc++; } // Wraps 0xFF → 0x00 → 0x01 … per ISO 14229-1 §14.3.2.
+            }
+
+            await RequestTransferExitCoreAsync(default, linkedToken).ConfigureAwait(false);
+
+            // The final block may carry padding beyond the declared size; trim defensively.
+            var bytes = result.ToArray();
+            if ((ulong)bytes.Length > totalBytes)
+                Array.Resize(ref bytes, (int)totalBytes);
+            return bytes;
+        }
+        finally
+        {
+            _requestLock.Release();
+        }
+    }
+
     // ---------------------------------------------------------------------------------------
     // Shared request/response engine (P2/P2* + NRC 0x78 loop + structured NRC surfacing).
     // ---------------------------------------------------------------------------------------

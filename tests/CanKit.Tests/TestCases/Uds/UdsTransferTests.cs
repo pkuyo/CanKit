@@ -439,6 +439,109 @@ public class UdsTransferTests : IClassFixture<TestCaseProvider>
         }
     }
 
+    // -----------------------------------------------------------------------------------
+    // FR-UDS-012 — full 0x35 → 0x36 → 0x37 upload cycle (ECU-to-tester direction), driven
+    // step by step through the public single-shot APIs.
+    // -----------------------------------------------------------------------------------
+    [Fact]
+    public async Task Upload_Full_Cycle_Round_Trips_Payload()
+    {
+        var source = Enumerable.Range(0, 250).Select(i => (byte)(i & 0xFF)).ToArray();
+        var (client, ecu, dispose) = BuildPair(e => WireUploadEcu(e, source,
+            maxBlockLength: 64, chunkSize: 7));
+        using (dispose)
+        {
+            var setup = await client.RequestUploadAsync(
+                dataFormatIdentifier: 0x00,
+                addressAndLengthFormatIdentifier: 0x11,
+                memoryAddress: new byte[] { 0x10 },
+                memorySize: new byte[] { 0xFA },
+                cancellationToken: new CancellationTokenSource(ShortTimeout).Token);
+
+            setup.MaxNumberOfBlockLength.Should().Be(64UL);
+
+            var collected = new List<byte>();
+            byte bsc = 0x01;
+            while (collected.Count < source.Length)
+            {
+                var record = await client.TransferDataAsync(bsc, ReadOnlyMemory<byte>.Empty,
+                    new CancellationTokenSource(ShortTimeout).Token);
+                record.Should().NotBeEmpty("the ECU must deliver data until the declared size is reached");
+                collected.AddRange(record);
+                unchecked { bsc++; }
+            }
+
+            await client.RequestTransferExitAsync(default,
+                new CancellationTokenSource(ShortTimeout).Token);
+
+            collected.Should().Equal(source);
+        }
+    }
+
+    // -----------------------------------------------------------------------------------
+    // FR-UDS-012 — one-shot UploadAsync runs the same cycle end-to-end, including the BSC
+    // walk and the final size trim.
+    // -----------------------------------------------------------------------------------
+    [Fact]
+    public async Task UploadAsync_OneShot_Round_Trips_Payload()
+    {
+        var source = Enumerable.Range(0, 250).Select(i => (byte)(i & 0xFF)).ToArray();
+        var (client, ecu, dispose) = BuildPair(e => WireUploadEcu(e, source,
+            maxBlockLength: 64, chunkSize: 7));
+        using (dispose)
+        {
+            var data = await client.UploadAsync(
+                dataFormatIdentifier: 0x00,
+                addressAndLengthFormatIdentifier: 0x11,
+                memoryAddress: new byte[] { 0x10 },
+                memorySize: new byte[] { 0xFA },
+                cancellationToken: new CancellationTokenSource(ShortTimeout).Token);
+
+            data.Should().Equal(source);
+        }
+    }
+
+    /// <summary>
+    /// Configures <paramref name="ecu"/> as a minimal upload server (mirror of the download
+    /// wiring above): 0x35 accepts and replies with a fixed max block length, 0x36 validates
+    /// the block-sequence counter (NRC 0x73 on mismatch) and answers with the next chunk of
+    /// <paramref name="source"/> (echoed BSC + up to <paramref name="chunkSize"/> payload
+    /// bytes), 0x37 accepts unconditionally.
+    /// </summary>
+    private static void WireUploadEcu(SimulatedUdsEcu ecu, byte[] source, ulong maxBlockLength,
+        int maxBlockWidth = 2, int chunkSize = 3)
+    {
+        byte expectedBsc = 0x01;
+        var offset = 0;
+
+        ecu.On(0x35, req =>
+        {
+            byte lfid = (byte)((maxBlockWidth & 0x0F) << 4);
+            var body = new byte[1 + maxBlockWidth];
+            body[0] = lfid;
+            for (int i = 0; i < maxBlockWidth; i++)
+                body[1 + i] = (byte)(maxBlockLength >> (8 * (maxBlockWidth - 1 - i)));
+            return body;
+        });
+
+        ecu.On(0x36, req =>
+        {
+            byte bsc = req[1];
+            if (bsc != expectedBsc)
+                throw new EcuNegativeResponse(0x73); // wrongBlockSequenceCounter
+            unchecked { expectedBsc++; }
+
+            var take = Math.Min(chunkSize, source.Length - offset);
+            var body = new byte[1 + take];
+            body[0] = bsc;
+            if (take > 0) Buffer.BlockCopy(source, offset, body, 1, take);
+            offset += take;
+            return body;
+        });
+
+        ecu.On(0x37, req => Array.Empty<byte>());
+    }
+
     private sealed class CompositeDisposable : IDisposable
     {
         private readonly IDisposable[] _items;

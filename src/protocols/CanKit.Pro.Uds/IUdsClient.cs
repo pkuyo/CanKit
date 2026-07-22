@@ -261,4 +261,23 @@ public interface IUdsClient : IDisposable
         ReadOnlyMemory<byte> memorySize,
         ReadOnlyMemory<byte> data,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Convenience one-shot upload that runs the full 0x35 → N × 0x36 → 0x37 sequence and
+    /// returns the bytes read from the ECU. The client negotiates with RequestUpload, then
+    /// loops <see cref="TransferDataAsync"/> with an automatically-managed block sequence
+    /// counter (starts at <c>0x01</c>, increments per block, wraps <c>0xFF → 0x00</c>),
+    /// concatenating the ECU's transferResponseParameterRecords until
+    /// <paramref name="memorySize"/> bytes were read, and finally calls
+    /// <see cref="RequestTransferExitAsync"/>.
+    /// </summary>
+    /// <exception cref="UdsProtocolException">The ECU delivered an empty TransferData payload
+    /// before the declared size was reached, or <paramref name="memorySize"/> exceeds what can
+    /// reasonably be buffered.</exception>
+    Task<byte[]> UploadAsync(
+        byte dataFormatIdentifier,
+        byte addressAndLengthFormatIdentifier,
+        ReadOnlyMemory<byte> memoryAddress,
+        ReadOnlyMemory<byte> memorySize,
+        CancellationToken cancellationToken = default);
 }
