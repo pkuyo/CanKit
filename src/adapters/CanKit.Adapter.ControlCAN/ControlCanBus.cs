@@ -46,6 +46,10 @@ public sealed class ControlCanBus : ICanBus<ControlCanBusRtConfigurator>, IOwner
 
     internal ControlCanBus(ControlCanDevice device, IBusOptions options, ITransceiver transceiver, ICanModelProvider provider)
     {
+#if !FAKE
+        // NFR-005: fail clearly on unsupported platforms before touching the native driver.
+        ControlCanPlatformGuard.EnsureSupported();
+#endif
         Options = new ControlCanBusRtConfigurator();
         Options.Init((ControlCanBusOptions)options);
         _transceiver = transceiver;

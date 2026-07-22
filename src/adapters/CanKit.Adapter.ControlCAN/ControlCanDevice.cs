@@ -15,6 +15,10 @@ public sealed class ControlCanDevice : ICanDevice<ControlCanDeviceRTOptionsConfi
 
     public ControlCanDevice(IDeviceOptions options)
     {
+#if !FAKE
+        // NFR-005: fail clearly on unsupported platforms before touching the native driver.
+        ControlCanPlatformGuard.EnsureSupported();
+#endif
         Options = new ControlCanDeviceRTOptionsConfigurator();
         Options.Init((ControlCanDeviceOptions)options);
         _options = options;

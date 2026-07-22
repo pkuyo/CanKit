@@ -58,6 +58,10 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
 
     internal VectorBus(IBusOptions options, ITransceiver transceiver, ICanModelProvider provider)
     {
+#if !FAKE
+        // NFR-005: fail clearly on unsupported platforms before touching the XL Driver Library.
+        VectorPlatformGuard.EnsureSupported();
+#endif
         _driverScope = VectorDriver.Acquire();
         Options = new VectorBusRtConfigurator();
         Options.Init((VectorBusOptions)options);

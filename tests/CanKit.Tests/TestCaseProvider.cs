@@ -23,6 +23,16 @@ public class TestCaseProvider : IDisposable
         // every CI job other than the Virtual one.
         SafeLoad(new AssemblyName("CanKit.Adapter.Virtual"));
 
+        // The vendor adapters must also be loaded before CanRegistry's lazy singleton builds,
+        // otherwise their endpoints are never registered in this test host. The NFR-005
+        // platform-guard tests (AdapterPlatformGuardTests) exercise the real CanBus.Open path
+        // on these schemes; loading the assemblies is harmless on every platform because the
+        // underlying native drivers are only touched when an endpoint is actually opened.
+        SafeLoad(new AssemblyName("CanKit.Adapter.Kvaser"));
+        SafeLoad(new AssemblyName("CanKit.Adapter.PCAN"));
+        SafeLoad(new AssemblyName("CanKit.Adapter.Vector"));
+        SafeLoad(new AssemblyName("CanKit.Adapter.ControlCAN"));
+
         var env = Environment.GetEnvironmentVariable("CANKIT_TEST_ADAPTERS");
         if (env is null)
         {
