@@ -15,8 +15,8 @@
         <Configurations>Debug;Release;Fake</Configurations>
         <Platforms>AnyCPU</Platforms>
         <!-- Kept unpackaged for now (0.1.x); publication gated on the full CiA 302 boot-up
-             sequence and dynamic PDO mapping landing. Block transfer (FR-CO-004) and
-             node-guarding (FR-CO-009) are implemented. -->
+             sequence landing. Block transfer (FR-CO-004), node-guarding (FR-CO-009) and
+             dynamic PDO mapping over SDO (FR-CO-005) are implemented. -->
         <IsPackable>false</IsPackable>
     </PropertyGroup>
 

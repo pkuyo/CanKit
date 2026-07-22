@@ -44,6 +44,18 @@ public enum SdoAbortCode : uint
     /// <summary>Object does not exist in the object dictionary.</summary>
     ObjectDoesNotExist = 0x06020000u,
 
+    /// <summary>Object cannot be mapped to a PDO (CiA 301 §7.2.4.6, PDO mapping parameter).</summary>
+    ObjectCannotBeMapped = 0x06040041u,
+
+    /// <summary>The number and length of the objects to be mapped would exceed the PDO capacity
+    /// (CiA 301 §7.2.4.6 — more than 8 assembled payload bytes in this MVP).</summary>
+    PdoMappingLengthExceeded = 0x06040042u,
+
+    /// <summary>Data type does not match / length of service parameter does not match
+    /// (CiA 301 §7.2.4.6 — used for PDO mapping entries whose bit length is not a positive
+    /// multiple of eight, and for wrong widths when writing mapping parameter records).</summary>
+    DataTypeLengthMismatch = 0x06070010u,
+
     /// <summary>Data type does not match — length of service parameter too high.</summary>
     LengthTooHigh = 0x06070012u,
 

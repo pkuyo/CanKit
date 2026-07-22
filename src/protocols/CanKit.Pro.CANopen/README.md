@@ -18,8 +18,8 @@ Every CiA 301 **Must**, **Should** and (formerly deferred) **Could** requirement
 | FR-CO-002 | SDO expedited transfer (payloads ≤ 4 bytes) |
 | FR-CO-003 | SDO segmented transfer (payloads > 4 bytes, toggle-bit protocol) |
 | FR-CO-004 | SDO block transfer (CiA 301 §7.2.4.3.15) — client + server, download + upload, blksize negotiation, optional CRC-16/XMODEM |
-| FR-CO-005 | Static TPDO/RPDO mapping (byte-aligned, up to 8 bytes) |
-| FR-CO-006 | Event/timer TPDO and SYNC-triggered PDO |
+| FR-CO-005 | Static TPDO/RPDO mapping (byte-aligned, up to 8 bytes) **and dynamic mapping**: SDO access to the mapping records 0x1600–0x1603 / 0x1A00–0x1A03 (deactivate → write entries → activate, CiA 301 §7.2.4.6) with read-back and strict abort codes |
+| FR-CO-006 | Event/timer TPDO and SYNC-triggered PDO, plus automatic change-of-state emission on application OD writes (`CanOpenNodeOptions.EnableChangeOfStateTpdo`, default on; bus-originated writes never re-trigger, so no echo loops) |
 | FR-CO-007 | NMT master + slave state machine (Start / Stop / Pre-Op / Reset) |
 | FR-CO-008 | Heartbeat producer + consumer timeout event |
 | FR-CO-009 | Node-Guarding (CiA 301 §7.2.8.3.3) — RTR-based consumer + producer, life-time timeout event |
@@ -29,9 +29,12 @@ Every CiA 301 **Must**, **Should** and (formerly deferred) **Could** requirement
 
 ## Open items
 
-* Dynamic PDO mapping via OD 0x1600/0x1A00 rewrite over SDO. Mapping is currently configured
-  through the typed `ConfigureTpdo` / `ConfigureRpdo` API, which is enough for the MVP tests
-  and for building a canonical mapping into a caller's OD offline.
+* CiA 302 boot-up sequence details. Classic SDO segmented transfers now carry a server-side
+  idle timeout (`CanOpenNodeOptions.SdoServerTimeout`, default 5 s) matching the block
+  transfer guard; block transfer retransmission on partial ACK is still MVP-simplified
+  (aborts instead of resending).
+* PDO mapping is byte-aligned only (bit lengths must be multiples of 8); bit-granular
+  mapping entries are rejected with an SDO abort.
 
 ### SDO block transfer
 

@@ -106,6 +106,15 @@ internal sealed partial class CanOpenNode : ICanOpenNode
     private readonly Dictionary<int, TpdoConfig> _tpdos = new();
     private readonly Dictionary<uint, RpdoConfig> _rpdosByCobId = new();
 
+    // Change-of-state TPDO support (FR-CO-006): volatile pre-filter snapshot of OD entries
+    // mapped in at least one event-driven TPDO (rebuilt on the actor by
+    // RebuildCosRelevantEntries), plus the dirty-set coalescing state that bounds CoS posts
+    // to at most one queued evaluation (see OnOdEntryWrittenForCoS).
+    private volatile HashSet<uint> _cosRelevantEntries = new();
+    private readonly object _cosGate = new();
+    private HashSet<uint>? _cosDirty;
+    private bool _cosPosted;
+
     // Node-guarding producer toggle bit (FR-CO-009). CiA 301 §7.2.8.3.3 requires the producer
     // to start with toggle=0 and flip it on every reply so the consumer can distinguish a
     // fresh answer from a stale duplicate.
@@ -172,6 +181,10 @@ internal sealed partial class CanOpenNode : ICanOpenNode
         _actor = new ProtocolActor();
         _actor.BackgroundExceptionOccurred += (_, ex) => RaiseBackgroundException(ex);
         _deadlines = new DeadlineScheduler(_actor);
+
+        // Change-of-state TPDOs (FR-CO-006): application-originated OD writes trigger
+        // event-driven TPDOs whose mapping contains the written entry.
+        _od.EntryWritten += OnOdEntryWrittenForCoS;
 
         // Bounded event queue: drop-oldest keeps steady-state memory constant when a subscriber
         // falls behind, exactly matching the CanOpenNodeOptions.EventQueueCapacity contract.
@@ -344,6 +357,7 @@ internal sealed partial class CanOpenNode : ICanOpenNode
             _tpdos[pdoIndex] = config;
             if (transmission == TpdoTransmission.EventTimer)
                 ScheduleTpdoEventTimer(config);
+            RebuildCosRelevantEntries();
         }
 
         // A caller already running on the actor loop (e.g. reconfiguring a TPDO from within a
@@ -896,6 +910,15 @@ internal sealed partial class CanOpenNode : ICanOpenNode
         }
 
         var (index, subindex) = SdoFrames.ReadIndex(data);
+
+        // Dynamic PDO mapping (FR-CO-005): SDO access to the mapping records 0x1600..0x1603 /
+        // 0x1A00..0x1A03 is served by the dedicated mapping handler, not the generic OD path.
+        if (IsPdoMappingIndex(index, out var mappingIsTpdo, out var mappingPdoIndex))
+        {
+            HandlePdoMappingSdoRequest(index, subindex, cs, data, mappingIsTpdo, mappingPdoIndex);
+            return;
+        }
+
         _od.TryGet(index, subindex, out var entry);
 
         // Upload init (client → server).
@@ -986,6 +1009,7 @@ internal sealed partial class CanOpenNode : ICanOpenNode
         initBuf[7] = (byte)((len >> 24) & 0xFF);
 
         var session = new SdoServerSession(inDownload: false, index, subindex, value, offset: 0, toggle: false);
+        session.Deadline = _deadlines.Arm(_options.SdoServerTimeout, OnSdoServerTimeout);
         _sdoServer = session;
         _ = SendControlFrame(CanOpenCobId.SdoTx(_nodeId), initBuf);
     }
@@ -1000,6 +1024,7 @@ internal sealed partial class CanOpenNode : ICanOpenNode
             _sdoServer = null;
             return;
         }
+        RearmSdoServerDeadline(session);
 
         int remaining = session.Buffer.Length - session.Offset;
         int chunk = Math.Min(7, remaining);
@@ -1012,7 +1037,7 @@ internal sealed partial class CanOpenNode : ICanOpenNode
         session.Offset += chunk;
         session.Toggle = !session.Toggle;
         if (last)
-            _sdoServer = null;
+            ClearSdoServerSession();
     }
 
     private void HandleServerDownloadInit(ushort index, byte subindex, OdEntry? entry, byte cs, byte[] data)
@@ -1065,8 +1090,10 @@ internal sealed partial class CanOpenNode : ICanOpenNode
 
             // Supersede handling already ran at the top of the method; install the fresh
             // segmented-download session cleanly here.
-            _sdoServer = new SdoServerSession(inDownload: true, index, subindex,
+            var session = new SdoServerSession(inDownload: true, index, subindex,
                 new byte[declaredLen], offset: 0, toggle: false);
+            session.Deadline = _deadlines.Arm(_options.SdoServerTimeout, OnSdoServerTimeout);
+            _sdoServer = session;
             var ack = new byte[8];
             ack[0] = SdoFrames.ScsDownloadInitAck;
             ack[1] = (byte)(index & 0xFF);
@@ -1121,6 +1148,7 @@ internal sealed partial class CanOpenNode : ICanOpenNode
             _sdoServer = null;
             return;
         }
+        RearmSdoServerDeadline(session);
         Buffer.BlockCopy(payload, 0, session.Buffer, session.Offset, payload.Length);
         session.Offset += payload.Length;
 
@@ -1163,7 +1191,7 @@ internal sealed partial class CanOpenNode : ICanOpenNode
         _ = SendControlFrame(CanOpenCobId.SdoTx(_nodeId), ack);
         session.Toggle = !session.Toggle;
 
-        if (last) _sdoServer = null;
+        if (last) ClearSdoServerSession();
     }
 
     private void SendSdoServerAbort(ushort index, byte subindex, SdoAbortCode code)
@@ -1191,6 +1219,46 @@ internal sealed partial class CanOpenNode : ICanOpenNode
         _sdoServer = null;
         _ = SendControlFrame(CanOpenCobId.SdoTx(_nodeId),
             SdoFrames.BuildAbort(stale.Index, stale.Subindex, (uint)SdoAbortCode.General));
+    }
+
+    /// <summary>
+    /// Drops the open server-side session and releases its idle deadline. Used by the natural
+    /// completion paths (last segment), which do not go through <see cref="SendSdoServerAbort"/>.
+    /// </summary>
+    private void ClearSdoServerSession()
+    {
+        _sdoServer?.Deadline?.Dispose();
+        _sdoServer = null;
+    }
+
+    /// <summary>
+    /// Rearms (or initially arms) the server-side session idle timeout after any segment
+    /// activity, mirroring the block-transfer server's guard
+    /// (<c>OnSdoBlockServerTimeout</c> in CanOpenNode.SdoBlock.cs): a client that starts a
+    /// segmented transfer and then goes silent must not pin the server's single session slot
+    /// forever. Fires on the actor loop via <see cref="DeadlineScheduler"/>.
+    /// </summary>
+    private void RearmSdoServerDeadline(SdoServerSession session)
+    {
+        var deadline = session.Deadline;
+        if (deadline is null || deadline.IsExpired || deadline.IsCancelled
+            || !deadline.Rearm(_options.SdoServerTimeout))
+        {
+            deadline?.Dispose();
+            session.Deadline = _deadlines.Arm(_options.SdoServerTimeout, OnSdoServerTimeout);
+        }
+    }
+
+    private void OnSdoServerTimeout()
+    {
+        var stale = _sdoServer;
+        if (stale is null) return;
+        stale.Deadline?.Dispose();
+        _sdoServer = null;
+        // Tell a late-returning client the session is gone (mirrors the client-timeout path
+        // OnSdoClientTimeout) instead of letting it discover the loss via its own retry logic.
+        _ = SendControlFrame(CanOpenCobId.SdoTx(_nodeId),
+            SdoFrames.BuildAbort(stale.Index, stale.Subindex, (uint)SdoAbortCode.SdoProtocolTimedOut));
     }
 
     // =========================================================================================
@@ -1574,6 +1642,105 @@ internal sealed partial class CanOpenNode : ICanOpenNode
             }
         });
     }
+
+    /// <summary>
+    /// Change-of-state TPDO triggering (FR-CO-006 / CiA 301 §7.3.6): an application-originated
+    /// OD write emits every event-driven TPDO whose mapping contains the written entry.
+    /// Runs synchronously on the writer's thread (invoked from <see cref="ObjectDictionary"/>).
+    /// </summary>
+    /// <remarks>
+    /// Only application writes count: bus-originated OD writes (SDO server download commit,
+    /// RPDO unpack) run on the node's actor thread and are filtered out here via
+    /// <c>ProtocolActor.IsOnCurrentActor</c>, so an RPDO mapped to the same entry as a
+    /// TPDO cannot produce bus echo loops.
+    /// Load safety: the actor mailbox is intentionally unbounded, so this path must never
+    /// post per write. A volatile snapshot of the mapped entries filters irrelevant writes
+    /// with zero actor traffic, and relevant writes are coalesced into a bounded dirty set —
+    /// at most one evaluation is queued at any time (an unthrottled writer otherwise grows
+    /// the mailbox without bound, which is exactly what killed the
+    /// <c>Tpdo_Emission_UnderConcurrentOdWrites_NeverTears</c> stress test).
+    /// </remarks>
+    private void OnOdEntryWrittenForCoS(ushort index, byte subindex)
+    {
+        if (!_options.EnableChangeOfStateTpdo) return;
+        if (_actor.IsOnCurrentActor) return; // bus-originated write — never re-trigger (echo guard)
+        if (Volatile.Read(ref _disposed) != 0) return;
+
+        var key = CosKey(index, subindex);
+        if (!_cosRelevantEntries.Contains(key)) return; // no event-driven TPDO maps it — done
+
+        lock (_cosGate)
+        {
+            (_cosDirty ??= new HashSet<uint>()).Add(key);
+            if (_cosPosted) return;
+            _cosPosted = true;
+        }
+
+        try
+        {
+            _actor.Post(EvaluateCoSOnActor);
+        }
+        catch (ObjectDisposedException)
+        {
+            lock (_cosGate)
+            {
+                _cosPosted = false;
+            }
+        }
+    }
+
+    // Actor-side evaluation of the coalesced dirty set: emits every event-driven TPDO that
+    // maps at least one entry written since the last evaluation. Writes landing during the
+    // evaluation re-arm the dirty set and re-post, so nothing is lost.
+    private void EvaluateCoSOnActor()
+    {
+        HashSet<uint>? dirty;
+        lock (_cosGate)
+        {
+            dirty = _cosDirty;
+            _cosDirty = null;
+            _cosPosted = false;
+        }
+        if (dirty is null || dirty.Count == 0) return;
+        if (_disposed != 0 || _state != NmtState.Operational) return;
+
+        foreach (var kv in _tpdos)
+        {
+            var config = kv.Value;
+            if (config.Transmission != TpdoTransmission.EventDriven) continue;
+            var entries = config.Mapping.Entries;
+            for (int i = 0; i < entries.Count; i++)
+            {
+                if (dirty.Contains(CosKey(entries[i].Index, entries[i].Subindex)))
+                {
+                    EmitTpdo(config);
+                    break;
+                }
+            }
+        }
+    }
+
+    // Rebuilds the volatile pre-filter snapshot of OD entries mapped in at least one
+    // event-driven TPDO. Called on the actor whenever the TPDO table or a mapping changes
+    // (ConfigureTpdo, dynamic SDO re-mapping).
+    private void RebuildCosRelevantEntries()
+    {
+        var set = new HashSet<uint>();
+        if (_options.EnableChangeOfStateTpdo)
+        {
+            foreach (var kv in _tpdos)
+            {
+                if (kv.Value.Transmission != TpdoTransmission.EventDriven) continue;
+                foreach (var e in kv.Value.Mapping.Entries)
+                {
+                    set.Add(CosKey(e.Index, e.Subindex));
+                }
+            }
+        }
+        _cosRelevantEntries = set;
+    }
+
+    private static uint CosKey(ushort index, byte subindex) => ((uint)index << 8) | subindex;
 
     // =========================================================================================
     // Wire helpers

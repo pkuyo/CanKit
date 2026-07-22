@@ -27,6 +27,15 @@ public sealed class ObjectDictionary
     private readonly Dictionary<uint, OdEntry> _entries = new();
     private readonly object _sync = new();
 
+    /// <summary>
+    /// Internal hook for <see cref="CanOpenNode"/>'s change-of-state TPDO support (FR-CO-006):
+    /// raised after a value-mutating write (<see cref="WriteRaw"/> / <see cref="WriteUnsigned"/>)
+    /// completes successfully. Registration via the <c>Add*</c> methods does not raise it. The
+    /// invocation happens synchronously on the writing thread, outside the internal lock, so
+    /// subscribers must marshal to their own context instead of doing expensive work inline.
+    /// </summary>
+    internal event Action<ushort, byte>? EntryWritten;
+
     /// <summary>Total number of registered <c>(index, subindex)</c> entries.</summary>
     public int Count
     {
@@ -129,6 +138,7 @@ public sealed class ObjectDictionary
             Buffer.BlockCopy(value, 0, copy, 0, value.Length);
             entry.SetRawValue(copy);
         }
+        EntryWritten?.Invoke(index, subindex);
     }
 
     /// <summary>Reads a fixed-width unsigned entry as <see cref="uint"/> (upcasts U8/U16/U32).
@@ -194,6 +204,7 @@ public sealed class ObjectDictionary
                         $"OD entry 0x{index:X4}:{subindex:X2} is {entry.DataType}, not an unsigned type.");
             }
         }
+        EntryWritten?.Invoke(index, subindex);
     }
 
     private OdEntry Add(ushort index, byte subindex, OdDataType type, OdAccess access, byte[] value)
