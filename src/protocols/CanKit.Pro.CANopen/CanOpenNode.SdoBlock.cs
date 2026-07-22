@@ -204,13 +204,10 @@ internal sealed partial class CanOpenNode
                 }
                 {
                     var (ackseq, nextBlkSize) = SdoBlockFrames.ReadSubBlockAck(data);
-                    // ackseq is the number of segments the server accepted from the last
-                    // sub-block; anything less than SegmentsInFlight means we need to rewind.
-                    // In MVP: reject partial acks (ackseq != SegmentsInFlight) with an abort
-                    // rather than implement full retransmission. On our loopback bus this
-                    // path is exercised only for the "server picks smaller blksize" test,
-                    // where ackseq == SegmentsInFlight is guaranteed.
-                    if (ackseq != session.SegmentsInFlight)
+                    // ackseq counts cumulatively from the start of the current sub-block
+                    // (CiA 301 §7.2.4.3.15). Acknowledging more than we sent is a protocol
+                    // violation; acknowledging less asks us to retransmit from ackseq + 1.
+                    if (ackseq > session.SubBlockLastSeqno)
                     {
                         AbortBlockClient(session, SdoAbortCode.General);
                         return true;
@@ -221,6 +218,27 @@ internal sealed partial class CanOpenNode
                         return true;
                     }
                     session.NegotiatedBlockSize = nextBlkSize;
+                    if (ackseq < session.SubBlockLastSeqno)
+                    {
+                        // Partial ACK: rewind to the first unconfirmed segment and retransmit
+                        // from there with the ORIGINAL sub-block seqnos, instead of aborting.
+                        // Bounded by CanOpenNodeOptions.SdoBlockMaxRetransmissions against
+                        // peers that never confirm progress (0 restores the old abort behavior).
+                        if (++session.Retransmissions > _options.SdoBlockMaxRetransmissions)
+                        {
+                            AbortBlockClient(session, SdoAbortCode.General);
+                            return true;
+                        }
+                        // Confirmed segments are always full 7-byte chunks: a short final
+                        // segment can only sit at the tail (unconfirmed in a partial ACK).
+                        session.Offset = session.SubBlockStartOffset + ackseq * 7;
+                        session.ResumeSeqno = (byte)(ackseq + 1);
+                        session.Phase = SdoBlockClientPhase.SendingSegments;
+                        SendNextBlockDownloadSubBlock(session);
+                        return true;
+                    }
+                    // Full confirmation of the current sub-block: the next one restarts at 1.
+                    session.ResumeSeqno = 1;
                     if (session.Offset >= session.Payload!.Length)
                     {
                         SendBlockDownloadEnd(session);
@@ -417,10 +435,14 @@ internal sealed partial class CanOpenNode
         // each send, and 127 concurrent Task.Runs would arrive at the peer in unspecified
         // order — the block-transfer receiver enforces monotonically increasing seqnos, so
         // any reordering aborts the whole transfer with SdoAbortCode.General.
-        int segments = 0;
         var frames = new List<(uint CobId, byte[] Payload)>(session.NegotiatedBlockSize);
         uint cobId = CanOpenCobId.SdoRx(session.ServerNodeId);
-        while (segments < session.NegotiatedBlockSize)
+        // A fresh sub-block (seqno restarts at 1) anchors the rewind offset; a resumed
+        // sub-block (after a partial ACK) keeps the original anchor and seqno numbering.
+        if (session.ResumeSeqno == 1)
+            session.SubBlockStartOffset = session.Offset;
+        var seqno = session.ResumeSeqno;
+        while (seqno <= session.NegotiatedBlockSize)
         {
             int remaining = session.Payload!.Length - session.Offset;
             if (remaining <= 0) break;
@@ -429,12 +451,12 @@ internal sealed partial class CanOpenNode
             var segData = new byte[chunk];
             Buffer.BlockCopy(session.Payload, session.Offset, segData, 0, chunk);
             session.Offset += chunk;
-            segments++;
 
             bool isLastOverall = session.Offset >= session.Payload.Length;
-            byte seqno = (byte)segments;
             var frame = SdoBlockFrames.BuildSegment(seqno, isLastSegment: isLastOverall, segData);
             frames.Add((cobId, frame));
+            session.SubBlockLastSeqno = seqno;
+            seqno++;
 
             if (isLastOverall)
             {
@@ -442,7 +464,7 @@ internal sealed partial class CanOpenNode
                 break;
             }
         }
-        session.SegmentsInFlight = (byte)segments;
+        session.ResumeSeqno = seqno;
         session.Phase = SdoBlockClientPhase.AwaitSubBlockAck;
         _ = SendOrderedControlFrames(frames.ToArray());
     }
@@ -822,7 +844,10 @@ internal sealed partial class CanOpenNode
     private void HandleBlockUploadServerSubBlockAck(SdoBlockServerSession session, byte[] data)
     {
         var (ackseq, nextBlkSize) = SdoBlockFrames.ReadSubBlockAck(data);
-        if (ackseq != session.SegmentsInSubBlock)
+        // ackseq counts cumulatively from the start of the current sub-block
+        // (CiA 301 §7.2.4.3.15). More than sent is a protocol violation; less asks for
+        // retransmission from ackseq + 1 with the original seqnos.
+        if (ackseq > session.SubBlockLastSeqno)
         {
             _ = SendControlFrame(CanOpenCobId.SdoTx(_nodeId),
                 SdoFrames.BuildAbort(session.Index, session.Subindex, (uint)SdoAbortCode.General));
@@ -840,6 +865,30 @@ internal sealed partial class CanOpenNode
         }
         session.NegotiatedBlockSize = nextBlkSize;
 
+        if (ackseq < session.SubBlockLastSeqno)
+        {
+            // Partial ACK: rewind to the first unconfirmed segment and retransmit from there
+            // with the original sub-block seqnos (CiA 301 §7.2.4.3.15), bounded by
+            // CanOpenNodeOptions.SdoBlockMaxRetransmissions (0 restores the old abort behavior).
+            if (++session.Retransmissions > _options.SdoBlockMaxRetransmissions)
+            {
+                _ = SendControlFrame(CanOpenCobId.SdoTx(_nodeId),
+                    SdoFrames.BuildAbort(session.Index, session.Subindex, (uint)SdoAbortCode.General));
+                _sdoBlockServer = null;
+                session.Deadline?.Dispose();
+                return;
+            }
+            // Confirmed segments are always full 7-byte chunks (a short final segment can
+            // only sit at the tail, which is unconfirmed in a partial ACK).
+            session.Offset = session.SubBlockStartOffset + ackseq * 7;
+            session.ResumeSeqno = (byte)(ackseq + 1);
+            session.Phase = SdoBlockServerPhase.SendingSegments;
+            SendNextBlockUploadSubBlock(session);
+            return;
+        }
+
+        // Full confirmation of the current sub-block: the next one restarts at seqno 1.
+        session.ResumeSeqno = 1;
         if (session.Offset >= session.Buffer.Length)
         {
             SendBlockUploadEnd(session);
@@ -853,10 +902,14 @@ internal sealed partial class CanOpenNode
     {
         // Same ordering caveat as SendNextBlockDownloadSubBlock: send the whole sub-block
         // through SendOrderedControlFrames so seqnos arrive at the peer in order.
-        int segments = 0;
         var frames = new List<(uint CobId, byte[] Payload)>(session.NegotiatedBlockSize);
         uint cobId = CanOpenCobId.SdoTx(_nodeId);
-        while (segments < session.NegotiatedBlockSize)
+        // A fresh sub-block (seqno restarts at 1) anchors the rewind offset; a resumed
+        // sub-block (after a partial ACK) keeps the original anchor and seqno numbering.
+        if (session.ResumeSeqno == 1)
+            session.SubBlockStartOffset = session.Offset;
+        var seqno = session.ResumeSeqno;
+        while (seqno <= session.NegotiatedBlockSize)
         {
             int remaining = session.Buffer.Length - session.Offset;
             if (remaining <= 0) break;
@@ -864,18 +917,18 @@ internal sealed partial class CanOpenNode
             var segData = new byte[chunk];
             Buffer.BlockCopy(session.Buffer, session.Offset, segData, 0, chunk);
             session.Offset += chunk;
-            segments++;
             bool isLastOverall = session.Offset >= session.Buffer.Length;
-            byte seqno = (byte)segments;
             var frame = SdoBlockFrames.BuildSegment(seqno, isLastSegment: isLastOverall, segData);
             frames.Add((cobId, frame));
+            session.SubBlockLastSeqno = seqno;
+            seqno++;
             if (isLastOverall)
             {
                 session.LastSegmentUnusedBytes = (byte)(7 - chunk);
                 break;
             }
         }
-        session.SegmentsInSubBlock = (byte)segments;
+        session.ResumeSeqno = seqno;
         session.Phase = SdoBlockServerPhase.AwaitSubBlockAck;
         _ = SendOrderedControlFrames(frames.ToArray());
     }
@@ -1004,13 +1057,21 @@ internal sealed partial class CanOpenNode
         // Download progress.
         public int Offset;
         public byte NegotiatedBlockSize;
-        public byte SegmentsInFlight;
         public byte LastSegmentUnusedBytes;
+
+        // Retransmission state (CiA 301 §7.2.4.3.15): the sub-block sequence numbering is
+        // cumulative per sub-block and must survive a partial-ACK rewind — resending with a
+        // fresh seqno=1 would make the peer NACK forever.
+        public int SubBlockStartOffset;      // payload offset where the current sub-block began
+        public byte ResumeSeqno = 1;         // next seqno (1-based) to use within the sub-block
+        public byte SubBlockLastSeqno;       // highest seqno sent so far in the current sub-block
+        public int Retransmissions;
 
         // Upload progress.
         public byte LocalBlockSize = 127;
         public byte NextExpectedSeq = 1;
         public uint DeclaredTotalSize;
+        public byte SegmentsInFlight; // accepted segments in the current sub-block (receiver side)
 
         public IDeadline? Deadline;
     }
@@ -1040,5 +1101,14 @@ internal sealed partial class CanOpenNode
         public uint DeclaredTotalSize { get; set; }
         public bool SizeIndicated { get; set; }
         public IDeadline? Deadline { get; set; }
+
+        // Retransmission state (CiA 301 §7.2.4.3.15) for the upload-server send path: the
+        // sub-block sequence numbering is cumulative per sub-block and must survive a
+        // partial-ACK rewind (the download-server receive path counts via NextExpectedSeq /
+        // SegmentsInSubBlock above instead).
+        public int SubBlockStartOffset { get; set; }
+        public byte ResumeSeqno { get; set; } = 1;
+        public byte SubBlockLastSeqno { get; set; }
+        public int Retransmissions { get; set; }
     }
 }

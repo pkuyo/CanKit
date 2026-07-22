@@ -102,6 +102,16 @@ public sealed class CanOpenNodeOptions
     public bool SdoBlockCrcSupported { get; init; } = true;
 
     /// <summary>
+    /// Maximum number of sub-block retransmissions per block transfer before the node aborts
+    /// (CiA 301 §7.2.4.3.15): on a partial sub-block ACK (ackseq &lt; segments sent) the sender
+    /// rewinds to the first unconfirmed segment and resends, up to this many times per transfer
+    /// — a bound against peers that never confirm progress. Applies to the download client and
+    /// the upload server alike. <c>0</c> restores the previous MVP behavior (abort on the first
+    /// partial ACK). Defaults to 3.
+    /// </summary>
+    public int SdoBlockMaxRetransmissions { get; init; } = 3;
+
+    /// <summary>
     /// When <c>true</c> this node answers a Node-Guarding RTR (COB-ID <c>0x700 + own node-id</c>)
     /// with a one-byte data frame carrying the current NMT state (bits 0..6) and an alternating
     /// toggle bit (bit 7), per CiA 301 §7.2.8.3.3. Ignored when the heartbeat producer is active
@@ -120,6 +130,7 @@ public sealed class CanOpenNodeOptions
         int? sdoBlockThresholdBytes = null,
         byte? sdoBlockSize = null,
         bool? sdoBlockCrcSupported = null,
+        int? sdoBlockMaxRetransmissions = null,
         bool? respondToNodeGuardingRtr = null,
         bool? enableChangeOfStateTpdo = null)
     {
@@ -133,6 +144,7 @@ public sealed class CanOpenNodeOptions
             SdoBlockThresholdBytes = sdoBlockThresholdBytes ?? SdoBlockThresholdBytes,
             SdoBlockSize = sdoBlockSize ?? SdoBlockSize,
             SdoBlockCrcSupported = sdoBlockCrcSupported ?? SdoBlockCrcSupported,
+            SdoBlockMaxRetransmissions = sdoBlockMaxRetransmissions ?? SdoBlockMaxRetransmissions,
             RespondToNodeGuardingRtr = respondToNodeGuardingRtr ?? RespondToNodeGuardingRtr,
             EnableChangeOfStateTpdo = enableChangeOfStateTpdo ?? EnableChangeOfStateTpdo,
         };
@@ -162,5 +174,8 @@ public sealed class CanOpenNodeOptions
         if (SdoBlockSize is < 1 or > 127)
             throw new ArgumentOutOfRangeException(nameof(SdoBlockSize), SdoBlockSize,
                 "SdoBlockSize must be in [1, 127] per CiA 301 §7.2.4.3.15.");
+        if (SdoBlockMaxRetransmissions < 0)
+            throw new ArgumentOutOfRangeException(nameof(SdoBlockMaxRetransmissions), SdoBlockMaxRetransmissions,
+                "SdoBlockMaxRetransmissions must be >= 0.");
     }
 }

@@ -29,10 +29,12 @@ Every CiA 301 **Must**, **Should** and (formerly deferred) **Could** requirement
 
 ## Open items
 
-* CiA 302 boot-up sequence details. Classic SDO segmented transfers now carry a server-side
+* CiA 302 boot-up sequence details. Classic SDO segmented transfers carry a server-side
   idle timeout (`CanOpenNodeOptions.SdoServerTimeout`, default 5 s) matching the block
-  transfer guard; block transfer retransmission on partial ACK is still MVP-simplified
-  (aborts instead of resending).
+  transfer guard, and block transfer retransmits from the first unconfirmed segment on a
+  partial sub-block ACK (CiA 301 §7.2.4.3.15, bounded by
+  `CanOpenNodeOptions.SdoBlockMaxRetransmissions`, default 3); the pst>0 fallback from block
+  to segmented transfer is still not implemented (pst=0 is forced).
 * PDO mapping is byte-aligned only (bit lengths must be multiples of 8); bit-granular
   mapping entries are rejected with an SDO abort.
 

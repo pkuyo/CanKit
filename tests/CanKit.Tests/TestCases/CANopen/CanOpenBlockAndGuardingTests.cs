@@ -280,4 +280,199 @@ public class CanOpenBlockAndGuardingTests : IClassFixture<TestCaseProvider>
         evt.GuardTime.Should().Be(TimeSpan.FromMilliseconds(100));
         evt.LifeTimeFactor.Should().Be((byte)2);
     }
+
+    // -----------------------------------------------------------------------------------------
+    // FR-CO-004 (CiA 301 §7.2.4.3.15): on a partial sub-block ACK the download client must
+    // rewind to the first unconfirmed segment and retransmit with the ORIGINAL sub-block
+    // seqnos — resending with a restarted seqno=1 would make a compliant peer NACK forever.
+    // Driven by a raw-frame fake server on the third bus.
+    // -----------------------------------------------------------------------------------------
+    [Fact]
+    public async Task Sdo_BlockDownload_Client_Retransmits_With_Original_Seqnos_On_Partial_Ack()
+    {
+        var session = NewSession();
+        using var busA = Open(session, 0);
+        using var rawBus = Open(session, 2);
+
+        using var client = CanOpen.OpenNode(busA, nodeId: 0x01);
+        var payload = Enumerable.Range(0, 20).Select(i => (byte)(0x30 + i)).ToArray();
+        var tap = new FrameTap(rawBus, CanOpenCobId.SdoRx(0x02));
+
+        var sendTask = client.SdoDownloadAsync(serverNodeId: 0x02, index: 0x2100, subindex: 0x00,
+            payload, mode: SdoTransferMode.Block, new System.Threading.CancellationTokenSource(ShortTimeout).Token);
+
+        // Block download initiate -> fake server answers with blksize 3, no CRC.
+        var init = tap.Next(ShortTimeout);
+        (init[0] & 0xE0).Should().Be(SdoBlockFrames.CcsBlockDownloadInitBase);
+        rawBus.Transmit(CanFrame.Classic(unchecked((int)CanOpenCobId.SdoTx(0x02)),
+            SdoBlockFrames.BuildBlockDownloadInitResponse(0x2100, 0x00, serverCrcSupported: false, blockSize: 3)));
+
+        // First sub-block: seq 1..3.
+        var segs = new List<byte[]>();
+        for (var i = 0; i < 3; i++) segs.Add(tap.Next(ShortTimeout));
+        segs.Select(s => s[0] & 0x7F).Should().Equal(1, 2, 3);
+
+        // Partial ACK: only the first two segments confirmed.
+        rawBus.Transmit(CanFrame.Classic(unchecked((int)CanOpenCobId.SdoTx(0x02)),
+            SdoBlockFrames.BuildSubBlockAck(SdoBlockFrames.ScsBlockDownloadSubBlockAck, lastAckedSeq: 2, nextBlockSize: 3)));
+
+        // The client must rewind and resend starting at seqno 3 with the ORIGINAL numbering
+        // (and re-mark the payload's last segment).
+        var resent = tap.Next(ShortTimeout);
+        (resent[0] & 0x7F).Should().Be(3,
+            "the rewind must keep the original sub-block seqno numbering (CiA 301 §7.2.4.3.15)");
+        (resent[0] & 0x80).Should().Be(0x80, "the payload's final segment must be re-marked as last");
+
+        // Full ACK for the sub-block; client then sends End; fake server confirms it.
+        rawBus.Transmit(CanFrame.Classic(unchecked((int)CanOpenCobId.SdoTx(0x02)),
+            SdoBlockFrames.BuildSubBlockAck(SdoBlockFrames.ScsBlockDownloadSubBlockAck, lastAckedSeq: 3, nextBlockSize: 3)));
+        var end = tap.Next(ShortTimeout);
+        (end[0] & 0xC3).Should().Be(SdoBlockFrames.CcsBlockDownloadEndBase);
+        rawBus.Transmit(CanFrame.Classic(unchecked((int)CanOpenCobId.SdoTx(0x02)),
+            SdoBlockFrames.BuildEndResponse(SdoBlockFrames.ScsBlockDownloadEndResponse)));
+
+        await sendTask.WithTimeoutAsync(ShortTimeout);
+
+        // The peer-side byte stream (seq1, seq2 accepted first, then the resent seq3) must
+        // reassemble to exactly the original payload.
+        var accepted = segs.Take(2).Select(s => s.Skip(1))
+            .Concat(new[] { resent.Skip(1) })
+            .SelectMany(b => b).Take(payload.Length).ToArray();
+        accepted.Should().Equal(payload);
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // FR-CO-004 (CiA 301 §7.2.4.3.15): the upload server applies the same rewind-with-original-
+    // seqnos rule when the client partially ACKs a sub-block. Driven by a raw-frame fake client.
+    // -----------------------------------------------------------------------------------------
+    [Fact]
+    public async Task Sdo_BlockUpload_Server_Retransmits_With_Original_Seqnos_On_Partial_Ack()
+    {
+        var session = NewSession();
+        using var busB = Open(session, 1);
+        using var rawBus = Open(session, 2);
+
+        using var server = CanOpen.OpenNode(busB, nodeId: 0x02);
+        var payload = Enumerable.Range(0, 20).Select(i => (byte)(0x60 + i)).ToArray();
+        server.ObjectDictionary.AddDomain(0x2100, 0x00, payload, OdAccess.ReadOnly);
+        var tap = new FrameTap(rawBus, CanOpenCobId.SdoTx(0x02));
+
+        // Fake client initiates the block upload (blksize 3, no CRC, pst=0).
+        rawBus.Transmit(CanFrame.Classic(unchecked((int)CanOpenCobId.SdoRx(0x02)),
+            SdoBlockFrames.BuildBlockUploadInit(0x2100, 0x00, clientCrcSupported: false, blockSize: 3, pst: 0)));
+        var initResp = tap.Next(ShortTimeout);
+        (initResp[0] & 0xE0).Should().Be(SdoBlockFrames.ScsBlockUploadInitResponseBase);
+        rawBus.Transmit(CanFrame.Classic(unchecked((int)CanOpenCobId.SdoRx(0x02)),
+            SdoBlockFrames.BuildEndResponse(SdoBlockFrames.CcsBlockUploadStart)));
+
+        // First sub-block: seq 1..3.
+        var segs = new List<byte[]>();
+        for (var i = 0; i < 3; i++) segs.Add(tap.Next(ShortTimeout));
+        segs.Select(s => s[0] & 0x7F).Should().Equal(1, 2, 3);
+
+        // Partial ACK from the client: only two segments confirmed.
+        rawBus.Transmit(CanFrame.Classic(unchecked((int)CanOpenCobId.SdoRx(0x02)),
+            SdoBlockFrames.BuildSubBlockAck(SdoBlockFrames.CcsBlockUploadSubBlockAck, lastAckedSeq: 2, nextBlockSize: 3)));
+
+        // The server must rewind and resend seqno 3 with the ORIGINAL numbering.
+        var resent = tap.Next(ShortTimeout);
+        (resent[0] & 0x7F).Should().Be(3,
+            "the upload server must keep the original sub-block seqno numbering on rewind");
+        (resent[0] & 0x80).Should().Be(0x80);
+
+        // Full ACK; server sends End; fake client confirms.
+        rawBus.Transmit(CanFrame.Classic(unchecked((int)CanOpenCobId.SdoRx(0x02)),
+            SdoBlockFrames.BuildSubBlockAck(SdoBlockFrames.CcsBlockUploadSubBlockAck, lastAckedSeq: 3, nextBlockSize: 3)));
+        var end = tap.Next(ShortTimeout);
+        (end[0] & 0xC3).Should().Be(SdoBlockFrames.ScsBlockUploadEndBase);
+        rawBus.Transmit(CanFrame.Classic(unchecked((int)CanOpenCobId.SdoRx(0x02)),
+            SdoBlockFrames.BuildEndResponse(SdoBlockFrames.CcsBlockUploadEndResponse)));
+
+        var accepted = segs.Take(2).Select(s => s.Skip(1))
+            .Concat(new[] { resent.Skip(1) })
+            .SelectMany(b => b).Take(payload.Length).ToArray();
+        accepted.Should().Equal(payload);
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // FR-CO-004: retransmissions are bounded — a peer that never confirms progress aborts the
+    // transfer after CanOpenNodeOptions.SdoBlockMaxRetransmissions instead of retrying forever.
+    // -----------------------------------------------------------------------------------------
+    [Fact]
+    public async Task Sdo_BlockDownload_Aborts_After_Max_Retransmissions()
+    {
+        var session = NewSession();
+        using var busA = Open(session, 0);
+        using var rawBus = Open(session, 2);
+
+        var options = new CanOpenNodeOptions().With(sdoBlockMaxRetransmissions: 2);
+        using var client = CanOpen.OpenNode(busA, nodeId: 0x01, options);
+        var payload = Enumerable.Range(0, 20).Select(i => (byte)(0x30 + i)).ToArray();
+        var tap = new FrameTap(rawBus, CanOpenCobId.SdoRx(0x02));
+
+        var sendTask = client.SdoDownloadAsync(serverNodeId: 0x02, index: 0x2100, subindex: 0x00,
+            payload, mode: SdoTransferMode.Block, new System.Threading.CancellationTokenSource(ShortTimeout).Token);
+
+        var init = tap.Next(ShortTimeout);
+        (init[0] & 0xE0).Should().Be(SdoBlockFrames.CcsBlockDownloadInitBase);
+        rawBus.Transmit(CanFrame.Classic(unchecked((int)CanOpenCobId.SdoTx(0x02)),
+            SdoBlockFrames.BuildBlockDownloadInitResponse(0x2100, 0x00, serverCrcSupported: false, blockSize: 3)));
+
+        // First sub-block, then two resumed sub-blocks; the fake server always confirms only
+        // the first segment, so the client exceeds its retry budget and must abort (the abort
+        // frame is the third tap item after the resumed segments).
+        _ = tap.Next(ShortTimeout); // seq 1
+        _ = tap.Next(ShortTimeout); // seq 2
+        _ = tap.Next(ShortTimeout); // seq 3
+        for (var retry = 0; retry < 2; retry++)
+        {
+            rawBus.Transmit(CanFrame.Classic(unchecked((int)CanOpenCobId.SdoTx(0x02)),
+                SdoBlockFrames.BuildSubBlockAck(SdoBlockFrames.ScsBlockDownloadSubBlockAck, lastAckedSeq: 1, nextBlockSize: 3)));
+            var resumed = tap.Next(ShortTimeout);
+            (resumed[0] & 0x7F).Should().Be(2, "each retry resumes at ackseq + 1 with original seqnos");
+            _ = tap.Next(ShortTimeout); // seq 3 of the resumed sub-block
+        }
+        rawBus.Transmit(CanFrame.Classic(unchecked((int)CanOpenCobId.SdoTx(0x02)),
+            SdoBlockFrames.BuildSubBlockAck(SdoBlockFrames.ScsBlockDownloadSubBlockAck, lastAckedSeq: 1, nextBlockSize: 3)));
+
+        var abort = tap.Next(ShortTimeout);
+        abort[0].Should().Be(0x80, "after the retry budget is exhausted the client must emit an SDO abort");
+        var ex = await Assert.ThrowsAsync<SdoAbortException>(() => sendTask.WithTimeoutAsync(ShortTimeout));
+        ex.AbortCode.Should().Be((uint)SdoAbortCode.General);
+    }
+
+    // Raw-frame tap: queues every frame on a given COB-ID so the test body can drive a fake
+    // peer deterministically from its own thread (no in-handler transmits).
+    private sealed class FrameTap : IDisposable
+    {
+        private readonly ICanBus _bus;
+        private readonly uint _cobId;
+        private readonly System.Collections.Concurrent.BlockingCollection<byte[]> _frames = new();
+
+        public FrameTap(ICanBus bus, uint cobId)
+        {
+            _bus = bus;
+            _cobId = cobId;
+            _bus.FrameObserved += OnFrame;
+        }
+
+        private void OnFrame(object? sender, CanReceiveDataView e)
+        {
+            if ((uint)e.CanFrame.ID == _cobId)
+            {
+                _frames.Add(e.CanFrame.Data.ToArray());
+            }
+        }
+
+        public byte[] Next(TimeSpan timeout)
+        {
+            if (!_frames.TryTake(out var frame, timeout))
+            {
+                throw new TimeoutException($"No frame on COB-ID 0x{_cobId:X3} within {timeout}.");
+            }
+            return frame;
+        }
+
+        public void Dispose() => _bus.FrameObserved -= OnFrame;
+    }
 }
