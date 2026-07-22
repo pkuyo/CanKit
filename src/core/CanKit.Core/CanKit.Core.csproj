@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Library</OutputType>
 	<Platforms>AnyCPU</Platforms>
@@ -40,5 +40,10 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="README.md" Pack="true" PackagePath="" />
+  </ItemGroup>
+  <!-- Lets the xUnit suite construct isolated CanRegistry instances and drive the internal
+       Register* surface for the NFR-008 concurrency stress tests (RawCanConcurrencyTests). -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="CanKit.Tests" />
   </ItemGroup>
 </Project>

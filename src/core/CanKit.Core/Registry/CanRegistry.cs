@@ -34,8 +34,11 @@ public partial class CanRegistry
     /// <returns>The resolved CAN model provider. (解析到的CAN模型提供者)</returns>
     public ICanModelProvider Resolve(DeviceType deviceType)
     {
-        if (_providers.TryGetValue(deviceType, out var provider))
-            return provider;
+        lock (_sync)
+        {
+            if (_providers.TryGetValue(deviceType, out var provider))
+                return provider;
+        }
 
         var ex = new NotSupportedException(
             $"Unknown device. DeviceType='{deviceType}");
@@ -57,10 +60,14 @@ public partial class CanRegistry
         if (string.IsNullOrWhiteSpace(factoryId))
             throw new ArgumentException($"FactoryId is null or empty.", nameof(factoryId));
 
-        if (_factories.TryGetValue(factoryId, out var factory))
-            return factory;
+        string known;
+        lock (_sync)
+        {
+            if (_factories.TryGetValue(factoryId, out var factory))
+                return factory;
 
-        var known = _factories.Count == 0 ? "<none>" : string.Join(", ", _factories.Keys);
+            known = _factories.Count == 0 ? "<none>" : string.Join(", ", _factories.Keys);
+        }
         var ex = new NotSupportedException(
             $"Unknown factory. FactoryId='{factoryId}'. Known=[{known}]");
 
@@ -77,13 +84,18 @@ public partial class CanRegistry
     public bool TryOpenEndPoint(string endpoint, Action<IBusInitOptionsConfigurator>? configure, out ICanBus? bus)
     {
         var ep = CanEndpoint.Parse(endpoint);
-        if (_handlers.TryGetValue(ep.Scheme, out var h))
+        Func<CanEndpoint, Action<IBusInitOptionsConfigurator>?, ICanBus>? h;
+        lock (_sync)
         {
-            bus = h(ep, configure);
-            return true;
+            if (!_handlers.TryGetValue(ep.Scheme, out h))
+            {
+                bus = null;
+                return false;
+            }
         }
-        bus = null;
-        return false;
+        // Invoke outside the lock: opening a bus may be slow and must not block readers.
+        bus = h(ep, configure);
+        return true;
     }
 
     /// <summary>
@@ -93,13 +105,17 @@ public partial class CanRegistry
     public bool TryPrepareEndPoint(string endpoint, Action<IBusInitOptionsConfigurator>? configure, out PreparedBusContext? prepared)
     {
         var ep = CanEndpoint.Parse(endpoint);
-        if (_prepareHandlers.TryGetValue(ep.Scheme, out var p))
+        Func<CanEndpoint, Action<IBusInitOptionsConfigurator>?, PreparedBusContext>? p;
+        lock (_sync)
         {
-            prepared = p(ep, configure);
-            return true;
+            if (!_prepareHandlers.TryGetValue(ep.Scheme, out p))
+            {
+                prepared = null;
+                return false;
+            }
         }
-        prepared = null;
-        return false;
+        prepared = p(ep, configure);
+        return true;
     }
 
     /// <summary>
@@ -109,13 +125,16 @@ public partial class CanRegistry
     /// <exception cref="InvalidOperationException">Thrown when a provider with the same DeviceType is already registered.(设备类型已存在时抛出)</exception>
     internal void RegisterProvider(params ICanModelProvider[] providers)
     {
-        foreach (var provider in providers)
+        lock (_sync)
         {
-            if (_providers.ContainsKey(provider.DeviceType))
+            foreach (var provider in providers)
             {
-                throw new InvalidOperationException($"A provider with the DeviceType '{provider.DeviceType}' is already registered.");
+                if (_providers.ContainsKey(provider.DeviceType))
+                {
+                    throw new InvalidOperationException($"A provider with the DeviceType '{provider.DeviceType}' is already registered.");
+                }
+                _providers.Add(provider.DeviceType, provider);
             }
-            _providers.Add(provider.DeviceType, provider);
         }
     }
 
@@ -128,11 +147,14 @@ public partial class CanRegistry
     /// <exception cref="InvalidOperationException">Thrown when a factory with the same ID is already registered.(工厂ID已存在时抛出)</exception>
     internal void RegisterFactory(string factoryId, ICanFactory factory)
     {
-        if (_factories.ContainsKey(factoryId))
+        lock (_sync)
         {
-            throw new InvalidOperationException($"A factory with the ID '{factoryId}' is already registered.");
+            if (_factories.ContainsKey(factoryId))
+            {
+                throw new InvalidOperationException($"A factory with the ID '{factoryId}' is already registered.");
+            }
+            _factories.Add(factoryId, factory);
         }
-        _factories.Add(factoryId, factory);
     }
 
     /// <summary>
@@ -143,19 +165,20 @@ public partial class CanRegistry
         if (e is null) throw new ArgumentNullException(nameof(e));
         if (string.IsNullOrWhiteSpace(e.Scheme)) throw new ArgumentNullException(nameof(e.Scheme));
 
-        _handlers[e.Scheme] = e.Open;
-        _prepareHandlers[e.Scheme] = e.Prepare;
-
-        if (e.Enumerate != null)
-            _enumerators[e.Scheme] = e.Enumerate;
-
-        foreach (var alias in e.Alias.Append(e.Scheme))
+        lock (_sync)
         {
-            if (!_enumeratorAlias.ContainsKey(alias))
-                _enumeratorAlias[alias] = e.Scheme;
+            _handlers[e.Scheme] = e.Open;
+            _prepareHandlers[e.Scheme] = e.Prepare;
+
+            if (e.Enumerate != null)
+                _enumerators[e.Scheme] = e.Enumerate;
+
+            foreach (var alias in e.Alias.Append(e.Scheme))
+            {
+                if (!_enumeratorAlias.ContainsKey(alias))
+                    _enumeratorAlias[alias] = e.Scheme;
+            }
         }
-
-
     }
 }
 
@@ -167,6 +190,11 @@ public partial class CanRegistry
 
     // factory
     private readonly Dictionary<string, ICanFactory> _factories = new();
+
+    // NFR-008: every dictionary in this class is guarded by this lock. Registration happens
+    // mostly during startup, but the public read surface (Resolve/Factory/TryOpen*/Enumerate)
+    // is reachable from arbitrary threads concurrently with any late (re-)registration.
+    private readonly object _sync = new();
 
     // endpoint
     private readonly Dictionary<string, Func<IEnumerable<BusEndpointInfo>>> _enumerators =
@@ -254,12 +282,22 @@ public partial class CanRegistry
     /// </summary>
     public IEnumerable<BusEndpointInfo> EnumerateEndPoints(IEnumerable<string>? vendorsOrSchemes)
     {
+        // Snapshot under the lock: an iterator cannot yield inside a lock block, and a live
+        // dictionary must not be enumerated while a concurrent registration mutates it.
+        KeyValuePair<string, Func<IEnumerable<BusEndpointInfo>>>[] enumerators;
+        Dictionary<string, string> alias;
+        lock (_sync)
+        {
+            enumerators = _enumerators.ToArray();
+            alias = new Dictionary<string, string>(_enumeratorAlias, StringComparer.OrdinalIgnoreCase);
+        }
+
         if (vendorsOrSchemes is null)
         {
-            foreach (var e in _enumerators.Values)
+            foreach (var e in enumerators)
             {
                 IEnumerable<BusEndpointInfo> items;
-                try { items = e() ?? []; }
+                try { items = e.Value() ?? []; }
                 catch { items = []; }
                 foreach (var it in items) yield return it;
             }
@@ -267,12 +305,12 @@ public partial class CanRegistry
         }
         var schemes = vendorsOrSchemes.Select(i =>
         {
-            if (_enumeratorAlias.TryGetValue(i, out var aliased))
+            if (alias.TryGetValue(i, out var aliased))
                 return aliased;
             return i;
         });
         var set = new HashSet<string>(schemes, StringComparer.OrdinalIgnoreCase);
-        foreach (var kv in _enumerators)
+        foreach (var kv in enumerators)
         {
             if (!set.Contains(kv.Key)) continue;
             IEnumerable<BusEndpointInfo> items;
