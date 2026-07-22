@@ -10,11 +10,11 @@
         <AssemblyVersion>1.0.0.0</AssemblyVersion>
         <FileVersion>$(CanKitSharedFileVersion)</FileVersion>
         <Authors>Pkuyo</Authors>
-        <RepositoryUrl>https://github.com/pkuyo/CanKit</RepositoryUrl>
+        <RepositoryUrl>https://github.com/dborgards/CanKit.Pro</RepositoryUrl>
         <PackageReadmeFile>README.md</PackageReadmeFile>
         <Configurations>Debug;Release;Fake</Configurations>
         <Platforms>AnyCPU</Platforms>
-        <!-- Runtime (IIsoTpChannel + actor-driven scheduler) added in 0.2.x; still pre-release. -->
+        <!-- Actor-driven runtime (IIsoTpChannel) is present since 0.1.0; still pre-release. -->
         <IsPackable>false</IsPackable>
     </PropertyGroup>
 

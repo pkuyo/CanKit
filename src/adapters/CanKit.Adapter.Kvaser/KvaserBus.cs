@@ -29,7 +29,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IOwnership
     private int _drainRunning;
     private EventHandler<CanReceiveData>? _frameReceived;
     private EventHandler<CanReceiveDataView>? _frameObserved;
-    private EventHandler<ICanErrorInfo>? _errorOccured;
+    private EventHandler<ICanErrorInfo>? _errorOccurred;
     private CancellationTokenSource? _cts = new CancellationTokenSource();
 
     private bool _isDisposed;
@@ -42,6 +42,10 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IOwnership
 
     internal KvaserBus(IBusOptions options, ITransceiver transceiver, ICanModelProvider provider)
     {
+#if !FAKE
+        // NFR-005: fail clearly on unsupported platforms before touching canlib32.
+        KvaserPlatformGuard.EnsureSupported();
+#endif
         Options = new KvaserBusRtConfigurator();
         Options.Init((KvaserBusOptions)options);
         _transceiver = transceiver;
@@ -351,7 +355,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IOwnership
                 {
                     throw new CanBusConfigurationException("ErrorOccurred subscription requires AllowErrorInfo=true in options.");
                 }
-                _errorOccured += value;
+                _errorOccurred += value;
             }
         }
         remove
@@ -362,7 +366,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IOwnership
                 {
                     throw new CanBusConfigurationException("ErrorOccurred subscription requires AllowErrorInfo=true in options.");
                 }
-                _errorOccured -= value;
+                _errorOccurred -= value;
             }
         }
     }
@@ -582,7 +586,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IOwnership
                     CanErrorCounters? errorCounters = enableErrorCounter ? ErrorCounters() : null;
                     try
                     {
-                        var errSnap = Volatile.Read(ref _errorOccured);
+                        var errSnap = Volatile.Read(ref _errorOccurred);
                         errSnap?.Invoke(this, new DefaultCanErrorInfo(
                             FrameErrorType.Unknown,
                             enableErrorCounter ?

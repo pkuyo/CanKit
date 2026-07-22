@@ -23,7 +23,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IOwnership
     private readonly ITransceiver _transceiver;
     private EventHandler<CanReceiveData>? _frameReceived;
     private EventHandler<CanReceiveDataView>? _frameObserved;
-    private EventHandler<ICanErrorInfo>? _errorOccured;
+    private EventHandler<ICanErrorInfo>? _errorOccurred;
 
     private bool _isDisposed;
 
@@ -41,6 +41,10 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IOwnership
 
     internal PcanBus(IBusOptions options, ITransceiver transceiver)
     {
+#if !FAKE
+        // NFR-005: fail clearly on unsupported platforms before touching the native SDK.
+        PcanPlatformGuard.EnsureSupported();
+#endif
         Options = new PcanBusRtConfigurator();
         Options.Init((PcanBusOptions)options);
         _transceiver = transceiver;
@@ -365,7 +369,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IOwnership
             }
             lock (_evtGate)
             {
-                _errorOccured += value;
+                _errorOccurred += value;
             }
         }
         remove
@@ -376,7 +380,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IOwnership
             }
             lock (_evtGate)
             {
-                _errorOccured -= value;
+                _errorOccurred -= value;
             }
         }
     }
@@ -504,7 +508,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IOwnership
                         rec.CanFrame);
                     try
                     {
-                        var errSnap = Volatile.Read(ref _errorOccured);
+                        var errSnap = Volatile.Read(ref _errorOccurred);
                         errSnap?.Invoke(this, info);
                     }
                     catch (Exception e)
