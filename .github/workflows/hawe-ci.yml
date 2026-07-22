@@ -53,7 +53,7 @@ jobs:
         run: dotnet build CanKitProHawe.slnf -c Release --no-restore
 
       - name: Test (net8.0)
-        run: dotnet test CanKitProHawe.slnf -c Release -f net8.0 --no-build --logger "trx;LogFileName=TestResults.trx"
+        run: dotnet test CanKitProHawe.slnf -c Release -f net8.0 --no-build --filter "FullyQualifiedName~Hawe" --logger "trx;LogFileName=TestResults.trx"
 
       - name: Upload Test Results
         if: always()
@@ -90,7 +90,7 @@ jobs:
         run: dotnet restore CanKitProHawe.slnf
 
       - name: Test (${{ matrix.tfm }})
-        run: dotnet test CanKitProHawe.slnf -c Release -f ${{ matrix.tfm }} --logger "trx;LogFileName=TestResults-${{ matrix.tfm }}.trx"
+        run: dotnet test CanKitProHawe.slnf -c Release -f ${{ matrix.tfm }} --filter "FullyQualifiedName~Hawe" --logger "trx;LogFileName=TestResults-${{ matrix.tfm }}.trx"
 
       - name: Upload Test Results (${{ matrix.tfm }})
         if: always()

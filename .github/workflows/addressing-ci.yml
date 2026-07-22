@@ -46,7 +46,7 @@ jobs:
         run: dotnet restore CanKitAddressing.slnf
 
       - name: Test (${{ matrix.tfm }})
-        run: dotnet test CanKitAddressing.slnf -c Release -f ${{ matrix.tfm }} --logger "trx;LogFileName=TestResults-${{ matrix.tfm }}.trx"
+        run: dotnet test CanKitAddressing.slnf -c Release -f ${{ matrix.tfm }} --filter "FullyQualifiedName~Addressing|FullyQualifiedName~CanIdFilter|FullyQualifiedName~J1939Id|FullyQualifiedName~J1939Name" --logger "trx;LogFileName=TestResults-${{ matrix.tfm }}.trx"
 
       - name: Upload Test Results (${{ matrix.tfm }})
         if: always()
@@ -79,7 +79,7 @@ jobs:
         run: dotnet restore CanKitAddressing.slnf
 
       - name: Test (net8.0)
-        run: dotnet test CanKitAddressing.slnf -c Release -f net8.0 --logger "trx;LogFileName=TestResults.trx"
+        run: dotnet test CanKitAddressing.slnf -c Release -f net8.0 --filter "FullyQualifiedName~Addressing|FullyQualifiedName~CanIdFilter|FullyQualifiedName~J1939Id|FullyQualifiedName~J1939Name" --logger "trx;LogFileName=TestResults.trx"
 
       - name: Upload Test Results
         if: always()

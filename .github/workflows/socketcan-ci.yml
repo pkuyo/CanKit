@@ -47,3 +47,49 @@ jobs:
           name: test-results-ubuntu
           path: '**/TestResults.trx'
 
+  # Real-kernel SocketCAN coverage (no fake native layer): creates two vcan interfaces
+  # and runs the suite against them — the SocketCAN test data provider already targets
+  # socketcan://vcan0 / socketcan://vcan1.
+  vcan:
+    name: SocketCAN (Ubuntu, real vcan)
+    runs-on: ubuntu-latest
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_CLI_TELEMETRY_OPTOUT: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Set up virtual CAN interfaces
+        run: |
+          set -e
+          sudo modprobe vcan
+          sudo ip link add dev vcan0 type vcan
+          sudo ip link add dev vcan1 type vcan
+          sudo ip link set up vcan0
+          sudo ip link set up vcan1
+          ip -details link show type vcan
+
+      - name: Configure endpoints
+        run: |
+          set -e
+          echo "CANKIT_TEST_ADAPTERS=CanKit.Adapter.SocketCAN" >> "$GITHUB_ENV"
+
+      - name: Restore
+        run: dotnet restore CanKitAdapters.slnf
+
+      - name: Test (net8.0, real SocketCAN)
+        run: dotnet test CanKitAdapters.slnf -c Release -f net8.0 --logger "trx;LogFileName=TestResults-vcan.trx"
+
+      - name: Upload Test Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-ubuntu-vcan
+          path: '**/TestResults-vcan.trx'
+

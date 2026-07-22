@@ -38,7 +38,7 @@ jobs:
         run: dotnet restore CanKitActor.slnf
 
       - name: Test (${{ matrix.tfm }})
-        run: dotnet test CanKitActor.slnf -c Release -f ${{ matrix.tfm }} --logger "trx;LogFileName=TestResults-${{ matrix.tfm }}.trx"
+        run: dotnet test CanKitActor.slnf -c Release -f ${{ matrix.tfm }} --filter "FullyQualifiedName~ProtocolActor" --logger "trx;LogFileName=TestResults-${{ matrix.tfm }}.trx"
 
       - name: Upload Test Results (${{ matrix.tfm }})
         if: always()
@@ -71,7 +71,7 @@ jobs:
         run: dotnet restore CanKitActor.slnf
 
       - name: Test (net8.0)
-        run: dotnet test CanKitActor.slnf -c Release -f net8.0 --logger "trx;LogFileName=TestResults.trx"
+        run: dotnet test CanKitActor.slnf -c Release -f net8.0 --filter "FullyQualifiedName~ProtocolActor" --logger "trx;LogFileName=TestResults.trx"
 
       - name: Upload Test Results
         if: always()
