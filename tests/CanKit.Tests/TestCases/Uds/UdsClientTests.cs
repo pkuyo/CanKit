@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -420,6 +421,41 @@ public class UdsClientTests : IClassFixture<TestCaseProvider>
             var ex = (await act.Should().ThrowAsync<UdsTimeoutException>()).Which;
             ex.Timer.Should().Be(UdsTimeoutTimer.P2);
             ex.RequestedService.Should().Be(UdsServiceId.ReadDataByIdentifier);
+        }
+    }
+
+    // -----------------------------------------------------------------------------------
+    // FR-UDS-008 — P2* timeout: ECU sends only NRC 0x78 (response pending), never a final
+    // response -> the restarted P2* timer must expire and fault with
+    // UdsTimeoutException(Timer = P2Star). This path had no test at all before (the only
+    // Timer assertion in the suite was P2); the elapsed-time assertion proves the timeout
+    // fired on the restarted P2* budget, not on the initial P2 budget.
+    // -----------------------------------------------------------------------------------
+    [Fact]
+    public async Task Client_Times_Out_With_P2Star_When_Ecu_Sends_Only_ResponsePending()
+    {
+        var (client, _, dispose) = BuildPair(
+            e => e.On(0x22, _ => throw new EcuResponsePendingThenSilent(
+                pendingCount: 2, delayBetween: TimeSpan.FromMilliseconds(40))),
+            options: new UdsClientOptions
+            {
+                P2ClientMax = TimeSpan.FromMilliseconds(100),
+                P2StarClientMax = TimeSpan.FromMilliseconds(250),
+                MaxResponsePendingCount = 10,
+            });
+        using (dispose)
+        {
+            var sw = Stopwatch.StartNew();
+            Func<Task> act = () => client.ReadDataByIdentifierAsync(0xF190,
+                new CancellationTokenSource(ShortTimeout).Token);
+            var ex = (await act.Should().ThrowAsync<UdsTimeoutException>()).Which;
+            sw.Stop();
+
+            ex.Timer.Should().Be(UdsTimeoutTimer.P2Star,
+                "the ECU answered with NRC 0x78 (response pending), so the running timer is P2* — not P2");
+            ex.RequestedService.Should().Be(UdsServiceId.ReadDataByIdentifier);
+            sw.Elapsed.Should().BeGreaterThanOrEqualTo(TimeSpan.FromMilliseconds(200),
+                "P2* restarts on each 0x78, so the timeout must fire well past the initial P2 budget (100 ms)");
         }
     }
 

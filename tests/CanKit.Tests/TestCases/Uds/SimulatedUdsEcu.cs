@@ -152,6 +152,16 @@ public sealed class SimulatedUdsEcu : IDisposable
                         if (body.Length > 0) Buffer.BlockCopy(body, 0, response, 1, body.Length);
                         await SendAndCountAsync(response, ct).ConfigureAwait(false);
                     }
+                    catch (EcuResponsePendingThenSilent pendingSilent)
+                    {
+                        for (int i = 0; i < pendingSilent.PendingCount && !ct.IsCancellationRequested; i++)
+                        {
+                            await SendNrcAsync(sid, 0x78, ct).ConfigureAwait(false);
+                            if (pendingSilent.DelayBetween > TimeSpan.Zero)
+                                await Task.Delay(pendingSilent.DelayBetween, ct).ConfigureAwait(false);
+                        }
+                        // Then silence: the client's restarted P2* must expire (FR-UDS-008).
+                    }
                 }
             }
             finally
@@ -225,6 +235,25 @@ public sealed class EcuResponsePending : Exception
     {
         PendingCount = pendingCount;
         FinalResponse = finalResponse;
+        DelayBetween = delayBetween ?? TimeSpan.Zero;
+    }
+}
+
+/// <summary>Sentinel thrown by an ECU handler to force N × NRC 0x78 and then go completely
+/// silent — the client's restarted P2* timer must expire (FR-UDS-008).</summary>
+public sealed class EcuResponsePendingThenSilent : Exception
+{
+    /// <summary>How many NRC 0x78 frames to send before going silent.</summary>
+    public int PendingCount { get; }
+
+    /// <summary>Optional delay inserted between successive 0x78 frames.</summary>
+    public TimeSpan DelayBetween { get; }
+
+    /// <summary>Creates a response-pending-then-silent sentinel.</summary>
+    public EcuResponsePendingThenSilent(int pendingCount, TimeSpan? delayBetween = null)
+        : base($"ECU forced {pendingCount}× NRC 0x78, then silence.")
+    {
+        PendingCount = pendingCount;
         DelayBetween = delayBetween ?? TimeSpan.Zero;
     }
 }
