@@ -369,6 +369,7 @@ namespace CanKit.Core.Utils
             public TimerPolicy policy;          // 当前策略
             public TimeSpan lastPeriodApplied;  // 已应用的周期
             public bool winResAcquired;         // Windows: 是否已 Acquire(1)
+            public bool posixSleepWarned;       // Linux: clock_nanosleep-Fallback bereits geloggt
         }
 
         private delegate void InitDelegate(ref PlatformContext ctx);
@@ -650,7 +651,27 @@ namespace CanKit.Core.Utils
             var deltaFromT0 = target - ctx.t0;
             var targetMono = Posix.Add(ctx.t0Mono, deltaFromT0);
 
-            try { Posix.SleepUntilMonotonicAbs(targetMono); } catch { /*EINTR 可忽略*/ }
+            try
+            {
+                Posix.SleepUntilMonotonicAbs(targetMono);
+            }
+            catch (Exception ex)
+            {
+                // EINTR is already filtered out inside SleepUntilMonotonicAbs, so whatever
+                // reaches here is persistent (missing libc symbol, EINVAL, ...). Swallowing
+                // it silently would turn the pre-wait into a permanent no-op and make the
+                // loop send in a hot spin (the NFR-002 send-storm scenario, on Linux). Log
+                // once and pin this loop to the coarse sleeper instead.
+                if (!ctx.posixSleepWarned)
+                {
+                    ctx.posixSleepWarned = true;
+                    CanKitLogger.LogWarning(
+                        "SoftwarePeriodicTx: clock_nanosleep failed; falling back to coarse sleep for the rest of this loop.", ex);
+                }
+                ctx.policy.UseThreadSleep = true;
+                SleepCoarse(sw, target, token, policy.GuardMs);
+                return;
+            }
 
             // 如果早醒且非常接近目标，再做一次极短自旋
             if (policy.SpinBudgetUs > 0)
