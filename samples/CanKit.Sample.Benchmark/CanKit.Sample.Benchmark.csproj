@@ -6,5 +6,11 @@
     <Platforms>AnyCPU;x64;x86</Platforms>
     <Configurations>Debug;Release;Fake</Configurations>
   </PropertyGroup>
+
+  <!-- ISO-TP reference for the NFR-007 allocation benchmark (pulls the L2 Pro packages
+       transitively). Kept project-local so the other samples stay Pro-free. -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\transports\CanKit.Pro.IsoTp\CanKit.Pro.IsoTp.csproj" />
+  </ItemGroup>
 </Project>
 

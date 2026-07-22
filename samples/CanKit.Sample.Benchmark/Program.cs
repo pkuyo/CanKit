@@ -11,6 +11,7 @@ using CanKit.Abstractions.API.Common;
 using CanKit.Abstractions.API.Common.Definitions;
 using CanKit.Core;
 using CanKit.Core.Definitions;
+using CanKit.Pro.IsoTp;
 
 namespace CanKit.Sample.Benchmark
 {
@@ -18,7 +19,7 @@ namespace CanKit.Sample.Benchmark
     {
         private static async Task<int> Main(string[] args)
         {
-            // Usage: Benchmark [--src <ep>] [--dst <ep>] [--frames 10000] [--len 8] [--fd] [--brs]  [--bitrate 500000] [--dbitrate 2000000] [--res 1]
+            // Usage: Benchmark [--src <ep>] [--dst <ep>] [--frames 10000] [--len 8] [--fd] [--brs]  [--bitrate 500000] [--dbitrate 2000000] [--res 1] [--alloc]
 
             #region ParseArgs
 
@@ -34,6 +35,19 @@ namespace CanKit.Sample.Benchmark
             int gapMs = int.TryParse(GetArg(args, "--gapms"), out var s) ? s : -1;
 
             #endregion
+
+#if NET8_0_OR_GREATER
+            if (HasFlag(args, "--alloc"))
+            {
+                return await RunAllocationBenchmarkAsync();
+            }
+#else
+            if (HasFlag(args, "--alloc"))
+            {
+                Console.WriteLine("--alloc requires the net8.0 build (GC allocation measurement APIs).");
+                return 2;
+            }
+#endif
 
             using var rx = CanBus.Open(dst, cfg =>
             {
@@ -132,6 +146,54 @@ namespace CanKit.Sample.Benchmark
         }
 
         #region Tools
+
+#if NET8_0_OR_GREATER
+        // Allocation benchmark for the ISO-TP SF/CF hot paths (NFR-007). Deliberately uses
+        // GC.GetTotalAllocatedBytes rather than BenchmarkDotNet's MemoryDiagnoser: the
+        // per-thread diagnoser only sees the calling thread, but an actor-driven pipeline
+        // allocates on actor / event-pump threads — exactly the part we want to measure.
+        // The process-wide counter covers all of it, and no new package dependency is needed
+        // in the samples tree.
+        private static async Task<int> RunAllocationBenchmarkAsync()
+        {
+            static async Task<(long bytes, int ops)> MeasureAsync(int ops, Func<Task> op)
+            {
+                // Warmup: settle JIT + reusable buffers before measuring.
+                for (var i = 0; i < Math.Min(100, ops / 10 + 1); i++) await op();
+                var before = GC.GetTotalAllocatedBytes(precise: false);
+                for (var i = 0; i < ops; i++) await op();
+                return (GC.GetTotalAllocatedBytes(precise: false) - before, ops);
+            }
+
+            var session = $"alloc-{Guid.NewGuid():N}";
+            using var busA = CanBus.Open($"virtual://{session}/0", cfg => cfg.Baud(500_000));
+            using var busB = CanBus.Open($"virtual://{session}/1", cfg => cfg.Baud(500_000));
+
+            var options = new IsoTpChannelOptions { UsePadding = true };
+            using var sender = IsoTp.Open(busA, IsoTpEndpoint.Normal(0x7E0, 0x7E8), options);
+            using var receiver = IsoTp.Open(busB, IsoTpEndpoint.Normal(0x7E8, 0x7E0), options);
+            // The receiver's reassembly inbox is intentionally not drained: drop-oldest keeps
+            // it non-blocking, and the TX path is what we measure.
+
+            var sfPdu = new byte[] { 0x22, 0xF1, 0x89 };
+            var mfPdu = Enumerable.Range(0, 200).Select(i => (byte)i).ToArray();
+
+            var l1 = await MeasureAsync(5000,
+                () => { busA.Transmit(CanFrame.Classic(0x100, sfPdu)); return Task.CompletedTask; });
+            var sf = await MeasureAsync(2000, () => sender.SendAsync(sfPdu));
+            var mf = await MeasureAsync(200, () => sender.SendAsync(mfPdu));
+
+            Console.WriteLine("Allocation benchmark (all threads, Virtual loopback):");
+            Print("L1 Transmit 1F", l1);
+            Print("ISO-TP SF", sf);
+            Print("ISO-TP MF (~29 CF)", mf);
+            return 0;
+
+            static void Print(string name, (long bytes, int ops) r)
+                => Console.WriteLine($"  {name,-18}: {r.bytes / (double)r.ops,10:F1} B/op" +
+                                     $"   (total {r.bytes:N0} B over {r.ops} ops)");
+        }
+#endif
 
         private static string? GetArg(string[] args, string name) => args.SkipWhile(a => !string.Equals(a, name, StringComparison.OrdinalIgnoreCase)).Skip(1).FirstOrDefault();
         private static bool HasFlag(string[] args, string name) => args.Any(a => string.Equals(a, name, StringComparison.OrdinalIgnoreCase));
