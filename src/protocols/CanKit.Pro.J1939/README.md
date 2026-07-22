@@ -11,35 +11,34 @@ FR-J1939-001..006 (Must) and FR-J1939-007 (Should).
   offset (little-endian, 1..64-bit fields) via `J1939Spn` (**FR-J1939-002**).
 - **Address claiming** (PGN 0xEE00) with SAE J1939-81 §4.4.3 NAME arbitration
   and the 250 ms announcement window (**FR-J1939-003**).
-- **Cannot Claim** (PGN 0xEE00 broadcast from SA = 0xFE) when the preferred
-  address is contested by a peer with a numerically lower (higher-priority)
-  NAME (**FR-J1939-004**).
+- **Address-Claim fallback** (**FR-J1939-004**): after losing the preferred
+  address to a higher-priority NAME the node scans the arbitrary address
+  field (0x80..0xF7, wrapping once) and only broadcasts **Cannot Claim**
+  (PGN 0xEE00 from SA = 0xFE) when the field is exhausted. Governed by
+  `J1939NodeOptions.EnableArbitraryAddressClaiming` (default: derived from
+  the NAME's Arbitrary Address Capable bit).
 - **Request-PGN** (PGN 0xEA00) send and receive (**FR-J1939-005**).
 - **Auto-routing** to J1939-TP for payloads > 8 bytes; direct 29-bit frames
   for payloads ≤ 8 bytes (**FR-J1939-006**).
 - **Periodic PGN send** (**FR-J1939-007**): every periodic PGN — single-
-  frame and multi-frame alike — is driven by the node's actor / `SendAsync`
-  loop on top of the L2 `DeadlineScheduler` (L2 scheduling). The loop
-  snapshots the caller's payload into an owned buffer at Start-time and
-  hands `SendAsync` the same immutable bytes on every tick, so in-place
-  edits to the caller buffer after `StartPeriodicSend` are not observable
-  on the wire. `SendAsync`'s pre-flight claim gate runs on every emission,
-  so the schedule stops putting frames on the wire as soon as the node
-  leaves `Claimed` and resumes automatically after a fresh claim — the
-  emitted 29-bit ID is composed from the currently-claimed SA. Send
-  failures (including `J1939NoAddressException` from the claim gate) are
-  surfaced via `BackgroundExceptionOccurred`. The caller supplies the
-  transmit period; mapping application PGNs to their SAE J1939-71 standard
-  rate is the caller's responsibility (no PGN rate catalog is embedded).
-  A native L1 `IPeriodicTx` optimization for single-frame PGNs remains a
-  follow-up. The L1 error-propagation blocker that gated it has been
-  removed: `IPeriodicTx` now exposes a `Faulted` event
-  (`EventHandler<Exception>`) and `SoftwarePeriodicTx` raises it — outside
-  its internal gate — whenever the inner `Transmit` call throws, while
-  keeping the loop alive so transient failures no longer terminate a
-  schedule invisibly. Wiring J1939 to subscribe to `Faulted` and forward
-  through `BackgroundExceptionOccurred` can now be done alongside the
-  native fast-path in a follow-up PR.
+  frame and multi-frame alike — is emitted on a fixed-rate grid anchored
+  on the L2 `DeadlineScheduler` (t0 + n × period), so the long-run rate
+  does not drift by the per-emission send time; ticks whose previous
+  emission is still in flight are skipped and ticks that fell behind are
+  coalesced. The schedule snapshots the caller's payload into an owned
+  buffer at Start-time and hands `SendAsync` the same immutable bytes on
+  every tick, so in-place edits to the caller buffer after
+  `StartPeriodicSend` are not observable on the wire. `SendAsync`'s
+  pre-flight claim gate runs on every emission, so the schedule stops
+  putting frames on the wire as soon as the node leaves `Claimed` and
+  resumes automatically after a fresh claim — the emitted 29-bit ID is
+  composed from the currently-claimed SA. Send failures (including
+  `J1939NoAddressException` from the claim gate) are surfaced via
+  `BackgroundExceptionOccurred`. The caller supplies the transmit period;
+  mapping application PGNs to their SAE J1939-71 standard rate is the
+  caller's responsibility (no PGN rate catalog is embedded). A native L1
+  `IPeriodicTx` optimization for single-frame PGNs remains a follow-up —
+  its L1 error-propagation blocker is resolved (`IPeriodicTx.Faulted`).
 
 ## Architecture
 

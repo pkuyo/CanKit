@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -253,6 +254,27 @@ internal sealed class J1939NodeImpl : IJ1939Node
         _pendingClaim?.Tcs.TrySetCanceled();
         _pendingClaim?.CtRegistration.Dispose();
 
+        BeginClaimRound(preferredAddress, tcs, ctr);
+    }
+
+    // Starts (or restarts, for the arbitrary-address fallback) a single arbitration round for
+    // `preferredAddress` on the actor loop. Unlike BeginClaim it does not cancel the caller's
+    // pending claim — the same TCS (and the scan state) is carried across retries.
+    private void BeginClaimRound(byte preferredAddress, TaskCompletionSource<object?> tcs,
+        CancellationTokenRegistration ctr, byte? scanStart = null)
+    {
+        if (_disposed != 0)
+        {
+            ctr.Dispose();
+            tcs.TrySetException(new ObjectDisposedException(nameof(J1939NodeImpl)));
+            return;
+        }
+        if (tcs.Task.IsCompleted)
+        {
+            ctr.Dispose();
+            return;
+        }
+
         // Invalidate any previously-claimed address *before* announcing the new preferred SA:
         // application traffic must not race and go out on the old SA while the wire already
         // advertises a different preferred address. SendCoreAsync gates on ClaimState==Claimed
@@ -271,8 +293,42 @@ internal sealed class J1939NodeImpl : IJ1939Node
         // SendConfirmed await are still handled. Arm the arbitration deadline only after the
         // claim frame is confirmed on the bus — otherwise a failed/slow TX would still let
         // OnClaimAnnounceElapsed commit Claimed (Bugbot 3600799903).
-        _pendingClaim = new PendingClaim(preferredAddress, tcs, deadline: null, ctr);
+        _pendingClaim = new PendingClaim(preferredAddress, tcs, deadline: null, ctr)
+        {
+            ArbitraryScanStart = scanStart,
+        };
         TransmitAddressClaimConfirmed(sourceAddress: preferredAddress);
+    }
+
+    // J1939-81 §4.5: the arbitrary address field spans 0x80..0xF7.
+    private const byte ArbitraryAddressRangeStart = 0x80;
+    private const byte ArbitraryAddressRangeEnd = 0xF7;
+
+    // FR-J1939-004: explicit option wins; otherwise the NAME's Arbitrary Address Capable bit
+    // decides (J1939-81 §4.5.1).
+    private bool ArbitraryClaimingEnabled
+        => _options.EnableArbitraryAddressClaiming ?? _name.ArbitraryAddressCapable;
+
+    // Advances the arbitrary-address scan to the next candidate, wrapping once through the
+    // whole field. Records the scan start on first use (via <paramref name="scanStart"/>) and
+    // returns false when the scan would wrap past it again — meaning every address in the
+    // field was contested and FR-J1939-004's Cannot-Claim applies.
+    private static bool TryGetNextArbitraryCandidate(byte preferredAddress, ref byte? scanStart,
+        out byte next)
+    {
+        next = NextArbitraryAddress(preferredAddress);
+        if (scanStart is null)
+        {
+            scanStart = next;
+            return true;
+        }
+        return next != scanStart.Value;
+    }
+
+    private static byte NextArbitraryAddress(byte current)
+    {
+        if (current < ArbitraryAddressRangeStart) return ArbitraryAddressRangeStart;
+        return current >= ArbitraryAddressRangeEnd ? ArbitraryAddressRangeStart : (byte)(current + 1);
     }
 
     private void OnClaimAnnounceElapsed(byte preferredAddress)
@@ -395,9 +451,22 @@ internal sealed class J1939NodeImpl : IJ1939Node
             // SAE J1939-81 §4.4.3.2: numerically lower NAME wins.
             if (peerName.HasHigherClaimPriorityThan(_name))
             {
-                // We lose. Enter CannotClaim and broadcast SA=0xFE with our NAME.
+                // We lose this contest. Arbitrary-address fallback (FR-J1939-004 /
+                // SAE J1939-81 §4.5): retry with the next candidate from the arbitrary
+                // address field before giving up with Cannot-Claim.
                 _pendingClaim = null;
                 pending.Deadline?.Dispose();
+                var scanStart = pending.ArbitraryScanStart;
+                if (ArbitraryClaimingEnabled
+                    && TryGetNextArbitraryCandidate(pending.PreferredAddress, ref scanStart,
+                        out var nextCandidate))
+                {
+                    // The caller's TCS and its cancellation registration stay alive across
+                    // retries; only the arbitration round is restarted.
+                    BeginClaimRound(nextCandidate, pending.Tcs, pending.CtRegistration, scanStart);
+                    return;
+                }
+
                 pending.CtRegistration.Dispose();
                 WriteAddress(null);
                 // TP channel goes back to placeholder 0xFE — no directed TP traffic reaches
@@ -992,15 +1061,23 @@ internal sealed class J1939NodeImpl : IJ1939Node
         public TaskCompletionSource<object?> Tcs { get; }
         public IDeadline? Deadline { get; set; }
         public CancellationTokenRegistration CtRegistration { get; }
+
+        /// <summary>First candidate of the ongoing arbitrary-address scan (FR-J1939-004);
+        /// null while no fallback round has run yet. Carried across retries via
+        /// <c>BeginClaimRound</c>.</summary>
+        public byte? ArbitraryScanStart { get; set; }
     }
 
     /// <summary>
     /// Software periodic-send schedule used for every periodic PGN — single-frame and
-    /// multi-frame alike (FR-J1939-006/007). Each iteration calls
-    /// <see cref="J1939NodeImpl.SendAsync"/>, which re-checks the claim gate before
-    /// touching the wire (so address loss stops emission automatically) and, for
-    /// multi-frame PGNs, spins up a fresh TP.BAM / TP.CM session on the shared J1939-TP
-    /// channel. Send failures do not tear the schedule down; they surface via
+    /// multi-frame alike (FR-J1939-006/007). Emissions are anchored to a fixed-rate grid
+    /// (t0 + n × period) driven by the L2 <see cref="DeadlineScheduler"/>, so the effective
+    /// rate does not drift by the per-emission send time the way a send-then-delay loop does.
+    /// Ticks whose previous emission is still in flight are skipped (no overlapping TP
+    /// sessions for multi-frame PGNs); ticks that fell behind under load are coalesced by
+    /// advancing the anchor instead of bursting them out. Each iteration re-checks the
+    /// claim gate through <see cref="J1939NodeImpl.SendAsync"/> (address loss stops emission
+    /// automatically) and surfaces failures via
     /// <see cref="J1939NodeImpl.BackgroundExceptionOccurred"/>. The payload is snapshotted
     /// into an owned buffer at construction so in-place caller mutation after Start is not
     /// observable on the wire (Bugbot 3604566680).
@@ -1009,15 +1086,18 @@ internal sealed class J1939NodeImpl : IJ1939Node
     {
         private readonly J1939NodeImpl _owner;
         private readonly J1939Message _message;
-        private readonly TimeSpan _period;
-        private readonly CancellationTokenSource _cts = new();
-        private Task? _loop;
+        private readonly long _periodStopwatchTicks;
+
+        private IDeadline? _tick;
+        private long _nextAnchorTicks;
+        private Task? _sendTask;
+        private int _sendInFlight;
         private int _disposed;
 
         public PeriodicSchedule(J1939NodeImpl owner, J1939Message message, TimeSpan period)
         {
             _owner = owner;
-            _period = period;
+            _periodStopwatchTicks = (long)(period.TotalSeconds * Stopwatch.Frequency);
 
             // Snapshot the caller's payload into an owned array so the wire traffic is
             // frozen at Start-time regardless of whether the caller mutates the buffer that
@@ -1025,8 +1105,7 @@ internal sealed class J1939NodeImpl : IJ1939Node
             // a ReadOnlyMemory<byte> and its ctor doesn't copy, so re-reading it every
             // emission would alias the caller's buffer — J1939Message's own contract is
             // "payload is copied by the sender". We rebuild the message once here with the
-            // owned array so every LoopAsync iteration hands SendAsync the same immutable
-            // bytes.
+            // owned array so every emission hands SendAsync the same immutable bytes.
             var owned = new byte[message.Payload.Length];
             if (message.Payload.Length > 0) message.Payload.Span.CopyTo(owned);
             _message = new J1939Message(message.Pgn, owned, message.Priority,
@@ -1036,52 +1115,82 @@ internal sealed class J1939NodeImpl : IJ1939Node
 
         public void Start()
         {
-            _loop = Task.Run(() => LoopAsync(_cts.Token));
+            // First emission after one full period, then on the fixed-rate grid.
+            _nextAnchorTicks = Stopwatch.GetTimestamp() + _periodStopwatchTicks;
+            _tick = _owner._deadlines.Arm(TimeSpanFromStopwatchTicks(_periodStopwatchTicks), OnTick);
         }
 
-        private async Task LoopAsync(CancellationToken ct)
+        private void OnTick()
         {
-            try
+            if (Volatile.Read(ref _disposed) != 0) return;
+
+            // Never overlap emissions of the same schedule (a multi-frame PGN occupies one
+            // TP session per send): a tick whose previous emission is still running is
+            // dropped rather than queued.
+            if (Interlocked.CompareExchange(ref _sendInFlight, 1, 0) == 0)
             {
-                while (!ct.IsCancellationRequested)
+                _sendTask = Task.Run(async () =>
                 {
                     try
                     {
-                        await _owner.SendAsync(_message, ct).ConfigureAwait(false);
+                        await _owner.SendAsync(_message, CancellationToken.None).ConfigureAwait(false);
                     }
-                    catch (OperationCanceledException) { return; }
-                    catch (ObjectDisposedException) { return; }
+                    catch (ObjectDisposedException) { /* node disposed mid-send */ }
                     catch (Exception ex)
                     {
                         _owner.RaiseBackgroundException(ex);
                     }
-
-                    try
+                    finally
                     {
-                        await Task.Delay(_period, ct).ConfigureAwait(false);
+                        Volatile.Write(ref _sendInFlight, 0);
                     }
-                    catch (OperationCanceledException) { return; }
-                }
+                });
             }
-            catch { /* observed via BackgroundExceptionOccurred */ }
+
+            Reschedule();
+        }
+
+        private void Reschedule()
+        {
+            if (Volatile.Read(ref _disposed) != 0) return;
+
+            // Advance the anchor by whole periods until it is back in the future, coalescing
+            // any ticks that fell behind (keeps the long-run rate at exactly 1/period).
+            var now = Stopwatch.GetTimestamp();
+            do
+            {
+                _nextAnchorTicks += _periodStopwatchTicks;
+            } while (_nextAnchorTicks <= now);
+
+            var delay = TimeSpanFromStopwatchTicks(_nextAnchorTicks - now);
+            var tick = _tick;
+            if (tick is null || !tick.Rearm(delay))
+            {
+                tick?.Dispose();
+                _tick = _owner._deadlines.Arm(delay, OnTick);
+            }
         }
 
         public void Dispose()
         {
             if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
-            try { _cts.Cancel(); } catch { }
-            try { _loop?.GetAwaiter().GetResult(); } catch { }
-            _cts.Dispose();
+            try { _tick?.Dispose(); } catch { }
+            try { _sendTask?.Wait(TimeSpan.FromSeconds(2)); } catch { /* send observed elsewhere */ }
         }
+
+        private static TimeSpan TimeSpanFromStopwatchTicks(long ticks)
+            => TimeSpan.FromSeconds(ticks / (double)Stopwatch.Frequency);
     }
 
     // Historical note: an earlier revision routed single-frame (<= 8 byte) periodic PGNs
     // through the L1 ICanBus.TransmitPeriodic / IPeriodicTx handle for lower jitter. That
     // dual-path design was reverted (PR #33) because the SW-fallback branch swallowed
     // Transmit exceptions and every attempted work-around opened a new race (reclaim-time
-    // rebind, dispose-of-detached-handle, payload aliasing, actor stall, claim gate). All
-    // periodic PGNs currently flow through PeriodicSchedule (SendAsync + Task.Delay).
-    // FR-J1939-007 (Should) is still satisfied via L2 actor / DeadlineScheduler timing.
+    // rebind, dispose-of-detached-handle, payload aliasing, actor stall, claim gate). A later
+    // send-then-delay loop (SendAsync + Task.Delay) was replaced by the current fixed-rate
+    // implementation: PeriodicSchedule anchors emissions on the L2 DeadlineScheduler grid
+    // (t0 + n × period) so the rate no longer drifts by the per-emission send time
+    // (FR-J1939-007), which is what IJ1939Node.StartPeriodicSend documents.
     //
     // The specific L1 blocker — SoftwarePeriodicTx.TrySendOnce silently swallowing every
     // Transmit exception — has now been removed: IPeriodicTx exposes a Faulted event

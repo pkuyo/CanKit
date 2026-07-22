@@ -30,6 +30,16 @@ public sealed class J1939NodeOptions
     public TimeSpan ClaimAnnounceTimeout { get; init; } = TimeSpan.FromMilliseconds(250);
 
     /// <summary>
+    /// Arbitrary-address fallback after a lost claim contest (SRS FR-J1939-004 / SAE J1939-81
+    /// §4.5): when the node loses a contest for the preferred address it retries with the next
+    /// candidate from the arbitrary address field (0x80..0xF7, wrapping once) and only
+    /// broadcasts Cannot Claim (SA=0xFE) when the whole field is exhausted. <c>null</c>
+    /// (default) derives the behavior from the NAME's Arbitrary Address Capable bit (J1939-81
+    /// §4.5.1); set explicitly to override the NAME bit.
+    /// </summary>
+    public bool? EnableArbitraryAddressClaiming { get; init; }
+
+    /// <summary>
     /// Default priority reported for inbound reassembled J1939-TP payloads, where the transport
     /// channel does not currently expose the original TP.CM / TP.DT CAN priority. Defaults to 6.
     /// </summary>

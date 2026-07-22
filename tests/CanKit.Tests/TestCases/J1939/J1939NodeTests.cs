@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using CanKit.Abstractions.API.Can;
@@ -257,6 +258,105 @@ public class J1939NodeTests : IClassFixture<TestCaseProvider>
         decomposed.SourceAddress.Should().Be(J1939Pgn.NullAddress);
         decomposed.PduSpecific.Should().Be(J1939Pgn.GlobalAddress);
         J1939Pgn.IsAddressClaim(decomposed.Pgn).Should().BeTrue();
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // FR-J1939-004 (arbitrary-address fallback, J1939-81 §4.5): after losing the preferred
+    // address to a higher-priority NAME, an arbitrary-capable node retries with the next
+    // candidate from the arbitrary field and claims it instead of going Cannot-Claim.
+    // ---------------------------------------------------------------------------------------
+    [Fact]
+    public async Task AddressClaim_ArbitraryFallback_ClaimsNextFreeAddress()
+    {
+        var session = NewSession();
+        using var busA = Open(session, 0);
+        using var busB = Open(session, 1);
+
+        var nodeName = Name(0x0000BB);
+        var peerName = Name(0x000001); // numerically lower ⇒ wins every contest it enters
+        var opts = new J1939NodeOptions(nodeName)
+        {
+            ClaimAnnounceTimeout = TimeSpan.FromMilliseconds(80),
+            EnableArbitraryAddressClaiming = true,
+        };
+        using var node = J1939Node.Open(busA, opts);
+
+        // Fake peer: contest only the preferred address 0x80 (claims it with a lower NAME),
+        // stay silent on every other candidate.
+        busB.FrameObserved += (_, e) =>
+        {
+            if (!e.CanFrame.IsExtendedFrame) return;
+            var fields = J1939Id.Decompose((uint)e.CanFrame.ID);
+            if (fields.SourceAddress != 0x80 || !J1939Pgn.IsAddressClaim(fields.Pgn)) return;
+            if (e.CanFrame.Data.Length < 8) return;
+            var claimerName = J1939Name.Decompose(BitConverter.ToUInt64(e.CanFrame.Data.ToArray(), 0));
+            if (claimerName.Value != nodeName.Value) return;
+            busB.Transmit(CanFrame.Classic(
+                (int)J1939Id.ComposePgn(6, 0xEE00u, 0x80, J1939Pgn.GlobalAddress),
+                BitConverter.GetBytes(peerName.Value), isExtendedFrame: true));
+        };
+
+        await node.ClaimAddressAsync(0x80).WithTimeout(ShortTimeout);
+
+        node.ClaimState.Should().Be(J1939ClaimState.Claimed);
+        node.Address.Should().Be((byte)0x81,
+            "after losing 0x80 the node must retry with the next arbitrary-field candidate (J1939-81 §4.5)");
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // FR-J1939-004 (SRS verification "all addresses taken"): a peer that contests EVERY
+    // candidate drives the arbitrary-address scan to exhaustion — the node must then signal
+    // Cannot-Claim (SA=0xFE) exactly as if no fallback existed.
+    // ---------------------------------------------------------------------------------------
+    [Fact]
+    public async Task AddressClaim_ArbitraryFallback_ExhaustsField_ThenCannotClaim()
+    {
+        var session = NewSession();
+        using var busA = Open(session, 0);
+        using var busB = Open(session, 1);
+        using var busC = Open(session, 2); // spectator for the final Cannot-Claim broadcast
+
+        var nodeName = Name(0x0000BB);
+        var peerName = Name(0x000001);
+        var opts = new J1939NodeOptions(nodeName)
+        {
+            ClaimAnnounceTimeout = TimeSpan.FromMilliseconds(80),
+            EnableArbitraryAddressClaiming = true,
+        };
+        using var node = J1939Node.Open(busA, opts);
+
+        var cannotClaimSeen = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        busC.FrameObserved += (_, e) =>
+        {
+            if (!e.CanFrame.IsExtendedFrame) return;
+            var fields = J1939Id.Decompose((uint)e.CanFrame.ID);
+            if (J1939Pgn.IsAddressClaim(fields.Pgn) && fields.SourceAddress == J1939Pgn.NullAddress)
+                cannotClaimSeen.TrySetResult(null);
+        };
+
+        // Fake peer: contest EVERY address in the arbitrary field the node tries.
+        busB.FrameObserved += (_, e) =>
+        {
+            if (!e.CanFrame.IsExtendedFrame) return;
+            var fields = J1939Id.Decompose((uint)e.CanFrame.ID);
+            if (!J1939Pgn.IsAddressClaim(fields.Pgn)) return;
+            var sa = fields.SourceAddress;
+            if (sa is < 0x80 or > 0xF7) return;
+            if (e.CanFrame.Data.Length < 8) return;
+            var claimerName = J1939Name.Decompose(BitConverter.ToUInt64(e.CanFrame.Data.ToArray(), 0));
+            if (claimerName.Value != nodeName.Value) return;
+            busB.Transmit(CanFrame.Classic(
+                (int)J1939Id.ComposePgn(6, 0xEE00u, sa, J1939Pgn.GlobalAddress),
+                BitConverter.GetBytes(peerName.Value), isExtendedFrame: true));
+        };
+
+        Func<Task> act = () => node.ClaimAddressAsync(0x80).WithTimeout(TimeSpan.FromSeconds(15));
+        var ex = (await act.Should().ThrowAsync<J1939CannotClaimException>()).Which;
+        ex.PreferredAddress.Should().Be((byte)0x80);
+        node.ClaimState.Should().Be(J1939ClaimState.CannotClaim);
+        node.Address.Should().BeNull();
+
+        await cannotClaimSeen.Task.AsTaskWithTimeout(ShortTimeout);
     }
 
     // ---------------------------------------------------------------------------------------
@@ -909,11 +1009,80 @@ public class J1939NodeTests : IClassFixture<TestCaseProvider>
         mean /= deltas.Count;
 
         double targetMs = period.TotalMilliseconds;
-        // Lower bound: the loop awaits Task.Delay(period) after each SendAsync, so mean
-        // inter-arrival cannot be materially below the requested period. Upper bound:
-        // tolerate CI jitter up to ~1.6x (send latency + Task.Delay drift).
+        // Fixed-rate anchoring: mean inter-arrival approximates the configured period, with
+        // generous CI-jitter tolerance in both directions.
         mean.Should().BeInRange(targetMs * 0.7, targetMs * 1.6,
             $"mean inter-arrival ({mean:F1} ms) should approximate the configured period ({targetMs:F0} ms)");
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // FR-J1939-007 (fixed-rate): emissions are anchored on the DeadlineScheduler grid
+    // (t0 + n × period), so the long-run rate does not drift by the per-emission send time
+    // the way a send-then-delay loop would. A 60-byte multi-frame (TP.BAM) PGN makes the
+    // per-send cost measurable (~9 Th-paced DTs); the span between the first and the sixth
+    // emission must stay on the 5 × 200 ms grid (plus jitter), where the old loop would have
+    // accumulated 5 × ~55 ms of drift.
+    // ---------------------------------------------------------------------------------------
+    [Fact]
+    public async Task StartPeriodicSend_MultiFrame_KeepsFixedRate_Without_SendTime_Drift()
+    {
+        var session = NewSession();
+        using var busA = Open(session, 0);
+        using var busB = Open(session, 1); // spectator: samples BAM announce arrival times
+
+        var nodeOptions = new J1939NodeOptions(Name(1))
+        {
+            TransportOptions = new J1939TpOptions().With(th: TimeSpan.FromMilliseconds(5)),
+        };
+        using var sender = J1939Node.Open(busA, nodeOptions);
+        await sender.ClaimAddressAsync(0xC1).WithTimeout(ShortTimeout);
+
+        const uint targetPgn = 0xFEE6u;
+        var stamps = new List<DateTime>();
+        var stampsLock = new object();
+        busB.FrameObserved += (_, e) =>
+        {
+            if (!e.CanFrame.IsExtendedFrame) return;
+            var fields = J1939Id.Decompose((uint)e.CanFrame.ID);
+            if (fields.SourceAddress != 0xC1) return;
+            // One stamp per emission: the TP.CM(BAM) announce of our target PGN (not its DTs).
+            if (!J1939Pgn.IsTransportCm(fields.Pgn)) return;
+            var data = e.CanFrame.Data.Span;
+            if (data.Length < 8 || data[0] != J1939TpFrames.ControlBam) return;
+            if (J1939TpFrames.ReadDataPgn(data) != targetPgn) return;
+            lock (stampsLock) stamps.Add(DateTime.UtcNow);
+        };
+
+        var period = TimeSpan.FromMilliseconds(200);
+        var payload = Enumerable.Range(0, 60).Select(i => (byte)(i & 0xFF)).ToArray();
+        var message = new J1939Message(targetPgn, payload, priority: 6, destinationAddress: 0xFF);
+
+        using (var handle = sender.StartPeriodicSend(message, period))
+        {
+            var deadline = DateTime.UtcNow + ShortTimeout;
+            while (true)
+            {
+                int count;
+                lock (stampsLock) count = stamps.Count;
+                if (count >= 6) break;
+                if (DateTime.UtcNow >= deadline)
+                    throw new TimeoutException(
+                        $"Expected at least 6 periodic BAM emissions within {ShortTimeout.TotalSeconds}s; observed {count}.");
+                await Task.Delay(20);
+            }
+        }
+
+        List<DateTime> snapshot;
+        lock (stampsLock) snapshot = new List<DateTime>(stamps);
+        snapshot.Count.Should().BeGreaterOrEqualTo(6);
+
+        var span = snapshot[snapshot.Count - 1] - snapshot[0];
+        var gridSlots = (snapshot.Count - 1) * period.TotalMilliseconds;
+        span.TotalMilliseconds.Should().BeLessOrEqualTo(gridSlots * 1.1,
+            $"fixed-rate anchoring must keep emissions on the grid ({gridSlots:F0} ms); " +
+            $"a send-then-delay loop would drift by the ~55 ms per-BAM send time each period");
+        span.TotalMilliseconds.Should().BeGreaterOrEqualTo(gridSlots * 0.5,
+            "sanity bound: emissions must not burst (anchor coalescing)");
     }
 
     // The single-frame periodic path MUST refuse to start before ClaimAddressAsync completes,
