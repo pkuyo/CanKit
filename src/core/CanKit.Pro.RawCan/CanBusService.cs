@@ -171,18 +171,22 @@ namespace CanKit.Pro.RawCan
                 // subscriptions for this frame, nor escape into the bus's FrameObserved multicast
                 // (which would abort dispatch to every subscription still pending in this loop) —
                 // that would violate the independence every subscription is guaranteed under
-                // FR-RAW-010. There is currently no fault channel on ICanBusService to surface this
-                // to the caller; swallowing here is the least-bad option until one exists.
+                // FR-RAW-010. The fault is surfaced through BackgroundExceptionOccurred instead
+                // of being silently swallowed.
                 try
                 {
                     subscription.TryDeliver(view);
                 }
-                catch
+                catch (Exception ex)
                 {
-                    // ignored: see remark above.
+                    try { BackgroundExceptionOccurred?.Invoke(this, ex); }
+                    catch { /* a fault listener must not break dispatch either */ }
                 }
             }
         }
+
+        /// <inheritdoc />
+        public event EventHandler<Exception>? BackgroundExceptionOccurred;
 
         /// <inheritdoc />
         public void Dispose()

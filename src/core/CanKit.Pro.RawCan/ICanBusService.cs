@@ -40,6 +40,18 @@ namespace CanKit.Pro.RawCan
         int SubscriptionCount { get; }
 
         /// <summary>
+        /// Raised when a caller-supplied subscription filter predicate throws during dispatch
+        /// (FR-RAW-023-style fault channel). The failing frame is isolated to that subscription
+        /// (delivery to the other subscriptions continues), and the exception is surfaced here
+        /// instead of being silently swallowed. Invoked synchronously on the bus's dispatch
+        /// thread, so handlers must return quickly and must not call back into the service.
+        /// (当订阅方提供的过滤谓词在分发过程中抛出异常时触发。出错帧仅隔离于该订阅（其余订阅
+        /// 照常投递），异常经此通道上抛而非静默吞没。在总线分发线程上同步调用，处理程序必须
+        /// 快速返回且不得回调本服务。)
+        /// </summary>
+        event EventHandler<Exception>? BackgroundExceptionOccurred;
+
+        /// <summary>
         /// Registers a subscription that receives every frame for which
         /// <paramref name="predicate"/> returns true; a null predicate accepts all frames
         /// (FR-RAW-010). (注册一路订阅，接收所有使 <paramref name="predicate"/> 返回 true 的帧；

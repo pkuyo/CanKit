@@ -1254,6 +1254,7 @@ public class J1939TpTests : IClassFixture<TestCaseProvider>
         using var receiver = J1939Tp.Open(receiverBus, sourceAddress: receiverSa); // cap 16 by default
 
         var grants = new List<byte>();
+        var firstGrantSeen = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
         var secondGrantSeen = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
         peerBus.FrameObserved += (_, e) =>
         {
@@ -1266,6 +1267,7 @@ public class J1939TpTests : IClassFixture<TestCaseProvider>
             lock (grants)
             {
                 grants.Add(data[1]);
+                if (grants.Count >= 1) firstGrantSeen.TrySetResult(null);
                 if (grants.Count >= 2) secondGrantSeen.TrySetResult(null);
             }
         };
@@ -1276,9 +1278,9 @@ public class J1939TpTests : IClassFixture<TestCaseProvider>
             J1939TpFrames.BuildRts(pdu.Length, totalPackets: 6, maxPacketsPerCts: 2, dataPgn: pgn),
             isExtendedFrame: true));
 
-        // First grant must already be capped at 2; wait for it, then feed the first block's
-        // DTs so the receiver issues the next block's CTS.
-        await Task.Delay(200);
+        // Wait for the first (already capped) grant before feeding the first block's DTs —
+        // deterministic, no fixed delay that could race the receiver's RTS processing.
+        await firstGrantSeen.Task.AsTaskWithTimeout(ShortTimeout);
         peerBus.Transmit(CanFrame.Classic(
             (int)J1939Id.ComposePgn(7, J1939Pgn.TpDt, peerSa, receiverSa),
             J1939TpFrames.BuildDt(1, pdu, 0), isExtendedFrame: true));
@@ -1308,6 +1310,12 @@ internal sealed class RejectTpCmBusService : ICanBusService
 
     public ICanBus Bus => _inner.Bus;
     public int SubscriptionCount => _inner.SubscriptionCount;
+
+    public event EventHandler<Exception>? BackgroundExceptionOccurred
+    {
+        add => _inner.BackgroundExceptionOccurred += value;
+        remove => _inner.BackgroundExceptionOccurred -= value;
+    }
 
     public ISubscription Subscribe(Func<CanFrameView, bool>? predicate = null, int? bufferCapacity = null)
         => _inner.Subscribe(predicate, bufferCapacity);

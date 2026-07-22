@@ -308,4 +308,30 @@ public class RawCanSubscriptionTests : IClassFixture<TestCaseProvider>
         var healthyFrames = await Drain(healthy, 1, ShortTimeout);
         healthyFrames.Select(f => f.ID).Should().Equal(0x100);
     }
+
+    // The same predicate fault must also be surfaced through the service's fault channel
+    // (BackgroundExceptionOccurred) instead of being silently swallowed.
+    [Fact]
+    public async Task Throwing_Predicate_Is_Surfaced_Via_BackgroundExceptionOccurred()
+    {
+        var session = NewSession();
+        using var sender = Open(session, 0);
+        using var receiver = Open(session, 1);
+        using var service = new CanBusService(receiver);
+
+        var observed = new TaskCompletionSource<Exception>(TaskCreationOptions.RunContinuationsAsynchronously);
+        service.BackgroundExceptionOccurred += (_, ex) => observed.TrySetResult(ex);
+
+        using var broken = service.Subscribe(_ => throw new InvalidOperationException("boom"));
+        using var healthy = service.Subscribe();
+
+        sender.Transmit(CanFrame.Classic(0x100, new byte[] { 9 }));
+
+        var ex = await observed.Task.WaitAsync(ShortTimeout);
+        ex.Should().BeOfType<InvalidOperationException>().Which.Message.Should().Be("boom");
+
+        // Delivery isolation still holds alongside the fault channel.
+        var healthyFrames = await Drain(healthy, 1, ShortTimeout);
+        healthyFrames.Select(f => f.ID).Should().Equal(0x100);
+    }
 }
