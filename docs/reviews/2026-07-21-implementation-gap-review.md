@@ -163,3 +163,36 @@ Legende: ✅ umgesetzt (Code+Test) · 🟡 teilweise/ungetestet (Details im Flie
 ---
 
 **Prioritäten zusammengefasst:** P1 = K1 (UAF Periodic-TX), K2 (Release-Fähigkeit Pro), K3 (dynamisches PDO-Mapping), K4 (STmin-Verifikation), K5 (CAN-FD-Tests). P2 = K6–K11 (Verifikations-/Robustheitslücken J1939-TP-Timer, BusOff, NFR-008, P2*/EventTimer, SDO-Server-Timeout, macOS-CI). P3 = § 6 (Feldrobustheit, Hygiene). Darüber hinaus = § 8 (Adoption, Release-Strategie, CI, HIL).
+
+---
+
+## Nachtrag 2026-07-21: Umsetzungsstand nach Gap-Schließung (Phase A+B)
+
+Am selben Tag wurden die P1-/P2-Lücken geschlossen. Stand der Nachtrag: alle genannten
+Maßnahmen sind implementiert und durch die genannten Tests abgesichert (Suite lokal grün).
+
+| # | Status | Umsetzung |
+|---|---|---|
+| K1 (UAF Periodic-TX) | **geschlossen** | `SoftwarePeriodicTx` (Ctor/`Update` duplizieren per `CanFrame.Duplicate(BufferAllocator)`, Freigabe bei Tausch/`Stop`; `Update` nach `Stop` wirft `CanBusDisposedException`), analog `ZlgPeriodicTx`/`ControlCanPeriodicTx` (Native-Pfade). Vector/PCAN/Kvaser-Fallbacks + `VirtualBus.TransmitPeriodic` über `SoftwarePeriodicTx` mitabgedeckt. Regressionstests `SoftwarePeriodicTxOwnershipTests.cs` (Poison-on-Dispose, mutationsverifiziert), arc42 §8.1 aktualisiert. |
+| K2 (Release-Fähigkeit) | **geschlossen** | `eng/packages.json` um alle 10 Pro-Pakete ergänzt (Abhängigkeitsgraph, 6 experimentelle mit `publish:false` — von Pack-/Test-/Graph-Skripten unterstützt). Bereits vorhanden waren: Release-Notes `eng/release-notes/<Pro>/0.1.0.md`, CHANGELOG-Einträge, package-smoke-Pro-Referenzen, `$(CanKitPro*Version)`-Fallbacks. macOS-Job existierte bereits in `rawcan-ci.yml` (B6 damit belegt). |
+| K3 (dyn. PDO-Mapping) | **geschlossen** | SDO-Zugriff auf 0x1600–0x1603/0x1A00–0x1A03 (CiA-301-Sequenz sub0=0 → Einträge → sub0=N, Read-back, strikte Abort-Codes inkl. neuer 0x06040041/0x06040042/0x06070010) in `CanOpenNode.PdoMapping.cs`. Tests `CanOpenDynamicMappingTests.cs` (TPDO/RPDO-Re-Mapping, 3 Abort-Pfade). |
+| K4 (STmin/NFR-003) | **geschlossen** | `IsoTpStminTimingTests.cs` (CF-Spacing-Messung, weiche CI-Grenzen; STmin=0-Regression) + dokumentierte Genauigkeit in `CanKit.Pro.IsoTp/README.md`. |
+| K5 (CAN-FD-Blindfläche) | **geschlossen** | `IsoTpCanFdTests.cs`: FD-SF-Escape, FD-MF 200 B, Long-FF 5000 B, FR-TP-003-Akzeptanz (nur `CanFd`-Frames für SF/FF/CF/FC), Classic-Längensweep 1..4095. |
+| K6 (J1939-TP-Timer) | **geschlossen** | 6 neue Tests in `J1939TpTests.cs`: T1 BAM, T1 CM (inkl. Wire-Abort), T2 (Folge-CTS aus), T3-WaitEom, T4 (CTS(0)-Hold), CTS-Kappung an RTS-Maximum. |
+| K7 (BusOff) | **geschlossen** | `TxConfirmTests`: sofortige BusOff-Auflösung ausstehender Confirms (Reflexions-Helfer `tests/CanKit.Tests/Utils/VirtualBusControl.cs`); `IsoTpBusOffTests.cs`: aktiver MF-Send faultet definiert mit BusOff-`IsoTpException` statt zu hängen. |
+| K8 (NFR-008) | **geschlossen** | `CanRegistry` vollständig lock-synchronisiert (Reader-Snapshots); Stresstests `RawCanConcurrencyTests.cs` (parallele Registrierung vs. Leser; Subscribe/Dispose-Churn unter Verkehr). |
+| K9 (P2*/EventTimer/CoS) | **geschlossen** | P2*-Timeout-Test (`UdsClientTests.cs`, `EcuResponsePendingThenSilent`-Sentinel, `Timer==P2Star` + Restart-Nachweis); TPDO-EventTimer-Test; Auto-CoS implementiert (`EnableChangeOfStateTpdo`, Default an; Echo-Guard über Actor-Thread-Erkennung; **Lastsicherheit:** Relevanz-Pre-Filter + Dirty-Set-Koaleszierung — ungebremstes Posten hätte die unbegrenzte Actor-Mailbox geflutet, Regression an `Tpdo_Emission_UnderConcurrentOdWrites_NeverTears` verifiziert). |
+| K10 (SDO-Server-Timeout) | **geschlossen** | `SdoServerTimeout` (Default 5 s) armiert/re-armt klassische Server-Sessions; Ablauf → Session-Drop + Timeout-Abort auf dem Bus. Test mit verstummendem Raw-Client. |
+| K11 (macOS-CI) | **bereits erledigt** | `rawcan-ci.yml` enthält seitdem einen `macos-latest`-Job (NFR-002); kein Handlungsbedarf. |
+
+**Korrekturen zum ursprünglichen Review-Befundstand (Feststellung bei Umsetzung):**
+Release-Notes 0.1.0.md für die vier L2-Pro-Pakete, package-smoke-Pro-Abdeckung, macOS-CI-Job
+und die `publish`-Flag-Unterstützung in den Release-Skripten existierten bereits — das Review
+hatte sie als fehlend bewertet (Stand: sie waren nach dem Review-Stichtag gelandet bzw. im
+Review übersehen worden). Der einzige reale Release-Gap war `eng/packages.json`.
+
+**Verbleibend offen (bewusst nicht Teil von Phase A+B):** P3-Liste §6 (SDO-Block-Retransmission,
+FR-J1939-007 Fixed-Rate, FR-J1939-004 Arbitrary-Address, NFR-005-Plattform-Guards,
+NFR-006-Fehlerarchitektur-ADR, NFR-007-Allokations-Benchmark, Hygiene-Punkte,
+SRS/arc42-Doc-Drift-Bereinigung) sowie Phase D (§8: Samples/Getting-Started L2–L4,
+Coverage/vcan-CI, 1.0-Fahrplan, HIL-Strategie).
