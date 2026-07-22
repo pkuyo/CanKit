@@ -1206,6 +1206,118 @@ public class IsoTpChannelIntegrationTests : IClassFixture<TestCaseProvider>
         (await recvTask).Should().Equal(0x99);
     }
 
+    // --------------------------------------------------------------------------------
+    // FR-TP-010 (N_As): the TX-confirm of the First Frame never resolves -> SendAsync must
+    // fault with IsoTpTimeoutException(Timer = NAs) instead of hanging. N_As was previously
+    // only covered indirectly via the L2 echo-timeout test.
+    // --------------------------------------------------------------------------------
+    [Fact]
+    public async Task MultiFrame_Send_Times_Out_With_NAs_When_TxConfirm_Never_Resolves()
+    {
+        var session = NewSession();
+        using var busA = OpenClassic(session, 0);
+        using var busB = OpenClassic(session, 1); // hub peer; no channel needed
+
+        using var rawService = new CanBusService(busA);
+        var neverConfirm = new NeverConfirmService(rawService);
+        using var sender = IsoTpFactory.Open(neverConfirm, IsoTpEndpoint.Normal(0x700, 0x708),
+            FastOptions(), leaveOpen: false);
+
+        byte[] pdu = Enumerable.Range(0, 30).Select(i => (byte)i).ToArray();
+        Func<Task> act = () => sender.SendAsync(pdu);
+        var ex = (await act.Should().ThrowAsync<IsoTpTimeoutException>()
+            .WithMessage("*N_As*")).Which;
+        ex.Timer.Should().Be(IsoTpTimer.NAs);
+    }
+
+    // --------------------------------------------------------------------------------
+    // Receiver-side block flow control (LocalBlockSize > 0): the receiver must emit a fresh
+    // FC after every full block of CFs, and reassembly must stay loss-free. This RX path
+    // (IsoTpChannel's per-block FC generation) had no test before.
+    // --------------------------------------------------------------------------------
+    [Fact]
+    public async Task Receiver_With_LocalBlockSize_Emits_FlowControl_After_Each_Full_Block()
+    {
+        var session = NewSession();
+        using var busA = OpenClassic(session, 0);
+        using var busB = OpenClassic(session, 1);
+        using var snifferBus = OpenClassic(session, 2);
+
+        using var sender = IsoTpFactory.Open(busA, IsoTpEndpoint.Normal(0x7E0, 0x7E8), FastOptions());
+        using var receiver = IsoTpFactory.Open(busB, IsoTpEndpoint.Normal(0x7E8, 0x7E0),
+            FastOptions(localBs: 2));
+
+        var fcCount = 0;
+        snifferBus.FrameObserved += (_, view) =>
+        {
+            if (view.CanFrame.ID != 0x7E8) return;
+            var data = view.CanFrame.Data.Span;
+            if (data.Length > 0 && (data[0] & 0xF0) == 0x30)
+                Interlocked.Increment(ref fcCount);
+        };
+
+        // 38 bytes => FF (6) + 5 CFs (7,7,7,7,4): with BS=2 the receiver sends its initial
+        // FC plus one FC after CF #2 and one after CF #4 => 3 FCs in total.
+        byte[] pdu = Enumerable.Range(0, 38).Select(i => (byte)(i & 0xFF)).ToArray();
+        var recvTask = receiver.ReceiveAsync(new CancellationTokenSource(ShortTimeout).Token);
+        await sender.SendAsync(pdu);
+        var got = await recvTask;
+        got.Should().Equal(pdu);
+
+        await Task.Delay(50);
+        Volatile.Read(ref fcCount).Should().Be(3);
+    }
+
+    /// <summary>
+    /// Test double: puts frames on the wire for real but never delivers an echo, letting the
+    /// requested confirm timeout (the channel's N_As) expire as a Timeout failure — the exact
+    /// L2 outcome that maps to <see cref="IsoTpTimeoutException"/> with timer N_As (FR-TP-010).
+    /// </summary>
+    private sealed class NeverConfirmService : ICanBusService
+    {
+        private readonly ICanBusService _inner;
+
+        public NeverConfirmService(ICanBusService inner) => _inner = inner;
+
+        public ICanBus Bus => _inner.Bus;
+        public int SubscriptionCount => _inner.SubscriptionCount;
+
+        public event EventHandler<Exception>? BackgroundExceptionOccurred
+        {
+            add => _inner.BackgroundExceptionOccurred += value;
+            remove => _inner.BackgroundExceptionOccurred -= value;
+        }
+
+        public ISubscription Subscribe(Func<CanFrameView, bool>? predicate = null, int? bufferCapacity = null)
+            => _inner.Subscribe(predicate, bufferCapacity);
+
+        public ISubscription Subscribe(CanIdFilter filter, int? bufferCapacity = null)
+            => _inner.Subscribe(filter, bufferCapacity);
+
+        public IReadOnlyList<(ISubscription First, ISubscription Second)> FindOverlappingFilterSubscriptions()
+            => _inner.FindOverlappingFilterSubscriptions();
+
+        public async Task<TxConfirmation> SendConfirmed(CanFrame frame, TimeSpan? timeout = null,
+            CancellationToken cancellationToken = default)
+        {
+            // Put the frame on the wire for real, then let the requested confirm timeout
+            // (the channel's N_As) expire without an echo — exactly the L2 contract the
+            // channel maps to IsoTpTimeoutException(NAs).
+            _ = _inner.Bus.Transmit(new[] { frame });
+            var effective = timeout ?? TimeSpan.FromSeconds(1);
+            await Task.Delay(effective, cancellationToken).ConfigureAwait(false);
+            return new TxConfirmation
+            {
+                Confirmed = false,
+                IsApproximated = false,
+                Timestamp = DateTime.UtcNow,
+                FailureReason = TxConfirmFailureReason.Timeout,
+            };
+        }
+
+        public void Dispose() { /* wrapper: the channel owns and disposes the inner service */ }
+    }
+
     /// <summary>
     /// Test double: forwards every <see cref="ICanBusService"/> call to an inner service, but
     /// parks <see cref="ICanBusService.SendConfirmed"/> until <paramref name="release"/> is
@@ -1235,6 +1347,12 @@ public class IsoTpChannelIntegrationTests : IClassFixture<TestCaseProvider>
 
         public ICanBus Bus => _inner.Bus;
         public int SubscriptionCount => _inner.SubscriptionCount;
+
+        public event EventHandler<Exception>? BackgroundExceptionOccurred
+        {
+            add => _inner.BackgroundExceptionOccurred += value;
+            remove => _inner.BackgroundExceptionOccurred -= value;
+        }
 
         public ISubscription Subscribe(Func<CanFrameView, bool>? predicate = null, int? bufferCapacity = null)
             => _inner.Subscribe(predicate, bufferCapacity);
@@ -1295,6 +1413,12 @@ public class IsoTpChannelIntegrationTests : IClassFixture<TestCaseProvider>
 
         public ICanBus Bus => _inner.Bus;
         public int SubscriptionCount => _inner.SubscriptionCount;
+
+        public event EventHandler<Exception>? BackgroundExceptionOccurred
+        {
+            add => _inner.BackgroundExceptionOccurred += value;
+            remove => _inner.BackgroundExceptionOccurred -= value;
+        }
 
         public ISubscription Subscribe(Func<CanFrameView, bool>? predicate = null, int? bufferCapacity = null)
             => _inner.Subscribe(predicate, bufferCapacity);
