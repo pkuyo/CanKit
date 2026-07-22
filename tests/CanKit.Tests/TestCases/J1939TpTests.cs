@@ -985,6 +985,315 @@ public class J1939TpTests : IClassFixture<TestCaseProvider>
         }
         return list;
     }
+
+    // FR-TP-032 (T1, BAM): receiver gets the BAM announce and the first TP.DT, then the peer
+    // goes silent — the T1 DT-gap timer must expire the session and fault the pending
+    // ReceiveAsync (AbortRx). BAM has no wire abort (connection-less), so the fault and the
+    // BackgroundExceptionOccurred signal are the observable outcomes.
+    [Fact]
+    public async Task Bam_Receiver_T1Timeout_FaultsReceiveAsyncWhenDtStops()
+    {
+        var session = NewSession();
+        using var receiverBus = Open(session, 0);
+        using var peerBus = Open(session, 1);
+
+        const byte receiverSa = 0x90;
+        const byte peerSa = 0x91;
+        const uint pgn = 0xFE90u;
+
+        var opts = new J1939TpOptions().With(t1: TimeSpan.FromMilliseconds(120));
+        using var receiver = J1939Tp.Open(receiverBus, sourceAddress: receiverSa, options: opts);
+
+        var bgAbort = new TaskCompletionSource<J1939TpAbortException>(TaskCreationOptions.RunContinuationsAsynchronously);
+        receiver.BackgroundExceptionOccurred += (_, ex) =>
+        {
+            if (ex is J1939TpAbortException abort) bgAbort.TrySetResult(abort);
+        };
+
+        var recvTask = receiver.ReceiveAsync().AsTaskWithTimeout(ShortTimeout);
+
+        var pdu = RandomPayload(21, seed: 11);
+        peerBus.Transmit(CanFrame.Classic(
+            (int)J1939Id.ComposePgn(7, J1939Pgn.TpCm, peerSa, J1939TpFrames.GlobalDestinationAddress),
+            J1939TpFrames.BuildBam(pdu.Length, totalPackets: 3, dataPgn: pgn),
+            isExtendedFrame: true));
+        peerBus.Transmit(CanFrame.Classic(
+            (int)J1939Id.ComposePgn(7, J1939Pgn.TpDt, peerSa, J1939TpFrames.GlobalDestinationAddress),
+            J1939TpFrames.BuildDt(1, pdu, 0),
+            isExtendedFrame: true));
+        // No further TP.DT — T1 (DT gap) must fire.
+
+        Func<Task> act = () => recvTask;
+        var ex = (await act.Should().ThrowAsync<J1939TpAbortException>()).Which;
+        ex.Reason.Should().Be(J1939TpAbortReason.Timeout);
+        ex.Message.Should().Contain("T1");
+
+        var bg = await bgAbort.Task.AsTaskWithTimeout(ShortTimeout);
+        bg.Reason.Should().Be(J1939TpAbortReason.Timeout);
+    }
+
+    // FR-TP-032 (T1, CM): after the RTS/CTS handshake the peer delivers only the first DT of
+    // the granted block, then goes silent — T1 must expire the session, fault ReceiveAsync and
+    // emit a wire Connection Abort (CM is connection-oriented).
+    [Fact]
+    public async Task Cm_Receiver_T1Timeout_AbortsWhenDtStopsMidBlock()
+    {
+        var session = NewSession();
+        using var receiverBus = Open(session, 0);
+        using var peerBus = Open(session, 1);
+
+        const byte receiverSa = 0x92;
+        const byte peerSa = 0x93;
+        const uint pgn = 0xEE92u;
+
+        var opts = new J1939TpOptions().With(
+            t1: TimeSpan.FromMilliseconds(120),
+            tr: TimeSpan.FromSeconds(5)); // keep Tr out of the way so T1 is the timer under test
+        using var receiver = J1939Tp.Open(receiverBus, sourceAddress: receiverSa, options: opts);
+
+        var ctsSeen = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var abortSeen = new TaskCompletionSource<byte[]>(TaskCreationOptions.RunContinuationsAsynchronously);
+        peerBus.FrameObserved += (_, e) =>
+        {
+            if (!e.CanFrame.IsExtendedFrame) return;
+            var fields = J1939Id.Decompose((uint)e.CanFrame.ID);
+            if (fields.SourceAddress != receiverSa || !J1939Pgn.IsTransportCm(fields.Pgn)) return;
+            var data = e.CanFrame.Data.ToArray();
+            if (data.Length < 8 || J1939TpFrames.ReadDataPgn(data) != pgn) return;
+            if (data[0] == J1939TpFrames.ControlCts) ctsSeen.TrySetResult(null);
+            if (data[0] == J1939TpFrames.ControlAbort) abortSeen.TrySetResult(data);
+        };
+
+        var recvTask = receiver.ReceiveAsync().AsTaskWithTimeout(ShortTimeout);
+
+        var pdu = RandomPayload(21, seed: 12);
+        peerBus.Transmit(CanFrame.Classic(
+            (int)J1939Id.ComposePgn(7, J1939Pgn.TpCm, peerSa, receiverSa),
+            J1939TpFrames.BuildRts(pdu.Length, totalPackets: 3, maxPacketsPerCts: 0xFF, dataPgn: pgn),
+            isExtendedFrame: true));
+
+        // Deliver only the first DT of the granted block after the receiver's CTS arrived.
+        await ctsSeen.Task.AsTaskWithTimeout(ShortTimeout);
+        peerBus.Transmit(CanFrame.Classic(
+            (int)J1939Id.ComposePgn(7, J1939Pgn.TpDt, peerSa, receiverSa),
+            J1939TpFrames.BuildDt(1, pdu, 0),
+            isExtendedFrame: true));
+        // Block not complete and no further DT — T1 must fire.
+
+        var abortFrame = await abortSeen.Task.AsTaskWithTimeout(ShortTimeout);
+        abortFrame[1].Should().Be((byte)J1939TpAbortReason.Timeout);
+
+        Func<Task> act = () => recvTask;
+        var ex = (await act.Should().ThrowAsync<J1939TpAbortException>()).Which;
+        ex.Reason.Should().Be(J1939TpAbortReason.Timeout);
+        ex.Message.Should().Contain("T1");
+    }
+
+    // FR-TP-032 (T2): the peer grants a short block (CTS(2)) and then never sends the
+    // follow-up CTS — the sender's post-block CTS gap timer T2 must abort the send.
+    [Fact]
+    public async Task Cm_Sender_T2Timeout_WhenFollowUpCtsMissing()
+    {
+        var session = NewSession();
+        using var senderBus = Open(session, 0);
+        using var peerBus = Open(session, 1);
+
+        const byte senderSa = 0x01;
+        const byte peerSa = 0x02;
+        const uint pgn = 0xEF01u;
+
+        var opts = new J1939TpOptions().With(
+            t2: TimeSpan.FromMilliseconds(150),
+            t3: TimeSpan.FromSeconds(5),
+            t4: TimeSpan.FromSeconds(5));
+        using var sender = J1939Tp.Open(senderBus, sourceAddress: senderSa, options: opts);
+
+        var rtsSeen = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        peerBus.FrameObserved += (_, e) =>
+        {
+            if (!e.CanFrame.IsExtendedFrame) return;
+            var fields = J1939Id.Decompose((uint)e.CanFrame.ID);
+            if (fields.SourceAddress != senderSa || !J1939Pgn.IsTransportCm(fields.Pgn)) return;
+            var data = e.CanFrame.Data.Span;
+            if (data.Length < 8 || data[0] != J1939TpFrames.ControlRts) return;
+            if (J1939TpFrames.ReadDataPgn(data) != pgn) return;
+            rtsSeen.TrySetResult(null);
+        };
+
+        var send = sender.SendCmAsync(pgn, destinationAddress: peerSa, RandomPayload(21, seed: 13));
+
+        await rtsSeen.Task.AsTaskWithTimeout(ShortTimeout);
+        // Grant only 2 of the 3 packets, then go silent: after the block drains the sender
+        // waits for the follow-up CTS on T2.
+        peerBus.Transmit(CanFrame.Classic(
+            (int)J1939Id.ComposePgn(7, J1939Pgn.TpCm, peerSa, senderSa),
+            J1939TpFrames.BuildCts(numPackets: 2, nextPacketSn: 1, dataPgn: pgn),
+            isExtendedFrame: true));
+
+        Func<Task> act = async () => await send.WithTimeout(ShortTimeout);
+        var ex = (await act.Should().ThrowAsync<J1939TpAbortException>()).Which;
+        ex.Reason.Should().Be(J1939TpAbortReason.Timeout);
+        ex.Message.Should().Contain("T2");
+    }
+
+    // FR-TP-032 (T3 waiting for EndOfMsgAck): the peer grants the whole message but never
+    // sends EndOfMsgAck after the last TP.DT — T3 must abort the send.
+    [Fact]
+    public async Task Cm_Sender_T3Timeout_WhenEomAckMissing()
+    {
+        var session = NewSession();
+        using var senderBus = Open(session, 0);
+        using var peerBus = Open(session, 1);
+
+        const byte senderSa = 0x03;
+        const byte peerSa = 0x04;
+        const uint pgn = 0xEF03u;
+
+        var opts = new J1939TpOptions().With(
+            t2: TimeSpan.FromSeconds(5),
+            t3: TimeSpan.FromMilliseconds(150),
+            t4: TimeSpan.FromSeconds(5));
+        using var sender = J1939Tp.Open(senderBus, sourceAddress: senderSa, options: opts);
+
+        var rtsSeen = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        peerBus.FrameObserved += (_, e) =>
+        {
+            if (!e.CanFrame.IsExtendedFrame) return;
+            var fields = J1939Id.Decompose((uint)e.CanFrame.ID);
+            if (fields.SourceAddress != senderSa || !J1939Pgn.IsTransportCm(fields.Pgn)) return;
+            var data = e.CanFrame.Data.Span;
+            if (data.Length < 8 || data[0] != J1939TpFrames.ControlRts) return;
+            if (J1939TpFrames.ReadDataPgn(data) != pgn) return;
+            rtsSeen.TrySetResult(null);
+        };
+
+        var send = sender.SendCmAsync(pgn, destinationAddress: peerSa, RandomPayload(21, seed: 14));
+
+        await rtsSeen.Task.AsTaskWithTimeout(ShortTimeout);
+        // Grant all 3 packets; after the last DT the sender waits for EndOfMsgAck on T3.
+        peerBus.Transmit(CanFrame.Classic(
+            (int)J1939Id.ComposePgn(7, J1939Pgn.TpCm, peerSa, senderSa),
+            J1939TpFrames.BuildCts(numPackets: 3, nextPacketSn: 1, dataPgn: pgn),
+            isExtendedFrame: true));
+
+        Func<Task> act = async () => await send.WithTimeout(ShortTimeout);
+        var ex = (await act.Should().ThrowAsync<J1939TpAbortException>()).Which;
+        ex.Reason.Should().Be(J1939TpAbortReason.Timeout);
+        ex.Message.Should().Contain("EndOfMsgAck");
+    }
+
+    // FR-TP-032 (T4): the peer answers the RTS with CTS(0) ("hold connection open") and never
+    // follows up — the originator-side hold timer T4 must abort the send. BuildCts rejects
+    // numPackets=0 by design, so the hold frame is crafted manually here.
+    [Fact]
+    public async Task Cm_Sender_T4Timeout_WhenPeerHoldsWithCtsZero()
+    {
+        var session = NewSession();
+        using var senderBus = Open(session, 0);
+        using var peerBus = Open(session, 1);
+
+        const byte senderSa = 0x05;
+        const byte peerSa = 0x06;
+        const uint pgn = 0xEF05u;
+
+        var opts = new J1939TpOptions().With(
+            t2: TimeSpan.FromSeconds(5),
+            t3: TimeSpan.FromSeconds(5),
+            t4: TimeSpan.FromMilliseconds(150));
+        using var sender = J1939Tp.Open(senderBus, sourceAddress: senderSa, options: opts);
+
+        var rtsSeen = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        peerBus.FrameObserved += (_, e) =>
+        {
+            if (!e.CanFrame.IsExtendedFrame) return;
+            var fields = J1939Id.Decompose((uint)e.CanFrame.ID);
+            if (fields.SourceAddress != senderSa || !J1939Pgn.IsTransportCm(fields.Pgn)) return;
+            var data = e.CanFrame.Data.Span;
+            if (data.Length < 8 || data[0] != J1939TpFrames.ControlRts) return;
+            if (J1939TpFrames.ReadDataPgn(data) != pgn) return;
+            rtsSeen.TrySetResult(null);
+        };
+
+        var send = sender.SendCmAsync(pgn, destinationAddress: peerSa, RandomPayload(21, seed: 15));
+
+        await rtsSeen.Task.AsTaskWithTimeout(ShortTimeout);
+        // CTS with numPackets=0 = "hold connection open" (J1939-21 §5.10.3.1), nextSn=1.
+        var hold = new byte[8];
+        hold[0] = J1939TpFrames.ControlCts;
+        hold[1] = 0x00;
+        hold[2] = 0x01;
+        hold[3] = 0xFF;
+        hold[4] = 0xFF;
+        hold[5] = (byte)(pgn & 0xFF);
+        hold[6] = (byte)((pgn >> 8) & 0xFF);
+        hold[7] = (byte)((pgn >> 16) & 0xFF);
+        peerBus.Transmit(CanFrame.Classic(
+            (int)J1939Id.ComposePgn(7, J1939Pgn.TpCm, peerSa, senderSa), hold,
+            isExtendedFrame: true));
+
+        Func<Task> act = async () => await send.WithTimeout(ShortTimeout);
+        var ex = (await act.Should().ThrowAsync<J1939TpAbortException>()).Which;
+        ex.Reason.Should().Be(J1939TpAbortReason.Timeout);
+        ex.Message.Should().Contain("T4");
+    }
+
+    // FR-TP-031: the receiver must cap its CTS grant at the originator's RTS-advertised
+    // maximum (here 2), even though its own MaxPacketsPerCts (16) is larger — and keep the
+    // cap on every subsequent block's CTS.
+    [Fact]
+    public async Task Cm_Receiver_CapsCtsGrant_AtPeerRtsMaximum()
+    {
+        var session = NewSession();
+        using var receiverBus = Open(session, 0);
+        using var peerBus = Open(session, 1);
+
+        const byte receiverSa = 0x96;
+        const byte peerSa = 0x97;
+        const uint pgn = 0xEE96u;
+
+        using var receiver = J1939Tp.Open(receiverBus, sourceAddress: receiverSa); // cap 16 by default
+
+        var grants = new List<byte>();
+        var secondGrantSeen = new TaskCompletionSource<object?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        peerBus.FrameObserved += (_, e) =>
+        {
+            if (!e.CanFrame.IsExtendedFrame) return;
+            var fields = J1939Id.Decompose((uint)e.CanFrame.ID);
+            if (fields.SourceAddress != receiverSa || !J1939Pgn.IsTransportCm(fields.Pgn)) return;
+            var data = e.CanFrame.Data.Span;
+            if (data.Length < 8 || data[0] != J1939TpFrames.ControlCts) return;
+            if (J1939TpFrames.ReadDataPgn(data) != pgn) return;
+            lock (grants)
+            {
+                grants.Add(data[1]);
+                if (grants.Count >= 2) secondGrantSeen.TrySetResult(null);
+            }
+        };
+
+        var pdu = RandomPayload(42, seed: 16); // 6 packets
+        peerBus.Transmit(CanFrame.Classic(
+            (int)J1939Id.ComposePgn(7, J1939Pgn.TpCm, peerSa, receiverSa),
+            J1939TpFrames.BuildRts(pdu.Length, totalPackets: 6, maxPacketsPerCts: 2, dataPgn: pgn),
+            isExtendedFrame: true));
+
+        // First grant must already be capped at 2; wait for it, then feed the first block's
+        // DTs so the receiver issues the next block's CTS.
+        await Task.Delay(200);
+        peerBus.Transmit(CanFrame.Classic(
+            (int)J1939Id.ComposePgn(7, J1939Pgn.TpDt, peerSa, receiverSa),
+            J1939TpFrames.BuildDt(1, pdu, 0), isExtendedFrame: true));
+        peerBus.Transmit(CanFrame.Classic(
+            (int)J1939Id.ComposePgn(7, J1939Pgn.TpDt, peerSa, receiverSa),
+            J1939TpFrames.BuildDt(2, pdu, 7), isExtendedFrame: true));
+
+        await secondGrantSeen.Task.AsTaskWithTimeout(ShortTimeout);
+        lock (grants)
+        {
+            grants.Should().HaveCountGreaterOrEqualTo(2);
+            grants.Should().OnlyContain(g => g == 2,
+                "every CTS grant must be capped at the originator's RTS-advertised maximum of 2");
+        }
+    }
 }
 
 /// <summary>
