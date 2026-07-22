@@ -696,6 +696,77 @@ public class CanOpenNodeIntegrationTests : IClassFixture<TestCaseProvider>
         (await bootup.Task.WithTimeoutAsync(ShortTimeout)).Should().Be(NmtState.Initializing);
     }
 
+    // FR-CO-007: ResetCommunication (0x82) follows the same re-init path as ResetNode —
+    // bootup frame is re-emitted and the node settles in Pre-Operational.
+    [Fact]
+    public async Task Nmt_ResetCommunication_EmitsBootup_And_Settles_In_PreOperational()
+    {
+        var session = NewSession();
+        using var busA = Open(session, 0);
+        using var busB = Open(session, 1);
+
+        using var master = CanOpen.OpenNode(busA, nodeId: 0x01);
+        using var slave = CanOpen.OpenNode(busB, nodeId: 0x11);
+
+        await Task.Delay(50); // consume the initial bootup
+
+        var bootup = new TaskCompletionSource<NmtState>(TaskCreationOptions.RunContinuationsAsynchronously);
+        master.HeartbeatReceived += (s, e) =>
+        {
+            if (e.ProducerNodeId == 0x11 && e.State == NmtState.Initializing)
+                bootup.TrySetResult(e.State);
+        };
+
+        await master.SendNmtCommandAsync(NmtCommand.ResetCommunication, targetNodeId: 0x11);
+        (await bootup.Task.WithTimeoutAsync(ShortTimeout)).Should().Be(NmtState.Initializing);
+        await Task.Delay(50);
+        slave.State.Should().Be(NmtState.PreOperational);
+    }
+
+    // FR-CO-003 (negative): a segmented download whose first segment carries the wrong
+    // toggle bit must be rejected with a ToggleBitNotAlternated (0x05030000) abort.
+    [Fact]
+    public async Task Sdo_Segmented_Download_Wrong_Toggle_Aborts()
+    {
+        var session = NewSession();
+        using var busB = Open(session, 1);
+        using var rawBus = Open(session, 2);
+
+        using var slave = CanOpen.OpenNode(busB, nodeId: 0x11);
+        slave.ObjectDictionary.AddDomain(0x2100, 0x00, new byte[20]);
+
+        // Segmented download initiate (cs = 0x21), then the FIRST segment with the wrong
+        // toggle bit (0x10 set instead of 0x00 expected).
+        rawBus.Transmit(CanFrame.Classic(unchecked((int)CanOpenCobId.SdoRx(0x11)),
+            new byte[] { 0x21, 0x00, 0x21, 0x00, 0x14, 0x00, 0x00, 0x00 }));
+        await Task.Delay(100); // let the init-ack happen
+        rawBus.Transmit(CanFrame.Classic(unchecked((int)CanOpenCobId.SdoRx(0x11)),
+            new byte[] { 0x10, 1, 2, 3, 4, 5, 6, 7 }));
+
+        var sdoTxCobId = CanOpenCobId.SdoTx(0x11);
+        using var cts = new CancellationTokenSource(ShortTimeout);
+        while (true)
+        {
+            var frame = (await rawBus.ReceiveAsync(1, 2000, cts.Token))[0];
+            try
+            {
+                var data = frame.CanFrame.Data;
+                if ((uint)frame.CanFrame.ID != sdoTxCobId || data.Length < 8 || data.Span[0] != 0x80)
+                {
+                    continue;
+                }
+                var code = (uint)(data.Span[4] | (data.Span[5] << 8) | (data.Span[6] << 16) | (data.Span[7] << 24));
+                code.Should().Be((uint)SdoAbortCode.ToggleBitNotAlternated,
+                    "CiA 301 requires rejecting a segment whose toggle bit did not alternate");
+                return;
+            }
+            finally
+            {
+                frame.CanFrame.Dispose();
+            }
+        }
+    }
+
     // -----------------------------------------------------------------------------------------
     // FR-CO-008 — heartbeat producer + consumer timeout.
     // -----------------------------------------------------------------------------------------
