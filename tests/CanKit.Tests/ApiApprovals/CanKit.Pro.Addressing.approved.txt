@@ -1,0 +1,77 @@
+class CanKit.Pro.Addressing.CanIdRange
+  field System.UInt32 ExtendedMax
+  field System.UInt32 StandardMax
+  method System.Boolean IsValidExtended(System.UInt32 id)
+  method System.Boolean IsValidStandard(System.UInt32 id)
+  method System.UInt32 ValidateExtended(System.UInt32 id)
+  method System.UInt32 ValidateStandard(System.UInt32 id)
+struct CanKit.Pro.Addressing.J1939Fields
+  prop System.Boolean IsPdu1 {get}
+  prop System.Boolean Reserved {get}
+  prop System.Byte DataPage {get}
+  prop System.Byte PduFormat {get}
+  prop System.Byte PduSpecific {get}
+  prop System.Byte Priority {get}
+  prop System.Byte SourceAddress {get}
+  prop System.Nullable<System.Byte> DestinationAddress {get}
+  prop System.UInt32 Pgn {get}
+class CanKit.Pro.Addressing.J1939Id
+  method CanKit.Pro.Addressing.J1939Fields Decompose(System.UInt32 canId)
+  method System.UInt32 Compose(System.Byte priority, System.Boolean reserved, System.Byte dataPage, System.Byte pduFormat, System.Byte pduSpecific, System.Byte sourceAddress)
+  method System.UInt32 ComposePgn(System.Byte priority, System.UInt32 pgn, System.Byte sourceAddress, System.Byte destinationAddress)
+struct CanKit.Pro.Addressing.J1939Name
+  ctor (System.UInt32 identityNumber, System.UInt16 manufacturerCode, System.Byte ecuInstance, System.Byte functionInstance, System.Byte function, System.Boolean reserved, System.Byte vehicleSystem, System.Byte vehicleSystemInstance, System.Byte industryGroup, System.Boolean arbitraryAddressCapable)
+  field System.Byte EcuInstanceMax
+  field System.Byte FunctionInstanceMax
+  field System.Byte IndustryGroupMax
+  field System.Byte VehicleSystemInstanceMax
+  field System.Byte VehicleSystemMax
+  field System.UInt16 ManufacturerCodeMax
+  field System.UInt32 IdentityNumberMax
+  method CanKit.Pro.Addressing.J1939Name Decompose(System.UInt64 value)
+  method System.Boolean Equals(CanKit.Pro.Addressing.J1939Name other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Boolean HasHigherClaimPriorityThan(CanKit.Pro.Addressing.J1939Name other)
+  method System.Boolean HasLowerClaimPriorityThan(CanKit.Pro.Addressing.J1939Name other)
+  method System.Int32 CompareClaimPriority(CanKit.Pro.Addressing.J1939Name left, CanKit.Pro.Addressing.J1939Name right)
+  method System.Int32 CompareTo(CanKit.Pro.Addressing.J1939Name other)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  method System.UInt64 Compose(System.UInt32 identityNumber, System.UInt16 manufacturerCode, System.Byte ecuInstance, System.Byte functionInstance, System.Byte function, System.Boolean reserved, System.Byte vehicleSystem, System.Byte vehicleSystemInstance, System.Byte industryGroup, System.Boolean arbitraryAddressCapable)
+  prop System.Boolean ArbitraryAddressCapable {get}
+  prop System.Boolean Reserved {get}
+  prop System.Byte EcuInstance {get}
+  prop System.Byte Function {get}
+  prop System.Byte FunctionInstance {get}
+  prop System.Byte IndustryGroup {get}
+  prop System.Byte VehicleSystem {get}
+  prop System.Byte VehicleSystemInstance {get}
+  prop System.UInt16 ManufacturerCode {get}
+  prop System.UInt32 IdentityNumber {get}
+  prop System.UInt64 Value {get}
+class CanKit.Pro.Addressing.J1939Pgn
+  field System.Byte GlobalAddress
+  field System.Byte NullAddress
+  field System.Byte Pdu2StartFormat
+  field System.Byte TpCmControlBam
+  field System.UInt32 AddressClaimed
+  field System.UInt32 CannotClaim
+  field System.UInt32 MaxValue
+  field System.UInt32 Request
+  field System.UInt32 TpCm
+  field System.UInt32 TpDt
+  method System.Boolean IsAddressClaim(System.UInt32 pgn)
+  method System.Boolean IsBam(System.UInt32 pgn, System.Byte tpCmControlByte)
+  method System.Boolean IsBamControlByte(System.Byte controlByte)
+  method System.Boolean IsCannotClaim(CanKit.Pro.Addressing.J1939Fields fields)
+  method System.Boolean IsPdu1(System.Byte pduFormat)
+  method System.Boolean IsPdu1(System.UInt32 pgn)
+  method System.Boolean IsPdu2(System.Byte pduFormat)
+  method System.Boolean IsPdu2(System.UInt32 pgn)
+  method System.Boolean IsRequest(System.UInt32 pgn)
+  method System.Boolean IsTransportCm(System.UInt32 pgn)
+  method System.Boolean IsTransportDt(System.UInt32 pgn)
+  method System.Boolean TryGetGroupExtension(System.UInt32 pgn, System.Byte& groupExtension)
+  method System.Byte GetGroupExtension(System.UInt32 pgn)
+  method System.Byte GetPduFormat(System.UInt32 pgn)
+  method System.UInt32 Normalize(System.UInt32 pgn)

@@ -1,0 +1,23 @@
+class CanKit.Pro.Reliability.BusStateChangedEventArgs
+  ctor (CanKit.Abstractions.API.Common.Definitions.BusState previous, CanKit.Abstractions.API.Common.Definitions.BusState current)
+  prop CanKit.Abstractions.API.Common.Definitions.BusState Current {get}
+  prop CanKit.Abstractions.API.Common.Definitions.BusState Previous {get}
+class CanKit.Pro.Reliability.BusStateExtensions
+  method System.Boolean IsDegraded(CanKit.Abstractions.API.Common.Definitions.BusState state)
+  method System.Boolean IsTransmitBlocked(CanKit.Abstractions.API.Common.Definitions.BusState state)
+class CanKit.Pro.Reliability.BusStateMonitor
+  ctor (CanKit.Abstractions.API.Can.ICanBus bus, CanKit.Pro.Actor.IProtocolActor actor, System.Nullable<System.TimeSpan> pollInterval)
+  event System.EventHandler<CanKit.Pro.Reliability.BusStateChangedEventArgs> StateChanged
+  method System.Void Dispose()
+  prop CanKit.Abstractions.API.Common.Definitions.BusState CurrentState {get}
+class CanKit.Pro.Reliability.DeadlineScheduler
+  ctor (CanKit.Pro.Actor.IProtocolActor actor)
+  method CanKit.Pro.Reliability.IDeadline Arm(System.TimeSpan timeout, System.Action onExpired)
+interface CanKit.Pro.Reliability.IDeadline
+  method System.Boolean Complete()
+  method System.Boolean Rearm(System.TimeSpan timeout)
+  prop System.Boolean IsCancelled {get}
+  prop System.Boolean IsCompleted {get}
+  prop System.Boolean IsExpired {get}
+interface CanKit.Pro.Reliability.IDeadlineScheduler
+  method CanKit.Pro.Reliability.IDeadline Arm(System.TimeSpan timeout, System.Action onExpired)

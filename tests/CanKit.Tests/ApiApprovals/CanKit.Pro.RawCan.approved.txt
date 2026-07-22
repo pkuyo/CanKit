@@ -1,0 +1,45 @@
+class CanKit.Pro.RawCan.CanBusService
+  ctor (CanKit.Abstractions.API.Can.ICanBus bus)
+  event System.EventHandler<System.Exception> BackgroundExceptionOccurred
+  field System.Int32 DefaultBufferCapacity
+  field System.TimeSpan DefaultConfirmTimeout
+  method CanKit.Pro.RawCan.ISubscription Subscribe(CanKit.Pro.RawCan.CanIdFilter filter, System.Nullable<System.Int32> bufferCapacity)
+  method CanKit.Pro.RawCan.ISubscription Subscribe(System.Func<CanKit.Abstractions.API.Can.Definitions.CanFrameView,System.Boolean> predicate, System.Nullable<System.Int32> bufferCapacity)
+  method System.Collections.Generic.IReadOnlyList<System.ValueTuple<CanKit.Pro.RawCan.ISubscription,CanKit.Pro.RawCan.ISubscription>> FindOverlappingFilterSubscriptions()
+  method System.Threading.Tasks.Task<CanKit.Pro.RawCan.TxConfirmation> SendConfirmed(CanKit.Abstractions.API.Can.Definitions.CanFrame frame, System.Nullable<System.TimeSpan> timeout, System.Threading.CancellationToken cancellationToken)
+  method System.Void Dispose()
+  prop CanKit.Abstractions.API.Can.ICanBus Bus {get}
+  prop System.Int32 SubscriptionCount {get}
+struct CanKit.Pro.RawCan.CanIdFilter
+  method CanKit.Pro.RawCan.CanIdFilter Mask(System.UInt32 accCode, System.UInt32 accMask, CanKit.Abstractions.API.Common.Definitions.CanFilterIDType idType)
+  method CanKit.Pro.RawCan.CanIdFilter Range(System.UInt32 from, System.UInt32 to, CanKit.Abstractions.API.Common.Definitions.CanFilterIDType idType)
+  method System.Boolean Matches(CanKit.Abstractions.API.Can.Definitions.CanFrameView& frame)
+  method System.Boolean Overlaps(CanKit.Pro.RawCan.CanIdFilter other)
+  prop CanKit.Abstractions.API.Common.Definitions.CanFilterIDType IdType {get}
+interface CanKit.Pro.RawCan.ICanBusService
+  event System.EventHandler<System.Exception> BackgroundExceptionOccurred
+  method CanKit.Pro.RawCan.ISubscription Subscribe(CanKit.Pro.RawCan.CanIdFilter filter, System.Nullable<System.Int32> bufferCapacity)
+  method CanKit.Pro.RawCan.ISubscription Subscribe(System.Func<CanKit.Abstractions.API.Can.Definitions.CanFrameView,System.Boolean> predicate, System.Nullable<System.Int32> bufferCapacity)
+  method System.Collections.Generic.IReadOnlyList<System.ValueTuple<CanKit.Pro.RawCan.ISubscription,CanKit.Pro.RawCan.ISubscription>> FindOverlappingFilterSubscriptions()
+  method System.Threading.Tasks.Task<CanKit.Pro.RawCan.TxConfirmation> SendConfirmed(CanKit.Abstractions.API.Can.Definitions.CanFrame frame, System.Nullable<System.TimeSpan> timeout, System.Threading.CancellationToken cancellationToken)
+  prop CanKit.Abstractions.API.Can.ICanBus Bus {get}
+  prop System.Int32 SubscriptionCount {get}
+interface CanKit.Pro.RawCan.ISubscription
+  method System.Boolean TryRead(CanKit.Abstractions.API.Can.Definitions.CanFrameView& frame)
+  method System.Void Reconfigure(CanKit.Pro.RawCan.CanIdFilter filter)
+  method System.Void Reconfigure(System.Func<CanKit.Abstractions.API.Can.Definitions.CanFrameView,System.Boolean> predicate)
+  prop System.Collections.Generic.IAsyncEnumerable<CanKit.Abstractions.API.Can.Definitions.CanFrameView> Frames {get}
+enum CanKit.Pro.RawCan.TxConfirmFailureReason : Int32
+  field CanKit.Pro.RawCan.TxConfirmFailureReason BusOff
+  field CanKit.Pro.RawCan.TxConfirmFailureReason None
+  field CanKit.Pro.RawCan.TxConfirmFailureReason Rejected
+  field CanKit.Pro.RawCan.TxConfirmFailureReason Timeout
+struct CanKit.Pro.RawCan.TxConfirmation
+  method System.Boolean Equals(CanKit.Pro.RawCan.TxConfirmation other)
+  method System.Boolean Equals(System.Object obj)
+  method System.Int32 GetHashCode()
+  method System.String ToString()
+  prop CanKit.Pro.RawCan.TxConfirmFailureReason FailureReason {get/set}
+  prop System.Boolean Confirmed {get/set}
+  prop System.Boolean IsApproximated {get/set}
+  prop System.DateTime Timestamp {get/set}

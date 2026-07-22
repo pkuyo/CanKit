@@ -1,0 +1,19 @@
+enum CanKit.Pro.Actor.ActorExecutionMode : Int32
+  field CanKit.Pro.Actor.ActorExecutionMode DedicatedThread
+  field CanKit.Pro.Actor.ActorExecutionMode SynchronizationContext
+  field CanKit.Pro.Actor.ActorExecutionMode ThreadPool
+interface CanKit.Pro.Actor.IProtocolActor
+  event System.EventHandler<System.Exception> BackgroundExceptionOccurred
+  method System.IDisposable Schedule(System.TimeSpan delay, System.Action callback)
+  method System.Threading.Tasks.Task PostAsync(System.Action work)
+  method System.Threading.Tasks.Task<T> PostAsync<T>(System.Func<T> work)
+  method System.Void Post(System.Action work)
+class CanKit.Pro.Actor.ProtocolActor
+  ctor (CanKit.Pro.Actor.ActorExecutionMode mode, System.Threading.SynchronizationContext synchronizationContext)
+  event System.EventHandler<System.Exception> BackgroundExceptionOccurred
+  method System.IDisposable Schedule(System.TimeSpan delay, System.Action callback)
+  method System.Threading.Tasks.Task PostAsync(System.Action work)
+  method System.Threading.Tasks.Task<T> PostAsync<T>(System.Func<T> work)
+  method System.Void Dispose()
+  method System.Void Post(System.Action work)
+  prop System.Boolean IsOnCurrentActor {get}
