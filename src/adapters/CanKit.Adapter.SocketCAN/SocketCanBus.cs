@@ -621,7 +621,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IOwnersh
         if (LibSocketCan.can_get_ctrlmode(ifName, out var ctrlMode) != Libc.OK)
         {
             var re = Libc.Errno();
-            if (re == Libc.EOPNOTSUPP)
+            if (re == 0 || re == Libc.EOPNOTSUPP)
             {
                 CanKitLogger.LogInformation($"SocketCanBus: {ifName} not support ctrlmode. Ignored socket can config.");
                 return;
