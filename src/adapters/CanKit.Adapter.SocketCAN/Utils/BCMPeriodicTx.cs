@@ -5,6 +5,7 @@ using CanKit.Abstractions.API.Can;
 using CanKit.Abstractions.API.Can.Definitions;
 using CanKit.Abstractions.API.Common;
 using CanKit.Abstractions.API.Common.Definitions;
+using CanKit.Abstractions.SPI.Common;
 using CanKit.Adapter.SocketCAN.Diagnostics;
 using CanKit.Adapter.SocketCAN.Native;
 using CanKit.Adapter.SocketCAN.Definitions;
@@ -28,7 +29,19 @@ public sealed class BCMPeriodicTx : IPeriodicTx
     private FileDescriptorHandle _epfd = new();
     private Libc.epoll_event[] _events = new Libc.epoll_event[4];
 
+    // Owned copy of the caller's frame. We must not keep a reference to the
+    // caller's memory owner: the BCM socket keeps re-emitting this payload for
+    // the lifetime of the timer, whereas the caller may dispose their own owner
+    // as soon as TransmitPeriodic returns. We rent a private buffer via the
+    // bus's IBufferAllocator and dispose it on Update (replace)/Stop/Dispose.
     private CanFrame _frame;
+
+    // Last observed remaining count from a TX_READ round-trip. Serves as a
+    // best-effort fallback whenever the kernel does not reply in time or
+    // replies with an unexpected opcode, so callers never observe a spurious
+    // EAGAIN throw from a healthy periodic transmission.
+    private int _lastKnownCount;
+
     private CancellationTokenSource? _readCts;
     private Task? _readTask;
 
@@ -85,9 +98,10 @@ public sealed class BCMPeriodicTx : IPeriodicTx
             nframes = 1
         };
 
-        _frame = frame;
+        _frame = DuplicateFrame(frame, configurator.BufferAllocator);
         RepeatCount = options.Repeat;
         Period = period;
+        _lastKnownCount = RepeatCount < 0 ? 0 : RepeatCount;
 
         var headSize = Marshal.SizeOf<Libc.bcm_msg_head>();
         var frameSize = (_frame.FrameKind is CanFrameType.CanFd) ? Marshal.SizeOf<Libc.canfd_frame>() : Marshal.SizeOf<Libc.can_frame>();
@@ -137,7 +151,13 @@ public sealed class BCMPeriodicTx : IPeriodicTx
         }
         if (frame is not null)
         {
-            _frame = frame.Value;
+            // TX-lease: rent an independent copy backed by our allocator, then
+            // dispose the previously-owned copy. The caller keeps ownership of
+            // the frame they passed in.
+            var newOwned = DuplicateFrame(frame.Value, _configurator.BufferAllocator);
+            var previous = _frame;
+            _frame = newOwned;
+            try { previous.Dispose(); } catch { /* ignore double-dispose from custom allocators */ }
         }
 
         var flags = 0u;
@@ -202,6 +222,20 @@ public sealed class BCMPeriodicTx : IPeriodicTx
         {
             if (_queryFd.IsInvalid) throw new CanBusDisposedException();
 
+            // The kernel replies to TX_READ asynchronously by enqueuing a TX_STATUS
+            // message onto the query socket. Because _queryFd is non-blocking, a
+            // naive read() right after write() races the kernel and returns EAGAIN,
+            // which the previous implementation surfaced as an unconditional
+            // ThrowErrno. We now:
+            //   1. Try a non-blocking read first (works when the reply is already
+            //      in the socket queue).
+            //   2. On EAGAIN, poll with a short timeout and retry.
+            //   3. Cap retries to bound total wait; skip stray non-TX_STATUS
+            //      messages and fall back to the last known count on
+            //      unrecoverable failures rather than raising to the caller.
+            const int PollTimeoutMs = 100;
+            const int MaxAttempts = 5;
+
             Libc.bcm_msg_head head = new Libc.bcm_msg_head
             {
                 opcode = Libc.TX_READ,
@@ -215,15 +249,46 @@ public sealed class BCMPeriodicTx : IPeriodicTx
                 if (Libc.write(_queryFd, &head, headSize) < 0)
                     Libc.ThrowErrno("write(BCM TX_READ)", "Failed to query BCM status");
 
-                var n = Libc.read(_queryFd, &head, headSize);
-                if (n != headSize)
-                    Libc.ThrowErrno("read(BCM TX_STATUS)", "Failed to read BCM status");
+                int fdInt = _queryFd.DangerousGetHandle().ToInt32();
 
-                if (head.opcode != Libc.TX_STATUS)
+                for (int attempt = 0; attempt < MaxAttempts; attempt++)
                 {
-                    // No-op; non-TX_STATUS is ignored
+                    var n = Libc.read(_queryFd, &head, headSize);
+                    if (n < 0)
+                    {
+                        var errno = Libc.Errno();
+                        if (errno == Libc.EAGAIN)
+                        {
+                            var pfd = new Libc.pollfd
+                            {
+                                fd = fdInt,
+                                events = Libc.POLLIN,
+                                revents = 0
+                            };
+                            int pr = Libc.poll(ref pfd, 1, PollTimeoutMs);
+                            if (pr < 0)
+                            {
+                                var perrno = Libc.Errno();
+                                if (perrno == Libc.EINTR) continue;
+                                return _lastKnownCount;
+                            }
+                            if (pr == 0) continue;
+                            if ((pfd.revents & Libc.POLLIN) == 0)
+                                return _lastKnownCount;
+                            continue;
+                        }
+                        if (errno == Libc.EINTR) continue;
+                        return _lastKnownCount;
+                    }
+
+                    if (n != headSize) continue;
+                    if (head.opcode != Libc.TX_STATUS) continue;
+
+                    _lastKnownCount = (int)head.count;
+                    return _lastKnownCount;
                 }
-                return (int)head.count;
+
+                return _lastKnownCount;
             }
         }
     }
@@ -265,6 +330,7 @@ public sealed class BCMPeriodicTx : IPeriodicTx
             _queryFd.Dispose();
             _cancelFd.Dispose();
             _epfd.Dispose();
+            try { _frame.Dispose(); } catch { /* built-in allocators tolerate redundant disposal */ }
         }
     }
 
@@ -461,6 +527,19 @@ public sealed class BCMPeriodicTx : IPeriodicTx
                 _ = Libc.fcntl(fd, Libc.F_SETFL, flags | Libc.O_NONBLOCK);
         }
         catch { /* ignore */ }
+    }
+
+    // Rents a private buffer from the bus allocator and copies the frame into
+    // it, so the returned frame's lifetime is fully decoupled from the caller's
+    // memory owner. Kind, ID and flags are preserved.
+    private static CanFrame DuplicateFrame(CanFrame frame, IBufferAllocator allocator)
+    {
+        var owner = allocator.Rent(frame.Data.Length);
+        frame.Data.Span.CopyTo(owner.Memory.Span);
+        var copy = frame.FrameKind is CanFrameType.CanFd
+            ? CanFrame.Fd(frame.ID, owner, ownMemory: allocator.FrameNeedDispose)
+            : CanFrame.Classic(frame.ID, owner, ownMemory: allocator.FrameNeedDispose);
+        return copy with { Flags = frame.Flags };
     }
 
 }
