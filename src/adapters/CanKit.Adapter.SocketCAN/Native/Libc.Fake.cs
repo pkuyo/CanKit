@@ -374,12 +374,16 @@ internal static class Libc
             ["vcan0"] = new CanInterface("vcan0", 1),
             ["vcan1"] = new CanInterface("vcan1", 2),
             ["vcan2"] = new CanInterface("vcan2", 3),
+            ["vcan3"] = new CanInterface("vcan3", 4),
+            ["vcan4"] = new CanInterface("vcan4", 5),
         };
         public static readonly Dictionary<uint, CanInterface> IfacesByIndex = new Dictionary<uint, CanInterface>
         {
             [1] = IfacesByName["vcan0"],
             [2] = IfacesByName["vcan1"],
             [3] = IfacesByName["vcan2"],
+            [4] = IfacesByName["vcan3"],
+            [5] = IfacesByName["vcan4"],
         };
 
         [ThreadStatic]
@@ -997,6 +1001,8 @@ internal static class Libc
     }
 
     public static int Errno() => World.Errno;
+
+    public static void SetErrno(int errno) => World.Errno = errno;
 
     public static void ThrowErrno(string operation, string message, int errno)
     {
