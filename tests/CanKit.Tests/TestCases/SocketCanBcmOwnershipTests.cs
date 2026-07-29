@@ -31,7 +31,7 @@ namespace CanKit.Tests.TestCases;
 /// failures.
 ///
 /// Fake caveat: the Fake backend replies to TX_READ synchronously by
-/// pre-enqueuing a TX_STATUS onto the query socket, so the read() in
+/// pre-enqueuing a TX_STATUS onto the owning BCM socket, so the read() in
 /// RemainingCount does not actually hit EAGAIN under Fake. These tests
 /// therefore cannot fully exercise the poll() / retry branch we added —
 /// only the "TX_READ never throws" contract. The poll()/EAGAIN retry loop
@@ -90,6 +90,12 @@ public class SocketCanBcmOwnershipTests
             .BufferAllocator(busAllocator)
             .SetAsyncBufferCapacity(64));
 
+    private static ICanBus OpenFd(string endpoint)
+        => CanBus.Open(endpoint, cfg => cfg
+            .SetProtocolMode(CanProtocolMode.CanFd)
+            .Fd(500_000, 2_000_000)
+            .SetAsyncBufferCapacity(64));
+
     [Fact]
     public void TransmitPeriodic_Does_Not_Keep_Reference_To_Caller_Buffer()
     {
@@ -146,11 +152,27 @@ public class SocketCanBcmOwnershipTests
 
         // Pre-fix: this would throw with EAGAIN from ThrowErrno("read(BCM TX_STATUS)")
         // whenever the kernel hadn't yet enqueued a TX_STATUS reply on the non-blocking
-        // query socket. Post-fix: the read races the reply, on EAGAIN we poll+retry
+        // BCM socket. Post-fix: the read races the reply, on EAGAIN we poll+retry
         // up to MaxAttempts, and on unrecoverable failure we fall back to the cached
         // count instead of raising. Under Fake this exercises the happy path only.
         Action act = () => _ = handle.RemainingCount;
         act.Should().NotThrow();
+    }
+
+    [Fact]
+    public void Fd_RemainingCount_And_Update_Use_The_Owning_Bcm_Operation()
+    {
+        if (!ShouldRun()) return;
+
+        using var bus = OpenFd(BcmOnlyEndpoint);
+        using var frame = CanFrame.Fd(0x456, new byte[] { 1, 2, 3 }, true);
+        using var handle = bus.TransmitPeriodic(frame, new PeriodicTxOptions(TimeSpan.FromMilliseconds(10), 3));
+
+        Action query = () => _ = handle.RemainingCount;
+        Action update = () => handle.Update(period: TimeSpan.FromMilliseconds(20));
+
+        query.Should().NotThrow();
+        update.Should().NotThrow();
     }
 
     [Fact]

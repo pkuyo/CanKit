@@ -20,13 +20,13 @@ public sealed class BCMPeriodicTx : IPeriodicTx
 {
 
     private readonly object _evtGate = new();
+    private readonly object _socketGate = new();
     private EventHandler? _completed;
 
     private SocketCanBusRtConfigurator _configurator;
     // Pre-initialize handles to invalid so a ctor failure path can safely
     // Dispose() them regardless of how far initialization progressed.
     private FileDescriptorHandle _fd = new();
-    private FileDescriptorHandle _queryFd = new();
     private FileDescriptorHandle _cancelFd = new();
     private FileDescriptorHandle _epfd = new();
     private Libc.epoll_event[] _events = new Libc.epoll_event[4];
@@ -72,15 +72,6 @@ public sealed class BCMPeriodicTx : IPeriodicTx
             if (Libc.connect(_fd, ref addr, saSize) < 0)
                 Libc.ThrowErrno("connect(SOCKADDR_CAN)", $"Failed to connect BCM socket to '{configurator.ChannelIndex}'");
             TrySetNonBlocking(_fd);
-
-
-            _queryFd = Libc.socket(Libc.AF_CAN, Libc.SOCK_DGRAM, Libc.CAN_BCM);
-            if (_queryFd.IsInvalid)
-                Libc.ThrowErrno("socket(AF_CAN, SOCK_DGRAM, CAN_BCM)", "Failed to create BCM query socket");
-            if (Libc.connect(_queryFd, ref addr, saSize) < 0)
-                Libc.ThrowErrno("connect(SOCKADDR_CAN)", $"Failed to connect BCM query socket to '{configurator.ChannelIndex}'");
-            TrySetNonBlocking(_queryFd);
-
 
             _cancelFd = Libc.eventfd(0, Libc.EFD_CLOEXEC | Libc.EFD_NONBLOCK);
             if (_cancelFd.IsInvalid)
@@ -157,7 +148,6 @@ public sealed class BCMPeriodicTx : IPeriodicTx
                 // from the bus allocator.
                 try { _frame.Dispose(); } catch { /* allocator-tolerant */ }
                 _fd.Dispose();
-                _queryFd.Dispose();
                 _cancelFd.Dispose();
                 _epfd.Dispose();
             }
@@ -198,13 +188,10 @@ public sealed class BCMPeriodicTx : IPeriodicTx
             try { previous.Dispose(); } catch { /* ignore double-dispose from custom allocators */ }
         }
 
-        var flags = 0u;
-        if (period is not null) flags |= Libc.SETTIMER;
+        var flags = Libc.TX_COUNTEVT;
+        if (period is not null || repeatCount is not null) flags |= Libc.SETTIMER;
         if (repeatCount is not null) flags |= Libc.STARTTIMER;
-
-        // only set CAN_FD_FRAME when frame has value
-        bool includeFrame = frame is not null;
-        if (includeFrame && _frame.FrameKind is CanFrameType.CanFd)
+        if (_frame.FrameKind is CanFrameType.CanFd)
             flags |= Libc.CAN_FD_FRAME;
 
         var head = new Libc.bcm_msg_head
@@ -215,39 +202,38 @@ public sealed class BCMPeriodicTx : IPeriodicTx
             ival1 = SocketCanUtils.ToTimeval((RepeatCount < 0) ? TimeSpan.Zero : Period), // repeat config times and stop
             ival2 = SocketCanUtils.ToTimeval((RepeatCount < 0) ? Period : TimeSpan.Zero), // immediately enter ival2 for infinite loop
             can_id = _frame.ToCanID(),
-            nframes = (uint)(includeFrame ? 1 : 0)
+            nframes = 1
         };
 
         var headSize = Marshal.SizeOf<Libc.bcm_msg_head>();
-        var maxFrameSize = Marshal.SizeOf<Libc.canfd_frame>();
-        var bufSize = headSize + (includeFrame ? maxFrameSize : 0);
+        var frameSize = _frame.FrameKind is CanFrameType.CanFd
+            ? Marshal.SizeOf<Libc.canfd_frame>()
+            : Marshal.SizeOf<Libc.can_frame>();
+        var bufSize = headSize + frameSize;
 
         unsafe
         {
             var buf = stackalloc byte[bufSize];
 
-            if (includeFrame)
+            if (_frame.FrameKind is CanFrameType.Can20)
             {
-                if (_frame.FrameKind is CanFrameType.Can20)
-                {
-                    var sz = Marshal.SizeOf<Libc.can_frame>();
-                    var fr = _frame.ToCanFrame();
-                    Unsafe.CopyBlockUnaligned(buf + headSize, &fr, (uint)sz);
-                }
-                else if (_frame.FrameKind is CanFrameType.Can20)
-                {
-                    var sz = Marshal.SizeOf<Libc.canfd_frame>();
-                    var fr = _frame.ToCanFdFrame();
-                    Unsafe.CopyBlockUnaligned(buf + headSize, &fr, (uint)sz);
-                }
-                else
-                {
-                    throw new NotSupportedException("protocol mode not supported");
-                }
+                var fr = _frame.ToCanFrame();
+                Unsafe.CopyBlockUnaligned(buf + headSize, &fr, (uint)frameSize);
+            }
+            else if (_frame.FrameKind is CanFrameType.CanFd)
+            {
+                var fr = _frame.ToCanFdFrame();
+                Unsafe.CopyBlockUnaligned(buf + headSize, &fr, (uint)frameSize);
+            }
+            else
+            {
+                throw new NotSupportedException("protocol mode not supported");
             }
 
             Unsafe.CopyBlockUnaligned(buf, &head, (uint)headSize);
-            var wrote = Libc.write(_fd, buf, (ulong)bufSize);
+            long wrote;
+            lock (_socketGate)
+                wrote = Libc.write(_fd, buf, (ulong)bufSize);
             if (wrote != bufSize)
                 Libc.ThrowErrno("write(BCM TX_SETUP)", "Failed to update BCM periodic transmission");
         }
@@ -258,13 +244,13 @@ public sealed class BCMPeriodicTx : IPeriodicTx
     {
         get
         {
-            if (_queryFd.IsInvalid) throw new CanBusDisposedException();
+            if (_fd.IsInvalid) throw new CanBusDisposedException();
 
             // The kernel replies to TX_READ asynchronously by enqueuing a TX_STATUS
-            // message onto the query socket. Because _queryFd is non-blocking, a
-            // naive read() right after write() races the kernel and returns EAGAIN,
-            // which the previous implementation surfaced as an unconditional
-            // ThrowErrno. We now:
+            // message onto the same BCM socket that owns the TX operation. Because
+            // the socket is non-blocking, a naive read() right after write() races
+            // the kernel and returns EAGAIN, which the previous implementation
+            // surfaced as an unconditional ThrowErrno. We now:
             //   1. Try a non-blocking read first (works when the reply is already
             //      in the socket queue).
             //   2. On EAGAIN, poll with a short timeout and retry.
@@ -277,63 +263,72 @@ public sealed class BCMPeriodicTx : IPeriodicTx
             Libc.bcm_msg_head head = new Libc.bcm_msg_head
             {
                 opcode = Libc.TX_READ,
+                flags = _frame.FrameKind is CanFrameType.CanFd ? Libc.CAN_FD_FRAME : 0u,
                 can_id = _frame.ToCanID(),
                 nframes = 0
             };
 
             unsafe
             {
-                var headSize = (uint)Marshal.SizeOf<Libc.bcm_msg_head>();
-                if (Libc.write(_queryFd, &head, headSize) < 0)
-                    Libc.ThrowErrno("write(BCM TX_READ)", "Failed to query BCM status");
-
-                int fdInt = _queryFd.DangerousGetHandle().ToInt32();
-
-                for (int attempt = 0; attempt < MaxAttempts; attempt++)
+                lock (_socketGate)
                 {
-                    var n = Libc.read(_queryFd, &head, headSize);
-                    if (n < 0)
+                    var headSize = (uint)Marshal.SizeOf<Libc.bcm_msg_head>();
+                    if (Libc.write(_fd, &head, headSize) < 0)
+                        return _lastKnownCount;
+
+                    int fdInt = _fd.DangerousGetHandle().ToInt32();
+
+                    for (int attempt = 0; attempt < MaxAttempts; attempt++)
                     {
-                        var errno = Libc.Errno();
-                        if (errno == Libc.EAGAIN)
+                        var n = Libc.read(_fd, &head, headSize);
+                        if (n < 0)
                         {
-                            var pfd = new Libc.pollfd
+                            var errno = Libc.Errno();
+                            if (errno == Libc.EAGAIN)
                             {
-                                fd = fdInt,
-                                events = Libc.POLLIN,
-                                revents = 0
-                            };
-                            int pr = Libc.poll(ref pfd, 1, PollTimeoutMs);
-                            if (pr < 0)
-                            {
-                                var perrno = Libc.Errno();
-                                if (perrno == Libc.EINTR) continue;
-                                return _lastKnownCount;
+                                var pfd = new Libc.pollfd
+                                {
+                                    fd = fdInt,
+                                    events = Libc.POLLIN,
+                                    revents = 0
+                                };
+                                int pr = Libc.poll(ref pfd, 1, PollTimeoutMs);
+                                if (pr < 0)
+                                {
+                                    var perrno = Libc.Errno();
+                                    if (perrno == Libc.EINTR) continue;
+                                    return _lastKnownCount;
+                                }
+                                if (pr == 0) continue;
+                                if ((pfd.revents & Libc.POLLIN) == 0)
+                                    return _lastKnownCount;
+                                continue;
                             }
-                            if (pr == 0) continue;
-                            if ((pfd.revents & Libc.POLLIN) == 0)
-                                return _lastKnownCount;
+                            if (errno == Libc.EINTR) continue;
+                            return _lastKnownCount;
+                        }
+
+                        if (n != headSize) continue;
+                        if (head.opcode == Libc.TX_EXPIRED)
+                        {
+                            try { _completed?.Invoke(this, EventArgs.Empty); } catch { /* ignore */ }
                             continue;
                         }
-                        if (errno == Libc.EINTR) continue;
+                        if (head.opcode != Libc.TX_STATUS) continue;
+
+                        // BCM kernel encodes an infinite job's remaining count as
+                        // 0. The IPeriodicTx contract instead reserves -1 for
+                        // infinite (0 means "finite job that has finished"), so
+                        // remap the value based on the configured RepeatCount.
+                        if (RepeatCount < 0 && head.count == 0)
+                            _lastKnownCount = -1;
+                        else
+                            _lastKnownCount = (int)head.count;
                         return _lastKnownCount;
                     }
 
-                    if (n != headSize) continue;
-                    if (head.opcode != Libc.TX_STATUS) continue;
-
-                    // BCM kernel encodes an infinite job's remaining count as
-                    // 0. The IPeriodicTx contract instead reserves -1 for
-                    // infinite (0 means "finite job that has finished"), so
-                    // remap the value based on the configured RepeatCount.
-                    if (RepeatCount < 0 && head.count == 0)
-                        _lastKnownCount = -1;
-                    else
-                        _lastKnownCount = (int)head.count;
                     return _lastKnownCount;
                 }
-
-                return _lastKnownCount;
             }
         }
     }
@@ -347,7 +342,7 @@ public sealed class BCMPeriodicTx : IPeriodicTx
             var head = new Libc.bcm_msg_head
             {
                 opcode = Libc.TX_DELETE,
-                flags = 0,
+                flags = _frame.FrameKind is CanFrameType.CanFd ? Libc.CAN_FD_FRAME : 0u,
                 count = 0,
                 ival1 = default,
                 ival2 = default,
@@ -359,7 +354,9 @@ public sealed class BCMPeriodicTx : IPeriodicTx
             {
                 var buf = stackalloc byte[size];
                 Unsafe.CopyBlockUnaligned(buf, &head, (uint)size);
-                var wrote = Libc.write(_fd, buf, (ulong)size);
+                long wrote;
+                lock (_socketGate)
+                    wrote = Libc.write(_fd, buf, (ulong)size);
                 if (wrote != size)
                     Libc.ThrowErrno("write(BCM TX_DELETE)", "Failed to delete BCM periodic transmission");
             }
@@ -372,7 +369,6 @@ public sealed class BCMPeriodicTx : IPeriodicTx
         {
             StopMonitor(true);
             _fd.Dispose();
-            _queryFd.Dispose();
             _cancelFd.Dispose();
             _epfd.Dispose();
             try { _frame.Dispose(); } catch { /* built-in allocators tolerate redundant disposal */ }
@@ -536,7 +532,9 @@ public sealed class BCMPeriodicTx : IPeriodicTx
 
                 if ((_events[i].events & Libc.EPOLLIN) != 0)
                 {
-                    long r = Libc.read(_fd, buf, (ulong)headSize);
+                    long r;
+                    lock (_socketGate)
+                        r = Libc.read(_fd, buf, (ulong)headSize);
                     if (r < 0)
                     {
                         var errno = Libc.Errno();
