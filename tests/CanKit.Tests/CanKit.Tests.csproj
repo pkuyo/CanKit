@@ -5,6 +5,8 @@
     <RootNamespace>CanKit.Tests</RootNamespace>
     <LangVersion>12</LangVersion>
     <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks Condition="'$(Configuration)' == 'Fake'">true</AllowUnsafeBlocks>
+    <DefineConstants Condition="'$(Configuration)' == 'Fake'">$(DefineConstants);FAKE</DefineConstants>
     <TargetFrameworks>net8.0;net48</TargetFrameworks>
     <Configurations>Debug;Release;Fake</Configurations>
     <Platforms>AnyCPU;X86;X64</Platforms>
