@@ -33,9 +33,12 @@ public class ThroughputAndFeaturesTests : IClassFixture<TestCaseProvider>
             var frames = TestHelpers.GenerateSeqFrames(ring, batchSize).ToArray();
             var v = new TestHelpers.SequenceVerifier();
 
-            await TestHelpers.SendBurstAsync(tx, frames, gapMs: 0);
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
-            var rec = await TestHelpers.ReceiveUntilAsync(rx, v, batchSize, 2000, cts.Token);
+            var recTask = TestHelpers.ReceiveUntilAsync(rx, v, batchSize, 2000, cts.Token);
+            await TestHelpers.SendBurstAsync(tx, frames, gapMs: 0);
+            int rec;
+            try { rec = await recTask; }
+            catch (OperationCanceledException) { rec = v.Received; }
             rec.Should().Be(batchSize);
             v.Lost.Should().Be(0);
             v.BadData.Should().Be(0);
@@ -59,9 +62,12 @@ public class ThroughputAndFeaturesTests : IClassFixture<TestCaseProvider>
             var frames = TestHelpers.GenerateSeqFrames(ring, batchSize).ToArray();
             var v = new TestHelpers.SequenceVerifier();
 
-            await TestHelpers.SendBurstAsync(tx, frames, gapMs: 0);
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
-            var rec = await TestHelpers.ReceiveUntilAsync(rx, v, batchSize, 2000, cts.Token);
+            var recTask = TestHelpers.ReceiveUntilAsync(rx, v, batchSize, 2000, cts.Token);
+            await TestHelpers.SendBurstAsync(tx, frames, gapMs: 0);
+            int rec;
+            try { rec = await recTask; }
+            catch (OperationCanceledException) { rec = v.Received; }
 
             rec.Should().Be(batchSize);
             v.Lost.Should().Be(0);

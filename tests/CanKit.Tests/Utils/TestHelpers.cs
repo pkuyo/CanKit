@@ -119,7 +119,7 @@ internal static class TestHelpers
     public static async Task<int> ReceiveUntilAsync(ICanBus bus, SequenceVerifier v, int expected, int timeoutMs, CancellationToken token)
     {
         var result = 0;
-        var sw = new Stopwatch();
+        var sw = Stopwatch.StartNew();
         while (!token.IsCancellationRequested && v.Received < expected && sw.ElapsedMilliseconds < timeoutMs)
         {
 
