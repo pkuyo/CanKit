@@ -46,11 +46,14 @@ public sealed class SocketCanProvider : ICanModelProvider, ICanCapabilityProvide
         if (LibSocketCan.can_get_ctrlmode(busOptions.ChannelName, out var ctrlMode) != Libc.OK)
         {
             var re = Libc.Errno();
-            if (re == Libc.EOPNOTSUPP)
+            if ((re == 0 || re == Libc.EOPNOTSUPP) &&
+                Libc.if_nametoindex(busOptions.ChannelName) != 0)
             {
-                CanKitLogger.LogInformation($"SocketCanBus: {busOptions.ChannelName} not support ctrlmode. Ignored socket can config.");
+                CanKitLogger.LogInformation(
+                    $"SocketCanBus: {busOptions.ChannelName} does not expose ctrlmode. Using static capabilities.");
                 return new Capability(StaticFeatures);
             }
+
             Libc.ThrowErrno("can_get_ctrlmode", $"Failed to get ctrlmode for '{busOptions.ChannelName}'", re);
         }
 

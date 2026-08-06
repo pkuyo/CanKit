@@ -89,7 +89,7 @@ namespace CanKit.Adapter.SocketCAN.Native
 
         public const uint IFLA_CAN_MAX = ((uint)IFLA_CAN.__IFLA_CAN_MAX - 1);
 
-        // Fake state store for vcan0/1/2
+        // Fake state store for vcan0/1/2/3/4
         private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, IfaceState> _state = new(StringComparer.Ordinal);
 
         private sealed class IfaceState
@@ -135,6 +135,30 @@ namespace CanKit.Adapter.SocketCAN.Native
 
         public static int can_get_ctrlmode(string name, out can_ctrlmode cm)
         {
+            // Real vcan interfaces can omit IFLA_CAN_CTRLMODE. libsocketcan
+            // returns -1 for that case without setting errno.
+            if (name == "vcan3")
+            {
+                Libc.SetErrno(0);
+                cm = default;
+                return -1;
+            }
+
+            // Existing interfaces can also fail for a real native error. Keep this
+            // distinct from the missing-ctrlmode case so capability tests verify it.
+            if (name == "vcan4")
+            {
+                Libc.SetErrno(Libc.EACCES);
+                cm = default;
+                return -1;
+            }
+
+            if (Libc.if_nametoindex(name) == 0)
+            {
+                cm = default;
+                return -1;
+            }
+
             var s = Get(name);
             cm = new can_ctrlmode { mask = s.CtrlMask, flags = s.CtrlFlags };
             return 0;

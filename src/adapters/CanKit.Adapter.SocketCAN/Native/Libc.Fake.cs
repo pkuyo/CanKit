@@ -27,6 +27,7 @@ internal static class Libc
 
     public const int EOPNOTSUPP = 95;
     public const int EPERM = 1;
+    public const int EINVAL = 22;
     public const int EINTR = 4;
     public const int EAGAIN = 11;
     public const int EACCES = 13;
@@ -330,6 +331,11 @@ internal static class Libc
         public int IfIndex;
         public readonly ConcurrentQueue<byte[]> Rx = new();
         public readonly List<EpollFd> Watchers = new();
+        public readonly HashSet<(uint CanId, bool IsFd)> TxOps = new();
+        // Cancels the in-flight RunBcmJobAsync loop. Real Linux BCM stops emission on
+        // TX_DELETE; without this, Fake jobs keep EmitFrame()'ing after Stop() and
+        // pollute same-bitrate raw sockets used by parallel matrix tests.
+        public CancellationTokenSource JobCts;
     }
 
     private sealed class CanInterface
@@ -368,12 +374,16 @@ internal static class Libc
             ["vcan0"] = new CanInterface("vcan0", 1),
             ["vcan1"] = new CanInterface("vcan1", 2),
             ["vcan2"] = new CanInterface("vcan2", 3),
+            ["vcan3"] = new CanInterface("vcan3", 4),
+            ["vcan4"] = new CanInterface("vcan4", 5),
         };
         public static readonly Dictionary<uint, CanInterface> IfacesByIndex = new Dictionary<uint, CanInterface>
         {
             [1] = IfacesByName["vcan0"],
             [2] = IfacesByName["vcan1"],
             [3] = IfacesByName["vcan2"],
+            [4] = IfacesByName["vcan3"],
+            [5] = IfacesByName["vcan4"],
         };
 
         [ThreadStatic]
@@ -598,6 +608,12 @@ internal static class Libc
                 var head = Unsafe.Read<bcm_msg_head>(buf);
                 if (head.opcode == TX_SETUP)
                 {
+                    if (head.nframes < 1)
+                    {
+                        World.Errno = EINVAL;
+                        return -1;
+                    }
+
                     // Interpret frame immediately following head if present
                     int headSize = Marshal.SizeOf<bcm_msg_head>();
                     var ptr = (byte*)buf + headSize;
@@ -606,9 +622,17 @@ internal static class Libc
                     var ifc = World.IfacesByIndex[(uint)b.IfIndex];
                     bool isFd = (head.flags & CAN_FD_FRAME) != 0;
                     int frameSize = isFd ? Marshal.SizeOf<canfd_frame>() : Marshal.SizeOf<can_frame>();
+                    if ((long)count != headSize + (long)head.nframes * frameSize)
+                    {
+                        World.Errno = EINVAL;
+                        return -1;
+                    }
+
                     var payload = new byte[frameSize];
                     if (head.nframes > 0 && (long)count >= headSize + frameSize)
                         Marshal.Copy((IntPtr)ptr, payload, 0, frameSize);
+                    lock (b.TxOps)
+                        b.TxOps.Add((canId, isFd));
 
                     // configure periodic loop
                     var period = ToTimeSpan(head.ival1);
@@ -616,13 +640,28 @@ internal static class Libc
                     if (inf && period == TimeSpan.Zero) period = ToTimeSpan(head.ival2);
                     int remaining = inf ? -1 : (int)head.count;
 
+                    // Replace any previous job on this BCM socket (TX_SETUP is upsert).
+                    CancelBcmJob(b);
+                    var cts = new CancellationTokenSource();
+                    b.JobCts = cts;
+
                     // launch a background sender for this job
-                    _ = RunBcmJobAsync(b, canId, payload, isFd, period, remaining);
+                    _ = RunBcmJobAsync(b, canId, payload, isFd, period, remaining, cts.Token);
                     return (long)(headSize + (head.nframes > 0 ? frameSize : 0));
                 }
                 else if (head.opcode == TX_DELETE)
                 {
-                    // No persistent state stored; treat as best-effort stop by enqueuing a TX_EXPIRED signal
+                    bool isFd = (head.flags & CAN_FD_FRAME) != 0;
+                    lock (b.TxOps)
+                    {
+                        if (!b.TxOps.Remove((head.can_id, isFd)))
+                        {
+                            World.Errno = EINVAL;
+                            return -1;
+                        }
+                    }
+
+                    CancelBcmJob(b);
                     var done = new bcm_msg_head { opcode = TX_EXPIRED };
                     var bytes = StructureToBytes(done);
                     b.Rx.Enqueue(bytes);
@@ -631,8 +670,18 @@ internal static class Libc
                 }
                 else if (head.opcode == TX_READ)
                 {
+                    bool isFd = (head.flags & CAN_FD_FRAME) != 0;
+                    lock (b.TxOps)
+                    {
+                        if (!b.TxOps.Contains((head.can_id, isFd)))
+                        {
+                            World.Errno = EINVAL;
+                            return -1;
+                        }
+                    }
+
                     // Return minimal TX_STATUS with 0 remaining (non-persistent for simplicity)
-                    var status = new bcm_msg_head { opcode = TX_STATUS, count = 0 };
+                    var status = new bcm_msg_head { opcode = TX_STATUS, flags = head.flags, count = 0 };
                     b.Rx.Enqueue(StructureToBytes(status));
                     return (long)Marshal.SizeOf<bcm_msg_head>();
                 }
@@ -654,26 +703,59 @@ internal static class Libc
         }
     }
 
-    private static async Task RunBcmJobAsync(BcmSocketFd bc, uint canIdOrPayloadMarker, byte[] payload, bool isFd, TimeSpan period, int remaining)
+    private static void CancelBcmJob(BcmSocketFd bc)
+    {
+        var cts = bc.JobCts;
+        bc.JobCts = null;
+        if (cts is null) return;
+        try { cts.Cancel(); } catch { /* ignore */ }
+        try { cts.Dispose(); } catch { /* ignore */ }
+    }
+
+    private static async Task RunBcmJobAsync(
+        BcmSocketFd bc,
+        uint canIdOrPayloadMarker,
+        byte[] payload,
+        bool isFd,
+        TimeSpan period,
+        int remaining,
+        CancellationToken token)
     {
         // Encode id into payload if not provided
         _ = canIdOrPayloadMarker;
         if (period <= TimeSpan.Zero) period = TimeSpan.FromMilliseconds(1);
         int left = remaining;
-        while (left != 0)
+        try
         {
-            try
+            while (left != 0 && !token.IsCancellationRequested)
             {
-                EmitFrame(bc.IfIndex, payload, isFd, sourceFd: null);
-                if (left > 0) left--;
+                try
+                {
+                    EmitFrame(bc.IfIndex, payload, isFd, sourceFd: null);
+                    if (left > 0) left--;
+                }
+                catch { /* ignore */ }
+
+                try
+                {
+                    await System.Threading.Tasks.Task.Delay(period, token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
             }
-            catch { /* ignore */ }
-            await System.Threading.Tasks.Task.Delay(period).ConfigureAwait(false);
         }
-        // signal complete
-        var done = new bcm_msg_head { opcode = TX_EXPIRED };
-        bc.Rx.Enqueue(StructureToBytes(done));
-        SignalWatchers(bc);
+        finally
+        {
+            if (!token.IsCancellationRequested)
+            {
+                // Natural completion (finite count exhausted).
+                var done = new bcm_msg_head { opcode = TX_EXPIRED };
+                bc.Rx.Enqueue(StructureToBytes(done));
+                SignalWatchers(bc);
+            }
+        }
     }
 
     private static void EmitFrame(int srcIfIndex, byte[] payload, bool isFd, RawSocketFd sourceFd = null)
@@ -904,6 +986,7 @@ internal static class Libc
         return errno switch
         {
             EAGAIN => "Resource temporarily unavailable",
+            EINVAL => "Invalid argument",
             EINTR => "Interrupted system call",
             EACCES => "Permission denied",
             EOPNOTSUPP => "Operation not supported",
@@ -918,6 +1001,8 @@ internal static class Libc
     }
 
     public static int Errno() => World.Errno;
+
+    public static void SetErrno(int errno) => World.Errno = errno;
 
     public static void ThrowErrno(string operation, string message, int errno)
     {
