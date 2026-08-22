@@ -459,7 +459,9 @@ public static class ZLGCAN
         DequeueQueue();
         while (count < len)
         {
-            var remaining = wait_time + start - Environment.TickCount;
+            var remaining = wait_time == -1
+                ? -1
+                : wait_time + start - Environment.TickCount;
             if (remaining <= 0 && wait_time != -1) break;
             ch.RxEvtClassic.WaitOne(TimeSpan.FromMilliseconds(Math.Min(remaining, 10)));
             DequeueQueue();
@@ -486,7 +488,9 @@ public static class ZLGCAN
         DequeueQueue();
         while (count < len)
         {
-            var remaining = wait_time + start - Environment.TickCount;
+            var remaining = wait_time == -1
+                ? -1
+                : wait_time + start - Environment.TickCount;
             if (remaining <= 0 && wait_time != -1) break;
             ch.RxEvtFd.WaitOne(TimeSpan.FromMilliseconds(Math.Min(remaining, 10)));
             DequeueQueue();
@@ -515,7 +519,9 @@ public static class ZLGCAN
         DequeueQueue();
         while (count < len)
         {
-            var remaining = wait_time + start - Environment.TickCount;
+            var remaining = wait_time == -1
+                ? -1
+                : wait_time + start - Environment.TickCount;
             if (remaining <= 0 && wait_time != -1) break;
             dev.MergeRxEvt.WaitOne(TimeSpan.FromMilliseconds(Math.Min(remaining, 10)));
             DequeueQueue();

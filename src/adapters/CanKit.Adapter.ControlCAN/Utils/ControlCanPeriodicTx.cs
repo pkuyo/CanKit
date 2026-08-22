@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using CanKit.Abstractions.API.Can;
 using CanKit.Abstractions.API.Can.Definitions;
 using CanKit.Abstractions.API.Common;
@@ -42,21 +42,30 @@ public sealed class ControlCanPeriodicTx : IPeriodicTx
         _retry = bus.Options.TxRetryPolicy == TxRetryPolicy.AlwaysRetry;
         // Unique index (best effort, ushort range)
         _index = (ushort)bus.GetAutoSendIndex();
-
-        // Fire once immediately if requested
-        if (options.FireImmediately)
+        try
         {
-            try
+            // Fire once immediately if requested
+            if (options.FireImmediately)
             {
-                _ = _bus.Transmit(frame);
+                try
+                {
+                    _ = _bus.Transmit(frame);
+                }
+                catch
+                {
+                }
             }
-            catch
-            {
-            }
-        }
 
-        // Program device auto transmit; repeat is managed by software monitor if finite
-        ApplyHardware(true, _frame, Period);
+            // Program device auto transmit; repeat is managed by software monitor if finite
+            ApplyHardware(true, _frame, Period);
+        }
+        catch
+        {
+            // A constructor that throws is never Disposed by the caller: return the
+            // auto-send slot already taken so failed attempts cannot exhaust the pool.
+            try { _bus.FreeAutoSendIndex(_index); } catch { /* ignored */ }
+            throw;
+        }
     }
 
 

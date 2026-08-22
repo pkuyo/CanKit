@@ -45,19 +45,28 @@ public sealed class ZlgPeriodicTx : IPeriodicTx
 
         // Unique index (best effort, ushort range)
         _index = (ushort)bus.GetAutoSendIndex();
-
-        // Fire once immediately if requested
-        if (options.FireImmediately)
+        try
         {
-            try
+            // Fire once immediately if requested
+            if (options.FireImmediately)
             {
-                _ = _bus.Transmit(new[] { frame }.AsSpan(), 0);
+                try
+                {
+                    _ = _bus.Transmit(new[] { frame }.AsSpan(), 0);
+                }
+                catch { }
             }
-            catch { }
-        }
 
-        // Program device auto transmit; repeat is managed by software monitor if finite
-        ApplyHardware(true, _frame, Period);
+            // Program device auto transmit; repeat is managed by software monitor if finite
+            ApplyHardware(true, _frame, Period);
+        }
+        catch
+        {
+            // A constructor that throws is never Disposed by the caller: return the
+            // auto-send slot already taken so failed attempts cannot exhaust the pool.
+            try { _bus.FreeAutoSendIndex(_index); } catch { /* ignored */ }
+            throw;
+        }
     }
 
     public TimeSpan Period { get; private set; }
