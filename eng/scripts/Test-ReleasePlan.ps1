@@ -52,9 +52,8 @@ if ($null -eq $graph.versionBumps -or @($graph.versionBumps).Count -eq 0) {
 
 $changedFiles = @($graph.changedFiles | ForEach-Object { Normalize-RelativePath ([string]$_) })
 
-# 只有拿得到可靠 BaseRef 时，才强制要求文件必须在本次 diff 里
-$hasReliableBaseRef = -not [string]::IsNullOrWhiteSpace($BaseRef) -and $BaseRef -notmatch "^0+$"
-$canValidateChangeSet = $hasReliableBaseRef -and $changedFiles.Count -gt 0
+# Require release metadata in the diff only when BaseRef is reliable.
+$canValidateChangeSet = (-not [string]::IsNullOrWhiteSpace($BaseRef)) -and ($BaseRef -notmatch "^0+$") -and ($changedFiles.Count -gt 0)
 
 if ($canValidateChangeSet) {
     if (-not (Test-FileIncludedInChangeSet -ChangedFiles $changedFiles -Path "CHANGELOG.md")) {

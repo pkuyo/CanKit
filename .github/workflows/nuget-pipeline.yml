@@ -113,11 +113,12 @@ jobs:
     needs: pack_validate
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && needs.pack_validate.outputs.has_version_bumps == 'true'
     runs-on: windows-latest
+    permissions:
+      contents: read
+      id-token: write
     env:
       DOTNET_NOLOGO: true
       DOTNET_CLI_TELEMETRY_OPTOUT: true
-      NUGET_SOURCE: ${{ vars.NUGET_SOURCE }}
-      NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -133,21 +134,65 @@ jobs:
           name: nuget-artifacts
           path: artifacts/nuget
 
-      - name: Verify publish credentials
-        shell: pwsh
-        run: |
-          if ([string]::IsNullOrWhiteSpace($env:NUGET_SOURCE)) {
-            throw "Repository variable NUGET_SOURCE is required."
-          }
-
-          if ([string]::IsNullOrWhiteSpace($env:NUGET_API_KEY)) {
-            throw "Repository secret NUGET_API_KEY is required."
-          }
+      - name: Login to NuGet.org with trusted publishing
+        id: nuget-login
+        uses: NuGet/login@v1
+        with:
+          user: ${{ secrets.NUGET_USER }}
 
       - name: Publish bumped packages
         shell: pwsh
+        env:
+          NUGET_API_KEY: ${{ steps.nuget-login.outputs.NUGET_API_KEY }}
         run: |
           pwsh -File eng/scripts/Publish-NuGetPackages.ps1 `
             -VersionBumpMatrixJson '${{ needs.pack_validate.outputs.version_bump_matrix }}' `
-            -Source $env:NUGET_SOURCE `
+            -Source 'https://api.nuget.org/v3/index.json' `
             -ApiKey $env:NUGET_API_KEY
+
+  release:
+    needs:
+      - pack_validate
+      - publish
+    if: needs.publish.result == 'success'
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download NuGet artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: nuget-artifacts
+          path: artifacts/nuget
+
+      - name: Prepare GitHub Release
+        shell: pwsh
+        run: |
+          pwsh -File eng/scripts/New-GitHubRelease.ps1 `
+            -VersionBumpMatrixJson '${{ needs.pack_validate.outputs.version_bump_matrix }}' `
+            -Tag '${{ github.ref_name }}'
+
+      - name: Create GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $assets = @(Get-ChildItem artifacts/release -File | ForEach-Object { $_.FullName })
+          $arguments = @(
+            'release', 'create', $env:GITHUB_REF_NAME
+            '--verify-tag'
+            '--title', "CanKit $env:GITHUB_REF_NAME"
+            '--notes-file', 'artifacts/github-release-notes.md'
+          )
+
+          if ($env:GITHUB_REF_NAME.Contains('-')) {
+            $arguments += '--prerelease'
+          }
+
+          & gh @arguments @assets
+          if ($LASTEXITCODE -ne 0) {
+            throw "GitHub Release creation failed."
+          }

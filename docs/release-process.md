@@ -29,17 +29,28 @@ Package-level notes:
 
 ## GitHub Automation
 
-`nuget-pipeline.yml` performs four stages:
+`nuget-pipeline.yml` performs five stages:
 
 1. Detect version bumps and impacted packages from git history.
 2. Restore, pack, and validate all NuGet artifacts.
 3. Verify release metadata when a version bump is present.
 4. Publish only the packages whose versions changed.
+5. Create a GitHub Release containing only the published packages and their symbol packages.
 
-Required repository secrets and variables:
+Required GitHub repository secret:
 
-- Secret `NUGET_API_KEY`
-- Variable `NUGET_SOURCE` such as `https://api.nuget.org/v3/index.json`
+- `NUGET_USER`: the nuget.org profile username (not an email address).
+
+Configure a nuget.org Trusted Publishing policy with:
+
+- Repository owner: `pkuyo`
+- Repository: `CanKit`
+- Workflow file: `nuget-pipeline.yml`
+- Environment: leave empty
+
+The publish job uses GitHub OIDC to exchange its identity for a short-lived NuGet API key. A long-lived `NUGET_API_KEY` secret and a `NUGET_SOURCE` variable are not required.
+
+GitHub Release notes are assembled from the package note files for the current version bump matrix. Packages marked with `"publish": false` in `eng/packages.json` are excluded from the NuGet push, GitHub Release description, and GitHub Release assets.
 
 Recommended repository settings:
 
@@ -52,5 +63,6 @@ Recommended repository settings:
 1. Update one or more version properties in `eng/package-versions.props`.
 2. Append the release entry to `CHANGELOG.md`.
 3. Add package note files under `eng/release-notes/`.
-4. Push to the default branch.
-5. GitHub Actions packs, validates, and publishes the bumped packages.
+4. Merge the release changes into the default branch.
+5. Create and push a `v*` tag, such as `v0.5.6`.
+6. GitHub Actions packs, validates, publishes the bumped packages, and creates the GitHub Release.

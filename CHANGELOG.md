@@ -1,5 +1,52 @@
 # Changelog
 
+## 0.5.6
+
+Published packages:
+
+* CanKit.Abstractions 0.5.6
+* CanKit.Core 0.5.6
+* CanKit.Adapter.ControlCAN 0.5.6
+* CanKit.Adapter.Kvaser 0.5.6
+* CanKit.Adapter.PCAN 0.5.6
+* CanKit.Adapter.SocketCAN 0.5.6
+* CanKit.Adapter.Vector 0.5.6
+* CanKit.Adapter.Virtual 0.5.6
+* CanKit.Adapter.ZLG 0.5.6
+
+### Added
+
+* None.
+
+### Changed
+
+* `CanReceiveData.SystemTimestamp` can now be set during object initialization.
+* Reworked Windows precision delays to use safe wait handles, respond directly to cancellation, and fall back when high-resolution waitable timers are unavailable.
+
+### Fixed
+
+* Concurrent registration, resolution, factory lookup, and endpoint enumeration in `CanRegistry` are now synchronized and enumeration uses stable snapshots.
+* SocketCAN BCM periodic transmission now owns its frame memory, releases resources after failed setup, handles finite and infinite remaining counts reliably, and aligns update, query, and delete operations with Linux BCM behavior.
+* SocketCAN now falls back to static capabilities when an existing interface does not expose CAN controller mode information.
+* ZLG cloud connection no longer recurses through its asynchronous entry point, cloud names use ANSI native marshalling, and bus initialization tolerates unsupported reset operations.
+* ControlCAN and ZLG periodic transmission return reserved auto-send indexes when construction fails.
+* ZLG infinite receive waits are preserved by the fake native backend.
+* One-shot batch integration tests now receive concurrently with transmission and enforce their intended timeout.
+
+### Performance
+
+* None.
+
+### Breaking Changes
+
+* None.
+
+### Contributors
+
+Thanks to the following contributors for this release:
+
+* [@dborgards](https://github.com/dborgards).
+
 ## 0.5.5
 
 Published packages:
