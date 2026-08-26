@@ -2,6 +2,8 @@
 
 This guide walks through installing CanKit, choosing an adapter, opening a bus, and sending/receiving frames. English is the primary language for docs. If you prefer Chinese, use the Chinese README (README_CN.md) and Chinese docs when available.
 
+Building from source requires the .NET SDK 10.x pinned by `global.json`. Packages target `netstandard2.0`, `net8.0` / `net8.0-windows`, and `net10.0` / `net10.0-windows`.
+
 ## 1) Install Packages
 
 Install the core package, plus one or more adapter packages. Example package IDs (use published IDs in your feed):
