@@ -2,7 +2,6 @@
     <PropertyGroup>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
-        <LangVersion>12</LangVersion>
         <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
         <Version>$(CanKitAdapterVirtualVersion)</Version>
         <Description>Virtual in-process CAN adapter for CanKit for development, testing, and simulation.</Description>

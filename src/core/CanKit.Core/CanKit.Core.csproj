@@ -21,9 +21,9 @@
     <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup Condition="'$(TargetFramework)'=='netstandard2.0'">
-	<PackageReference Include="System.Memory" Version="4.5.4" />
+	<PackageReference Include="System.Memory" Version="4.6.3" />
     <PackageReference Include="System.Runtime.CompilerServices.Unsafe" Version="6.1.2" />
-    <PackageReference Include="System.Threading.Channels" Version="9.0.10" />
+    <PackageReference Include="System.Threading.Channels" Version="10.0.11" />
   </ItemGroup>
 
 

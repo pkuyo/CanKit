@@ -363,4 +363,4 @@ MigrationBackup/
 FodyWeavers.xsd
 /.idea
 
-global.json
+# SDK pin lives in the repository (see global.json). Do not ignore it.

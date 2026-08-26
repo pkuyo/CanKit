@@ -2,7 +2,6 @@
     <PropertyGroup>
         <Nullable>enable</Nullable>
         <ImplicitUsings>enable</ImplicitUsings>
-        <LangVersion>12</LangVersion>
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
         <Version>$(CanKitAdapterPCANVersion)</Version>
         <Description>Peak PCAN (PCAN-Basic) adapter for CanKit, providing unified bus access to PCAN hardware on Windows.</Description>
