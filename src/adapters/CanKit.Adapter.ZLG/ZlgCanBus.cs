@@ -174,7 +174,7 @@ namespace CanKit.Adapter.ZLG
             ThrowIfDisposed();
             return _transceiver.Transmit(this, frames);
         }
- mar
+
         public int Transmit(ReadOnlySpan<CanFrame> frames, int _ = 0)
         {
             ThrowIfDisposed();
