@@ -57,13 +57,8 @@ internal static class ZlgEndpoint
 
     public static ICanBus Open(CanEndpoint ep, Action<IBusInitOptionsConfigurator>? configure)
     {
-        // 路径匹配 DeviceType.Id 或其去前缀的尾部，例如：
-        //   zlg://ZLG.ZCAN_USBCANFD_200U?index=0#ch1
-        //   zlg://ZCAN_USBCANFD_200U?index=0#ch1
-        //   zlg://USBCANFD-200U?index=0#ch1
         var (provider, devOpt, _, chOpt, chCfg) = Prepare(ep, configure);
 
-        // 获取设备租约（同设备的多个通道共享）
         var (device, lease) = ZlgDeviceMultiplexer.Acquire(devOpt.DeviceType, ((ZlgDeviceOptions)devOpt).DeviceIndex, () =>
         {
             var d = provider.Factory.CreateDevice(devOpt);
@@ -94,7 +89,6 @@ internal static class ZlgEndpoint
         string candidate = "ZLG." + normalized;
         if (DeviceType.TryFromId(candidate, out v)) return v;
 
-        // fallback: suffix match over all types
         var all = DeviceType.List();
         var m = all.FirstOrDefault(t => t.Id.EndsWith(normalized, StringComparison.OrdinalIgnoreCase))
                 ?? all.FirstOrDefault(t => t.Id.IndexOf(normalized, StringComparison.OrdinalIgnoreCase) >= 0);
@@ -110,44 +104,50 @@ internal static class ZlgEndpoint
         }
         catch
         {
-            // best effort; ignore
         }
     }
 
     public static unsafe IEnumerable<BusEndpointInfo> Enumerate()
     {
-        if (!ZLGCAN.ZCLOUD_IsConnected()) return [];
-        var userData = Marshal.PtrToStructure<ZCLOUD_USER_DATA>(ZLGCAN.ZCLOUD_GetUserData());
-        List<BusEndpointInfo> infos = new();
-        for (ulong i = 0; i < userData.devCnt; i++)
+        try
         {
-            var device = userData.devices[i];
-            for (var j = 0; j < device.channelCnt; j++)
+            if (!ZLGCAN.ZCLOUD_IsConnected()) return [];
+            var userData = Marshal.PtrToStructure<ZCLOUD_USER_DATA>(ZLGCAN.ZCLOUD_GetUserData());
+            List<BusEndpointInfo> infos = new();
+            for (ulong i = 0; i < userData.devCnt; i++)
             {
-                var chn = device.channels[j];
-                infos.Add(new BusEndpointInfo()
+                var device = userData.devices[i];
+                for (var j = 0; j < device.channelCnt; j++)
                 {
-                    Scheme = "zlg",
-                    DeviceType = ZlgDeviceType.ZCAN_CLOUD,
-                    Endpoint = $"zlg://ZCAN_CLOUD?index={device.devIndex}#ch{j}",
-                    Title = $"{device.name}-Channel{j} (ZLGCloud)",
-                    Meta =  new Dictionary<string, string>
-                {
-                    { "devIndex" , $"{device.devIndex}" },
-                    { "chnIndex" , $"{j}" },
-                    { "devId" , $"{device.id}" },
-                    { "chnId" , $"{chn}" },
-                    { "devType" , $"{device.type}" },
-                    { "chnType" , $"{chn.type}" }, // 0-CAN，1-ISO CANFD，2-Non-ISO CANFD
-                    { "status" , $"{device.status}" },// 0: online, 1: offline
-                    { "name" , $"{device.name}" },
-                    { "serial" , $"{device.serial}" },
-                    { "fwVer" , $"{device.fwVer}" },
-                    { "hwVer" , $"{device.hwVer}" },
+                    var chn = device.channels[j];
+                    infos.Add(new BusEndpointInfo()
+                    {
+                        Scheme = "zlg",
+                        DeviceType = ZlgDeviceType.ZCAN_CLOUD,
+                        Endpoint = $"zlg://ZCAN_CLOUD?index={device.devIndex}#ch{j}",
+                        Title = $"{device.name}-Channel{j} (ZLGCloud)",
+                        Meta =  new Dictionary<string, string>
+                    {
+                        { "devIndex" , $"{device.devIndex}" },
+                        { "chnIndex" , $"{j}" },
+                        { "devId" , $"{device.id}" },
+                        { "chnId" , $"{chn}" },
+                        { "devType" , $"{device.type}" },
+                        { "chnType" , $"{chn.type}" },
+                        { "status" , $"{device.status}" },
+                        { "name" , $"{device.name}" },
+                        { "serial" , $"{device.serial}" },
+                        { "fwVer" , $"{device.fwVer}" },
+                        { "hwVer" , $"{device.hwVer}" },
+                    }
+                    });
                 }
-                });
             }
+            return infos;
         }
-        return infos;
+        catch
+        {
+            return [];
+        }
     }
 }
