@@ -3,20 +3,22 @@
     <IsPackable>false</IsPackable>
     <AssemblyName>CanKit.Tests</AssemblyName>
     <RootNamespace>CanKit.Tests</RootNamespace>
-    <LangVersion>12</LangVersion>
+    <LangVersion>14</LangVersion>
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks Condition="'$(Configuration)' == 'Fake'">true</AllowUnsafeBlocks>
     <DefineConstants Condition="'$(Configuration)' == 'Fake'">$(DefineConstants);FAKE</DefineConstants>
-    <TargetFrameworks>net8.0;net48</TargetFrameworks>
+    <!-- net48 is kept on purpose for Windows hardware tests against .NET Framework. -->
+    <TargetFrameworks>net8.0;net10.0;net48</TargetFrameworks>
     <Configurations>Debug;Release;Fake</Configurations>
     <Platforms>AnyCPU;X86;X64</Platforms>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
-    <PackageReference Include="xunit" Version="2.9.0" />
-    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
-    <PackageReference Include="FluentAssertions" Version="6.12.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.9.0" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5" />
+    <!-- FluentAssertions v8+ is commercial (Xceed) for commercial use; stay on the last 7.x OSS line. -->
+    <PackageReference Include="FluentAssertions" Version="[7.2.2,8.0.0)" />
   </ItemGroup>
 
   <ItemGroup>

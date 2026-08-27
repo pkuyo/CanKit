@@ -2,6 +2,8 @@
 
 本文介绍如何安装 CanKit、选择适配器、打开总线并完成基本的发送/接收。若需英文版文档，请参见 ../getting-started.md。
 
+从源码构建需要 `global.json` 锁定的 .NET SDK 10.x。发布包面向 `netstandard2.0`、`net8.0` / `net8.0-windows` 以及 `net10.0` / `net10.0-windows`。
+
 ## 1）安装 NuGet 包
 
 安装核心包，并按需安装一个或多个适配器包：

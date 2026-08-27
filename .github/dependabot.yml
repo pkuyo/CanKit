@@ -1,0 +1,19 @@
+version: 2
+updates:
+  - package-ecosystem: nuget
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    ignore:
+      # FluentAssertions v8+ moved to a commercial license (Xceed) for commercial use.
+      - dependency-name: FluentAssertions
+        versions: [">= 8.0.0"]
+      # Stay on xunit v2; a move to xunit v3 is a separate discussion.
+      - dependency-name: xunit
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
