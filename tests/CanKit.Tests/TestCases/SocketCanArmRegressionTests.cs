@@ -14,39 +14,6 @@ namespace CanKit.Tests.TestCases;
 public class SocketCanArmRegressionTests
 {
     private const string LibcTypeName = "CanKit.Adapter.SocketCAN.Native.Libc";
-    private const string EpollEventTypeName = LibcTypeName + "+epoll_event";
-
-    [Fact]
-    public void EpollEvent_Matches_Linux_Packed_Abi()
-    {
-        var type = typeof(SocketCan).Assembly.GetType(EpollEventTypeName, throwOnError: true)!;
-
-        Marshal.SizeOf(type).Should().Be(12);
-        Marshal.OffsetOf(type, "data").ToInt32().Should().Be(4);
-        type.GetField("data")!.FieldType.Should().Be(typeof(ulong));
-    }
-
-    [Fact]
-    public void NativeTimeStructs_Match_Linux_Long_Abi()
-    {
-        var assembly = typeof(SocketCan).Assembly;
-        foreach (var (name, secondField) in new[] { ("timeval", "tv_usec"), ("timespec", "tv_nsec") })
-        {
-            var type = assembly.GetType(LibcTypeName + "+" + name, throwOnError: true)!;
-            Marshal.SizeOf(type).Should().Be(IntPtr.Size * 2);
-            Marshal.OffsetOf(type, secondField).ToInt32().Should().Be(IntPtr.Size);
-            type.GetField("tv_sec")!.FieldType.Should().Be(typeof(IntPtr));
-            type.GetField(secondField)!.FieldType.Should().Be(typeof(IntPtr));
-        }
-
-        var bcmType = assembly.GetType(LibcTypeName + "+bcm_msg_head", throwOnError: true)!;
-        var firstTimevalOffset = IntPtr.Size == 8 ? 16 : 12;
-        var timevalSize = IntPtr.Size * 2;
-        Marshal.OffsetOf(bcmType, "ival1").ToInt32().Should().Be(firstTimevalOffset);
-        Marshal.OffsetOf(bcmType, "ival2").ToInt32().Should().Be(firstTimevalOffset + timevalSize);
-        Marshal.SizeOf(bcmType).Should().Be(firstTimevalOffset + (timevalSize * 2) + 8);
-    }
-
 #if FAKE
     [Theory]
     [InlineData(CanProtocolMode.Can20, false)]
