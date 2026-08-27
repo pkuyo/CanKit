@@ -1,8 +1,6 @@
 using System;
 using System.Linq;
 using System.Reflection;
-using System.Runtime.InteropServices;
-using System.Threading.Tasks;
 using CanKit.Abstractions.API.Can.Definitions;
 using CanKit.Abstractions.API.Common.Definitions;
 using CanKit.Adapter.SocketCAN;
@@ -11,9 +9,10 @@ using Xunit;
 
 namespace CanKit.Tests.TestCases;
 
-public class SocketCanArmRegressionTests
+public class SocketCanTransmitRegressionTests
 {
     private const string LibcTypeName = "CanKit.Adapter.SocketCAN.Native.Libc";
+
 #if FAKE
     [Theory]
     [InlineData(CanProtocolMode.Can20, false)]
@@ -75,51 +74,6 @@ public class SocketCanArmRegressionTests
         var method = type.GetMethod("FailNextSendWith", BindingFlags.Static | BindingFlags.NonPublic)!;
         var errno = (int)type.GetField("ENOBUFS")!.GetRawConstantValue()!;
         method.Invoke(null, [errno]);
-    }
-#endif
-
-#if !FAKE
-    [Fact]
-    public async Task Arm32_Native_SocketCan_Receives_And_Batch_Transmits()
-    {
-        if (!string.Equals(
-                Environment.GetEnvironmentVariable("CANKIT_SOCKETCAN_ARM32_CI"),
-                "true",
-                StringComparison.OrdinalIgnoreCase))
-        {
-            return;
-        }
-
-        RuntimeInformation.ProcessArchitecture.Should().Be(Architecture.Arm);
-
-        using var rx = SocketCan.Open("vcan0", cfg =>
-        {
-            cfg.SetProtocolMode(CanProtocolMode.Can20).Baud(500_000);
-            cfg.NetLink(false);
-        });
-        using var tx = SocketCan.Open("vcan0", cfg =>
-        {
-            cfg.SetProtocolMode(CanProtocolMode.Can20).Baud(500_000);
-            cfg.NetLink(false);
-        });
-
-        var frames = CreateFrames(CanProtocolMode.Can20, 20);
-        var receiveTask = rx.ReceiveAsync(frames.Length, 3000);
-
-        tx.Transmit(frames, 3000).Should().Be(frames.Length);
-
-        var received = await receiveTask;
-        try
-        {
-            received.Should().HaveCount(frames.Length);
-            received.Select(static item => item.CanFrame.ID)
-                .Should().Equal(frames.Select(static frame => frame.ID));
-        }
-        finally
-        {
-            foreach (var item in received)
-                item.CanFrame.Dispose();
-        }
     }
 #endif
 
