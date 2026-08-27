@@ -19,6 +19,7 @@ namespace CanKit.Adapter.ZLG
 
         public ZlgCanDevice(IDeviceOptions options)
         {
+            ZlgPlatformGuard.EnsureSupported();
             Options = new ZlgDeviceRTOptionsConfigurator();
             Options.Init((ZlgDeviceOptions)options);
             _options = options;

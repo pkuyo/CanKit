@@ -15,6 +15,7 @@ public sealed class ControlCanDevice : ICanDevice<ControlCanDeviceRTOptionsConfi
 
     public ControlCanDevice(IDeviceOptions options)
     {
+        ControlCanPlatformGuard.EnsureSupported();
         Options = new ControlCanDeviceRTOptionsConfigurator();
         Options.Init((ControlCanDeviceOptions)options);
         _options = options;
