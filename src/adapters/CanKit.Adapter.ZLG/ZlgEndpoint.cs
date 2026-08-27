@@ -57,8 +57,13 @@ internal static class ZlgEndpoint
 
     public static ICanBus Open(CanEndpoint ep, Action<IBusInitOptionsConfigurator>? configure)
     {
+        // 路径匹配 DeviceType.Id 或其去前缀的尾部，例如：
+        //   zlg://ZLG.ZCAN_USBCANFD_200U?index=0#ch1
+        //   zlg://ZCAN_USBCANFD_200U?index=0#ch1
+        //   zlg://USBCANFD-200U?index=0#ch1
         var (provider, devOpt, _, chOpt, chCfg) = Prepare(ep, configure);
 
+        // 获取设备租约（同设备的多个通道共享）
         var (device, lease) = ZlgDeviceMultiplexer.Acquire(devOpt.DeviceType, ((ZlgDeviceOptions)devOpt).DeviceIndex, () =>
         {
             var d = provider.Factory.CreateDevice(devOpt);
@@ -89,6 +94,7 @@ internal static class ZlgEndpoint
         string candidate = "ZLG." + normalized;
         if (DeviceType.TryFromId(candidate, out v)) return v;
 
+        // fallback: suffix match over all types
         var all = DeviceType.List();
         var m = all.FirstOrDefault(t => t.Id.EndsWith(normalized, StringComparison.OrdinalIgnoreCase))
                 ?? all.FirstOrDefault(t => t.Id.IndexOf(normalized, StringComparison.OrdinalIgnoreCase) >= 0);
@@ -104,6 +110,7 @@ internal static class ZlgEndpoint
         }
         catch
         {
+            // best effort; ignore
         }
     }
 
@@ -133,8 +140,8 @@ internal static class ZlgEndpoint
                         { "devId" , $"{device.id}" },
                         { "chnId" , $"{chn}" },
                         { "devType" , $"{device.type}" },
-                        { "chnType" , $"{chn.type}" },
-                        { "status" , $"{device.status}" },
+                        { "chnType" , $"{chn.type}" }, // 0-CAN，1-ISO CANFD，2-Non-ISO CANFD
+                        { "status" , $"{device.status}" },// 0: online, 1: offline
                         { "name" , $"{device.name}" },
                         { "serial" , $"{device.serial}" },
                         { "fwVer" , $"{device.fwVer}" },
@@ -147,6 +154,7 @@ internal static class ZlgEndpoint
         }
         catch
         {
+            // Best-effort discovery: missing native SDK must not fail enumeration.
             return [];
         }
     }
