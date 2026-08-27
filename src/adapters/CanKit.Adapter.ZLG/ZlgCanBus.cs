@@ -59,6 +59,7 @@ namespace CanKit.Adapter.ZLG
         private readonly CanBusExceptionDispatcher _exceptions;
         internal ZlgCanBus(ZlgCanDevice device, IBusOptions options, ITransceiver transceiver, ICanModelProvider provider)
         {
+            ZlgPlatformGuard.EnsureSupported();
             _devicePtr = device.NativeHandler.DangerousGetHandle();
             _deviceType = (ZlgDeviceKind)((ZlgDeviceType)device.Options.DeviceType).Code;
 
@@ -173,7 +174,7 @@ namespace CanKit.Adapter.ZLG
             ThrowIfDisposed();
             return _transceiver.Transmit(this, frames);
         }
-
+ mar
         public int Transmit(ReadOnlySpan<CanFrame> frames, int _ = 0)
         {
             ThrowIfDisposed();
