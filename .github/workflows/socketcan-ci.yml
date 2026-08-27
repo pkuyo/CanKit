@@ -3,18 +3,26 @@ name: CI-adapter-socketcan
 on:
   push:
     paths:
+      - '.github/workflows/socketcan-ci.yml'
       - 'src/core/CanKit.Core/**'
       - 'src/adapters/CanKit.Adapter.SocketCAN/**'
       - 'tests/CanKit.Tests/**'
       - 'src/Directory.Build.props'
       - 'global.json'
+      - 'tests/CanKit.SocketCan.Arm32.Smoke/**'
+      - 'samples/CanKit.Sample.Sniffer/**'
+      - 'samples/CanKit.Sample.QuickStartTxRx/**'
   pull_request:
     paths:
+      - '.github/workflows/socketcan-ci.yml'
       - 'src/core/CanKit.Core/**'
       - 'src/adapters/CanKit.Adapter.SocketCAN/**'
       - 'tests/CanKit.Tests/**'
       - 'src/Directory.Build.props'
       - 'global.json'
+      - 'tests/CanKit.SocketCan.Arm32.Smoke/**'
+      - 'samples/CanKit.Sample.Sniffer/**'
+      - 'samples/CanKit.Sample.QuickStartTxRx/**'
 jobs:
   linux:
     name: SocketCAN (Ubuntu) – ${{ matrix.tfm }}
@@ -56,3 +64,64 @@ jobs:
           name: test-results-ubuntu-${{ matrix.tfm }}
           path: '**/TestResults-${{ matrix.tfm }}.trx'
 
+  linux-arm32:
+    name: SocketCAN (Linux ARM32)
+    runs-on: ubuntu-22.04
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_CLI_TELEMETRY_OPTOUT: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Enable ARM emulation
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm
+
+      - name: Configure vcan
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends "linux-modules-extra-$(uname -r)"
+          sudo modprobe vcan
+          sudo ip link add dev vcan0 type vcan
+          sudo ip link set up vcan0
+
+      - name: Cross-publish ARM32 smoke test and affected samples
+        run: |
+          dotnet publish tests/CanKit.SocketCan.Arm32.Smoke/CanKit.SocketCan.Arm32.Smoke.csproj \
+            -c Release -f net8.0 -r linux-arm --self-contained true \
+            -o .artifacts/socketcan-arm32-smoke
+          dotnet publish samples/CanKit.Sample.Sniffer/CanKit.Sample.Sniffer.csproj \
+            -c Release -f net8.0 -r linux-arm --self-contained false \
+            -o .artifacts/sniffer-linux-arm
+          dotnet publish samples/CanKit.Sample.QuickStartTxRx/CanKit.Sample.QuickStartTxRx.csproj \
+            -c Release -f net8.0 -r linux-arm --self-contained false \
+            -o .artifacts/quickstart-linux-arm
+
+      - name: Run native SocketCAN smoke test on ARM32
+        run: |
+          docker run --rm \
+            --platform linux/arm/v7 \
+            --network host \
+            -v "${{ github.workspace }}:/workspace" \
+            -w /workspace \
+            mcr.microsoft.com/dotnet/runtime-deps:8.0-jammy-arm32v7 \
+            bash -c '
+              set -e
+              apt-get update
+              apt-get install -y --no-install-recommends libsocketcan-dev
+              ./.artifacts/socketcan-arm32-smoke/CanKit.SocketCan.Arm32.Smoke
+            '
+
+      - name: Upload ARM32 smoke test artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: socketcan-linux-arm32
+          path: .artifacts/

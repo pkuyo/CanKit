@@ -478,7 +478,7 @@ public sealed class BCMPeriodicTx : IPeriodicTx
         var ev1 = new Libc.epoll_event
         {
             events = Libc.EPOLLIN | Libc.EPOLLERR,
-            data = _fd.DangerousGetHandle()
+            data = (ulong)_fd.DangerousGetHandle().ToInt64()
         };
         if (Libc.epoll_ctl(_epfd, Libc.EPOLL_CTL_ADD, _fd, ref ev1) < 0)
             Libc.ThrowErrno("epoll_ctl(ADD)", "Failed to add BCM fd to epoll");
@@ -486,7 +486,7 @@ public sealed class BCMPeriodicTx : IPeriodicTx
         var ev2 = new Libc.epoll_event
         {
             events = Libc.EPOLLIN,
-            data = _cancelFd.DangerousGetHandle()
+            data = (ulong)_cancelFd.DangerousGetHandle().ToInt64()
         };
         if (Libc.epoll_ctl(_epfd, Libc.EPOLL_CTL_ADD, _cancelFd, ref ev2) < 0)
             Libc.ThrowErrno("epoll_ctl(ADD)", "Failed to add cancel fd to epoll");

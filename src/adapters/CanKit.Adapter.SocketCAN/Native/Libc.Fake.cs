@@ -21,6 +21,8 @@ namespace CanKit.Adapter.SocketCAN.Native;
 #nullable disable
 internal static class Libc
 {
+    private static int _nextSendErrno;
+
     public const int BATCH_COUNT = 32;
 
     public const int MSG_CONFIRM = 0x800;
@@ -217,8 +219,8 @@ internal static class Libc
     [StructLayout(LayoutKind.Sequential)]
     public struct timespec
     {
-        public long tv_sec;
-        public long tv_nsec;
+        public nint tv_sec;
+        public nint tv_nsec;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -244,18 +246,18 @@ internal static class Libc
         public short revents;
     }
 
-    [StructLayout(LayoutKind.Sequential)]
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
     internal struct epoll_event
     {
         public uint events;
-        public IntPtr data;
+        public ulong data;
     }
 
     [StructLayout(LayoutKind.Sequential)]
     public struct timeval
     {
-        public long tv_sec;
-        public int tv_usec;
+        public nint tv_sec;
+        public nint tv_usec;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -306,7 +308,7 @@ internal static class Libc
                     if (n >= buf.Length) break;
                     if (HasInput(fd))
                     {
-                        buf[n++] = new epoll_event { events = ev, data = (IntPtr)fd.Id };
+                        buf[n++] = new epoll_event { events = ev, data = (ulong)fd.Id };
                     }
                 }
             }
@@ -881,6 +883,13 @@ internal static class Libc
 
     public static unsafe int sendmmsg(FileDescriptorHandle sockfd, mmsghdr* msgvec, uint vlen, int flags)
     {
+        var injectedErrno = Interlocked.Exchange(ref _nextSendErrno, 0);
+        if (injectedErrno != 0)
+        {
+            World.Errno = injectedErrno;
+            return -1;
+        }
+
         var s = World.Get<RawSocketFd>(sockfd);
         int sent = 0;
         int max = (int)vlen;
@@ -1002,6 +1011,8 @@ internal static class Libc
 
     public static int Errno() => World.Errno;
 
+    internal static void FailNextSendWith(int errno) => Interlocked.Exchange(ref _nextSendErrno, errno);
+
     public static void SetErrno(int errno) => World.Errno = errno;
 
     public static void ThrowErrno(string operation, string message, int errno)
@@ -1011,7 +1022,7 @@ internal static class Libc
     }
 
     private static TimeSpan ToTimeSpan(timeval tv)
-        => TimeSpan.FromSeconds(tv.tv_sec) + TimeSpan.FromMilliseconds(tv.tv_usec / 1000.0);
+        => TimeSpan.FromSeconds((long)tv.tv_sec) + TimeSpan.FromMilliseconds((long)tv.tv_usec / 1000.0);
 
     private static byte[] StructureToBytes<T>(T value) where T : struct
     {

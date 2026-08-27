@@ -741,9 +741,9 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IOwnersh
             Libc.ThrowErrno("eventfd", "Failed to create eventfd for cancellation");
         }
 #if NET8_0_OR_GREATER
-        var ev = new Libc.epoll_event { events = Libc.EPOLLIN, data = _fd.DangerousGetHandle() };
+        var ev = new Libc.epoll_event { events = Libc.EPOLLIN, data = (ulong)_fd.DangerousGetHandle().ToInt64() };
 #else
-        var ev = new Libc.epoll_event { events = Libc.EPOLLIN | Libc.EPOLLERR, data = _fd.DangerousGetHandle() };
+        var ev = new Libc.epoll_event { events = Libc.EPOLLIN | Libc.EPOLLERR, data = (ulong)_fd.DangerousGetHandle().ToInt64() };
 #endif
         if (Libc.epoll_ctl(_epfd, Libc.EPOLL_CTL_ADD, _fd, ref ev) < 0)
         {
@@ -751,7 +751,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IOwnersh
         }
 
         // add cancel fd to epoll
-        var evCancel = new Libc.epoll_event { events = Libc.EPOLLIN, data = _cancelFd.DangerousGetHandle() };
+        var evCancel = new Libc.epoll_event { events = Libc.EPOLLIN, data = (ulong)_cancelFd.DangerousGetHandle().ToInt64() };
         if (Libc.epoll_ctl(_epfd, Libc.EPOLL_CTL_ADD, _cancelFd, ref evCancel) < 0)
         {
             Libc.ThrowErrno("epoll_ctl(EPOLL_CTL_ADD)", "failed to add cancelfd to epoll instance");
