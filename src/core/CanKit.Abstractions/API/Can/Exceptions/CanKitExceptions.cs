@@ -81,6 +81,12 @@ namespace CanKit.Core.Exceptions
         /// Native call failed with vendor status (原生调用失败，带返回状态)。
         /// </summary>
         NativeCallFailed = 9000,
+
+        /// <summary>
+        /// Native vendor library could not be loaded (DLL missing, wrong bitness, or invalid image).
+        /// Distinct from <see cref="NativeCallFailed"/>, which is a vendor status after a successful load.
+        /// </summary>
+        NativeLibraryNotFound = 9001,
     }
 
     /// <summary>
@@ -372,7 +378,20 @@ namespace CanKit.Core.Exceptions
     public class CanNativeCallException : CanBusException
     {
         public CanNativeCallException(string operation, string message, uint? nativeErrorCode = null, Exception? innerException = null)
-            : base(CanKitErrorCode.NativeCallFailed, $"{message} (Operation: {operation})", nativeErrorCode, innerException)
+            : this(operation, message, CanKitErrorCode.NativeCallFailed, nativeErrorCode, innerException)
+        {
+        }
+
+        /// <summary>
+        /// Create with an explicit library-level error code (使用指定库级错误码创建)。
+        /// </summary>
+        public CanNativeCallException(
+            string operation,
+            string message,
+            CanKitErrorCode errorCode,
+            uint? nativeErrorCode = null,
+            Exception? innerException = null)
+            : base(errorCode, $"{message} (Operation: {operation})", nativeErrorCode, innerException)
         {
             Operation = operation;
         }
