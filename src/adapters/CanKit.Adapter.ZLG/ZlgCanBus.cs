@@ -13,6 +13,7 @@ using CanKit.Abstractions.SPI.Common;
 using CanKit.Abstractions.SPI.Providers;
 using CanKit.Adapter.ZLG.Definitions;
 using CanKit.Adapter.ZLG.Diagnostics;
+using CanKit.Adapter.ZLG.Exceptions;
 using CanKit.Adapter.ZLG.Native;
 using CanKit.Adapter.ZLG.Options;
 using CanKit.Adapter.ZLG.Transceivers;
@@ -87,62 +88,71 @@ namespace CanKit.Adapter.ZLG
                     try { _asyncRx.ExceptionOccured(ex); } catch { /*ignore*/ }
                 });
             CanKitLogger.LogInformation($"ZLG: Initializing channel '{Options.ChannelName?? Options.ChannelIndex.ToString()}', Mode={Options.ProtocolMode}...");
-            ApplyConfig(options);
-
-            ZLGCAN.ZCAN_SetValue(_devicePtr, options.ChannelIndex+"/clear_auto_send", "0");
-            /*
-            if (ZLGCAN.ZCAN_GetDeviceInf(_devicePtr, out var deviceInfo) == ZlgErr.StatusOk)
-            {
-                if (deviceInfo.can_Num >= options.ChannelIndex)
-                {
-                }
-            }
-            */
-            ZLGCAN.ZCAN_CHANNEL_INIT_CONFIG config = new ZLGCAN.ZCAN_CHANNEL_INIT_CONFIG
-            {
-                can_type = options.ProtocolMode == CanProtocolMode.Can20 ? 0U : 1U,
-            };
-            if (device.Options.DeviceType == ZlgDeviceType.ZCAN_USBCANFD_100U ||
-                device.Options.DeviceType == ZlgDeviceType.ZCAN_USBCANFD_200U ||
-                device.Options.DeviceType == ZlgDeviceType.ZCAN_USBCANFD_400U ||
-                device.Options.DeviceType == ZlgDeviceType.ZCAN_USBCANFD_800U ||
-                device.Options.DeviceType == ZlgDeviceType.ZCAN_USBCANFD_MINI)
-            {
-                config.can_type = 1U;
-            }
-            config.config.can.mode = (byte)options.WorkMode;
-            CanKitLogger.LogInformation($"ZLG: Initializing on '{options.ChannelIndex}', Mode={options.ProtocolMode}, Features={Options.Features}");
-            config.config.can.acc_code = 0;
-            config.config.can.acc_mask = 0xffffffff;
-            if (options.Filter.FilterRules.Count > 0)
-            {
-                if (options.Filter.FilterRules[0] is FilterRule.Mask mask)
-                {
-                    config.config.can.acc_code = mask.AccCode;
-                    config.config.can.acc_mask = mask.AccMask;
-                    config.config.can.filter = (byte)mask.FilterIdType;
-
-                }
-            }
-
-
-            var handle = ZLGCAN.ZCAN_InitCAN(device.NativeHandler, (uint)Options.ChannelIndex, ref config);
-            CanKitLogger.LogInformation("ZLG: Initialize succeeded.");
-            handle.SetDevice(device.NativeHandler.DangerousGetHandle());
-            _handle = handle;
-            NativeHandle = new BusNativeHandle(_handle.DangerousGetHandle());
-            ZlgErr.ThrowIfInvalid(handle, nameof(ZLGCAN.ZCAN_InitCAN));
-
             try
             {
-                Reset();
-            } catch { /*ignore*/ }
+                ApplyConfig(options);
 
-            ApplyConfigAfterInit(options);
+                ZLGCAN.ZCAN_SetValue(_devicePtr, options.ChannelIndex+"/clear_auto_send", "0");
+                /*
+                if (ZLGCAN.ZCAN_GetDeviceInf(_devicePtr, out var deviceInfo) == ZlgErr.StatusOk)
+                {
+                    if (deviceInfo.can_Num >= options.ChannelIndex)
+                    {
+                    }
+                }
+                */
+                ZLGCAN.ZCAN_CHANNEL_INIT_CONFIG config = new ZLGCAN.ZCAN_CHANNEL_INIT_CONFIG
+                {
+                    can_type = options.ProtocolMode == CanProtocolMode.Can20 ? 0U : 1U,
+                };
+                if (device.Options.DeviceType == ZlgDeviceType.ZCAN_USBCANFD_100U ||
+                    device.Options.DeviceType == ZlgDeviceType.ZCAN_USBCANFD_200U ||
+                    device.Options.DeviceType == ZlgDeviceType.ZCAN_USBCANFD_400U ||
+                    device.Options.DeviceType == ZlgDeviceType.ZCAN_USBCANFD_800U ||
+                    device.Options.DeviceType == ZlgDeviceType.ZCAN_USBCANFD_MINI)
+                {
+                    config.can_type = 1U;
+                }
+                config.config.can.mode = (byte)options.WorkMode;
+                CanKitLogger.LogInformation($"ZLG: Initializing on '{options.ChannelIndex}', Mode={options.ProtocolMode}, Features={Options.Features}");
+                config.config.can.acc_code = 0;
+                config.config.can.acc_mask = 0xffffffff;
+                if (options.Filter.FilterRules.Count > 0)
+                {
+                    if (options.Filter.FilterRules[0] is FilterRule.Mask mask)
+                    {
+                        config.config.can.acc_code = mask.AccCode;
+                        config.config.can.acc_mask = mask.AccMask;
+                        config.config.can.filter = (byte)mask.FilterIdType;
 
-            ZlgErr.ThrowIfError(ZLGCAN.ZCAN_StartCAN(_handle), nameof(ZLGCAN.ZCAN_StartCAN), _handle);
-            _transceiver = transceiver;
-            CanKitLogger.LogDebug("ZLG: Initial options applied.");
+                    }
+                }
+
+
+                var handle = ZLGCAN.ZCAN_InitCAN(device.NativeHandler, (uint)Options.ChannelIndex, ref config);
+                CanKitLogger.LogInformation("ZLG: Initialize succeeded.");
+                handle.SetDevice(device.NativeHandler.DangerousGetHandle());
+                _handle = handle;
+                NativeHandle = new BusNativeHandle(_handle.DangerousGetHandle());
+                ZlgErr.ThrowIfInvalid(handle, nameof(ZLGCAN.ZCAN_InitCAN));
+
+                try
+                {
+                    Reset();
+                }
+                catch { /*ignore*/ }
+
+                ApplyConfigAfterInit(options);
+
+                ZlgErr.ThrowIfError(ZLGCAN.ZCAN_StartCAN(_handle), nameof(ZLGCAN.ZCAN_StartCAN), _handle);
+                _transceiver = transceiver;
+                CanKitLogger.LogDebug("ZLG: Initial options applied.");
+            }
+            catch (Exception ex) when (NativeLibraryLoad.IsFailure(ex))
+            {
+                throw ZlgCanException.NativeLibraryNotFound("Open", ex);
+            }
+
             StartReceiveLoop();
         }
 

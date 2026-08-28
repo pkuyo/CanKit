@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using CanKit.Adapter.Vector.Diagnostics;
 using CanKit.Adapter.Vector.Native;
+using CanKit.Core.Exceptions;
 
 namespace CanKit.Adapter.Vector.Utils;
 
@@ -33,7 +35,14 @@ internal static class VectorDriver
 
     private static void OnFirstAcquire()
     {
-        VectorErr.ThrowIfError(VxlApi.xlOpenDriver(), "xlOpenDriver");
+        try
+        {
+            VectorErr.ThrowIfError(VxlApi.xlOpenDriver(), "xlOpenDriver");
+        }
+        catch (Exception ex) when (NativeLibraryLoad.IsFailure(ex))
+        {
+            throw VectorNativeException.NativeLibraryNotFound("Open", ex);
+        }
     }
 
     private static void OnLastRelease()
@@ -106,4 +115,3 @@ internal static class VectorDriver
         return cfg;
     }
 }
-

@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+* Vendor adapters wrap a missing or wrong-bitness native library (`DllNotFoundException` / `BadImageFormatException`) at the first Open/constructor native call as adapter-specific `CanNativeCallException` types, with `CanKitErrorCode.NativeLibraryNotFound`, the original exception retained, and a message that names the DLL and the vendor runtime. Fake builds are unchanged.
+
 ## 0.5.6
 
 Published packages:

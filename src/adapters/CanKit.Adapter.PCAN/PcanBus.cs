@@ -9,6 +9,7 @@ using CanKit.Core.Definitions;
 using CanKit.Core.Diagnostics;
 using CanKit.Core.Exceptions;
 using CanKit.Core.Utils;
+using CanKit.Adapter.PCAN.Exceptions;
 using Microsoft.Win32.SafeHandles;
 using Peak.Can.Basic;
 
@@ -48,94 +49,108 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IOwnership
             static data => data.CanFrame.Dispose());
 
         _handle = PcanProvider.ParseHandle(Options.ChannelName!);
-        options.Capabilities = PcanProvider.QueryCapabilities(_handle, Options.Features);
-        options.Features = options.Capabilities.Features;
-
-        _exceptionPolicy = options.ExceptionPolicy ?? CanExceptionPolicy.Default;
-        _exceptions = new CanBusExceptionDispatcher(
-            "PCAN bus",
-            _exceptionPolicy,
-            raiseBackground: ex =>
-            {
-                try { var snap = Volatile.Read(ref BackgroundExceptionOccurred); snap?.Invoke(this, ex); } catch { /*ignore*/ }
-            },
-            raiseFault: ex =>
-            {
-                try { var snap = Volatile.Read(ref FaultOccurred); snap?.Invoke(this, ex); } catch { /*ignore*/  }
-            },
-            stopBackground: () =>
-            {
-                try { StopReceiveLoop(); } catch { /*ignore*/  }
-            },
-            failAsyncReceivers: ex =>
-            {
-                try { _asyncRx.ExceptionOccured(ex); } catch { /*ignore*/ }
-            });
-
-        NativeHandle = new BusNativeHandle((int)_handle);
         try
         {
-            if (Api.GetValue(_handle, PcanParameter.ChannelCondition, out uint raw) == PcanStatus.OK)
+            options.Capabilities = PcanProvider.QueryCapabilities(_handle, Options.Features);
+            options.Features = options.Capabilities.Features;
+
+            _exceptionPolicy = options.ExceptionPolicy ?? CanExceptionPolicy.Default;
+            _exceptions = new CanBusExceptionDispatcher(
+                "PCAN bus",
+                _exceptionPolicy,
+                raiseBackground: ex =>
+                {
+                    try { var snap = Volatile.Read(ref BackgroundExceptionOccurred); snap?.Invoke(this, ex); } catch { /*ignore*/ }
+                },
+                raiseFault: ex =>
+                {
+                    try { var snap = Volatile.Read(ref FaultOccurred); snap?.Invoke(this, ex); } catch { /*ignore*/  }
+                },
+                stopBackground: () =>
+                {
+                    try { StopReceiveLoop(); } catch { /*ignore*/  }
+                },
+                failAsyncReceivers: ex =>
+                {
+                    try { _asyncRx.ExceptionOccured(ex); } catch { /*ignore*/ }
+                });
+
+            NativeHandle = new BusNativeHandle((int)_handle);
+            try
             {
-                var cond = (ChannelCondition)raw;
-                if ((cond & ChannelCondition.ChannelAvailable) != ChannelCondition.ChannelAvailable)
-                    throw new CanBusCreationException("PCAN handle is not available");
+                if (Api.GetValue(_handle, PcanParameter.ChannelCondition, out uint raw) == PcanStatus.OK)
+                {
+                    var cond = (ChannelCondition)raw;
+                    if ((cond & ChannelCondition.ChannelAvailable) != ChannelCondition.ChannelAvailable)
+                        throw new CanBusCreationException("PCAN handle is not available");
+                }
+                else
+                {
+                    CanKitLogger.LogWarning("PCAN can't get channel condition for handle");
+                }
+            }
+            catch (PcanBasicException ex)
+            {
+                if (NativeLibraryLoad.IsFailure(ex))
+                    throw;
+                throw new CanBusCreationException("PCAN handle is invalid");
+            }
+
+            CanKitLogger.LogInformation($"PCAN: Initializing on '{_handle}', Mode={options.ProtocolMode}, Features={Options.Features}");
+
+            ApplyConfigBeforeInit((PcanBusOptions)options);
+
+            // Initialize according to selected protocol mode
+            if (options.ProtocolMode == CanProtocolMode.CanFd)
+            {
+
+                CanKitErr.ThrowIfNotSupport(Options.Features, CanFeature.CanFd);
+
+                var fd = PcanUtils.MapFdBitrate(options.BitTiming);
+                var st = Api.Initialize(_handle, fd);
+                if (st != PcanStatus.OK)
+                {
+                    throw new CanBusCreationException($"PCAN InitializeFD failed: {st}");
+                }
+                CanKitLogger.LogInformation("PCAN: InitializeFD succeeded.");
+            }
+            else if (options.ProtocolMode == CanProtocolMode.Can20)
+            {
+                var baud = PcanUtils.MapClassicBaud(options.BitTiming);
+                var st = Api.Initialize(_handle, baud);
+                if (st != PcanStatus.OK)
+                {
+                    throw new CanBusCreationException($"PCAN Initialize failed: {st}");
+                }
+                CanKitLogger.LogInformation("PCAN: Initialize (classic) succeeded.");
+            }
+
+            // Apply initial options
+            ApplyConfig((PcanBusOptions)options);
+            CanKitLogger.LogDebug("PCAN: Initial options applied.");
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                _recEvent = new EventWaitHandle(false, EventResetMode.AutoReset);
             }
             else
             {
-                CanKitLogger.LogWarning("PCAN can't get channel condition for handle");
+                var ok = Api.GetValue(_handle, PcanParameter.ReceiveEvent, out uint evHandle);
+                if (ok != PcanStatus.OK)
+                    throw new InvalidOperationException($"Get ReceiveEvent failed: {ok}");
+
+                _recEvent = new EventWaitHandle(false, EventResetMode.AutoReset);
+                _recEvent.SafeWaitHandle?.Close();
+                _recEvent.SafeWaitHandle = new SafeWaitHandle(new IntPtr(evHandle), false);
             }
+
         }
-        catch (PcanBasicException)
+        catch (Exception ex) when (NativeLibraryLoad.IsFailure(ex))
         {
-            throw new CanBusCreationException("PCAN handle is invalid");
-        }
-
-        CanKitLogger.LogInformation($"PCAN: Initializing on '{_handle}', Mode={options.ProtocolMode}, Features={Options.Features}");
-
-        ApplyConfigBeforeInit((PcanBusOptions)options);
-
-        // Initialize according to selected protocol mode
-        if (options.ProtocolMode == CanProtocolMode.CanFd)
-        {
-
-            CanKitErr.ThrowIfNotSupport(Options.Features, CanFeature.CanFd);
-
-            var fd = PcanUtils.MapFdBitrate(options.BitTiming);
-            var st = Api.Initialize(_handle, fd);
-            if (st != PcanStatus.OK)
-            {
-                throw new CanBusCreationException($"PCAN InitializeFD failed: {st}");
-            }
-            CanKitLogger.LogInformation("PCAN: InitializeFD succeeded.");
-        }
-        else if (options.ProtocolMode == CanProtocolMode.Can20)
-        {
-            var baud = PcanUtils.MapClassicBaud(options.BitTiming);
-            var st = Api.Initialize(_handle, baud);
-            if (st != PcanStatus.OK)
-            {
-                throw new CanBusCreationException($"PCAN Initialize failed: {st}");
-            }
-            CanKitLogger.LogInformation("PCAN: Initialize (classic) succeeded.");
-        }
-
-        // Apply initial options
-        ApplyConfig((PcanBusOptions)options);
-        CanKitLogger.LogDebug("PCAN: Initial options applied.");
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-        {
-            _recEvent = new EventWaitHandle(false, EventResetMode.AutoReset);
-        }
-        else
-        {
-            var ok = Api.GetValue(_handle, PcanParameter.ReceiveEvent, out uint evHandle);
-            if (ok != PcanStatus.OK)
-                throw new InvalidOperationException($"Get ReceiveEvent failed: {ok}");
-
-            _recEvent = new EventWaitHandle(false, EventResetMode.AutoReset);
-            _recEvent.SafeWaitHandle?.Close();
-            _recEvent.SafeWaitHandle = new SafeWaitHandle(new IntPtr(evHandle), false);
+            throw PcanCanException.NativeLibraryNotFound(
+                "Open",
+                PcanNativeLibraries.BasicLibraryName,
+                PcanNativeLibraries.BasicVendorRuntime,
+                ex);
         }
 
         StartReceiveLoop();
