@@ -25,7 +25,22 @@ namespace CanKit.Adapter.ZLG.Exceptions
         }
 
         /// <summary>
-        /// ZLG API native status code (ZLG 原生状态码)。
+        /// Native library could not be loaded (DLL missing, wrong bitness, or invalid image).
+        /// </summary>
+        public ZlgCanException(string operation, string message, Exception innerException)
+            : base(operation, message, CanKitErrorCode.NativeLibraryNotFound, nativeErrorCode: null, innerException)
+        {
+        }
+
+        /// <summary>
+        /// Wrap a <see cref="DllNotFoundException"/> or <see cref="BadImageFormatException"/> from zlgcan.dll.
+        /// </summary>
+        public static ZlgCanException NativeLibraryNotFound(string operation, Exception innerException)
+            => new(operation, NativeLibraryLoad.FormatMessage("zlgcan.dll", "ZLG CAN driver", innerException), innerException);
+
+        /// <summary>
+        /// ZLG API native status code (ZLG 原生状态码)。 Unused when <see cref="CanKitException.ErrorCode"/> is
+        /// <see cref="CanKitErrorCode.NativeLibraryNotFound"/>.
         /// </summary>
         public uint StatusCode { get; }
 
@@ -79,4 +94,3 @@ namespace CanKit.Adapter.ZLG.Exceptions
         public ZlgFeature AvailableFeatures { get; }
     }
 }
-

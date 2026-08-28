@@ -1,7 +1,9 @@
 using CanKit.Abstractions.API.Can;
 using CanKit.Abstractions.API.Common;
+using System;
 using CanKit.Adapter.ControlCAN.Definitions;
 using CanKit.Adapter.ControlCAN.Native;
+using CanKit.Adapter.ControlCAN.Diagnostics;
 using CanKit.Adapter.ControlCAN.Options;
 using CanKit.Core.Exceptions;
 using CcApi = CanKit.Adapter.ControlCAN.Native.ControlCAN;
@@ -19,10 +21,17 @@ public sealed class ControlCanDevice : ICanDevice<ControlCanDeviceRTOptionsConfi
         Options.Init((ControlCanDeviceOptions)options);
         _options = options;
 
-        var dt = (ControlCanDeviceType)Options.DeviceType;
-        var ok = CcApi.VCI_OpenDevice((uint)dt.Code, Options.DeviceIndex, 0);
-        if (ok == 0)
-            throw new CanFactoryException(CanKitErrorCode.DeviceCreationFailed, $"VCI_OpenDevice failed for {dt.Id} index {Options.DeviceIndex}");
+        try
+        {
+            var dt = (ControlCanDeviceType)Options.DeviceType;
+            var ok = CcApi.VCI_OpenDevice((uint)dt.Code, Options.DeviceIndex, 0);
+            if (ok == 0)
+                throw new CanFactoryException(CanKitErrorCode.DeviceCreationFailed, $"VCI_OpenDevice failed for {dt.Id} index {Options.DeviceIndex}");
+        }
+        catch (Exception ex) when (NativeLibraryLoad.IsFailure(ex))
+        {
+            throw ControlCanException.NativeLibraryNotFound("Open", ex);
+        }
     }
 
     public void Dispose()
