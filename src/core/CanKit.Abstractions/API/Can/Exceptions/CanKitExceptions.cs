@@ -86,7 +86,7 @@ namespace CanKit.Core.Exceptions
         /// Native vendor library could not be loaded (DLL missing, wrong bitness, or invalid image).
         /// Distinct from <see cref="NativeCallFailed"/>, which is a vendor status after a successful load.
         /// </summary>
-        NativeLibraryNotFound = 9001,
+        NativeLibraryNotFound = 9001, // （原生厂商库缺失或无法加载）
     }
 
     /// <summary>
