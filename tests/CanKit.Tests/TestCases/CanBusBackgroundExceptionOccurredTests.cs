@@ -33,7 +33,7 @@ public class CanBusBackgroundExceptionOccurredTests : IClassFixture<TestCaseProv
             exception = data;
             ev.Set();
         };
-        cts.CancelAfter(TimeSpan.FromSeconds(10));
+        cts.CancelAfter(TimeSpan.FromSeconds(2));
         txClassic.Transmit(CanFrame.Classic(0x123456, ReadOnlyMemory<byte>.Empty, true));
 
         WaitHandle.WaitAny([ ev, cts.Token.WaitHandle ]);
