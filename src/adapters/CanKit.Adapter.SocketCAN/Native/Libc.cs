@@ -153,7 +153,7 @@ internal static class Libc
     public const byte CANFD_ESI = 0x02; // error state indicator
 
     // socket option
-    public const int SO_SNDBUF = 8;
+    public const int SO_SNDBUF = 7;
     public const int SO_RCVBUF = 8;
     public const int SO_SNDTIMEO = 21;
     public const int SO_TIMESTAMP = 29;
@@ -172,12 +172,19 @@ internal static class Libc
     public const int OK = 0;
 
 
-    [StructLayout(LayoutKind.Sequential)]
+    [StructLayout(LayoutKind.Explicit, Size = 24)]
     public struct sockaddr_can
     {
+        [FieldOffset(0)]
         public ushort can_family;
+
+        [FieldOffset(4)]
         public int can_ifindex;
+
+        [FieldOffset(8)]
         public uint rx_id;   // not used (CAN_J1939/BCM), padding keeps size
+
+        [FieldOffset(12)]
         public uint tx_id;   // not used
     }
 
@@ -302,15 +309,21 @@ internal static class Libc
         public uint nframes;
     }
 
+    // bcm_msg_head ends with a flexible can_frame[] member in the Linux UAPI.
+    // can_frame has 8-byte alignment, so the wire header must be rounded up to
+    // that alignment even though the managed header does not include frames[].
+    public static int BcmManagedHeaderSize { get; } = Marshal.SizeOf<bcm_msg_head>();
+    public static int BcmWireHeaderSize { get; } = (BcmManagedHeaderSize + 7) & ~7;
+
     [DllImport("libc", SetLastError = true)]
     public static extern FileDescriptorHandle socket(int domain, int type, int protocol);
 
     [DllImport("libc", SetLastError = true)]
-    public static extern int bind(FileDescriptorHandle sockfd, ref sockaddr_can addr, int addrlen);
+    public static extern int bind(FileDescriptorHandle sockfd, ref sockaddr_can addr, uint addrlen);
 
 
     [DllImport("libc", SetLastError = true)]
-    public static extern int connect(FileDescriptorHandle sockfd, ref sockaddr_can addr, int addrlen);
+    public static extern int connect(FileDescriptorHandle sockfd, ref sockaddr_can addr, uint addrlen);
 
     [DllImport("libc", SetLastError = true)]
     public static extern int fcntl(FileDescriptorHandle fd, int cmd, int arg);
@@ -328,13 +341,13 @@ internal static class Libc
     public static extern int ioctl(FileDescriptorHandle fd, uint request, IntPtr argp);
 
     [DllImport("libc", SetLastError = true)]
-    public static unsafe extern long read(FileDescriptorHandle fd, void* buf, ulong count);
+    public static unsafe extern nint read(FileDescriptorHandle fd, void* buf, nuint count);
 
     [DllImport("libc", SetLastError = true)]
-    public static unsafe extern long write(FileDescriptorHandle fd, void* buf, ulong count);
+    public static unsafe extern nint write(FileDescriptorHandle fd, void* buf, nuint count);
 
     [DllImport("libc", SetLastError = true)]
-    public static unsafe extern long recvmsg(FileDescriptorHandle sockfd, msghdr* msg, int flags);
+    public static unsafe extern nint recvmsg(FileDescriptorHandle sockfd, msghdr* msg, int flags);
 
     [DllImport("libc", SetLastError = true)]
     public static unsafe extern int recvmmsg(FileDescriptorHandle sockfd, mmsghdr* msgvec, uint vlen, int flags, timespec* timeout);
@@ -346,7 +359,7 @@ internal static class Libc
     public static extern int close(int fd);
 
     [DllImport("libc", SetLastError = true)]
-    public static extern int poll(ref pollfd fds, uint nfds, int timeout);
+    public static extern int poll(ref pollfd fds, nuint nfds, int timeout);
 
     [DllImport("libc", SetLastError = true)]
     public static extern FileDescriptorHandle epoll_create1(int flags);

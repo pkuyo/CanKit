@@ -243,7 +243,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IOwnersh
                 : timeOut;
 
 
-            var pr = Libc.poll(ref pollFd, 1, remainingTime);
+            var pr = Libc.poll(ref pollFd, 1u, remainingTime);
             if (pr < 0)
             {
                 var errno = Libc.Errno();
@@ -286,7 +286,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IOwnersh
                 : timeOut;
 
 
-            var pr = Libc.poll(ref pollFd, 1, remainingTime);
+            var pr = Libc.poll(ref pollFd, 1u, remainingTime);
             if (pr < 0)
             {
                 var errno = Libc.Errno();
@@ -571,7 +571,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IOwnersh
                 can_ifindex = _options.ChannelIndex,
             };
 
-            if (Libc.bind(fd, ref addr, Marshal.SizeOf<Libc.sockaddr_can>()) != 0)
+            if (Libc.bind(fd, ref addr, (uint)Marshal.SizeOf<Libc.sockaddr_can>()) != 0)
             {
                 fd.Dispose();
                 throw new CanBusCreationException($"bind({ifName}) failed.");
@@ -784,7 +784,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IOwnersh
                     unsafe
                     {
                         ulong one = 1UL;
-                        _ = Libc.write(_cancelFd, &one, (ulong)sizeof(ulong));
+                        _ = Libc.write(_cancelFd, &one, (nuint)sizeof(ulong));
                     }
                 }
             }
@@ -829,7 +829,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IOwnersh
                         unsafe
                         {
                             ulong tmp;
-                            _ = Libc.read(_cancelFd, &tmp, sizeof(ulong));
+                            _ = Libc.read(_cancelFd, &tmp, (nuint)sizeof(ulong));
                         }
                         continue;
                     }
