@@ -25,7 +25,7 @@ Dotnet add package CanKit.Adapter.Virtual
 ## 2）安装驱动/本机运行库
 
 - PCAN（Windows）：安装 PCAN 驱动与 PCAN-Basic。并确保将 CANLib.Net 添加到你的 NuGet 包源。。
-- Kvaser（Windows/Linux）：安装 Kvaser CANlib（驱动 + SDK）。确保 `canlib` 可被加载。
+- Kvaser（Windows/Linux）：安装 Kvaser CANlib（驱动 + SDK）。Windows 加载 `canlib32`，Linux 加载 `libcanlib.so`。
 - SocketCAN（Linux）：启用内核 SocketCAN，并创建/配置接口（如 `ip link add dev can0 type can bitrate 500000; ip link set can0 up`）。如需通过 netlink 配置，并安装 `libsocketcan`。
 - ZLG（Windows）：确保 `zlgcan.dll` 可在进程的加载路径中找到，且位数与进程匹配（x86/x64）。
 - Virtual：无需驱动。
