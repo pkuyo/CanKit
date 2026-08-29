@@ -9,6 +9,8 @@ on:
       - 'tests/CanKit.Tests/**'
       - 'src/Directory.Build.props'
       - 'global.json'
+      - 'samples/CanKit.Sample.Sniffer/**'
+      - 'samples/CanKit.Sample.QuickStartTxRx/**'
   pull_request:
     paths:
       - '.github/workflows/socketcan-ci.yml'
@@ -17,6 +19,8 @@ on:
       - 'tests/CanKit.Tests/**'
       - 'src/Directory.Build.props'
       - 'global.json'
+      - 'samples/CanKit.Sample.Sniffer/**'
+      - 'samples/CanKit.Sample.QuickStartTxRx/**'
 jobs:
   linux:
     name: SocketCAN (Ubuntu) – ${{ matrix.tfm }}
@@ -57,3 +61,126 @@ jobs:
         with:
           name: test-results-ubuntu-${{ matrix.tfm }}
           path: '**/TestResults-${{ matrix.tfm }}.trx'
+
+  linux-arm32-pr:
+    name: SocketCAN (Linux ARM32, PR)
+    if: github.event_name == 'pull_request'
+    environment: arm32-runner
+    runs-on: [self-hosted, linux, ARM, arm32, raspberry-pi]
+    timeout-minutes: 45
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_CLI_TELEMETRY_OPTOUT: true
+      CANKIT_TEST_ADAPTERS: CanKit.Adapter.SocketCAN
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Verify ARM32 runner and vcan
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = "armv7l"
+          test "$(getconf LONG_BIT)" = "32"
+          test "$(dpkg --print-architecture)" = "armhf"
+          for iface in vcan0 vcan1 vcan2; do
+            ip link show "$iface" > /dev/null
+            ip -details link show "$iface" | grep -qw vcan
+          done
+
+      - name: Configure writable .NET install directory
+        shell: bash
+        run: echo "DOTNET_INSTALL_DIR=$HOME/.dotnet" >> "$GITHUB_ENV"
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore CanKitAdapters.slnf
+
+      - name: Test SocketCAN on ARM32
+        run: dotnet test CanKitAdapters.slnf -c Release -f net8.0 --no-restore --logger "trx;LogFileName=Arm32TestResults.trx"
+
+      - name: Publish affected samples for ARM32
+        run: |
+          dotnet publish samples/CanKit.Sample.Sniffer/CanKit.Sample.Sniffer.csproj \
+            -c Release -f net8.0 -r linux-arm --self-contained false \
+            -o .artifacts/sniffer-linux-arm
+          dotnet publish samples/CanKit.Sample.QuickStartTxRx/CanKit.Sample.QuickStartTxRx.csproj \
+            -c Release -f net8.0 -r linux-arm --self-contained false \
+            -o .artifacts/quickstart-linux-arm
+
+      - name: Upload ARM32 test results and samples
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: socketcan-linux-arm32-pr
+          path: |
+            '**/Arm32TestResults.trx'
+            .artifacts/
+
+  linux-arm32-push:
+    name: SocketCAN (Linux ARM32, push)
+    if: github.event_name == 'push'
+    runs-on: [self-hosted, linux, ARM, arm32, raspberry-pi]
+    timeout-minutes: 45
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_CLI_TELEMETRY_OPTOUT: true
+      CANKIT_TEST_ADAPTERS: CanKit.Adapter.SocketCAN
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Verify ARM32 runner and vcan
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = "armv7l"
+          test "$(getconf LONG_BIT)" = "32"
+          test "$(dpkg --print-architecture)" = "armhf"
+          for iface in vcan0 vcan1 vcan2; do
+            ip link show "$iface" > /dev/null
+            ip -details link show "$iface" | grep -qw vcan
+          done
+
+      - name: Configure writable .NET install directory
+        shell: bash
+        run: echo "DOTNET_INSTALL_DIR=$HOME/.dotnet" >> "$GITHUB_ENV"
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore CanKitAdapters.slnf
+
+      - name: Test SocketCAN on ARM32
+        run: dotnet test CanKitAdapters.slnf -c Release -f net8.0 --no-restore --logger "trx;LogFileName=Arm32TestResults.trx"
+
+      - name: Publish affected samples for ARM32
+        run: |
+          dotnet publish samples/CanKit.Sample.Sniffer/CanKit.Sample.Sniffer.csproj \
+            -c Release -f net8.0 -r linux-arm --self-contained false \
+            -o .artifacts/sniffer-linux-arm
+          dotnet publish samples/CanKit.Sample.QuickStartTxRx/CanKit.Sample.QuickStartTxRx.csproj \
+            -c Release -f net8.0 -r linux-arm --self-contained false \
+            -o .artifacts/quickstart-linux-arm
+
+      - name: Upload ARM32 test results and samples
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: socketcan-linux-arm32-push
+          path: |
+            '**/Arm32TestResults.trx'
+            .artifacts/
