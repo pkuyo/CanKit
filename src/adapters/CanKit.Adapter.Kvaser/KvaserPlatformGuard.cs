@@ -4,23 +4,20 @@ using System.Runtime.InteropServices;
 namespace CanKit.Adapter.Kvaser;
 
 /// <summary>
-/// This adapter binds Kvaser CANlib as <c>canlib32</c> (Windows, stdcall) and
-/// <c>libcanlib.so</c> (Linux, cdecl). Throw a clear
-/// <see cref="PlatformNotSupportedException"/> before the first native call
-/// instead of surfacing a raw <see cref="DllNotFoundException"/> on an OS this
-/// binding does not cover.
+/// This adapter P/Invokes the Kvaser CANlib native SDK (<c>canlib32</c>, Windows-only).
+/// Throw a clear <see cref="PlatformNotSupportedException"/> before the first native call
+/// instead of surfacing a raw <see cref="DllNotFoundException"/> to the caller.
 /// </summary>
 internal static class KvaserPlatformGuard
 {
     public static void EnsureSupported()
     {
 #if !FAKE
-        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
-            && !RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
             throw new PlatformNotSupportedException(
-                "CanKit.Adapter.Kvaser is only supported on Windows and Linux " +
-                "(this adapter binds Kvaser CANlib as canlib32 on Windows and libcanlib.so on Linux).");
+                "CanKit.Adapter.Kvaser is only supported on Windows " +
+                "(the Kvaser CANlib native SDK 'canlib32' is Windows-only).");
         }
 #endif
     }
