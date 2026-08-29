@@ -43,7 +43,6 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IOwnership
 
     internal KvaserBus(IBusOptions options, ITransceiver transceiver, ICanModelProvider provider)
     {
-        KvaserPlatformGuard.EnsureSupported();
         Options = new KvaserBusRtConfigurator();
         Options.Init((KvaserBusOptions)options);
         _transceiver = transceiver;
