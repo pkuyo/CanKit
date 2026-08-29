@@ -439,7 +439,8 @@ public static class Canlib
             canStatus status = KvaserNativeLibraries.IsLinux
                 ? LinuxAbi.kvSetNotifyCallback(hnd, null, context, 0)
                 : WindowsAbi.kvSetNotifyCallback(hnd, null, context, 0);
-            NotifyThunks.TryRemove(hnd, out _);
+            if (status == canStatus.canOK)
+                NotifyThunks.TryRemove(hnd, out _);
             return status;
         }
 
@@ -449,8 +450,6 @@ public static class Canlib
             var status = LinuxAbi.kvSetNotifyCallback(hnd, thunk, context, notifyFlags);
             if (status == canStatus.canOK)
                 NotifyThunks[hnd] = thunk;
-            else
-                NotifyThunks.TryRemove(hnd, out _);
             return status;
         }
 
@@ -458,8 +457,6 @@ public static class Canlib
         var winStatus = WindowsAbi.kvSetNotifyCallback(hnd, stdcall, context, notifyFlags);
         if (winStatus == canStatus.canOK)
             NotifyThunks[hnd] = stdcall;
-        else
-            NotifyThunks.TryRemove(hnd, out _);
         return winStatus;
     }
 
