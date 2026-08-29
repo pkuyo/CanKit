@@ -187,7 +187,7 @@ bus.ErrorFrameReceived += (sender, errorInfo) => {};
 ## 适配器说明
 - Vector (Windows/Linux): 安装 `XL-Driver-Library`, 并在`Vector Hardware Manager` 设置好app映射。
 - PCAN（Windows）：安装 PCAN 驱动与 PCAN-Basic；确保 `PCANBasic.dll` 可加载（进程位数匹配 x86/x64）。
-- Kvaser（Windows/Linux）：安装 Kvaser Driver + CANlib；确保 canlib 可加载并能访问通道。
+- Kvaser（Windows/Linux）：安装 Kvaser Driver + CANlib；Windows 加载 `canlib32`，Linux 加载 `libcanlib.so`。
 - SocketCAN（Linux）：启用内核 SocketCAN，创建/配置接口（`ip link …`）；安装 `libsocketcan`。
 - ZLG（Windows）：确保 `zlgcan.dll` 在加载路径，且位数与进程匹配。
 - ControlCAN(Windows): 确保 `ControlCAN.dll` 在加载路径且与进程匹配。
