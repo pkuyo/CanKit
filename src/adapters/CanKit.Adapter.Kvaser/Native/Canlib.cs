@@ -134,6 +134,28 @@ public static class Canlib
         public uint overruns;
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct LinuxCanBusStatistics
+    {
+        public nuint stdData;
+        public nuint stdRemote;
+        public nuint extData;
+        public nuint extRemote;
+        public nuint errFrame;
+        public nuint busLoad;
+        public nuint overruns;
+
+        public canBusStatistics ToPublic() => new()
+        {
+            stdData = (uint)stdData,
+            stdRemote = (uint)stdRemote,
+            extData = (uint)extData,
+            extRemote = (uint)extRemote,
+            errFrame = (uint)errFrame,
+            busLoad = (uint)busLoad,
+            overruns = (uint)overruns,
+        };
+    }
 
     public delegate void kvCallbackDelegate(int hnd, IntPtr context, int notifyEvent);
 
@@ -218,9 +240,14 @@ public static class Canlib
 
     public static canStatus canReadStatus(int hnd, out uint flags)
     {
-        return KvaserNativeLibraries.IsLinux
-            ? LinuxAbi.canReadStatus(hnd, out flags)
-            : WindowsAbi.canReadStatus(hnd, out flags);
+        if (KvaserNativeLibraries.IsLinux)
+        {
+            var status = LinuxAbi.canReadStatus(hnd, out nuint nativeFlags);
+            flags = (uint)nativeFlags;
+            return status;
+        }
+
+        return WindowsAbi.canReadStatus(hnd, out flags);
     }
 
     public static canStatus canReadErrorCounters(int hnd, out uint txErr, out uint rxErr, out uint ovErr)
@@ -239,9 +266,15 @@ public static class Canlib
 
     public static canStatus canRead(int hnd, out int id, [Out] byte[] msg, out int dlc, out int flag, out uint time)
     {
-        return KvaserNativeLibraries.IsLinux
-            ? LinuxAbi.canRead(hnd, out id, msg, out dlc, out flag, out time)
-            : WindowsAbi.canRead(hnd, out id, msg, out dlc, out flag, out time);
+        if (KvaserNativeLibraries.IsLinux)
+        {
+            var status = LinuxAbi.canRead(hnd, out nint nativeId, msg, out dlc, out flag, out nuint nativeTime);
+            id = (int)nativeId;
+            time = (uint)nativeTime;
+            return status;
+        }
+
+        return WindowsAbi.canRead(hnd, out id, msg, out dlc, out flag, out time);
     }
 
     public static canStatus canRequestBusStatistics(int hnd)
@@ -253,9 +286,17 @@ public static class Canlib
 
     public static canStatus canGetBusStatistics(int hnd, out canBusStatistics stat, UIntPtr bufsiz)
     {
-        return KvaserNativeLibraries.IsLinux
-            ? LinuxAbi.canGetBusStatistics(hnd, out stat, bufsiz)
-            : WindowsAbi.canGetBusStatistics(hnd, out stat, bufsiz);
+        if (KvaserNativeLibraries.IsLinux)
+        {
+            var status = LinuxAbi.canGetBusStatistics(
+                hnd,
+                out LinuxCanBusStatistics native,
+                (UIntPtr)(uint)Marshal.SizeOf<LinuxCanBusStatistics>());
+            stat = native.ToPublic();
+            return status;
+        }
+
+        return WindowsAbi.canGetBusStatistics(hnd, out stat, bufsiz);
     }
 
     public static canStatus canGetErrorText(canStatus err, StringBuilder buf, uint bufsiz)
@@ -405,13 +446,21 @@ public static class Canlib
         if (KvaserNativeLibraries.IsLinux)
         {
             kvCallbackDelegateCdecl thunk = callback.Invoke;
-            NotifyThunks[hnd] = thunk;
-            return LinuxAbi.kvSetNotifyCallback(hnd, thunk, context, notifyFlags);
+            var status = LinuxAbi.kvSetNotifyCallback(hnd, thunk, context, notifyFlags);
+            if (status == canStatus.canOK)
+                NotifyThunks[hnd] = thunk;
+            else
+                NotifyThunks.TryRemove(hnd, out _);
+            return status;
         }
 
         kvCallbackDelegateStdCall stdcall = callback.Invoke;
-        NotifyThunks[hnd] = stdcall;
-        return WindowsAbi.kvSetNotifyCallback(hnd, stdcall, context, notifyFlags);
+        var winStatus = WindowsAbi.kvSetNotifyCallback(hnd, stdcall, context, notifyFlags);
+        if (winStatus == canStatus.canOK)
+            NotifyThunks[hnd] = stdcall;
+        else
+            NotifyThunks.TryRemove(hnd, out _);
+        return winStatus;
     }
 
 
@@ -554,10 +603,10 @@ public static class Canlib
         public static extern canStatus canBusOff(int hnd);
 
         [DllImport(Dll, CallingConvention = CallingConvention.Cdecl, EntryPoint = "canSetBusParams")]
-        public static extern canStatus canSetBusParams(int hnd, int freq, int tseg1, int tseg2, int sjw, int noSamp, int syncmode);
+        public static extern canStatus canSetBusParams(int hnd, nint freq, int tseg1, int tseg2, int sjw, int noSamp, int syncmode);
 
         [DllImport(Dll, CallingConvention = CallingConvention.Cdecl, EntryPoint = "canSetBusParamsFd")]
-        public static extern canStatus canSetBusParamsFd(int hnd, int freq_brs, int tseg1_brs, int tseg2_brs, int sjw_brs);
+        public static extern canStatus canSetBusParamsFd(int hnd, nint freq_brs, int tseg1_brs, int tseg2_brs, int sjw_brs);
 
         [DllImport(Dll, CallingConvention = CallingConvention.Cdecl, EntryPoint = "canGetNumberOfChannels")]
         public static extern canStatus canGetNumberOfChannels(out int channelCount);
@@ -566,22 +615,22 @@ public static class Canlib
         public static extern canStatus canGetChannelData(int channel, int item, IntPtr buffer, UIntPtr bufsize);
 
         [DllImport(Dll, CallingConvention = CallingConvention.Cdecl, EntryPoint = "canReadStatus")]
-        public static extern canStatus canReadStatus(int hnd, out uint flags);
+        public static extern canStatus canReadStatus(int hnd, out nuint flags);
 
         [DllImport(Dll, CallingConvention = CallingConvention.Cdecl, EntryPoint = "canReadErrorCounters")]
         public static extern canStatus canReadErrorCounters(int hnd, out uint txErr, out uint rxErr, out uint ovErr);
 
         [DllImport(Dll, CallingConvention = CallingConvention.Cdecl)]
-        public static unsafe extern canStatus canWrite(int hnd, int id, byte* msg, uint dlc, uint flag);
+        public static unsafe extern canStatus canWrite(int hnd, nint id, byte* msg, uint dlc, uint flag);
 
         [DllImport(Dll, CallingConvention = CallingConvention.Cdecl, EntryPoint = "canRead")]
-        public static extern canStatus canRead(int hnd, out int id, [Out] byte[] msg, out int dlc, out int flag, out uint time);
+        public static extern canStatus canRead(int hnd, out nint id, [Out] byte[] msg, out int dlc, out int flag, out nuint time);
 
         [DllImport(Dll, CallingConvention = CallingConvention.Cdecl, EntryPoint = "canRequestBusStatistics")]
         public static extern canStatus canRequestBusStatistics(int hnd);
 
         [DllImport(Dll, CallingConvention = CallingConvention.Cdecl, EntryPoint = "canGetBusStatistics")]
-        public static extern canStatus canGetBusStatistics(int hnd, out canBusStatistics stat, UIntPtr bufsiz);
+        public static extern canStatus canGetBusStatistics(int hnd, out LinuxCanBusStatistics stat, UIntPtr bufsiz);
 
         [DllImport(Dll, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
         public static extern canStatus canGetErrorText(canStatus err, StringBuilder buf, uint bufsiz);
@@ -602,7 +651,7 @@ public static class Canlib
         public static extern canStatus canIoCtl_sb(int hnd, uint func, StringBuilder sb, uint buflen);
 
         [DllImport(Dll, CallingConvention = CallingConvention.Cdecl)]
-        public static extern canStatus canAccept(int hnd, int envelope, uint flag);
+        public static extern canStatus canAccept(int hnd, nint envelope, uint flag);
 
         [DllImport(Dll, CallingConvention = CallingConvention.Cdecl, EntryPoint = "canObjBufAllocate")]
         public static extern canStatus canObjBufAllocate(int hnd, int type);
