@@ -5,31 +5,43 @@ namespace CanKit.Tests.Matrix;
 
 public partial class TestMatrix
 {
-    public static IEnumerable<object[]> CombinedOneShotClassic()
+    public static IEnumerable<object> CombinedOneShotClassic()
+        => SkipWhenEmpty(CombinedOneShotClassicRows());
+
+    private static IEnumerable<object[]> CombinedOneShotClassicRows()
     {
-        foreach(var i in Pairs())
+        foreach (var i in PairRows())
         foreach (var r in ClassicFrameSettings())
             yield return i.Concat(r).ToArray();
     }
 
-    public static IEnumerable<object[]> CombinedOneShotFD()
+    public static IEnumerable<object> CombinedOneShotFD()
+        => SkipWhenEmpty(CombinedOneShotFDRows());
+
+    private static IEnumerable<object[]> CombinedOneShotFDRows()
     {
-        foreach(var i in Pairs())
+        foreach (var i in PairRows())
         foreach (var r in FDFrameSettings())
             yield return i.Concat(r).ToArray();
     }
 
-    public static IEnumerable<object[]> CombinedContinuosClassic()
+    public static IEnumerable<object> CombinedContinuosClassic()
+        => SkipWhenEmpty(CombinedContinuosClassicRows());
+
+    private static IEnumerable<object[]> CombinedContinuosClassicRows()
     {
-        foreach(var i in Pairs())
+        foreach (var i in PairRows())
         foreach (var l in GapCases())
         foreach (var r in ClassicFrameSettings())
             yield return i.Concat(l).Concat(r).ToArray();
     }
 
-    public static IEnumerable<object[]> CombinedContinuosFD()
+    public static IEnumerable<object> CombinedContinuosFD()
+        => SkipWhenEmpty(CombinedContinuosFDRows());
+
+    private static IEnumerable<object[]> CombinedContinuosFDRows()
     {
-        foreach(var i in Pairs())
+        foreach (var i in PairRows())
         foreach (var l in GapCases())
         foreach (var r in FDFrameSettings())
             yield return i.Concat(l).Concat(r).ToArray();
