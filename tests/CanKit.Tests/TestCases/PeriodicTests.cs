@@ -43,19 +43,20 @@ public class PeriodicTests : IClassFixture<TestCaseProvider>
 
             using var handle = tx.TransmitPeriodic(frame, options);
 
+            var ct = TestContext.Current.CancellationToken;
             var received = 0;
             var end = DateTime.UtcNow.AddSeconds(2);
             while (DateTime.UtcNow < end && received < count)
             {
-                var batch = await rx.ReceiveAsync(16, 20);
+                var batch = await rx.ReceiveAsync(16, 20, ct);
                 received += batch.Count(d => d.CanFrame.ID == frame.ID);
             }
 
             // Stop and ensure no more
             handle.Stop();
             received.Should().BeGreaterOrEqualTo(count);
-            await Task.Delay(period.Milliseconds*5);
-            var after = await rx.ReceiveAsync(16, 100);
+            await Task.Delay(period.Milliseconds * 5, ct);
+            var after = await rx.ReceiveAsync(16, 100, ct);
             after.Count(d => d.CanFrame.ID == frame.ID).Should().BeLessOrEqualTo(1);
         }
         finally

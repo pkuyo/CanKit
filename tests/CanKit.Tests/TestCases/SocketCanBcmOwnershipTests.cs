@@ -254,7 +254,7 @@ public class SocketCanBcmOwnershipTests
             Action queryRemaining = () => _ = handle!.RemainingCount;
             queryRemaining.Should().NotThrow();
 
-            await Task.Delay(40);
+            await Task.Delay(40, TestContext.Current.CancellationToken);
         }
         finally
         {
