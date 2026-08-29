@@ -58,6 +58,7 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
 
     internal VectorBus(IBusOptions options, ITransceiver transceiver, ICanModelProvider provider)
     {
+        VectorPlatformGuard.EnsureSupported();
         _driverScope = VectorDriver.Acquire();
         Options = new VectorBusRtConfigurator();
         Options.Init((VectorBusOptions)options);

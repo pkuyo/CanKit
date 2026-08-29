@@ -116,38 +116,46 @@ internal static class ZlgEndpoint
 
     public static unsafe IEnumerable<BusEndpointInfo> Enumerate()
     {
-        if (!ZLGCAN.ZCLOUD_IsConnected()) return [];
-        var userData = Marshal.PtrToStructure<ZCLOUD_USER_DATA>(ZLGCAN.ZCLOUD_GetUserData());
-        List<BusEndpointInfo> infos = new();
-        for (ulong i = 0; i < userData.devCnt; i++)
+        try
         {
-            var device = userData.devices[i];
-            for (var j = 0; j < device.channelCnt; j++)
+            if (!ZLGCAN.ZCLOUD_IsConnected()) return [];
+            var userData = Marshal.PtrToStructure<ZCLOUD_USER_DATA>(ZLGCAN.ZCLOUD_GetUserData());
+            List<BusEndpointInfo> infos = new();
+            for (ulong i = 0; i < userData.devCnt; i++)
             {
-                var chn = device.channels[j];
-                infos.Add(new BusEndpointInfo()
+                var device = userData.devices[i];
+                for (var j = 0; j < device.channelCnt; j++)
                 {
-                    Scheme = "zlg",
-                    DeviceType = ZlgDeviceType.ZCAN_CLOUD,
-                    Endpoint = $"zlg://ZCAN_CLOUD?index={device.devIndex}#ch{j}",
-                    Title = $"{device.name}-Channel{j} (ZLGCloud)",
-                    Meta =  new Dictionary<string, string>
-                {
-                    { "devIndex" , $"{device.devIndex}" },
-                    { "chnIndex" , $"{j}" },
-                    { "devId" , $"{device.id}" },
-                    { "chnId" , $"{chn}" },
-                    { "devType" , $"{device.type}" },
-                    { "chnType" , $"{chn.type}" }, // 0-CAN，1-ISO CANFD，2-Non-ISO CANFD
-                    { "status" , $"{device.status}" },// 0: online, 1: offline
-                    { "name" , $"{device.name}" },
-                    { "serial" , $"{device.serial}" },
-                    { "fwVer" , $"{device.fwVer}" },
-                    { "hwVer" , $"{device.hwVer}" },
+                    var chn = device.channels[j];
+                    infos.Add(new BusEndpointInfo()
+                    {
+                        Scheme = "zlg",
+                        DeviceType = ZlgDeviceType.ZCAN_CLOUD,
+                        Endpoint = $"zlg://ZCAN_CLOUD?index={device.devIndex}#ch{j}",
+                        Title = $"{device.name}-Channel{j} (ZLGCloud)",
+                        Meta =  new Dictionary<string, string>
+                    {
+                        { "devIndex" , $"{device.devIndex}" },
+                        { "chnIndex" , $"{j}" },
+                        { "devId" , $"{device.id}" },
+                        { "chnId" , $"{chn}" },
+                        { "devType" , $"{device.type}" },
+                        { "chnType" , $"{chn.type}" }, // 0-CAN，1-ISO CANFD，2-Non-ISO CANFD
+                        { "status" , $"{device.status}" },// 0: online, 1: offline
+                        { "name" , $"{device.name}" },
+                        { "serial" , $"{device.serial}" },
+                        { "fwVer" , $"{device.fwVer}" },
+                        { "hwVer" , $"{device.hwVer}" },
+                    }
+                    });
                 }
-                });
             }
+            return infos;
         }
-        return infos;
+        catch
+        {
+            // Best-effort discovery: missing native SDK must not fail enumeration.
+            return [];
+        }
     }
 }

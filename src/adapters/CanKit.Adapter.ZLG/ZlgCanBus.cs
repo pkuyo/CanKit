@@ -60,6 +60,7 @@ namespace CanKit.Adapter.ZLG
         private readonly CanBusExceptionDispatcher _exceptions;
         internal ZlgCanBus(ZlgCanDevice device, IBusOptions options, ITransceiver transceiver, ICanModelProvider provider)
         {
+            ZlgPlatformGuard.EnsureSupported();
             _devicePtr = device.NativeHandler.DangerousGetHandle();
             _deviceType = (ZlgDeviceKind)((ZlgDeviceType)device.Options.DeviceType).Code;
 
