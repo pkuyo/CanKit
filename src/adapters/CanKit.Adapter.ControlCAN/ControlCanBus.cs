@@ -111,15 +111,23 @@ public sealed class ControlCanBus : ICanBus<ControlCanBusRtConfigurator>, IOwner
 
         CanKitLogger.LogInformation($"ControlCAN: Initializing dev={_devType}, idx={((ControlCanBusOptions)options).ChannelIndex} ch={options.ChannelIndex}, baud={options.BitTiming.Classic?.Nominal.Bitrate}");
         ApplyConfig(options);
-        // Device already opened by ControlCanDevice; just init channel
-        if (CcApi.VCI_InitCAN(_rawDevType, _devIndex, (uint)Options.ChannelIndex, ref cfg) == 0)
-            throw new CanBusCreationException("VCI_InitCAN failed.");
-        ApplyConfigAfterInit(options);
-        Reset();
-        if (CcApi.VCI_StartCAN(_rawDevType, _devIndex, (uint)Options.ChannelIndex) == 0)
-            throw new CanBusCreationException("VCI_StartCAN failed.");
+        try
+        {
+            // Device already opened by ControlCanDevice; just init channel
+            if (CcApi.VCI_InitCAN(_rawDevType, _devIndex, (uint)Options.ChannelIndex, ref cfg) == 0)
+                throw new CanBusCreationException("VCI_InitCAN failed.");
+            ApplyConfigAfterInit(options);
+            Reset();
+            if (CcApi.VCI_StartCAN(_rawDevType, _devIndex, (uint)Options.ChannelIndex) == 0)
+                throw new CanBusCreationException("VCI_StartCAN failed.");
 
-        NativeHandle = new BusNativeHandle((nint)((_rawDevType << 24) | (_devIndex << 16) | (uint)Options.ChannelIndex));
+            NativeHandle = new BusNativeHandle((nint)((_rawDevType << 24) | (_devIndex << 16) | (uint)Options.ChannelIndex));
+        }
+        catch (Exception ex) when (NativeLibraryLoad.IsFailure(ex))
+        {
+            throw ControlCanException.NativeLibraryNotFound("Open", ex);
+        }
+
         StartReceiveLoop();
     }
 

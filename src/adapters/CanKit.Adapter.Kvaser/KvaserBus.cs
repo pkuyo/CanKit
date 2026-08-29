@@ -9,6 +9,7 @@ using CanKit.Abstractions.SPI;
 using CanKit.Abstractions.SPI.Common;
 using CanKit.Abstractions.SPI.Providers;
 using CanKit.Adapter.Kvaser.Utils;
+using CanKit.Adapter.Kvaser.Exceptions;
 using CanKit.Core.Definitions;
 using CanKit.Core.Diagnostics;
 using CanKit.Core.Exceptions;
@@ -49,68 +50,75 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IOwnership
         _asyncRx = new AsyncFramePipe<CanReceiveData>(Options.AsyncBufferCapacity > 0 ? Options.AsyncBufferCapacity : null,
             static data => data.CanFrame.Dispose());
 
-        EnsureLibInitialized();
-
-        options.Capabilities = ((KvaserProvider)provider).QueryCapabilities(options);
-        options.Features = options.Capabilities.Features;
-
-        _exceptionPolicy = options.ExceptionPolicy ?? CanExceptionPolicy.Default;
-        _exceptions = new CanBusExceptionDispatcher(
-            "Kvaser CAN bus",
-            _exceptionPolicy,
-            raiseBackground: ex =>
-            {
-                try { var snap = Volatile.Read(ref BackgroundExceptionOccurred); snap?.Invoke(this, ex); } catch { /*ignore*/ }
-            },
-            raiseFault: ex =>
-            {
-                try { var snap = Volatile.Read(ref FaultOccurred); snap?.Invoke(this, ex); } catch { /*ignore*/  }
-            },
-            stopBackground: () =>
-            {
-                try { StopReceiveLoop(); } catch { /*ignore*/  }
-            },
-            failAsyncReceivers: ex =>
-            {
-                try { _asyncRx.ExceptionOccured(ex); } catch { /*ignore*/ }
-            });
-
-        // Open channel
-        _handle = OpenChannel((KvaserBusOptions)options);
-        CanKitLogger.LogInformation($"Kvaser: Initializing on '{_handle}', Mode={options.ProtocolMode}, Features={Options.Features}");
-        if (_handle < 0)
+        try
         {
-            throw new CanBusCreationException($"Kvaser canOpenChannel failed: handle={_handle}");
+            EnsureLibInitialized();
+
+            options.Capabilities = ((KvaserProvider)provider).QueryCapabilities(options);
+            options.Features = options.Capabilities.Features;
+
+            _exceptionPolicy = options.ExceptionPolicy ?? CanExceptionPolicy.Default;
+            _exceptions = new CanBusExceptionDispatcher(
+                "Kvaser CAN bus",
+                _exceptionPolicy,
+                raiseBackground: ex =>
+                {
+                    try { var snap = Volatile.Read(ref BackgroundExceptionOccurred); snap?.Invoke(this, ex); } catch { /*ignore*/ }
+                },
+                raiseFault: ex =>
+                {
+                    try { var snap = Volatile.Read(ref FaultOccurred); snap?.Invoke(this, ex); } catch { /*ignore*/  }
+                },
+                stopBackground: () =>
+                {
+                    try { StopReceiveLoop(); } catch { /*ignore*/  }
+                },
+                failAsyncReceivers: ex =>
+                {
+                    try { _asyncRx.ExceptionOccured(ex); } catch { /*ignore*/ }
+                });
+
+            // Open channel
+            _handle = OpenChannel((KvaserBusOptions)options);
+            CanKitLogger.LogInformation($"Kvaser: Initializing on '{_handle}', Mode={options.ProtocolMode}, Features={Options.Features}");
+            if (_handle < 0)
+            {
+                throw new CanBusCreationException($"Kvaser canOpenChannel failed: handle={_handle}");
+            }
+
+            NativeHandle = new BusNativeHandle(_handle);
+
+            // Configure bit timing and turn bus on
+            ConfigureBitrate(_handle, (KvaserBusOptions)options);
+
+            if (Options.ReceiveBufferCapacity != null)
+            {
+                int obj = Options.ReceiveBufferCapacity.Value;
+                Canlib.canIoCtl(_handle, Canlib.canIOCTL_SET_RX_QUEUE_SIZE, ref obj, (uint)Marshal.SizeOf<int>());
+            }
+
+            var st = Canlib.canBusOn(_handle);
+            CanKitLogger.LogInformation("PCAN: Initialize succeeded.");
+            if (st != Canlib.canStatus.canOK)
+            {
+                Canlib.canClose(_handle);
+                throw new CanBusCreationException($"Kvaser canBusOn failed: {st}");
+            }
+
+            // Apply initial options
+            ApplyConfig(options);
+            _pred = FilterRule.Build(Options.Filter.SoftwareFilterRules);
+            CanKitLogger.LogDebug("Kvaser: Initial options applied.");
+
+            _kvCallback ??= KvNotifyCallback;
+            var mask = (Canlib.canNOTIFY_RX | (Options.AllowErrorInfo ? Canlib.canNOTIFY_ERROR : 0));
+            KvaserUtils.ThrowIfError(Canlib.kvSetNotifyCallback(_handle, _kvCallback, IntPtr.Zero, (uint)mask),
+                "kvSetNotifyCallback", "Failed to register notify callback");
         }
-
-        NativeHandle = new BusNativeHandle(_handle);
-
-        // Configure bit timing and turn bus on
-        ConfigureBitrate(_handle, (KvaserBusOptions)options);
-
-        if (Options.ReceiveBufferCapacity != null)
+        catch (Exception ex) when (NativeLibraryLoad.IsFailure(ex))
         {
-            int obj = Options.ReceiveBufferCapacity.Value;
-            Canlib.canIoCtl(_handle, Canlib.canIOCTL_SET_RX_QUEUE_SIZE, ref obj, (uint)Marshal.SizeOf<int>());
+            throw KvaserCanException.NativeLibraryNotFound("Open", ex);
         }
-
-        var st = Canlib.canBusOn(_handle);
-        CanKitLogger.LogInformation("PCAN: Initialize succeeded.");
-        if (st != Canlib.canStatus.canOK)
-        {
-            Canlib.canClose(_handle);
-            throw new CanBusCreationException($"Kvaser canBusOn failed: {st}");
-        }
-
-        // Apply initial options
-        ApplyConfig(options);
-        _pred = FilterRule.Build(Options.Filter.SoftwareFilterRules);
-        CanKitLogger.LogDebug("Kvaser: Initial options applied.");
-
-        _kvCallback ??= KvNotifyCallback;
-        var mask = (Canlib.canNOTIFY_RX | (Options.AllowErrorInfo ? Canlib.canNOTIFY_ERROR : 0));
-        KvaserUtils.ThrowIfError(Canlib.kvSetNotifyCallback(_handle, _kvCallback, IntPtr.Zero, (uint)mask),
-            "kvSetNotifyCallback", "Failed to register notify callback");
     }
 
     public int Handle => _handle;
@@ -412,9 +420,13 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IOwnership
     }
     private static void EnsureLibInitialized()
     {
-        // canInitializeLibrary is safe to call multiple times
+        // canInitializeLibrary is safe to call multiple times. Load failures are not
+        // swallowed so Open can wrap them as KvaserCanException.
         try { Canlib.canInitializeLibrary(); }
-        catch { /* ignore */ }
+        catch (Exception ex) when (!NativeLibraryLoad.IsFailure(ex))
+        {
+            /* ignore non-load failures */
+        }
     }
 
     private static int OpenChannel(KvaserBusOptions opt)
