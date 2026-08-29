@@ -40,6 +40,7 @@ internal class PcanIsoTpScheduler : IIsoTpScheduler
 
     public PcanIsoTpScheduler(IBusOptions options)
     {
+        PcanPlatformGuard.EnsureSupported();
         var cfg = new PcanBusRtConfigurator();
         cfg.Init((PcanBusOptions)options);
         Options = cfg;

@@ -16,7 +16,8 @@ public class TestCaseProvider : IDisposable
 
         // Vendor adapters must be loaded before CanRegistry's lazy singleton builds,
         // otherwise their endpoints are never registered in this test host. Loading the
-        // assemblies does not load native vendor libraries.
+        // assemblies is harmless on every platform because the native drivers are only
+        // touched when an endpoint is actually opened.
         SafeLoad(new AssemblyName("CanKit.Adapter.Kvaser"));
         SafeLoad(new AssemblyName("CanKit.Adapter.PCAN"));
         SafeLoad(new AssemblyName("CanKit.Adapter.Vector"));

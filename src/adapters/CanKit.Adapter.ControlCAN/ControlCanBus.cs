@@ -46,6 +46,7 @@ public sealed class ControlCanBus : ICanBus<ControlCanBusRtConfigurator>, IOwner
 
     internal ControlCanBus(ControlCanDevice device, IBusOptions options, ITransceiver transceiver, ICanModelProvider provider)
     {
+        ControlCanPlatformGuard.EnsureSupported();
         Options = new ControlCanBusRtConfigurator();
         Options.Init((ControlCanBusOptions)options);
         _transceiver = transceiver;

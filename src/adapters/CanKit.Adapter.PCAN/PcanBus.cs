@@ -42,6 +42,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IOwnership
 
     internal PcanBus(IBusOptions options, ITransceiver transceiver)
     {
+        PcanPlatformGuard.EnsureSupported();
         Options = new PcanBusRtConfigurator();
         Options.Init((PcanBusOptions)options);
         _transceiver = transceiver;
