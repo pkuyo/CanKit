@@ -46,7 +46,7 @@ jobs:
           test "$(getconf LONG_BIT)" = "64"
 
           sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends can-utils
+          sudo apt-get install --yes --no-install-recommends can-utils libsocketcan-dev
 
           if ! sudo modprobe vcan || ! sudo modprobe can-gw; then
             sudo apt-get install --yes --no-install-recommends "linux-modules-extra-$(uname -r)"
