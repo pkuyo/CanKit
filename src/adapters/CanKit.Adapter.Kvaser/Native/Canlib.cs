@@ -191,9 +191,12 @@ public static class Canlib
 
     public static canStatus canClose(int hnd)
     {
-        return KvaserNativeLibraries.IsLinux
+        var status = KvaserNativeLibraries.IsLinux
             ? LinuxAbi.canClose(hnd)
             : WindowsAbi.canClose(hnd);
+        if (status == canStatus.canOK)
+            NotifyThunks.TryRemove(hnd, out _);
+        return status;
     }
 
     public static canStatus canBusOn(int hnd)
