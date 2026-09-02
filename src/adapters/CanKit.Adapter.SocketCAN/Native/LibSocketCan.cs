@@ -131,25 +131,6 @@ namespace CanKit.Adapter.SocketCAN.Native
             public UInt64 rx_otherhost_dropped;
         };
 
-        [StructLayout(LayoutKind.Sequential)]
-        struct timeval
-        {
-            public int tv_sec;
-            public int tv_usec;
-        }
-
-        [StructLayout(LayoutKind.Sequential)]
-        struct bcm_msg_head
-        {
-            public uint opcode;
-            public uint flags;
-            public uint count;
-            public timeval ival1;
-            public timeval ival2;
-            public uint can_id;
-            public uint nframes;
-        }
-
         public const uint IFLA_CAN_MAX = ((uint)IFLA_CAN.__IFLA_CAN_MAX - 1);
 
         [DllImport("socketcan", SetLastError = true, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]

@@ -3,6 +3,7 @@ name: CI-adapter-socketcan
 on:
   push:
     paths:
+      - '.github/workflows/socketcan-ci.yml'
       - 'src/core/CanKit.Core/**'
       - 'src/adapters/CanKit.Adapter.SocketCAN/**'
       - 'tests/CanKit.Tests/**'
@@ -10,6 +11,7 @@ on:
       - 'global.json'
   pull_request:
     paths:
+      - '.github/workflows/socketcan-ci.yml'
       - 'src/core/CanKit.Core/**'
       - 'src/adapters/CanKit.Adapter.SocketCAN/**'
       - 'tests/CanKit.Tests/**'
@@ -18,7 +20,7 @@ on:
 jobs:
   linux:
     name: SocketCAN (Ubuntu) – ${{ matrix.tfm }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
@@ -30,6 +32,36 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
+      - name: Configure vcan
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          test "$(uname -m)" = "x86_64"
+          test "$(getconf LONG_BIT)" = "64"
+
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends can-utils libsocketcan-dev
+
+          if ! sudo modprobe vcan || ! sudo modprobe can-gw; then
+            sudo apt-get install --yes --no-install-recommends "linux-modules-extra-$(uname -r)"
+            sudo modprobe vcan
+            sudo modprobe can-gw
+          fi
+
+          for iface in vcan0 vcan1 vcan2; do
+            sudo ip link add dev "$iface" type vcan
+            sudo ip link set dev "$iface" mtu 72
+            sudo ip link set dev "$iface" up
+            ip -details link show "$iface" | grep -qw vcan
+          done
+
+          for route in "vcan0 vcan1" "vcan1 vcan0"; do
+            read -r source destination <<< "$route"
+            sudo cangw -A -s "$source" -d "$destination" -e -l 1
+            sudo cangw -A -s "$source" -d "$destination" -e -X -l 1
+          done
+
       - name: Setup .NET SDK
         uses: actions/setup-dotnet@v6
         with:
@@ -37,17 +69,17 @@ jobs:
             8.0.x
             10.0.x
           global-json-file: global.json
-      
+
       - name: Configure endpoints
         run: |
           set -e
           echo "CANKIT_TEST_ADAPTERS=CanKit.Adapter.SocketCAN" >> "$GITHUB_ENV"
-
+      
       - name: Restore
         run: dotnet restore CanKitAdapters.slnf
 
       - name: Test (${{ matrix.tfm }})
-        run: dotnet test CanKitAdapters.slnf -c Fake -f ${{ matrix.tfm }} --logger "trx;LogFileName=TestResults-${{ matrix.tfm }}.trx"
+        run: dotnet test CanKitAdapters.slnf -c Release -f ${{ matrix.tfm }} --no-restore --logger "trx;LogFileName=TestResults-${{ matrix.tfm }}.trx"
 
       - name: Upload Test Results (${{ matrix.tfm }})
         if: always()
@@ -56,3 +88,116 @@ jobs:
           name: test-results-ubuntu-${{ matrix.tfm }}
           path: '**/TestResults-${{ matrix.tfm }}.trx'
 
+  linux-arm32-pr:
+    name: SocketCAN (Linux ARM32, PR)
+    if: github.event_name == 'pull_request'
+    environment: arm32-runner
+    runs-on: [self-hosted, linux, ARM, arm32, raspberry-pi]
+    timeout-minutes: 45
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_CLI_TELEMETRY_OPTOUT: true
+      CANKIT_TEST_ADAPTERS: CanKit.Adapter.SocketCAN
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v6
+        env:
+          DOTNET_INSTALL_DIR: ${{ runner.temp }}/.dotnet
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore CanKitAdapters.slnf
+
+      - name: Test SocketCAN on ARM32
+        run: dotnet test CanKitAdapters.slnf -c Release -f net8.0 --no-restore --logger "trx;LogFileName=Arm32TestResults.trx"
+
+      - name: Upload ARM32 test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: socketcan-linux-arm32-pr
+          path: '**/Arm32TestResults.trx'
+
+  linux-arm32-push:
+    name: SocketCAN (Linux ARM32, push)
+    if: github.event_name == 'push'
+    runs-on: [self-hosted, linux, ARM, arm32, raspberry-pi]
+    timeout-minutes: 45
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_CLI_TELEMETRY_OPTOUT: true
+      CANKIT_TEST_ADAPTERS: CanKit.Adapter.SocketCAN
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v6
+        env:
+          DOTNET_INSTALL_DIR: ${{ runner.temp }}/.dotnet
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore CanKitAdapters.slnf
+
+      - name: Test SocketCAN on ARM32
+        run: dotnet test CanKitAdapters.slnf -c Release -f net8.0 --no-restore --logger "trx;LogFileName=Arm32TestResults.trx"
+
+      - name: Upload ARM32 test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: socketcan-linux-arm32-push
+          path: '**/Arm32TestResults.trx'
+
+  fake:
+    name: SocketCAN injected failures – ${{ matrix.tfm }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        tfm: [net8.0, net10.0]
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_CLI_TELEMETRY_OPTOUT: true
+      CANKIT_TEST_ADAPTERS: CanKit.Adapter.SocketCAN
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore CanKitAdapters.slnf
+
+      - name: Test injected failures (${{ matrix.tfm }})
+        run: >
+          dotnet test tests/CanKit.Tests/CanKit.Tests.csproj
+          -c Fake
+          -f ${{ matrix.tfm }}
+          --filter "Category=FakeOnly"
+          --logger "trx;LogFileName=TestResults-Fake-${{ matrix.tfm }}.trx"
+
+      - name: Upload Test Results (${{ matrix.tfm }})
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results-ubuntu-fake-${{ matrix.tfm }}
+          path: '**/TestResults-Fake-${{ matrix.tfm }}.trx'

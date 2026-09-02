@@ -42,7 +42,7 @@ public sealed class SocketCanClassicTransceiver : ITransceiver
                     if (sent < 0)
                     {
                         var errno = Libc.Errno();
-                        if (errno == Libc.EAGAIN) return totalSent;
+                        if (errno == Libc.EAGAIN || errno == Libc.ENOBUFS) return totalSent;
                         Libc.ThrowErrno("sendmmsg(FD)", "Failed to send classic CAN frames");
                     }
                     totalSent += sent;
@@ -74,7 +74,7 @@ public sealed class SocketCanClassicTransceiver : ITransceiver
             if (s < 0)
             {
                 var errno = Libc.Errno();
-                if (errno == Libc.EAGAIN) return totalSent;
+                if (errno == Libc.EAGAIN || errno == Libc.ENOBUFS) return totalSent;
                 Libc.ThrowErrno("sendmmsg(FD)", "Failed to send classic CAN frames");
             }
             totalSent += s;
@@ -107,7 +107,7 @@ public sealed class SocketCanClassicTransceiver : ITransceiver
                     if (sent < 0)
                     {
                         var errno = Libc.Errno();
-                        if (errno == Libc.EAGAIN) return totalSent;
+                        if (errno == Libc.EAGAIN || errno == Libc.ENOBUFS) return totalSent;
                         Libc.ThrowErrno("sendmmsg(FD)", "Failed to send classic CAN frames");
                     }
                     totalSent += sent;
@@ -139,7 +139,7 @@ public sealed class SocketCanClassicTransceiver : ITransceiver
             if (s < 0)
             {
                 var errno = Libc.Errno();
-                if (errno == Libc.EAGAIN) return totalSent;
+                if (errno == Libc.EAGAIN || errno == Libc.ENOBUFS) return totalSent;
                 Libc.ThrowErrno("sendmmsg(FD)", "Failed to send classic CAN frames");
             }
             totalSent += s;
@@ -186,7 +186,7 @@ public sealed class SocketCanClassicTransceiver : ITransceiver
             if (sent < 0)
             {
                 var errno = Libc.Errno();
-                if (errno == Libc.EAGAIN) return 0;
+                if (errno == Libc.EAGAIN || errno == Libc.ENOBUFS) return 0;
                 Libc.ThrowErrno("sendmmsg(FD)", "Failed to send classic CAN frames");
             }
             return 1;

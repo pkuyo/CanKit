@@ -153,7 +153,7 @@ internal static class Libc
     public const byte CANFD_ESI = 0x02; // error state indicator
 
     // socket option
-    public const int SO_SNDBUF = 8;
+    public const int SO_SNDBUF = 7;
     public const int SO_RCVBUF = 8;
     public const int SO_SNDTIMEO = 21;
     public const int SO_TIMESTAMP = 29;
@@ -172,12 +172,19 @@ internal static class Libc
     public const int OK = 0;
 
 
-    [StructLayout(LayoutKind.Sequential)]
+    [StructLayout(LayoutKind.Explicit, Size = 24)]
     public struct sockaddr_can
     {
+        [FieldOffset(0)]
         public ushort can_family;
+
+        [FieldOffset(4)]
         public int can_ifindex;
+
+        [FieldOffset(8)]
         public uint rx_id;   // not used (CAN_J1939/BCM), padding keeps size
+
+        [FieldOffset(12)]
         public uint tx_id;   // not used
     }
 
@@ -232,8 +239,8 @@ internal static class Libc
     [StructLayout(LayoutKind.Sequential)]
     public struct timespec
     {
-        public long tv_sec;   // seconds
-        public long tv_nsec;  // nanoseconds
+        public nint tv_sec;   // C long: 32-bit on ARM32, 64-bit on x64
+        public nint tv_nsec;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -263,14 +270,31 @@ internal static class Libc
     internal struct epoll_event
     {
         public uint events;
-        public IntPtr data; // fd
+        public ulong data;
+    }
+
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
+    private struct epoll_event_packed
+    {
+        public uint events;
+        public ulong data;
+    }
+
+    [StructLayout(LayoutKind.Explicit, Size = 16)]
+    private struct epoll_event_aligned
+    {
+        [FieldOffset(0)]
+        public uint events;
+
+        [FieldOffset(8)]
+        public ulong data;
     }
 
     [StructLayout(LayoutKind.Sequential)]
     public struct timeval
     {
-        public long tv_sec;
-        public int  tv_usec;
+        public nint tv_sec;
+        public nint tv_usec;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -285,15 +309,21 @@ internal static class Libc
         public uint nframes;
     }
 
+    // bcm_msg_head ends with a flexible can_frame[] member in the Linux UAPI.
+    // can_frame has 8-byte alignment, so the wire header must be rounded up to
+    // that alignment even though the managed header does not include frames[].
+    public static int BcmManagedHeaderSize { get; } = Marshal.SizeOf<bcm_msg_head>();
+    public static int BcmWireHeaderSize { get; } = (BcmManagedHeaderSize + 7) & ~7;
+
     [DllImport("libc", SetLastError = true)]
     public static extern FileDescriptorHandle socket(int domain, int type, int protocol);
 
     [DllImport("libc", SetLastError = true)]
-    public static extern int bind(FileDescriptorHandle sockfd, ref sockaddr_can addr, int addrlen);
+    public static extern int bind(FileDescriptorHandle sockfd, ref sockaddr_can addr, uint addrlen);
 
 
     [DllImport("libc", SetLastError = true)]
-    public static extern int connect(FileDescriptorHandle sockfd, ref sockaddr_can addr, int addrlen);
+    public static extern int connect(FileDescriptorHandle sockfd, ref sockaddr_can addr, uint addrlen);
 
     [DllImport("libc", SetLastError = true)]
     public static extern int fcntl(FileDescriptorHandle fd, int cmd, int arg);
@@ -311,13 +341,13 @@ internal static class Libc
     public static extern int ioctl(FileDescriptorHandle fd, uint request, IntPtr argp);
 
     [DllImport("libc", SetLastError = true)]
-    public static unsafe extern long read(FileDescriptorHandle fd, void* buf, ulong count);
+    public static unsafe extern nint read(FileDescriptorHandle fd, void* buf, nuint count);
 
     [DllImport("libc", SetLastError = true)]
-    public static unsafe extern long write(FileDescriptorHandle fd, void* buf, ulong count);
+    public static unsafe extern nint write(FileDescriptorHandle fd, void* buf, nuint count);
 
     [DllImport("libc", SetLastError = true)]
-    public static unsafe extern long recvmsg(FileDescriptorHandle sockfd, msghdr* msg, int flags);
+    public static unsafe extern nint recvmsg(FileDescriptorHandle sockfd, msghdr* msg, int flags);
 
     [DllImport("libc", SetLastError = true)]
     public static unsafe extern int recvmmsg(FileDescriptorHandle sockfd, mmsghdr* msgvec, uint vlen, int flags, timespec* timeout);
@@ -329,16 +359,59 @@ internal static class Libc
     public static extern int close(int fd);
 
     [DllImport("libc", SetLastError = true)]
-    public static extern int poll(ref pollfd fds, uint nfds, int timeout);
+    public static extern int poll(ref pollfd fds, nuint nfds, int timeout);
 
     [DllImport("libc", SetLastError = true)]
     public static extern FileDescriptorHandle epoll_create1(int flags);
 
-    [DllImport("libc", SetLastError = true)]
-    public static extern int epoll_ctl(FileDescriptorHandle epfd, int op, FileDescriptorHandle fd, ref epoll_event ev);
+    [DllImport("libc", EntryPoint = "epoll_ctl", SetLastError = true)]
+    private static unsafe extern int epoll_ctl_native(
+        FileDescriptorHandle epfd, int op, FileDescriptorHandle fd, void* ev);
 
-    [DllImport("libc", SetLastError = true)]
-    public static extern int epoll_wait(FileDescriptorHandle epfd, [In, Out] epoll_event[] events, int maxevents, int timeout);
+    [DllImport("libc", EntryPoint = "epoll_wait", SetLastError = true)]
+    private static unsafe extern int epoll_wait_native(
+        FileDescriptorHandle epfd, void* events, int maxevents, int timeout);
+
+    private static bool EpollUsesPackedLayout
+    {
+        get
+        {
+            var architecture = RuntimeInformation.ProcessArchitecture;
+            return architecture == Architecture.X64 || architecture == Architecture.X86;
+        }
+    }
+
+    public static unsafe int epoll_ctl(
+        FileDescriptorHandle epfd, int op, FileDescriptorHandle fd, ref epoll_event ev)
+    {
+        if (EpollUsesPackedLayout)
+        {
+            var native = new epoll_event_packed { events = ev.events, data = ev.data };
+            return epoll_ctl_native(epfd, op, fd, &native);
+        }
+
+        var aligned = new epoll_event_aligned { events = ev.events, data = ev.data };
+        return epoll_ctl_native(epfd, op, fd, &aligned);
+    }
+
+    public static unsafe int epoll_wait(
+        FileDescriptorHandle epfd, [In, Out] epoll_event[] events, int maxevents, int timeout)
+    {
+        if (EpollUsesPackedLayout)
+        {
+            var native = stackalloc epoll_event_packed[maxevents];
+            var count = epoll_wait_native(epfd, native, maxevents, timeout);
+            for (var i = 0; i < count; i++)
+                events[i] = new epoll_event { events = native[i].events, data = native[i].data };
+            return count;
+        }
+
+        var aligned = stackalloc epoll_event_aligned[maxevents];
+        var alignedCount = epoll_wait_native(epfd, aligned, maxevents, timeout);
+        for (var i = 0; i < alignedCount; i++)
+            events[i] = new epoll_event { events = aligned[i].events, data = aligned[i].data };
+        return alignedCount;
+    }
 
     [DllImport("libc", SetLastError = true)]
     public static extern FileDescriptorHandle eventfd(uint initval, int flags);
