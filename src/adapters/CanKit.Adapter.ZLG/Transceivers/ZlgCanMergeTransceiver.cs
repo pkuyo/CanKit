@@ -71,12 +71,12 @@ public class ZlgCanMergeTransceiver : ITransceiver
         var buf = pool.Rent(ZLGCAN.BATCH_COUNT);
         try
         {
-            var stopWatch = new Stopwatch();
+            var stopWatch = Stopwatch.StartNew();
             while (count > 0)
             {
-                var remaining = timeOut - (int)stopWatch.Elapsed.TotalMilliseconds;
-                if (timeOut == -1)
-                    remaining = -1;
+                var remaining = timeOut == -1
+                    ? -1
+                    : Math.Max(0, timeOut - (int)stopWatch.Elapsed.TotalMilliseconds);
                 var rec = 0;
                 rec = (int)ZLGCAN.ZCAN_ReceiveData(canBus.Handle.DeviceHandle, buf,
                     Math.Min(ZLGCAN.BATCH_COUNT, (uint)count), remaining);

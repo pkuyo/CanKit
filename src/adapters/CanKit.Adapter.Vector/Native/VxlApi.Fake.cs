@@ -799,7 +799,7 @@ internal static class VxlApi
 
     private static void TrySignal(SafeWaitHandle? hEvent)
     {
-        if (hEvent!= null && hEvent.IsInvalid)
+        if (hEvent is { IsInvalid: false, IsClosed: false })
         {
             try { Win32.SetEvent(hEvent); } catch { }
         }

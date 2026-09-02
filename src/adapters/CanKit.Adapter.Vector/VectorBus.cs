@@ -24,6 +24,7 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
     private readonly AsyncFramePipe<CanReceiveData> _asyncRx;
     private readonly IDisposable _driverScope;
     private CancellationTokenSource? _pollCts;
+    private Task? _pollTask;
 
     private EventHandler<CanReceiveData>? _frameReceived;
     private EventHandler<CanReceiveDataView>? _frameObserved;
@@ -116,7 +117,6 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
 
             ActivateChannel();
 
-#if !FAKE
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
                 // Use OS event notification to wake the RX loop instead of polling
@@ -137,7 +137,6 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
                     throw;
                 }
             }
-#endif
         }
         catch
         {
@@ -148,7 +147,11 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
             _driverScope.Dispose();
             throw;
         }
-        Task.Run(() => RxDrainLoop(_pollCts.Token));
+        _pollTask = Task.Factory.StartNew(
+            () => RxDrainLoop(_pollCts.Token),
+            _pollCts.Token,
+            TaskCreationOptions.LongRunning,
+            TaskScheduler.Default);
     }
 
     private void UpdateCapabilities(IBusOptions options, VectorChannelInfo info)
@@ -466,13 +469,19 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
 
     private void StopReceiveLoop()
     {
+        var task = Volatile.Read(ref _pollTask);
         var cts = Volatile.Read(ref _pollCts);
         try
         {
             try { cts?.Cancel(); } catch { }
+            if (task is not null && Task.CurrentId != task.Id)
+            {
+                try { task.Wait(500); } catch { }
+            }
         }
         finally
         {
+            Interlocked.CompareExchange(ref _pollTask, null, task);
             cts?.Dispose();
             if (_pollCts != null)
             {
@@ -533,92 +542,91 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
                 if (_rxEvent != null)
                 {
                     var handles = new[] { _rxEvent, token.WaitHandle };
-                    WaitHandle.WaitAny(handles);
+                    if (WaitHandle.WaitAny(handles) == 1)
+                        token.ThrowIfCancellationRequested();
+
+                    // Reset before draining. A frame arriving during the drain will
+                    // set the event again and cannot be lost between drain/reset.
+                    _rxEvent.Reset();
                 }
 
                 token.ThrowIfCancellationRequested();
 
-                while (true)
+                while (_transceiver.ReceiveEvents(this, receiveData, errInfos))
                 {
-                    while (_transceiver.ReceiveEvents(this, receiveData, errInfos))
+                    foreach (var data in receiveData)
                     {
-                        foreach (var data in receiveData)
+                        if (_softwareFilterPredicate is null || !data.CanFrame.IsExtendedFrame || _softwareFilterPredicate(data.CanFrame))
                         {
-                            if (_softwareFilterPredicate is null || !data.CanFrame.IsExtendedFrame || _softwareFilterPredicate(data.CanFrame))
+                            try
                             {
-                                try
-                                {
-                                    var evSnap = Volatile.Read(ref _frameReceived);
-                                    evSnap?.Invoke(this, data);
-                                }
-                                catch (Exception e)
-                                {
-                                    _exceptions.Report(
-                                        e,
-                                        CanExceptionSource.SubscriberCallback,
-                                        severity: _exceptionPolicy.SubscriberCallbackSeverity,
-                                        message: "Vector FrameReceived handler threw an exception.");
-                                }
+                                var evSnap = Volatile.Read(ref _frameReceived);
+                                evSnap?.Invoke(this, data);
+                            }
+                            catch (Exception e)
+                            {
+                                _exceptions.Report(
+                                    e,
+                                    CanExceptionSource.SubscriberCallback,
+                                    severity: _exceptionPolicy.SubscriberCallbackSeverity,
+                                    message: "Vector FrameReceived handler threw an exception.");
+                            }
 
-                                try
-                                {
-                                    var evSnap = Volatile.Read(ref _frameObserved);
-                                    evSnap?.Invoke(this, new CanReceiveDataView(data));
-                                }
-                                catch (Exception e)
-                                {
-                                    _exceptions.Report(
-                                        e,
-                                        CanExceptionSource.SubscriberCallback,
-                                        severity: _exceptionPolicy.SubscriberCallbackSeverity,
-                                        message: "Vector FrameObserved handler threw an exception.");
-                                }
-                                _asyncRx.Publish(data);
+                            try
+                            {
+                                var evSnap = Volatile.Read(ref _frameObserved);
+                                evSnap?.Invoke(this, new CanReceiveDataView(data));
+                            }
+                            catch (Exception e)
+                            {
+                                _exceptions.Report(
+                                    e,
+                                    CanExceptionSource.SubscriberCallback,
+                                    severity: _exceptionPolicy.SubscriberCallbackSeverity,
+                                    message: "Vector FrameObserved handler threw an exception.");
+                            }
+                            _asyncRx.Publish(data);
+                        }
+                    }
+
+                    foreach (var errInfo in errInfos)
+                    {
+                        if (errInfo.Type == FrameErrorType.Controller)
+                        {
+                            _busState = errInfo.RawErrorCode switch
+                            {
+                                VxlApi.XL_CHIPSTAT_BUSOFF => BusState.BusOff,
+                                VxlApi.XL_CHIPSTAT_ERROR_PASSIVE => BusState.ErrPassive,
+                                VxlApi.XL_CHIPSTAT_ERROR_WARNING => BusState.ErrWarning,
+                                VxlApi.XL_CHIPSTAT_ERROR_ACTIVE => BusState.ErrActive,
+                                _ => BusState.None
+                            };
+                            _errorCounters = errInfo.ErrorCounters!.Value;
+                        }
+                        else
+                        {
+                            try
+                            {
+                                _errorFrameReceived?.Invoke(this, errInfo);
+                            }
+                            catch (Exception e)
+                            {
+                                _exceptions.Report(
+                                    e,
+                                    CanExceptionSource.SubscriberCallback,
+                                    severity: _exceptionPolicy.SubscriberCallbackSeverity,
+                                    message: "Vector ErrorFrameReceived handler threw an exception.");
                             }
                         }
 
-                        foreach (var errInfo in errInfos)
-                        {
-                            if (errInfo.Type == FrameErrorType.Controller)
-                            {
-                                _busState = errInfo.RawErrorCode switch
-                                {
-                                    VxlApi.XL_CHIPSTAT_BUSOFF => BusState.BusOff,
-                                    VxlApi.XL_CHIPSTAT_ERROR_PASSIVE => BusState.ErrPassive,
-                                    VxlApi.XL_CHIPSTAT_ERROR_WARNING => BusState.ErrWarning,
-                                    VxlApi.XL_CHIPSTAT_ERROR_ACTIVE => BusState.ErrActive,
-                                    _ => BusState.None
-                                };
-                                _errorCounters = errInfo.ErrorCounters!.Value;
-                            }
-                            else
-                            {
-                                try
-                                {
-                                    _errorFrameReceived?.Invoke(this, errInfo);
-                                }
-                                catch (Exception e)
-                                {
-                                    _exceptions.Report(
-                                        e,
-                                        CanExceptionSource.SubscriberCallback,
-                                        severity: _exceptionPolicy.SubscriberCallbackSeverity,
-                                        message: "Vector ErrorFrameReceived handler threw an exception.");
-                                }
-                            }
+                    }
+                    receiveData.Clear();
+                    errInfos.Clear();
+                }
 
-                        }
-                        receiveData.Clear();
-                        errInfos.Clear();
-                    }
-                    if (_rxEvent == null)
-                    {
-                        PreciseDelay.Delay(TimeSpan.FromMilliseconds(Options.PollingInterval));
-                    }
-                    else
-                    {
-                        _rxEvent.Reset();
-                    }
+                if (_rxEvent == null)
+                {
+                    token.WaitHandle.WaitOne(Math.Max(1, Options.PollingInterval));
                 }
             }
         }
