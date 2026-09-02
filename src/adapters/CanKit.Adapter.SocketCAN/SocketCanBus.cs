@@ -230,7 +230,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IOwnersh
     {
         ThrowIfDisposed();
         int sendCount = 0;
-        var stopWatch = new Stopwatch();
+        var stopWatch = Stopwatch.StartNew();
         var pollFd = new Libc.pollfd { fd = _fd.DangerousGetHandle().ToInt32(), events = Libc.POLLOUT };
         var needSend = frames.ToArray();
         var wrote = _transceiver.Transmit(this, needSend.AsSpan());
@@ -274,7 +274,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IOwnersh
     {
         ThrowIfDisposed();
         int sendCount = 0;
-        var stopWatch = new Stopwatch();
+        var stopWatch = Stopwatch.StartNew();
         var pollFd = new Libc.pollfd { fd = _fd.DangerousGetHandle().ToInt32(), events = Libc.POLLOUT };
         var wrote = _transceiver.Transmit(this, frames);
         sendCount = wrote;

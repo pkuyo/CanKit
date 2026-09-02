@@ -9,6 +9,7 @@ using Xunit;
 
 namespace CanKit.Tests.TestCases;
 
+[Trait("Category", "FakeOnly")]
 public class SocketCanTransmitRegressionTests
 {
     private const string LibcTypeName = "CanKit.Adapter.SocketCAN.Native.Libc";

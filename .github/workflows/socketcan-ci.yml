@@ -160,3 +160,44 @@ jobs:
         with:
           name: socketcan-linux-arm32-push
           path: '**/Arm32TestResults.trx'
+
+  fake:
+    name: SocketCAN injected failures – ${{ matrix.tfm }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        tfm: [net8.0, net10.0]
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_CLI_TELEMETRY_OPTOUT: true
+      CANKIT_TEST_ADAPTERS: CanKit.Adapter.SocketCAN
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup .NET SDK
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore CanKitAdapters.slnf
+
+      - name: Test injected failures (${{ matrix.tfm }})
+        run: >
+          dotnet test tests/CanKit.Tests/CanKit.Tests.csproj
+          -c Fake
+          -f ${{ matrix.tfm }}
+          --filter "Category=FakeOnly"
+          --logger "trx;LogFileName=TestResults-Fake-${{ matrix.tfm }}.trx"
+
+      - name: Upload Test Results (${{ matrix.tfm }})
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results-ubuntu-fake-${{ matrix.tfm }}
+          path: '**/TestResults-Fake-${{ matrix.tfm }}.trx'
