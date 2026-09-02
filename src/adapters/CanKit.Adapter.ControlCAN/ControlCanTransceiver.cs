@@ -28,8 +28,9 @@ internal sealed class ControlCanTransceiver : ITransceiver
             f.ToNative(&pObj[index++], retry);
             if (index == CcApi.BATCH_COUNT)
             {
-                written += CcApi.VCI_Transmit(ctl.RawDevType, ctl.DevIndex, ctl.CanIndex, pObj, CcApi.BATCH_COUNT);
-                if (written != CcApi.BATCH_COUNT)
+                var n = CcApi.VCI_Transmit(ctl.RawDevType, ctl.DevIndex, ctl.CanIndex, pObj, CcApi.BATCH_COUNT);
+                written += n;
+                if (n != CcApi.BATCH_COUNT)
                     return (int)written;
                 index = 0;
             }
@@ -37,7 +38,10 @@ internal sealed class ControlCanTransceiver : ITransceiver
 
         if (index != 0)
         {
-            written += CcApi.VCI_Transmit(ctl.RawDevType, ctl.DevIndex, ctl.CanIndex, pObj, (uint)index);
+            var n = CcApi.VCI_Transmit(ctl.RawDevType, ctl.DevIndex, ctl.CanIndex, pObj, (uint)index);
+            written += n;
+            if (n != (uint)index)
+                return (int)written;
         }
         return (int)written;
     }
@@ -57,8 +61,9 @@ internal sealed class ControlCanTransceiver : ITransceiver
             f.ToNative(&pObj[index++], retry);
             if (index == CcApi.BATCH_COUNT)
             {
-                written += CcApi.VCI_Transmit(ctl.RawDevType, ctl.DevIndex, ctl.CanIndex, pObj, CcApi.BATCH_COUNT);
-                if (written != CcApi.BATCH_COUNT)
+                var n = CcApi.VCI_Transmit(ctl.RawDevType, ctl.DevIndex, ctl.CanIndex, pObj, CcApi.BATCH_COUNT);
+                written += n;
+                if (n != CcApi.BATCH_COUNT)
                     return (int)written;
                 index = 0;
             }
@@ -66,7 +71,10 @@ internal sealed class ControlCanTransceiver : ITransceiver
 
         if (index != 0)
         {
-            written += CcApi.VCI_Transmit(ctl.RawDevType, ctl.DevIndex, ctl.CanIndex, pObj, (uint)index);
+            var n = CcApi.VCI_Transmit(ctl.RawDevType, ctl.DevIndex, ctl.CanIndex, pObj, (uint)index);
+            written += n;
+            if (n != (uint)index)
+                return (int)written;
         }
         return (int)written;
     }
@@ -110,4 +118,3 @@ internal sealed class ControlCanTransceiver : ITransceiver
         }
     }
 }
-
