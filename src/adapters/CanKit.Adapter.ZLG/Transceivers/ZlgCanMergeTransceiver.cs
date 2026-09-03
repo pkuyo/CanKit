@@ -80,6 +80,8 @@ public class ZlgCanMergeTransceiver : ITransceiver
                 var rec = 0;
                 rec = (int)ZLGCAN.ZCAN_ReceiveData(canBus.Handle.DeviceHandle, buf,
                     Math.Min(ZLGCAN.BATCH_COUNT, (uint)count), remaining);
+                if (rec == 0)
+                    yield break;
 
                 count -= rec;
                 for (int i = 0; i < rec; i++)

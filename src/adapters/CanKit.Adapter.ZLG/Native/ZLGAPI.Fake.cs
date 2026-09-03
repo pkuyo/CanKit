@@ -379,6 +379,7 @@ public static class ZLGCAN
         if (!TryGetChannel(channel_handle.DangerousGetHandle(), out var ch)) return 0;
         if (type == 0) return (uint)ch.RxClassic.Count;
         if (type == 1) return (uint)ch.RxFd.Count;
+        if (type == 2 && ch.Dev.MergeReceive) return (uint)ch.Dev.MergeRx.Count;
         return 0;
     }
 
