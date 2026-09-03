@@ -47,7 +47,7 @@ jobs:
         run: dotnet restore CanKitAdapters.slnf
 
       - name: Test (${{ matrix.tfm }})
-        run: dotnet test CanKitAdapters.slnf -c Fake -f ${{ matrix.tfm }} --logger "trx;LogFileName=TestResults-${{ matrix.tfm }}.trx"
+        run: dotnet test --solution CanKitAdapters.slnf -c Fake -f ${{ matrix.tfm }} --report-trx --report-trx-filename TestResults-${{ matrix.tfm }}.trx
 
       - name: Upload Test Results (${{ matrix.tfm }})
         if: always()
