@@ -103,7 +103,7 @@ internal static class ControlCAN
     public static unsafe extern uint VCI_Transmit(uint DevType, uint DevIndex, uint CANIndex, VCI_CAN_OBJ* pSend, uint Len);
 
     [DllImport(DllName)]
-    public static extern uint VCI_Receive(uint DevType, uint DevIndex, uint CANIndex, VCI_CAN_OBJ[] pReceive, uint Len, int WaitTime);
+    public static extern uint VCI_Receive(uint DevType, uint DevIndex, uint CANIndex, [Out] VCI_CAN_OBJ[] pReceive, uint Len, int WaitTime);
 
     [DllImport(DllName)]
     public static extern uint VCI_ReadErrInfo(uint DevType, uint DevIndex, uint CANIndex, out VCI_ERR_INFO pErrInfo);
