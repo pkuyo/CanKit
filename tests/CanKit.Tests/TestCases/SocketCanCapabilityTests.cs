@@ -7,6 +7,7 @@ using Xunit;
 
 namespace CanKit.Tests.TestCases;
 
+[Trait("Category", "FakeOnly")]
 public class SocketCanCapabilityTests
 {
     [Fact]

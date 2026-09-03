@@ -94,8 +94,8 @@ internal static class SocketCanUtils
     {
         return new Libc.timeval
         {
-            tv_sec = (int)Math.Floor(t.TotalSeconds),
-            tv_usec = (int)((t - TimeSpan.FromSeconds(Math.Floor(t.TotalSeconds))).TotalMilliseconds * 1000.0)
+            tv_sec = (nint)Math.Floor(t.TotalSeconds),
+            tv_usec = (nint)((t - TimeSpan.FromSeconds(Math.Floor(t.TotalSeconds))).TotalMilliseconds * 1000.0)
         };
     }
 

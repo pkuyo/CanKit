@@ -21,6 +21,8 @@ namespace CanKit.Adapter.SocketCAN.Native;
 #nullable disable
 internal static class Libc
 {
+    private static int _nextSendErrno;
+
     public const int BATCH_COUNT = 32;
 
     public const int MSG_CONFIRM = 0x800;
@@ -140,7 +142,7 @@ internal static class Libc
     public const byte CANFD_BRS = 0x01;
     public const byte CANFD_ESI = 0x02;
 
-    public const int SO_SNDBUF = 8;
+    public const int SO_SNDBUF = 7;
     public const int SO_RCVBUF = 8;
     public const int SO_SNDTIMEO = 21;
     public const int SO_TIMESTAMP = 29;
@@ -157,12 +159,19 @@ internal static class Libc
 
     public const int OK = 0;
 
-    [StructLayout(LayoutKind.Sequential)]
+    [StructLayout(LayoutKind.Explicit, Size = 24)]
     public struct sockaddr_can
     {
+        [FieldOffset(0)]
         public ushort can_family;
+
+        [FieldOffset(4)]
         public int can_ifindex;
+
+        [FieldOffset(8)]
         public uint rx_id;
+
+        [FieldOffset(12)]
         public uint tx_id;
     }
 
@@ -217,8 +226,8 @@ internal static class Libc
     [StructLayout(LayoutKind.Sequential)]
     public struct timespec
     {
-        public long tv_sec;
-        public long tv_nsec;
+        public nint tv_sec;
+        public nint tv_nsec;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -244,18 +253,18 @@ internal static class Libc
         public short revents;
     }
 
-    [StructLayout(LayoutKind.Sequential)]
+    [StructLayout(LayoutKind.Sequential, Pack = 1)]
     internal struct epoll_event
     {
         public uint events;
-        public IntPtr data;
+        public ulong data;
     }
 
     [StructLayout(LayoutKind.Sequential)]
     public struct timeval
     {
-        public long tv_sec;
-        public int tv_usec;
+        public nint tv_sec;
+        public nint tv_usec;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -269,6 +278,9 @@ internal static class Libc
         public uint can_id;
         public uint nframes;
     }
+
+    public static int BcmManagedHeaderSize { get; } = Marshal.SizeOf<bcm_msg_head>();
+    public static int BcmWireHeaderSize { get; } = (BcmManagedHeaderSize + 7) & ~7;
 
     // ---------- Fake ----------
     private abstract class FakeFd
@@ -306,7 +318,7 @@ internal static class Libc
                     if (n >= buf.Length) break;
                     if (HasInput(fd))
                     {
-                        buf[n++] = new epoll_event { events = ev, data = (IntPtr)fd.Id };
+                        buf[n++] = new epoll_event { events = ev, data = (ulong)fd.Id };
                     }
                 }
             }
@@ -496,7 +508,7 @@ internal static class Libc
         return new FileDescriptorHandle(new IntPtr(id), true);
     }
 
-    public static int bind(FileDescriptorHandle sockfd, ref sockaddr_can addr, int addrlen)
+    public static int bind(FileDescriptorHandle sockfd, ref sockaddr_can addr, uint addrlen)
     {
         var s = World.Get<RawSocketFd>(sockfd);
         if (addr.can_ifindex <= 0 || !World.IfacesByIndex.ContainsKey((uint)addr.can_ifindex))
@@ -508,7 +520,7 @@ internal static class Libc
         return OK;
     }
 
-    public static int connect(FileDescriptorHandle sockfd, ref sockaddr_can addr, int addrlen)
+    public static int connect(FileDescriptorHandle sockfd, ref sockaddr_can addr, uint addrlen)
     {
         var b = World.Get<BcmSocketFd>(sockfd);
         if (addr.can_ifindex <= 0 || !World.IfacesByIndex.ContainsKey((uint)addr.can_ifindex))
@@ -566,45 +578,45 @@ internal static class Libc
     public static int ioctl(FileDescriptorHandle fd, uint request, ref int argp) => 0;
     public static int ioctl(FileDescriptorHandle fd, uint request, IntPtr argp) => 0;
 
-    public static unsafe long read(FileDescriptorHandle fd, void* buf, ulong count)
+    public static unsafe nint read(FileDescriptorHandle fd, void* buf, nuint count)
     {
         var f = World.TryGet(fd);
         switch (f)
         {
             case EventFd e:
                 if (e.Counter == 0) { World.Errno = EAGAIN; return -1; }
-                if (count < (ulong)sizeof(ulong)) { World.Errno = ENOBUFS; return -1; }
+                if (count < (nuint)sizeof(ulong)) { World.Errno = ENOBUFS; return -1; }
                 Unsafe.Write((ulong*)buf, e.Counter);
                 e.Counter = 0;
                 e.Ready.Reset();
                 return sizeof(ulong);
             case BcmSocketFd b:
                 if (!b.Rx.TryDequeue(out var payload)) { World.Errno = EAGAIN; return -1; }
-                ulong n = (ulong)Math.Min((int)count, payload.Length);
+                var n = Math.Min(checked((int)count), payload.Length);
                 fixed (byte* p = payload)
                 {
-                    Buffer.MemoryCopy(p, buf, (long)count, (long)n);
+                    Buffer.MemoryCopy(p, buf, checked((long)count), n);
                 }
-                return (long)n;
+                return n;
             default:
                 World.Errno = EOPNOTSUPP; return -1;
         }
     }
 
-    public static unsafe long write(FileDescriptorHandle fd, void* buf, ulong count)
+    public static unsafe nint write(FileDescriptorHandle fd, void* buf, nuint count)
     {
         var f = World.TryGet(fd);
         switch (f)
         {
             case EventFd e:
-                if (count < (ulong)sizeof(ulong)) { World.Errno = ENOBUFS; return -1; }
+                if (count < (nuint)sizeof(ulong)) { World.Errno = ENOBUFS; return -1; }
                 var v = Unsafe.Read<ulong>(buf);
                 e.Counter += v;
                 e.Ready.Set();
                 return sizeof(ulong);
             case BcmSocketFd b:
                 // Interpret BCM commands
-                if (count < (ulong)Marshal.SizeOf<bcm_msg_head>()) { World.Errno = ENOBUFS; return -1; }
+                if (count < (nuint)BcmWireHeaderSize) { World.Errno = ENOBUFS; return -1; }
                 var head = Unsafe.Read<bcm_msg_head>(buf);
                 if (head.opcode == TX_SETUP)
                 {
@@ -615,21 +627,21 @@ internal static class Libc
                     }
 
                     // Interpret frame immediately following head if present
-                    int headSize = Marshal.SizeOf<bcm_msg_head>();
+                    int headSize = BcmWireHeaderSize;
                     var ptr = (byte*)buf + headSize;
                     uint canId = head.can_id;
                     // schedule periodic job
                     var ifc = World.IfacesByIndex[(uint)b.IfIndex];
                     bool isFd = (head.flags & CAN_FD_FRAME) != 0;
                     int frameSize = isFd ? Marshal.SizeOf<canfd_frame>() : Marshal.SizeOf<can_frame>();
-                    if ((long)count != headSize + (long)head.nframes * frameSize)
+                    if (checked((long)count) != headSize + (long)head.nframes * frameSize)
                     {
                         World.Errno = EINVAL;
                         return -1;
                     }
 
                     var payload = new byte[frameSize];
-                    if (head.nframes > 0 && (long)count >= headSize + frameSize)
+                    if (head.nframes > 0 && checked((long)count) >= headSize + frameSize)
                         Marshal.Copy((IntPtr)ptr, payload, 0, frameSize);
                     lock (b.TxOps)
                         b.TxOps.Add((canId, isFd));
@@ -647,7 +659,7 @@ internal static class Libc
 
                     // launch a background sender for this job
                     _ = RunBcmJobAsync(b, canId, payload, isFd, period, remaining, cts.Token);
-                    return (long)(headSize + (head.nframes > 0 ? frameSize : 0));
+                    return headSize + (head.nframes > 0 ? frameSize : 0);
                 }
                 else if (head.opcode == TX_DELETE)
                 {
@@ -663,10 +675,10 @@ internal static class Libc
 
                     CancelBcmJob(b);
                     var done = new bcm_msg_head { opcode = TX_EXPIRED };
-                    var bytes = StructureToBytes(done);
+                    var bytes = BcmHeaderToBytes(done);
                     b.Rx.Enqueue(bytes);
                     SignalWatchers(b);
-                    return (long)Marshal.SizeOf<bcm_msg_head>();
+                    return BcmWireHeaderSize;
                 }
                 else if (head.opcode == TX_READ)
                 {
@@ -682,13 +694,13 @@ internal static class Libc
 
                     // Return minimal TX_STATUS with 0 remaining (non-persistent for simplicity)
                     var status = new bcm_msg_head { opcode = TX_STATUS, flags = head.flags, count = 0 };
-                    b.Rx.Enqueue(StructureToBytes(status));
-                    return (long)Marshal.SizeOf<bcm_msg_head>();
+                    b.Rx.Enqueue(BcmHeaderToBytes(status));
+                    return BcmWireHeaderSize;
                 }
                 else if (head.opcode == TX_SEND)
                 {
                     // one-shot immediate send; treat like raw send of attached frame
-                    int headSize = Marshal.SizeOf<bcm_msg_head>();
+                    int headSize = BcmWireHeaderSize;
                     var ptr = (byte*)buf + headSize;
                     bool isFd = (head.flags & CAN_FD_FRAME) != 0;
                     int frameSize = isFd ? Marshal.SizeOf<canfd_frame>() : Marshal.SizeOf<can_frame>();
@@ -697,7 +709,7 @@ internal static class Libc
                     EmitFrame(b.IfIndex, payload, isFd, sourceFd: null);
                     return (headSize + frameSize);
                 }
-                return Marshal.SizeOf<bcm_msg_head>();
+                return BcmWireHeaderSize;
             default:
                 World.Errno = EOPNOTSUPP; return -1;
         }
@@ -752,7 +764,7 @@ internal static class Libc
             {
                 // Natural completion (finite count exhausted).
                 var done = new bcm_msg_head { opcode = TX_EXPIRED };
-                bc.Rx.Enqueue(StructureToBytes(done));
+                bc.Rx.Enqueue(BcmHeaderToBytes(done));
                 SignalWatchers(bc);
             }
         }
@@ -881,6 +893,13 @@ internal static class Libc
 
     public static unsafe int sendmmsg(FileDescriptorHandle sockfd, mmsghdr* msgvec, uint vlen, int flags)
     {
+        var injectedErrno = Interlocked.Exchange(ref _nextSendErrno, 0);
+        if (injectedErrno != 0)
+        {
+            World.Errno = injectedErrno;
+            return -1;
+        }
+
         var s = World.Get<RawSocketFd>(sockfd);
         int sent = 0;
         int max = (int)vlen;
@@ -904,7 +923,7 @@ internal static class Libc
         return 0;
     }
 
-    public static int poll(ref pollfd fds, uint nfds, int timeout)
+    public static int poll(ref pollfd fds, nuint nfds, int timeout)
     {
         _ = nfds;
         _ = timeout;
@@ -1002,6 +1021,8 @@ internal static class Libc
 
     public static int Errno() => World.Errno;
 
+    internal static void FailNextSendWith(int errno) => Interlocked.Exchange(ref _nextSendErrno, errno);
+
     public static void SetErrno(int errno) => World.Errno = errno;
 
     public static void ThrowErrno(string operation, string message, int errno)
@@ -1011,12 +1032,11 @@ internal static class Libc
     }
 
     private static TimeSpan ToTimeSpan(timeval tv)
-        => TimeSpan.FromSeconds(tv.tv_sec) + TimeSpan.FromMilliseconds(tv.tv_usec / 1000.0);
+        => TimeSpan.FromSeconds((long)tv.tv_sec) + TimeSpan.FromMilliseconds((long)tv.tv_usec / 1000.0);
 
-    private static byte[] StructureToBytes<T>(T value) where T : struct
+    private static byte[] BcmHeaderToBytes(bcm_msg_head value)
     {
-        int size = Unsafe.SizeOf<T>();
-        var ret = new byte[size];
+        var ret = new byte[BcmWireHeaderSize];
 #if NET5_0_OR_GREATER
         MemoryMarshal.Write(ret.AsSpan(), in value);
 #else

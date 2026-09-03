@@ -230,7 +230,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IOwnersh
     {
         ThrowIfDisposed();
         int sendCount = 0;
-        var stopWatch = new Stopwatch();
+        var stopWatch = Stopwatch.StartNew();
         var pollFd = new Libc.pollfd { fd = _fd.DangerousGetHandle().ToInt32(), events = Libc.POLLOUT };
         var needSend = frames.ToArray();
         var wrote = _transceiver.Transmit(this, needSend.AsSpan());
@@ -243,7 +243,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IOwnersh
                 : timeOut;
 
 
-            var pr = Libc.poll(ref pollFd, 1, remainingTime);
+            var pr = Libc.poll(ref pollFd, 1u, remainingTime);
             if (pr < 0)
             {
                 var errno = Libc.Errno();
@@ -274,7 +274,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IOwnersh
     {
         ThrowIfDisposed();
         int sendCount = 0;
-        var stopWatch = new Stopwatch();
+        var stopWatch = Stopwatch.StartNew();
         var pollFd = new Libc.pollfd { fd = _fd.DangerousGetHandle().ToInt32(), events = Libc.POLLOUT };
         var wrote = _transceiver.Transmit(this, frames);
         sendCount = wrote;
@@ -286,7 +286,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IOwnersh
                 : timeOut;
 
 
-            var pr = Libc.poll(ref pollFd, 1, remainingTime);
+            var pr = Libc.poll(ref pollFd, 1u, remainingTime);
             if (pr < 0)
             {
                 var errno = Libc.Errno();
@@ -571,7 +571,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IOwnersh
                 can_ifindex = _options.ChannelIndex,
             };
 
-            if (Libc.bind(fd, ref addr, Marshal.SizeOf<Libc.sockaddr_can>()) != 0)
+            if (Libc.bind(fd, ref addr, (uint)Marshal.SizeOf<Libc.sockaddr_can>()) != 0)
             {
                 fd.Dispose();
                 throw new CanBusCreationException($"bind({ifName}) failed.");
@@ -741,9 +741,9 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IOwnersh
             Libc.ThrowErrno("eventfd", "Failed to create eventfd for cancellation");
         }
 #if NET8_0_OR_GREATER
-        var ev = new Libc.epoll_event { events = Libc.EPOLLIN, data = _fd.DangerousGetHandle() };
+        var ev = new Libc.epoll_event { events = Libc.EPOLLIN, data = (ulong)_fd.DangerousGetHandle().ToInt64() };
 #else
-        var ev = new Libc.epoll_event { events = Libc.EPOLLIN | Libc.EPOLLERR, data = _fd.DangerousGetHandle() };
+        var ev = new Libc.epoll_event { events = Libc.EPOLLIN | Libc.EPOLLERR, data = (ulong)_fd.DangerousGetHandle().ToInt64() };
 #endif
         if (Libc.epoll_ctl(_epfd, Libc.EPOLL_CTL_ADD, _fd, ref ev) < 0)
         {
@@ -751,7 +751,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IOwnersh
         }
 
         // add cancel fd to epoll
-        var evCancel = new Libc.epoll_event { events = Libc.EPOLLIN, data = _cancelFd.DangerousGetHandle() };
+        var evCancel = new Libc.epoll_event { events = Libc.EPOLLIN, data = (ulong)_cancelFd.DangerousGetHandle().ToInt64() };
         if (Libc.epoll_ctl(_epfd, Libc.EPOLL_CTL_ADD, _cancelFd, ref evCancel) < 0)
         {
             Libc.ThrowErrno("epoll_ctl(EPOLL_CTL_ADD)", "failed to add cancelfd to epoll instance");
@@ -784,7 +784,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IOwnersh
                     unsafe
                     {
                         ulong one = 1UL;
-                        _ = Libc.write(_cancelFd, &one, (ulong)sizeof(ulong));
+                        _ = Libc.write(_cancelFd, &one, (nuint)sizeof(ulong));
                     }
                 }
             }
@@ -829,7 +829,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IOwnersh
                         unsafe
                         {
                             ulong tmp;
-                            _ = Libc.read(_cancelFd, &tmp, sizeof(ulong));
+                            _ = Libc.read(_cancelFd, &tmp, (nuint)sizeof(ulong));
                         }
                         continue;
                     }

@@ -44,6 +44,41 @@ public class ThroughputAndFeaturesTests : IClassFixture<TestCaseProvider>
             v.BadData.Should().Be(0);
         }
     }
+
+    // Direct Transmit of 130 frames (2 * ControlCAN BATCH_COUNT + 2). The existing
+    // 64/128 one-shot test sends through SendBurstAsync in chunks of 32, so it would
+    // not catch a transceiver that compares the running write total to BATCH_COUNT.
+    [Theory]
+    [MemberData(nameof(Matrix.TestMatrix.Pairs), MemberType = typeof(Matrix.TestMatrix))]
+    public async Task Transmit_Past_Two_Native_Batches_Returns_Full_Count(
+        string epA, string epB, string endpoint, bool hasFd)
+    {
+        _ = endpoint;
+        _ = hasFd;
+        using var rx = TestHelpers.OpenClassic(epA);
+        using var tx = TestHelpers.OpenClassic(epB);
+
+        const int count = 130;
+        var frames = TestHelpers.GenerateSeqFrames(
+            TestHelpers.CreateClassicSeq(0x100, false, false, 8), count).ToArray();
+
+        tx.Transmit(frames).Should().Be(count);
+        using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2)))
+        {
+            var rec = await TestHelpers.ReceiveUntilAsync(
+                rx, new TestHelpers.SequenceVerifier(), count, 2000, cts.Token);
+            rec.Should().Be(count);
+        }
+
+        tx.Transmit((IEnumerable<CanFrame>)frames).Should().Be(count);
+        using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2)))
+        {
+            var rec = await TestHelpers.ReceiveUntilAsync(
+                rx, new TestHelpers.SequenceVerifier(), count, 2000, cts.Token);
+            rec.Should().Be(count);
+        }
+    }
+
     // 64 and 128 one-shot batch (FD)
     // 单次64和128的发送批次（CANFD）
     [Theory]
