@@ -1,4 +1,0 @@
-<linker>
-  <assembly fullname="CanKit.Adapter.PCAN" preserve="all" />
-</linker>
-
