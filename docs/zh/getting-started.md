@@ -20,7 +20,9 @@ Dotnet add package CanKit.Adapter.ZLG
 Dotnet add package CanKit.Adapter.Virtual
 ```
 
-> CanKit.Core 会通过构建期自动生成的提示列表预加载并发现适配器程序集，无需手动注册。
+> CanKit.Core 会在构建期根据项目引用生成强类型 Adapter 注册调用，不需要运行时扫描程序集，也无需手动注册。
+
+> 如果直接引用 Adapter DLL 或项目，而不是使用 NuGet 构建资产，请在首次使用 `CanBus` 前调用对应 Adapter 的 `CanKitRegistration.Register()`。
 
 ## 2）安装驱动/本机运行库
 

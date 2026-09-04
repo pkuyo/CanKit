@@ -5,6 +5,11 @@
 ### Added
 
 * Vendor adapters wrap a missing or wrong-bitness native library (`DllNotFoundException` / `BadImageFormatException`) at the first Open/constructor native call as adapter-specific `CanNativeCallException` types, with `CanKitErrorCode.NativeLibraryNotFound`, the original exception retained, and a message that names the DLL and the vendor runtime. Fake builds are unchanged.
+* CanKit packages now support trimming and NativeAOT through build-time generated, strongly typed component registration. Applications no longer need to root complete CanKit assemblies.
+
+### Changed
+
+* Runtime reflection-based component discovery has been replaced by static registration. Custom adapters and direct DLL/ProjectReference consumers must provide or invoke a `CanKitRegistration.Register()` entry point before first using `CanRegistry`.
 
 ### Fixed
 

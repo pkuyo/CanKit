@@ -3,7 +3,8 @@ param(
     [string]$ManifestPath = "eng/packages.json",
     [string]$VersionFilePath = "eng/package-versions.props",
     [string]$PackageDirectory = "artifacts/nuget",
-    [string]$SmokeProject = "eng/package-smoke/CanKit.PackageSmoke.csproj"
+    [string]$SmokeProject = "eng/package-smoke/CanKit.PackageSmoke.csproj",
+    [string]$AotSmokeProject = "eng/aot-smoke/CanKit.AotSmoke.csproj"
 )
 
 Set-StrictMode -Version Latest
@@ -40,6 +41,7 @@ $packages = @($manifest.packages)
 $versionMap = Get-VersionMap -XmlContent (Get-Content (Join-Path $repoRoot $VersionFilePath) -Raw) -Packages $packages
 $packageDirectoryPath = Join-Path $repoRoot $PackageDirectory
 $smokeProjectPath = Join-Path $repoRoot $SmokeProject
+$aotSmokeProjectPath = Join-Path $repoRoot $AotSmokeProject
 
 foreach ($package in $packages) {
     $packageId = [string]$package.id
@@ -74,6 +76,8 @@ foreach ($package in $packages) {
 $tempDirectory = Join-Path ([System.IO.Path]::GetTempPath()) ("CanKit.PackageValidation." + [System.Guid]::NewGuid().ToString("N"))
 $null = New-Item -ItemType Directory -Path $tempDirectory -Force
 $configPath = Join-Path $tempDirectory "NuGet.Config"
+$packagesPath = Join-Path $tempDirectory "packages"
+$aotPublishPath = Join-Path $tempDirectory "aot-publish"
 $configContent = @"
 <?xml version="1.0" encoding="utf-8"?>
 <configuration>
@@ -87,7 +91,7 @@ $configContent = @"
 Set-Content -Path $configPath -Value $configContent -Encoding UTF8
 
 try {
-    & dotnet restore $smokeProjectPath --configfile $configPath -p:UseLocalProjectReferences=false -p:GeneratePackageOnBuild=false
+    & dotnet restore $smokeProjectPath --configfile $configPath --packages $packagesPath -p:UseLocalProjectReferences=false -p:GeneratePackageOnBuild=false
     if ($LASTEXITCODE -ne 0) {
         throw "dotnet restore failed for the package smoke project."
     }
@@ -95,6 +99,26 @@ try {
     & dotnet build $smokeProjectPath -c Release --no-restore -p:UseLocalProjectReferences=false -p:GeneratePackageOnBuild=false
     if ($LASTEXITCODE -ne 0) {
         throw "dotnet build failed for the package smoke project."
+    }
+
+    & dotnet run --project $smokeProjectPath -c Release -f net10.0 --no-build -p:UseLocalProjectReferences=false -p:GeneratePackageOnBuild=false
+    if ($LASTEXITCODE -ne 0) {
+        throw "dotnet run failed for the package smoke project."
+    }
+
+    & dotnet restore $aotSmokeProjectPath --configfile $configPath --packages $packagesPath -r win-x64 -p:GeneratePackageOnBuild=false
+    if ($LASTEXITCODE -ne 0) {
+        throw "dotnet restore failed for the NativeAOT smoke project."
+    }
+
+    & dotnet publish $aotSmokeProjectPath -c Release -r win-x64 --no-restore -o $aotPublishPath -p:GeneratePackageOnBuild=false
+    if ($LASTEXITCODE -ne 0) {
+        throw "dotnet publish failed for the NativeAOT smoke project."
+    }
+
+    & (Join-Path $aotPublishPath "CanKit.AotSmoke.exe")
+    if ($LASTEXITCODE -ne 0) {
+        throw "The NativeAOT smoke executable failed."
     }
 }
 finally {

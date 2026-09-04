@@ -3,8 +3,8 @@ using System;
 namespace CanKit.Abstractions.Attributes;
 
 /// <summary>
-/// Marks a registrar class or a static registration method to be discovered by CanRegistry.
-/// 用于标注可被 CanRegistry 发现并执行的注册入口（类或静态方法）。
+/// Describes a CanKit registration entry. Component discovery is performed by generated static registration code.
+/// 描述 CanKit 注册入口；组件发现由构建期生成的静态注册代码完成。
 /// </summary>
 [AttributeUsage(AttributeTargets.Class | AttributeTargets.Method, Inherited = false)]
 public sealed class CanRegistryEntryAttribute : Attribute
@@ -47,4 +47,3 @@ public enum CanRegistryEntryKind
     Protocol = 2,
     Misc = 3,
 }
-
