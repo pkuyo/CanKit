@@ -3,6 +3,12 @@
     <CanKitRegistrationsGenerated>$(IntermediateOutputPath)CanKit.Registrations.g.cs</CanKitRegistrationsGenerated>
   </PropertyGroup>
 
+  <ItemGroup Condition=" '@(CanKitRegistrationType)' != '' ">
+    <Compile Include="$(MSBuildThisFileDirectory)CanKit.ModuleInitializerAttribute.cs"
+             Link="CanKit.Generated\CanKit.ModuleInitializerAttribute.cs"
+             Visible="false" />
+  </ItemGroup>
+
   <Target Name="CanKit_GenerateStaticRegistrations"
           AfterTargets="ResolveReferences"
           BeforeTargets="CoreCompile"

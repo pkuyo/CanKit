@@ -3,6 +3,12 @@
     <CanKitRegistrationsGenerated>$(IntermediateOutputPath)CanKit.Registrations.g.cs</CanKitRegistrationsGenerated>
   </PropertyGroup>
 
+  <ItemGroup>
+    <Compile Include="$(MSBuildThisFileDirectory)..\src\core\CanKit.Core\buildTransitive\CanKit.ModuleInitializerAttribute.cs"
+             Link="CanKit.Generated\CanKit.ModuleInitializerAttribute.cs"
+             Visible="false" />
+  </ItemGroup>
+
   <!-- ProjectReference builds do not import NuGet buildTransitive assets. Generate the
        same static registration calls for the repository samples from resolved references. -->
   <Target Name="CanKit_Samples_GenerateStaticRegistrations"
