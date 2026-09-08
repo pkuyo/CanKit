@@ -69,14 +69,6 @@ public class NativeLibraryLoadTests
             PcanCanException.NativeLibraryNotFound("Open", "PCANBasic", "Peak PCAN-Basic runtime", new DllNotFoundException("PCANBasic")),
             "PCANBasic",
             "Peak PCAN-Basic runtime");
-        AssertWrapped(
-            PcanCanException.NativeLibraryNotFound(
-                "Open",
-                "PCAN-ISO-TP.dll",
-                "Peak PCAN-ISO-TP runtime",
-                new DllNotFoundException("PCAN-ISO-TP.dll")),
-            "PCAN-ISO-TP.dll",
-            "Peak PCAN-ISO-TP runtime");
     }
 
     private static void AssertWrapped(CanNativeCallException ex, string library, string vendor)

@@ -10,6 +10,10 @@
 
 * ControlCAN batch `Transmit` compared the running write total to `BATCH_COUNT` (64), so a second full native batch aborted the rest of the payload (128 frames sent, remainder dropped). The short-write check now uses this `VCI_Transmit` call's return value. `VCI_Receive` marshals the receive array as `[Out]` so native fills copy back into managed memory.
 
+### Breaking Changes
+
+* Removed the unfinished ISO-TP transport, its public API/SPI types, and PCAN ISO-TP support. The `CanKit.Transport.IsoTp` project and its solution/package entries are no longer included.
+
 ## 0.5.6
 
 Published packages:

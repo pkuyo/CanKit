@@ -12,7 +12,7 @@
 Shared package versions live in `eng/package-versions.props`.
 
 - `CanKit.Abstractions` and `CanKit.Core` can still move together by bumping both values in one commit.
-- Adapters and transports can move independently by bumping only their own version property.
+- Adapter packages can move independently by bumping only their own version property.
 - Dependency versions are kept separate from package versions so leaf packages can release without forcing a full repo version bump.
 
 ## Release Notes Model

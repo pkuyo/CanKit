@@ -12,8 +12,4 @@ internal static class PcanNativeLibraries
         RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "PCANBasic" : "libpcanbasic";
 
     public const string BasicVendorRuntime = "Peak PCAN-Basic runtime";
-
-    public const string IsoTpLibraryName = "PCAN-ISO-TP.dll";
-
-    public const string IsoTpVendorRuntime = "Peak PCAN-ISO-TP runtime";
 }

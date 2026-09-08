@@ -21,7 +21,7 @@ public class PcanCanException : CanNativeCallException
     }
 
     /// <summary>
-    /// Wrap a load failure for PCAN-Basic (<c>PCANBasic</c> / <c>libpcanbasic</c>) or <c>PCAN-ISO-TP.dll</c>.
+    /// Wrap a load failure for PCAN-Basic (<c>PCANBasic</c> / <c>libpcanbasic</c>).
     /// </summary>
     public static PcanCanException NativeLibraryNotFound(
         string operation,

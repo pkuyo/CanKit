@@ -21,18 +21,6 @@
       ]
     },
     {
-      "id": "CanKit.Transport.IsoTp",
-      "project": "src/transports/CanKit.Transport.IsoTp/CanKit.Transport.IsoTp.csproj",
-      "versionProperty": "CanKitTransportIsoTpVersion",
-      "pathPrefixes": [
-        "src/transports/CanKit.Transport.IsoTp/"
-      ],
-      "dependsOn": [
-        "CanKit.Core"
-      ],
-      "publish": false
-    },
-    {
       "id": "CanKit.Adapter.ControlCAN",
       "project": "src/adapters/CanKit.Adapter.ControlCAN/CanKit.Adapter.ControlCAN.csproj",
       "versionProperty": "CanKitAdapterControlCANVersion",
