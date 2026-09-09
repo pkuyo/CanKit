@@ -6,14 +6,22 @@
 
 * Vendor adapters wrap a missing or wrong-bitness native library (`DllNotFoundException` / `BadImageFormatException`) at the first Open/constructor native call as adapter-specific `CanNativeCallException` types, with `CanKitErrorCode.NativeLibraryNotFound`, the original exception retained, and a message that names the DLL and the vendor runtime. Fake builds are unchanged.
 * CanKit packages now support trimming and NativeAOT through build-time generated, strongly typed component registration. Applications no longer need to root complete CanKit assemblies.
-
-### Changed
-
-* Runtime reflection-based component discovery has been replaced by static registration. Custom adapters and direct DLL/ProjectReference consumers must provide or invoke a `CanKitRegistration.Register()` entry point before first using `CanRegistry`.
+* NuGet validation publishes and runs both NativeAOT and trimmed, self-contained Virtual smoke applications on Windows x64. Both verify generated registration and a frame roundtrip, and treat compilation, trimming, and AOT warnings as errors.
 
 ### Fixed
 
 * ControlCAN batch `Transmit` compared the running write total to `BATCH_COUNT` (64), so a second full native batch aborted the rest of the payload (128 frames sent, remainder dropped). The short-write check now uses this `VCI_Transmit` call's return value. `VCI_Receive` marshals the receive array as `[Out]` so native fills copy back into managed memory.
+* Initializing `CanRegistry` without any adapter registrations now reports how to call `CanKitRegistration.Register()` or check NuGet build assets.
+* The package smoke project now explicitly registers Virtual when using local project references; NuGet builds continue to exercise generated registration.
+
+### Deprecated
+
+* `CanRegistryEntryAttribute` is now obsolete. It is no longer scanned; use `CanKitRegistration.Register()` for static registration.
+
+### Breaking Changes
+
+* Runtime reflection-based component discovery has been replaced by static registration. `[CanRegistryEntry]` alone no longer registers custom or third-party adapters. Such adapters must provide a `CanKitRegistration.Register()` entry point and arrange for it to be called, either explicitly or through NuGet build assets. Direct DLL/ProjectReference consumers must call each adapter's registration entry point before first using `CanBus` or `CanRegistry`.
+* The component registrations are permanently frozen on first access to `CanRegistry.Registry`, including through `CanBus`. Adapters and extensions cannot be added after initialization; register all plugins beforehand.
 
 ## 0.5.6
 

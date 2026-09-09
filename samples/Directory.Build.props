@@ -6,7 +6,6 @@
       <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
       <AnalysisLevel>latest</AnalysisLevel>
       <Nullable>enable</Nullable>
-      <DisableSampleTrimmingRoots>true</DisableSampleTrimmingRoots>
     </PropertyGroup>
 
   <ItemGroup>

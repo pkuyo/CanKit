@@ -3,9 +3,10 @@ using System;
 namespace CanKit.Abstractions.Attributes;
 
 /// <summary>
-/// Describes a CanKit registration entry. Component discovery is performed by generated static registration code.
-/// 描述 CanKit 注册入口；组件发现由构建期生成的静态注册代码完成。
+/// Legacy registration metadata. This attribute is not scanned and does not register components.
+/// 旧版注册元数据。此特性不再被扫描，也不会注册组件。
 /// </summary>
+[Obsolete("CanRegistryEntryAttribute is no longer scanned. Use CanKitRegistration.Register() for static registration.")]
 [AttributeUsage(AttributeTargets.Class | AttributeTargets.Method, Inherited = false)]
 public sealed class CanRegistryEntryAttribute : Attribute
 {

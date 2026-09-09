@@ -9,6 +9,10 @@
     <UseLocalProjectReferences Condition="'$(UseLocalProjectReferences)' == ''">true</UseLocalProjectReferences>
   </PropertyGroup>
 
+  <PropertyGroup Condition="'$(UseLocalProjectReferences)' == 'true'">
+    <DefineConstants>$(DefineConstants);CANKIT_LOCAL_PROJECT_REFERENCES</DefineConstants>
+  </PropertyGroup>
+
   <ItemGroup Condition="'$(UseLocalProjectReferences)' == 'true'">
     <ProjectReference Include="..\..\src\core\CanKit.Abstractions\CanKit.Abstractions.csproj" />
     <ProjectReference Include="..\..\src\core\CanKit.Core\CanKit.Core.csproj" />

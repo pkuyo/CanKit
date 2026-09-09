@@ -37,6 +37,8 @@ Package-level notes:
 4. Publish only the packages whose versions changed.
 5. Create a GitHub Release containing only the published packages and their symbol packages.
 
+Package validation restores CanKit packages exclusively from the freshly built local artifacts. It publishes and runs the same Virtual adapter smoke program as both NativeAOT and a trimmed, self-contained .NET application on Windows x64. Each mode uses separate build and publish directories and verifies generated registration, bus opening, and frame transmission/reception. Smoke project compilation, trimming, and AOT warnings are treated as errors, with detailed dependency warnings enabled.
+
 Required GitHub repository secret:
 
 - `NUGET_USER`: the nuget.org profile username (not an email address).

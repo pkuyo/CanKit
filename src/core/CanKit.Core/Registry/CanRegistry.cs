@@ -219,6 +219,11 @@ public partial class CanRegistry
     private static CanRegistry BuildRegistry()
     {
         var snapshot = CanRegistryBootstrap.Freeze();
+        if (snapshot.Adapters.Length == 0)
+            throw new InvalidOperationException(
+                "No CanKit adapters have been registered. Call each adapter's CanKitRegistration.Register() " +
+                "before first using CanBus or CanRegistry, or check that the adapter's NuGet buildTransitive assets are included.");
+
         var registry = new CanRegistry();
         registry.ExecuteRegistrationPipeline(snapshot);
         return registry;

@@ -1,6 +1,5 @@
 using System.Collections.Generic;
 using System.Linq;
-using CanKit.Abstractions.Attributes;
 using CanKit.Abstractions.SPI.Factories;
 using CanKit.Abstractions.SPI.Providers;
 using CanKit.Abstractions.SPI.Registry.Core;
@@ -10,7 +9,6 @@ using CanKit.Core.Registry;
 
 namespace CanKit.Adapter.ControlCAN.Registers;
 
-[CanRegistryEntry(CanRegistryEntryKind.Adapter, "ControlCAN")]
 internal sealed class ControlCanCoreRegister : ICanRegisterFactory, ICanRegisterProviders, IRawRegisterEndpoint
 {
 
