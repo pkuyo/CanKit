@@ -27,7 +27,8 @@ public class TestCaseProvider : IDisposable
         var env = Environment.GetEnvironmentVariable("CANKIT_TEST_ADAPTERS");
         if (env is null)
         {
-            Console.WriteLine($"No environment variable found. Skipping all tests.");
+            Console.WriteLine("No environment variable found. Skipping all tests.");
+            MissingAdapterSkipReason = "No test adapter configured (CANKIT_TEST_ADAPTERS).";
             return;
         }
 
@@ -53,6 +54,12 @@ public class TestCaseProvider : IDisposable
     public static int DbitRate { get; }
 
     public static ITestDataProvider Provider { get; }
+
+    /// <summary>
+    /// Set only when CANKIT_TEST_ADAPTERS is unset. A configured adapter that
+    /// fails to load keeps this null so empty theory data stays a failure.
+    /// </summary>
+    public static string? MissingAdapterSkipReason { get; }
 
     public static Random Rand { get; } = new Random();
 

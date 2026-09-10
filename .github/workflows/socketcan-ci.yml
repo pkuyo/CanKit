@@ -79,7 +79,7 @@ jobs:
         run: dotnet restore CanKitAdapters.slnf
 
       - name: Test (${{ matrix.tfm }})
-        run: dotnet test CanKitAdapters.slnf -c Release -f ${{ matrix.tfm }} --no-restore --logger "trx;LogFileName=TestResults-${{ matrix.tfm }}.trx"
+        run: dotnet test --solution CanKitAdapters.slnf -c Release -f ${{ matrix.tfm }} --no-restore --report-trx --report-trx-filename TestResults-${{ matrix.tfm }}.trx
 
       - name: Upload Test Results (${{ matrix.tfm }})
         if: always()
@@ -116,7 +116,7 @@ jobs:
         run: dotnet restore CanKitAdapters.slnf
 
       - name: Test SocketCAN on ARM32
-        run: dotnet test CanKitAdapters.slnf -c Release -f net8.0 --no-restore --logger "trx;LogFileName=Arm32TestResults.trx"
+        run: dotnet test --solution CanKitAdapters.slnf -c Release -f net8.0 --no-restore --report-trx --report-trx-filename Arm32TestResults.trx
 
       - name: Upload ARM32 test results
         if: always()
@@ -152,7 +152,7 @@ jobs:
         run: dotnet restore CanKitAdapters.slnf
 
       - name: Test SocketCAN on ARM32
-        run: dotnet test CanKitAdapters.slnf -c Release -f net8.0 --no-restore --logger "trx;LogFileName=Arm32TestResults.trx"
+        run: dotnet test --solution CanKitAdapters.slnf -c Release -f net8.0 --no-restore --report-trx --report-trx-filename Arm32TestResults.trx
 
       - name: Upload ARM32 test results
         if: always()
@@ -189,11 +189,11 @@ jobs:
 
       - name: Test injected failures (${{ matrix.tfm }})
         run: >
-          dotnet test tests/CanKit.Tests/CanKit.Tests.csproj
+          dotnet test --project tests/CanKit.Tests/CanKit.Tests.csproj
           -c Fake
           -f ${{ matrix.tfm }}
-          --filter "Category=FakeOnly"
-          --logger "trx;LogFileName=TestResults-Fake-${{ matrix.tfm }}.trx"
+          --filter-trait "Category=FakeOnly"
+          --report-trx --report-trx-filename TestResults-Fake-${{ matrix.tfm }}.trx
 
       - name: Upload Test Results (${{ matrix.tfm }})
         if: always()

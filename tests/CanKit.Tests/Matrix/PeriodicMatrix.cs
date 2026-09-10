@@ -9,16 +9,22 @@ namespace CanKit.Tests.Matrix;
 
 public partial class TestMatrix
 {
-    public static IEnumerable<object[]> CombinedPeriodicCount()
+    public static IEnumerable<object> CombinedPeriodicCount()
+        => SkipWhenEmpty(CombinedPeriodicCountRows());
+
+    private static IEnumerable<object[]> CombinedPeriodicCountRows()
     {
-        foreach(var i in Pairs())
+        foreach (var i in PairRows())
         foreach (var l in PeriodicCountCases())
             yield return i.Concat(l).ToArray();
     }
 
-    public static IEnumerable<object[]> CombinedPeriodicPeriod()
+    public static IEnumerable<object> CombinedPeriodicPeriod()
+        => SkipWhenEmpty(CombinedPeriodicPeriodRows());
+
+    private static IEnumerable<object[]> CombinedPeriodicPeriodRows()
     {
-        foreach(var i in Pairs())
+        foreach (var i in PairRows())
         foreach (var l in PeriodicPeriodCases())
             yield return i.Concat(l).ToArray();
     }

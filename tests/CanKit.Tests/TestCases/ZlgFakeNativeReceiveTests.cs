@@ -49,13 +49,14 @@ public class ZlgFakeNativeReceiveTests
             rx,
             receiveStarted);
 
+        var ct = TestContext.Current.CancellationToken;
         await receiveStarted.Task;
-        await Task.Delay(50);
+        await Task.Delay(50, ct);
         Transmit(rx, receiveKind, 0x101);
-        await Task.Delay(50);
+        await Task.Delay(50, ct);
         Transmit(rx, receiveKind, 0x102);
 
-        var completed = await Task.WhenAny(receiveTask, Task.Delay(TimeSpan.FromSeconds(2)));
+        var completed = await Task.WhenAny(receiveTask, Task.Delay(TimeSpan.FromSeconds(2), ct));
         completed.Should().Be(receiveTask, "the infinite-wait receive should finish once the batch arrives");
         var received = await receiveTask;
         received.Should().Be(2);

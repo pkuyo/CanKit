@@ -7,16 +7,22 @@ namespace CanKit.Tests.Matrix;
 
 public partial class TestMatrix
 {
-    public static IEnumerable<object[]> CombinedRangeFilter()
+    public static IEnumerable<object> CombinedRangeFilter()
+        => SkipWhenEmpty(CombinedRangeFilterRows());
+
+    private static IEnumerable<object[]> CombinedRangeFilterRows()
     {
-        foreach (var i in Pairs())
+        foreach (var i in PairRows())
         foreach (var l in RangeCases())
             yield return i.Concat(l).ToArray();
     }
 
-    public static IEnumerable<object[]> CombinedMaskFilter()
+    public static IEnumerable<object> CombinedMaskFilter()
+        => SkipWhenEmpty(CombinedMaskFilterRows());
+
+    private static IEnumerable<object[]> CombinedMaskFilterRows()
     {
-        foreach (var i in Pairs())
+        foreach (var i in PairRows())
         foreach (var l in MaskCases())
             yield return i.Concat(l).ToArray();
     }
