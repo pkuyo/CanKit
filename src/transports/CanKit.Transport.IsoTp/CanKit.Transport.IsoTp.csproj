@@ -24,7 +24,7 @@
     </ItemGroup>
 
     <ItemGroup Condition="'$(Configuration)'!='Fake'">
-        <PackageReference Include="Peak.PCANBasic.NET" Version="4.10.1.968"/>
+        <PackageReference Include="Peak.PCANBasic.NET" Version="5.1.0.1194"/>
     </ItemGroup>
 
     <ItemGroup>
