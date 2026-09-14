@@ -1,4 +1,3 @@
-using CanKit.Abstractions.Attributes;
 using CanKit.Abstractions.SPI.Factories;
 using CanKit.Abstractions.SPI.Providers;
 using CanKit.Abstractions.SPI.Registry.Core;
@@ -7,7 +6,6 @@ using CanKit.Core.Registry;
 
 namespace CanKit.Adapter.Virtual.Registers;
 
-[CanRegistryEntry(CanRegistryEntryKind.Adapter, "Virtual")]
 internal sealed class VirtualRegister : ICanRegisterFactory, ICanRegisterProviders, IRawRegisterEndpoint
 {
     public (string FactoryId, ICanFactory Factory) Factory
