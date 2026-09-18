@@ -19,7 +19,6 @@ namespace CanKit.Tests.TestCases;
 public class AdapterPlatformGuardTests : IClassFixture<TestCaseProvider>
 {
     [Theory]
-    [InlineData("kvaser://0", "Kvaser")]
     [InlineData("vector://XL/0", "Vector")]
     [InlineData("controlcan://VCI_USBCAN2?index=0#ch0", "ControlCAN")]
     [InlineData("zlg://USBCANFD-200U?index=0#ch0", "ZLG")]
@@ -48,6 +47,20 @@ public class AdapterPlatformGuardTests : IClassFixture<TestCaseProvider>
         Action act = () => CanBus.Open("pcan://PCAN_USBBUS1");
         act.Should().Throw<PlatformNotSupportedException>()
             .Which.Message.Should().Contain("PCAN");
+    }
+
+    [Fact]
+    public void Kvaser_Throws_Clear_Pns_Outside_Windows_And_Linux()
+    {
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+            || RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+        {
+            return;
+        }
+
+        Action act = () => CanBus.Open("kvaser://0");
+        act.Should().Throw<PlatformNotSupportedException>()
+            .Which.Message.Should().Contain("Kvaser");
     }
 }
 #endif

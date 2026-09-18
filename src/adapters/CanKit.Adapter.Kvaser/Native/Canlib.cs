@@ -1,7 +1,7 @@
 // Real Kvaser CANlib interop (disabled in FAKE builds)
 #if !FAKE
 using System;
-using System.Runtime.CompilerServices;
+using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using System.Text;
 
@@ -122,54 +122,6 @@ public static class Canlib
         PERIODIC_TX = 0x02
     }
 
-    // Callback delegate for kvSetNotifyCallback (stdcall per header)
-    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
-    public delegate void kvCallbackDelegate(int hnd, IntPtr context, int notifyEvent);
-
-    // DllImports (raw)
-    [DllImport("canlib32", CallingConvention = CallingConvention.StdCall)]
-    public static extern void canInitializeLibrary();
-
-    [DllImport("canlib32", CallingConvention = CallingConvention.StdCall)]
-    public static extern canStatus canUnloadLibrary();
-
-    [DllImport("canlib32", CallingConvention = CallingConvention.StdCall)]
-    public static extern int canOpenChannel(int channel, int flags);
-
-    [DllImport("canlib32", CallingConvention = CallingConvention.StdCall)]
-    public static extern canStatus canClose(int hnd);
-
-    [DllImport("canlib32", CallingConvention = CallingConvention.StdCall, EntryPoint = "canBusOn")]
-    public static extern canStatus canBusOn(int hnd);
-
-    [DllImport("canlib32", CallingConvention = CallingConvention.StdCall, EntryPoint = "canBusOff")]
-    public static extern canStatus canBusOff(int hnd);
-
-    [DllImport("canlib32", CallingConvention = CallingConvention.StdCall, EntryPoint = "canSetBusParams")]
-    public static extern canStatus canSetBusParams(int hnd, int freq, int tseg1, int tseg2, int sjw, int noSamp, int syncmode);
-
-    [DllImport("canlib32", CallingConvention = CallingConvention.StdCall, EntryPoint = "canSetBusParamsFd")]
-    public static extern canStatus canSetBusParamsFd(int hnd, int freq_brs, int tseg1_brs, int tseg2_brs, int sjw_brs);
-
-    [DllImport("canlib32", CallingConvention = CallingConvention.StdCall, EntryPoint = "canGetNumberOfChannels")]
-    public static extern canStatus canGetNumberOfChannels(out int channelCount);
-
-    [DllImport("canlib32", CallingConvention = CallingConvention.StdCall)]
-    public static extern canStatus canGetChannelData(int channel, int item, IntPtr buffer, UIntPtr bufsize);
-
-    [DllImport("canlib32", CallingConvention = CallingConvention.StdCall, EntryPoint = "canReadStatus")]
-    public static extern canStatus canReadStatus(int hnd, out uint flags);
-
-    [DllImport("canlib32", CallingConvention = CallingConvention.StdCall, EntryPoint = "canReadErrorCounters")]
-    public static extern canStatus canReadErrorCounters(int hnd, out uint txErr, out uint rxErr, out uint ovErr);
-
-    [DllImport("canlib32", CallingConvention = CallingConvention.StdCall)]
-    public static unsafe extern canStatus canWrite(int hnd, int id, byte* msg, uint dlc, uint flag);
-
-    [DllImport("canlib32", CallingConvention = CallingConvention.StdCall, EntryPoint = "canRead")]
-    public static extern canStatus canRead(int hnd, out int id, [Out] byte[] msg, out int dlc, out int flag, out uint time);
-
-    // Bus usage/statistics
     [StructLayout(LayoutKind.Sequential)]
     public struct canBusStatistics
     {
@@ -182,32 +134,565 @@ public static class Canlib
         public uint overruns;
     }
 
-    [DllImport("canlib32", CallingConvention = CallingConvention.StdCall, EntryPoint = "canRequestBusStatistics")]
-    public static extern canStatus canRequestBusStatistics(int hnd);
+    [StructLayout(LayoutKind.Sequential)]
+    private struct LinuxCanBusStatistics
+    {
+        public nuint stdData;
+        public nuint stdRemote;
+        public nuint extData;
+        public nuint extRemote;
+        public nuint errFrame;
+        public nuint busLoad;
+        public nuint overruns;
 
-    [DllImport("canlib32", CallingConvention = CallingConvention.StdCall, EntryPoint = "canGetBusStatistics")]
-    public static extern canStatus canGetBusStatistics(int hnd, out canBusStatistics stat, UIntPtr bufsiz);
+        public canBusStatistics ToPublic() => new()
+        {
+            stdData = (uint)stdData,
+            stdRemote = (uint)stdRemote,
+            extData = (uint)extData,
+            extRemote = (uint)extRemote,
+            errFrame = (uint)errFrame,
+            busLoad = (uint)busLoad,
+            overruns = (uint)overruns,
+        };
+    }
 
-    [DllImport("canlib32", CallingConvention = CallingConvention.StdCall, CharSet = CharSet.Ansi)]
-    public static extern canStatus canGetErrorText(canStatus err, StringBuilder buf, uint bufsiz);
+    public delegate void kvCallbackDelegate(int hnd, IntPtr context, int notifyEvent);
 
-    [DllImport("canlib32", CallingConvention = CallingConvention.StdCall)]
-    public static extern canStatus canIoCtl(int hnd, uint func, IntPtr buf, uint buflen);
+    [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+    private delegate void kvCallbackDelegateStdCall(int hnd, IntPtr context, int notifyEvent);
 
-    [DllImport("canlib32", CallingConvention = CallingConvention.StdCall)]
-    public static extern canStatus canIoCtl(int hnd, uint func, ref int value, uint buflen);
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    private delegate void kvCallbackDelegateCdecl(int hnd, IntPtr context, int notifyEvent);
 
-    [DllImport("canlib32", CallingConvention = CallingConvention.StdCall)]
-    public static extern canStatus canIoCtl(int hnd, uint func, ref uint value, uint buflen);
+    private static readonly ConcurrentDictionary<int, Delegate> NotifyThunks = new();
 
-    [DllImport("canlib32", CallingConvention = CallingConvention.StdCall)]
-    public static extern canStatus canIoCtl(int hnd, uint func, byte[] buffer, uint buflen);
+    public static void canInitializeLibrary()
+    {
+        if (KvaserNativeLibraries.IsLinux)
+            LinuxAbi.canInitializeLibrary();
+        else
+            WindowsAbi.canInitializeLibrary();
+    }
 
-    [DllImport("canlib32", CallingConvention = CallingConvention.StdCall, CharSet = CharSet.Ansi)]
-    public static extern canStatus canIoCtl(int hnd, uint func, StringBuilder sb, uint buflen);
+    public static canStatus canUnloadLibrary()
+    {
+        return KvaserNativeLibraries.IsLinux
+            ? LinuxAbi.canUnloadLibrary()
+            : WindowsAbi.canUnloadLibrary();
+    }
 
-    [DllImport("canlib32", CallingConvention = CallingConvention.StdCall)]
-    public static extern canStatus canAccept(int hnd, int envelope, uint flag);
+    public static int canOpenChannel(int channel, int flags)
+    {
+        return KvaserNativeLibraries.IsLinux
+            ? LinuxAbi.canOpenChannel(channel, flags)
+            : WindowsAbi.canOpenChannel(channel, flags);
+    }
+
+    public static canStatus canClose(int hnd)
+    {
+        var status = KvaserNativeLibraries.IsLinux
+            ? LinuxAbi.canClose(hnd)
+            : WindowsAbi.canClose(hnd);
+        if (status == canStatus.canOK)
+            NotifyThunks.TryRemove(hnd, out _);
+        return status;
+    }
+
+    public static canStatus canBusOn(int hnd)
+    {
+        return KvaserNativeLibraries.IsLinux
+            ? LinuxAbi.canBusOn(hnd)
+            : WindowsAbi.canBusOn(hnd);
+    }
+
+    public static canStatus canBusOff(int hnd)
+    {
+        return KvaserNativeLibraries.IsLinux
+            ? LinuxAbi.canBusOff(hnd)
+            : WindowsAbi.canBusOff(hnd);
+    }
+
+    public static canStatus canSetBusParams(int hnd, int freq, int tseg1, int tseg2, int sjw, int noSamp, int syncmode)
+    {
+        return KvaserNativeLibraries.IsLinux
+            ? LinuxAbi.canSetBusParams(hnd, freq, tseg1, tseg2, sjw, noSamp, syncmode)
+            : WindowsAbi.canSetBusParams(hnd, freq, tseg1, tseg2, sjw, noSamp, syncmode);
+    }
+
+    public static canStatus canSetBusParamsFd(int hnd, int freq_brs, int tseg1_brs, int tseg2_brs, int sjw_brs)
+    {
+        return KvaserNativeLibraries.IsLinux
+            ? LinuxAbi.canSetBusParamsFd(hnd, freq_brs, tseg1_brs, tseg2_brs, sjw_brs)
+            : WindowsAbi.canSetBusParamsFd(hnd, freq_brs, tseg1_brs, tseg2_brs, sjw_brs);
+    }
+
+    public static canStatus canGetNumberOfChannels(out int channelCount)
+    {
+        return KvaserNativeLibraries.IsLinux
+            ? LinuxAbi.canGetNumberOfChannels(out channelCount)
+            : WindowsAbi.canGetNumberOfChannels(out channelCount);
+    }
+
+    public static canStatus canGetChannelData(int channel, int item, IntPtr buffer, UIntPtr bufsize)
+    {
+        return KvaserNativeLibraries.IsLinux
+            ? LinuxAbi.canGetChannelData(channel, item, buffer, bufsize)
+            : WindowsAbi.canGetChannelData(channel, item, buffer, bufsize);
+    }
+
+    public static canStatus canReadStatus(int hnd, out uint flags)
+    {
+        if (KvaserNativeLibraries.IsLinux)
+        {
+            var status = LinuxAbi.canReadStatus(hnd, out nuint nativeFlags);
+            flags = (uint)nativeFlags;
+            return status;
+        }
+
+        return WindowsAbi.canReadStatus(hnd, out flags);
+    }
+
+    public static canStatus canReadErrorCounters(int hnd, out uint txErr, out uint rxErr, out uint ovErr)
+    {
+        return KvaserNativeLibraries.IsLinux
+            ? LinuxAbi.canReadErrorCounters(hnd, out txErr, out rxErr, out ovErr)
+            : WindowsAbi.canReadErrorCounters(hnd, out txErr, out rxErr, out ovErr);
+    }
+
+    public static unsafe canStatus canWrite(int hnd, int id, byte* msg, uint dlc, uint flag)
+    {
+        return KvaserNativeLibraries.IsLinux
+            ? LinuxAbi.canWrite(hnd, id, msg, dlc, flag)
+            : WindowsAbi.canWrite(hnd, id, msg, dlc, flag);
+    }
+
+    public static canStatus canRead(int hnd, out int id, [Out] byte[] msg, out int dlc, out int flag, out uint time)
+    {
+        if (KvaserNativeLibraries.IsLinux)
+        {
+            var status = LinuxAbi.canRead(hnd, out nint nativeId, msg, out dlc, out flag, out nuint nativeTime);
+            id = (int)nativeId;
+            time = (uint)nativeTime;
+            return status;
+        }
+
+        return WindowsAbi.canRead(hnd, out id, msg, out dlc, out flag, out time);
+    }
+
+    public static canStatus canRequestBusStatistics(int hnd)
+    {
+        return KvaserNativeLibraries.IsLinux
+            ? LinuxAbi.canRequestBusStatistics(hnd)
+            : WindowsAbi.canRequestBusStatistics(hnd);
+    }
+
+    public static canStatus canGetBusStatistics(int hnd, out canBusStatistics stat, UIntPtr bufsiz)
+    {
+        if (KvaserNativeLibraries.IsLinux)
+        {
+            var status = LinuxAbi.canGetBusStatistics(
+                hnd,
+                out LinuxCanBusStatistics native,
+                (UIntPtr)(uint)Marshal.SizeOf<LinuxCanBusStatistics>());
+            stat = native.ToPublic();
+            return status;
+        }
+
+        return WindowsAbi.canGetBusStatistics(hnd, out stat, bufsiz);
+    }
+
+    public static canStatus canGetErrorText(canStatus err, StringBuilder buf, uint bufsiz)
+    {
+        return KvaserNativeLibraries.IsLinux
+            ? LinuxAbi.canGetErrorText(err, buf, bufsiz)
+            : WindowsAbi.canGetErrorText(err, buf, bufsiz);
+    }
+
+    public static canStatus canIoCtl(int hnd, uint func, IntPtr buf, uint buflen)
+    {
+        return KvaserNativeLibraries.IsLinux
+            ? LinuxAbi.canIoCtl(hnd, func, buf, buflen)
+            : WindowsAbi.canIoCtl(hnd, func, buf, buflen);
+    }
+
+    public static canStatus canIoCtl(int hnd, uint func, ref int value, uint buflen)
+    {
+        return KvaserNativeLibraries.IsLinux
+            ? LinuxAbi.canIoCtl_int(hnd, func, ref value, buflen)
+            : WindowsAbi.canIoCtl_int(hnd, func, ref value, buflen);
+    }
+
+    public static canStatus canIoCtl(int hnd, uint func, ref uint value, uint buflen)
+    {
+        return KvaserNativeLibraries.IsLinux
+            ? LinuxAbi.canIoCtl_uint(hnd, func, ref value, buflen)
+            : WindowsAbi.canIoCtl_uint(hnd, func, ref value, buflen);
+    }
+
+    public static canStatus canIoCtl(int hnd, uint func, byte[] buffer, uint buflen)
+    {
+        return KvaserNativeLibraries.IsLinux
+            ? LinuxAbi.canIoCtl_bytes(hnd, func, buffer, buflen)
+            : WindowsAbi.canIoCtl_bytes(hnd, func, buffer, buflen);
+    }
+
+    public static canStatus canIoCtl(int hnd, uint func, StringBuilder sb, uint buflen)
+    {
+        return KvaserNativeLibraries.IsLinux
+            ? LinuxAbi.canIoCtl_sb(hnd, func, sb, buflen)
+            : WindowsAbi.canIoCtl_sb(hnd, func, sb, buflen);
+    }
+
+    public static canStatus canAccept(int hnd, int envelope, uint flag)
+    {
+        return KvaserNativeLibraries.IsLinux
+            ? LinuxAbi.canAccept(hnd, envelope, flag)
+            : WindowsAbi.canAccept(hnd, envelope, flag);
+    }
+
+    public static canStatus canObjBufAllocate(int hnd, int type)
+    {
+        return KvaserNativeLibraries.IsLinux
+            ? LinuxAbi.canObjBufAllocate(hnd, type)
+            : WindowsAbi.canObjBufAllocate(hnd, type);
+    }
+
+    public static canStatus canObjBufFree(int hnd, int idx)
+    {
+        return KvaserNativeLibraries.IsLinux
+            ? LinuxAbi.canObjBufFree(hnd, idx)
+            : WindowsAbi.canObjBufFree(hnd, idx);
+    }
+
+    public static canStatus canObjBufEnable(int hnd, int idx)
+    {
+        return KvaserNativeLibraries.IsLinux
+            ? LinuxAbi.canObjBufEnable(hnd, idx)
+            : WindowsAbi.canObjBufEnable(hnd, idx);
+    }
+
+    public static canStatus canObjBufDisable(int hnd, int idx)
+    {
+        return KvaserNativeLibraries.IsLinux
+            ? LinuxAbi.canObjBufDisable(hnd, idx)
+            : WindowsAbi.canObjBufDisable(hnd, idx);
+    }
+
+    public static canStatus canObjBufWrite(int hnd, int idx, int id, byte[] msg, uint dlc, uint flags)
+    {
+        return KvaserNativeLibraries.IsLinux
+            ? LinuxAbi.canObjBufWrite(hnd, idx, id, msg, dlc, flags)
+            : WindowsAbi.canObjBufWrite(hnd, idx, id, msg, dlc, flags);
+    }
+
+    public static canStatus canObjBufSetPeriod(int hnd, int idx, uint periodUs)
+    {
+        return KvaserNativeLibraries.IsLinux
+            ? LinuxAbi.canObjBufSetPeriod(hnd, idx, periodUs)
+            : WindowsAbi.canObjBufSetPeriod(hnd, idx, periodUs);
+    }
+
+    public static canStatus canGetChannelData_UInt32(int channel, int item, out uint value, UIntPtr bufsize)
+    {
+        return KvaserNativeLibraries.IsLinux
+            ? LinuxAbi.canGetChannelData_UInt32(channel, item, out value, bufsize)
+            : WindowsAbi.canGetChannelData_UInt32(channel, item, out value, bufsize);
+    }
+
+    public static canStatus canGetChannelData_UInt32Array(int channel, int item, uint[] buffer, UIntPtr bufsize)
+    {
+        return KvaserNativeLibraries.IsLinux
+            ? LinuxAbi.canGetChannelData_UInt32Array(channel, item, buffer, bufsize)
+            : WindowsAbi.canGetChannelData_UInt32Array(channel, item, buffer, bufsize);
+    }
+
+    public static canStatus canGetChannelData_UInt64Array(int channel, int item, ulong[] buffer, UIntPtr bufsize)
+    {
+        return KvaserNativeLibraries.IsLinux
+            ? LinuxAbi.canGetChannelData_UInt64Array(channel, item, buffer, bufsize)
+            : WindowsAbi.canGetChannelData_UInt64Array(channel, item, buffer, bufsize);
+    }
+
+    public static canStatus canGetChannelData_Ansi(int channel, int item, StringBuilder buffer, UIntPtr bufsize)
+    {
+        return KvaserNativeLibraries.IsLinux
+            ? LinuxAbi.canGetChannelData_Ansi(channel, item, buffer, bufsize)
+            : WindowsAbi.canGetChannelData_Ansi(channel, item, buffer, bufsize);
+    }
+
+    public static canStatus canGetChannelData_Wide(int channel, int item, StringBuilder buffer, UIntPtr bufsize)
+    {
+        return KvaserNativeLibraries.IsLinux
+            ? LinuxAbi.canGetChannelData_Wide(channel, item, buffer, bufsize)
+            : WindowsAbi.canGetChannelData_Wide(channel, item, buffer, bufsize);
+    }
+
+    public static canStatus canGetChannelData_Bytes(int channel, int item, byte[] buffer, UIntPtr bufsize)
+    {
+        return KvaserNativeLibraries.IsLinux
+            ? LinuxAbi.canGetChannelData_Bytes(channel, item, buffer, bufsize)
+            : WindowsAbi.canGetChannelData_Bytes(channel, item, buffer, bufsize);
+    }
+
+    public static canStatus kvSetNotifyCallback(int hnd, kvCallbackDelegate callback, IntPtr context, uint notifyFlags)
+    {
+        if (callback is null || notifyFlags == 0)
+        {
+            canStatus status = KvaserNativeLibraries.IsLinux
+                ? LinuxAbi.kvSetNotifyCallback(hnd, null, context, 0)
+                : WindowsAbi.kvSetNotifyCallback(hnd, null, context, 0);
+            if (status == canStatus.canOK)
+                NotifyThunks.TryRemove(hnd, out _);
+            return status;
+        }
+
+        if (KvaserNativeLibraries.IsLinux)
+        {
+            kvCallbackDelegateCdecl thunk = callback.Invoke;
+            var status = LinuxAbi.kvSetNotifyCallback(hnd, thunk, context, notifyFlags);
+            if (status == canStatus.canOK)
+                NotifyThunks[hnd] = thunk;
+            return status;
+        }
+
+        kvCallbackDelegateStdCall stdcall = callback.Invoke;
+        var winStatus = WindowsAbi.kvSetNotifyCallback(hnd, stdcall, context, notifyFlags);
+        if (winStatus == canStatus.canOK)
+            NotifyThunks[hnd] = stdcall;
+        return winStatus;
+    }
+
+
+    private static class WindowsAbi
+    {
+        private const string Dll = KvaserNativeLibraries.WindowsLibraryName;
+
+
+        [DllImport(Dll, CallingConvention = CallingConvention.StdCall)]
+        public static extern void canInitializeLibrary();
+
+        [DllImport(Dll, CallingConvention = CallingConvention.StdCall)]
+        public static extern canStatus canUnloadLibrary();
+
+        [DllImport(Dll, CallingConvention = CallingConvention.StdCall)]
+        public static extern int canOpenChannel(int channel, int flags);
+
+        [DllImport(Dll, CallingConvention = CallingConvention.StdCall)]
+        public static extern canStatus canClose(int hnd);
+
+        [DllImport(Dll, CallingConvention = CallingConvention.StdCall, EntryPoint = "canBusOn")]
+        public static extern canStatus canBusOn(int hnd);
+
+        [DllImport(Dll, CallingConvention = CallingConvention.StdCall, EntryPoint = "canBusOff")]
+        public static extern canStatus canBusOff(int hnd);
+
+        [DllImport(Dll, CallingConvention = CallingConvention.StdCall, EntryPoint = "canSetBusParams")]
+        public static extern canStatus canSetBusParams(int hnd, int freq, int tseg1, int tseg2, int sjw, int noSamp, int syncmode);
+
+        [DllImport(Dll, CallingConvention = CallingConvention.StdCall, EntryPoint = "canSetBusParamsFd")]
+        public static extern canStatus canSetBusParamsFd(int hnd, int freq_brs, int tseg1_brs, int tseg2_brs, int sjw_brs);
+
+        [DllImport(Dll, CallingConvention = CallingConvention.StdCall, EntryPoint = "canGetNumberOfChannels")]
+        public static extern canStatus canGetNumberOfChannels(out int channelCount);
+
+        [DllImport(Dll, CallingConvention = CallingConvention.StdCall)]
+        public static extern canStatus canGetChannelData(int channel, int item, IntPtr buffer, UIntPtr bufsize);
+
+        [DllImport(Dll, CallingConvention = CallingConvention.StdCall, EntryPoint = "canReadStatus")]
+        public static extern canStatus canReadStatus(int hnd, out uint flags);
+
+        [DllImport(Dll, CallingConvention = CallingConvention.StdCall, EntryPoint = "canReadErrorCounters")]
+        public static extern canStatus canReadErrorCounters(int hnd, out uint txErr, out uint rxErr, out uint ovErr);
+
+        [DllImport(Dll, CallingConvention = CallingConvention.StdCall)]
+        public static unsafe extern canStatus canWrite(int hnd, int id, byte* msg, uint dlc, uint flag);
+
+        [DllImport(Dll, CallingConvention = CallingConvention.StdCall, EntryPoint = "canRead")]
+        public static extern canStatus canRead(int hnd, out int id, [Out] byte[] msg, out int dlc, out int flag, out uint time);
+
+        [DllImport(Dll, CallingConvention = CallingConvention.StdCall, EntryPoint = "canRequestBusStatistics")]
+        public static extern canStatus canRequestBusStatistics(int hnd);
+
+        [DllImport(Dll, CallingConvention = CallingConvention.StdCall, EntryPoint = "canGetBusStatistics")]
+        public static extern canStatus canGetBusStatistics(int hnd, out canBusStatistics stat, UIntPtr bufsiz);
+
+        [DllImport(Dll, CallingConvention = CallingConvention.StdCall, CharSet = CharSet.Ansi)]
+        public static extern canStatus canGetErrorText(canStatus err, StringBuilder buf, uint bufsiz);
+
+        [DllImport(Dll, CallingConvention = CallingConvention.StdCall)]
+        public static extern canStatus canIoCtl(int hnd, uint func, IntPtr buf, uint buflen);
+
+        [DllImport(Dll, CallingConvention = CallingConvention.StdCall, EntryPoint = "canIoCtl")]
+        public static extern canStatus canIoCtl_int(int hnd, uint func, ref int value, uint buflen);
+
+        [DllImport(Dll, CallingConvention = CallingConvention.StdCall, EntryPoint = "canIoCtl")]
+        public static extern canStatus canIoCtl_uint(int hnd, uint func, ref uint value, uint buflen);
+
+        [DllImport(Dll, CallingConvention = CallingConvention.StdCall, EntryPoint = "canIoCtl")]
+        public static extern canStatus canIoCtl_bytes(int hnd, uint func, byte[] buffer, uint buflen);
+
+        [DllImport(Dll, CallingConvention = CallingConvention.StdCall, CharSet = CharSet.Ansi, EntryPoint = "canIoCtl")]
+        public static extern canStatus canIoCtl_sb(int hnd, uint func, StringBuilder sb, uint buflen);
+
+        [DllImport(Dll, CallingConvention = CallingConvention.StdCall)]
+        public static extern canStatus canAccept(int hnd, int envelope, uint flag);
+
+        [DllImport(Dll, CallingConvention = CallingConvention.StdCall, EntryPoint = "canObjBufAllocate")]
+        public static extern canStatus canObjBufAllocate(int hnd, int type);
+
+        [DllImport(Dll, CallingConvention = CallingConvention.StdCall, EntryPoint = "canObjBufFree")]
+        public static extern canStatus canObjBufFree(int hnd, int idx);
+
+        [DllImport(Dll, CallingConvention = CallingConvention.StdCall, EntryPoint = "canObjBufEnable")]
+        public static extern canStatus canObjBufEnable(int hnd, int idx);
+
+        [DllImport(Dll, CallingConvention = CallingConvention.StdCall, EntryPoint = "canObjBufDisable")]
+        public static extern canStatus canObjBufDisable(int hnd, int idx);
+
+        [DllImport(Dll, CallingConvention = CallingConvention.StdCall, EntryPoint = "canObjBufWrite")]
+        public static extern canStatus canObjBufWrite(int hnd, int idx, int id, byte[] msg, uint dlc, uint flags);
+
+        [DllImport(Dll, CallingConvention = CallingConvention.StdCall, EntryPoint = "canObjBufSetPeriod")]
+        public static extern canStatus canObjBufSetPeriod(int hnd, int idx, uint periodUs);
+
+        [DllImport(Dll, CallingConvention = CallingConvention.StdCall, EntryPoint = "canGetChannelData")]
+        public static extern canStatus canGetChannelData_UInt32(int channel, int item, out uint value, UIntPtr bufsize);
+
+        [DllImport(Dll, CallingConvention = CallingConvention.StdCall, EntryPoint = "canGetChannelData")]
+        public static extern canStatus canGetChannelData_UInt32Array(int channel, int item, uint[] buffer, UIntPtr bufsize);
+
+        [DllImport(Dll, CallingConvention = CallingConvention.StdCall, EntryPoint = "canGetChannelData")]
+        public static extern canStatus canGetChannelData_UInt64Array(int channel, int item, ulong[] buffer, UIntPtr bufsize);
+
+        [DllImport(Dll, CallingConvention = CallingConvention.StdCall, CharSet = CharSet.Ansi, EntryPoint = "canGetChannelData")]
+        public static extern canStatus canGetChannelData_Ansi(int channel, int item, StringBuilder buffer, UIntPtr bufsize);
+
+        [DllImport(Dll, CallingConvention = CallingConvention.StdCall, CharSet = CharSet.Unicode, EntryPoint = "canGetChannelData")]
+        public static extern canStatus canGetChannelData_Wide(int channel, int item, StringBuilder buffer, UIntPtr bufsize);
+
+        [DllImport(Dll, CallingConvention = CallingConvention.StdCall, EntryPoint = "canGetChannelData")]
+        public static extern canStatus canGetChannelData_Bytes(int channel, int item, byte[] buffer, UIntPtr bufsize);
+
+        [DllImport(Dll, CallingConvention = CallingConvention.StdCall, EntryPoint = "kvSetNotifyCallback")]
+        public static extern canStatus kvSetNotifyCallback(int hnd, kvCallbackDelegateStdCall? callback, IntPtr context, uint notifyFlags);
+
+    }
+
+    private static class LinuxAbi
+    {
+        private const string Dll = KvaserNativeLibraries.LinuxLibraryName;
+
+
+        [DllImport(Dll, CallingConvention = CallingConvention.Cdecl)]
+        public static extern void canInitializeLibrary();
+
+        [DllImport(Dll, CallingConvention = CallingConvention.Cdecl)]
+        public static extern canStatus canUnloadLibrary();
+
+        [DllImport(Dll, CallingConvention = CallingConvention.Cdecl)]
+        public static extern int canOpenChannel(int channel, int flags);
+
+        [DllImport(Dll, CallingConvention = CallingConvention.Cdecl)]
+        public static extern canStatus canClose(int hnd);
+
+        [DllImport(Dll, CallingConvention = CallingConvention.Cdecl, EntryPoint = "canBusOn")]
+        public static extern canStatus canBusOn(int hnd);
+
+        [DllImport(Dll, CallingConvention = CallingConvention.Cdecl, EntryPoint = "canBusOff")]
+        public static extern canStatus canBusOff(int hnd);
+
+        [DllImport(Dll, CallingConvention = CallingConvention.Cdecl, EntryPoint = "canSetBusParams")]
+        public static extern canStatus canSetBusParams(int hnd, nint freq, int tseg1, int tseg2, int sjw, int noSamp, int syncmode);
+
+        [DllImport(Dll, CallingConvention = CallingConvention.Cdecl, EntryPoint = "canSetBusParamsFd")]
+        public static extern canStatus canSetBusParamsFd(int hnd, nint freq_brs, int tseg1_brs, int tseg2_brs, int sjw_brs);
+
+        [DllImport(Dll, CallingConvention = CallingConvention.Cdecl, EntryPoint = "canGetNumberOfChannels")]
+        public static extern canStatus canGetNumberOfChannels(out int channelCount);
+
+        [DllImport(Dll, CallingConvention = CallingConvention.Cdecl)]
+        public static extern canStatus canGetChannelData(int channel, int item, IntPtr buffer, UIntPtr bufsize);
+
+        [DllImport(Dll, CallingConvention = CallingConvention.Cdecl, EntryPoint = "canReadStatus")]
+        public static extern canStatus canReadStatus(int hnd, out nuint flags);
+
+        [DllImport(Dll, CallingConvention = CallingConvention.Cdecl, EntryPoint = "canReadErrorCounters")]
+        public static extern canStatus canReadErrorCounters(int hnd, out uint txErr, out uint rxErr, out uint ovErr);
+
+        [DllImport(Dll, CallingConvention = CallingConvention.Cdecl)]
+        public static unsafe extern canStatus canWrite(int hnd, nint id, byte* msg, uint dlc, uint flag);
+
+        [DllImport(Dll, CallingConvention = CallingConvention.Cdecl, EntryPoint = "canRead")]
+        public static extern canStatus canRead(int hnd, out nint id, [Out] byte[] msg, out int dlc, out int flag, out nuint time);
+
+        [DllImport(Dll, CallingConvention = CallingConvention.Cdecl, EntryPoint = "canRequestBusStatistics")]
+        public static extern canStatus canRequestBusStatistics(int hnd);
+
+        [DllImport(Dll, CallingConvention = CallingConvention.Cdecl, EntryPoint = "canGetBusStatistics")]
+        public static extern canStatus canGetBusStatistics(int hnd, out LinuxCanBusStatistics stat, UIntPtr bufsiz);
+
+        [DllImport(Dll, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)]
+        public static extern canStatus canGetErrorText(canStatus err, StringBuilder buf, uint bufsiz);
+
+        [DllImport(Dll, CallingConvention = CallingConvention.Cdecl)]
+        public static extern canStatus canIoCtl(int hnd, uint func, IntPtr buf, uint buflen);
+
+        [DllImport(Dll, CallingConvention = CallingConvention.Cdecl, EntryPoint = "canIoCtl")]
+        public static extern canStatus canIoCtl_int(int hnd, uint func, ref int value, uint buflen);
+
+        [DllImport(Dll, CallingConvention = CallingConvention.Cdecl, EntryPoint = "canIoCtl")]
+        public static extern canStatus canIoCtl_uint(int hnd, uint func, ref uint value, uint buflen);
+
+        [DllImport(Dll, CallingConvention = CallingConvention.Cdecl, EntryPoint = "canIoCtl")]
+        public static extern canStatus canIoCtl_bytes(int hnd, uint func, byte[] buffer, uint buflen);
+
+        [DllImport(Dll, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi, EntryPoint = "canIoCtl")]
+        public static extern canStatus canIoCtl_sb(int hnd, uint func, StringBuilder sb, uint buflen);
+
+        [DllImport(Dll, CallingConvention = CallingConvention.Cdecl)]
+        public static extern canStatus canAccept(int hnd, nint envelope, uint flag);
+
+        [DllImport(Dll, CallingConvention = CallingConvention.Cdecl, EntryPoint = "canObjBufAllocate")]
+        public static extern canStatus canObjBufAllocate(int hnd, int type);
+
+        [DllImport(Dll, CallingConvention = CallingConvention.Cdecl, EntryPoint = "canObjBufFree")]
+        public static extern canStatus canObjBufFree(int hnd, int idx);
+
+        [DllImport(Dll, CallingConvention = CallingConvention.Cdecl, EntryPoint = "canObjBufEnable")]
+        public static extern canStatus canObjBufEnable(int hnd, int idx);
+
+        [DllImport(Dll, CallingConvention = CallingConvention.Cdecl, EntryPoint = "canObjBufDisable")]
+        public static extern canStatus canObjBufDisable(int hnd, int idx);
+
+        [DllImport(Dll, CallingConvention = CallingConvention.Cdecl, EntryPoint = "canObjBufWrite")]
+        public static extern canStatus canObjBufWrite(int hnd, int idx, int id, byte[] msg, uint dlc, uint flags);
+
+        [DllImport(Dll, CallingConvention = CallingConvention.Cdecl, EntryPoint = "canObjBufSetPeriod")]
+        public static extern canStatus canObjBufSetPeriod(int hnd, int idx, uint periodUs);
+
+        [DllImport(Dll, CallingConvention = CallingConvention.Cdecl, EntryPoint = "canGetChannelData")]
+        public static extern canStatus canGetChannelData_UInt32(int channel, int item, out uint value, UIntPtr bufsize);
+
+        [DllImport(Dll, CallingConvention = CallingConvention.Cdecl, EntryPoint = "canGetChannelData")]
+        public static extern canStatus canGetChannelData_UInt32Array(int channel, int item, uint[] buffer, UIntPtr bufsize);
+
+        [DllImport(Dll, CallingConvention = CallingConvention.Cdecl, EntryPoint = "canGetChannelData")]
+        public static extern canStatus canGetChannelData_UInt64Array(int channel, int item, ulong[] buffer, UIntPtr bufsize);
+
+        [DllImport(Dll, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi, EntryPoint = "canGetChannelData")]
+        public static extern canStatus canGetChannelData_Ansi(int channel, int item, StringBuilder buffer, UIntPtr bufsize);
+
+        [DllImport(Dll, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Unicode, EntryPoint = "canGetChannelData")]
+        public static extern canStatus canGetChannelData_Wide(int channel, int item, StringBuilder buffer, UIntPtr bufsize);
+
+        [DllImport(Dll, CallingConvention = CallingConvention.Cdecl, EntryPoint = "canGetChannelData")]
+        public static extern canStatus canGetChannelData_Bytes(int channel, int item, byte[] buffer, UIntPtr bufsize);
+
+        [DllImport(Dll, CallingConvention = CallingConvention.Cdecl, EntryPoint = "kvSetNotifyCallback")]
+        public static extern canStatus kvSetNotifyCallback(int hnd, kvCallbackDelegateCdecl? callback, IntPtr context, uint notifyFlags);
+
+    }
 
     public static canStatus canSetAcceptanceFilter(int hnd, uint code, uint mask, int is_extended)
     {
@@ -218,54 +703,6 @@ public static class Canlib
         return re;
     }
 
-    [DllImport("canlib32", CallingConvention = CallingConvention.StdCall, EntryPoint = "canObjBufAllocate")]
-    public static extern canStatus canObjBufAllocate(int hnd, int type);
-
-    [DllImport("canlib32", CallingConvention = CallingConvention.StdCall, EntryPoint = "canObjBufFree")]
-    public static extern canStatus canObjBufFree(int hnd, int idx);
-
-    [DllImport("canlib32", CallingConvention = CallingConvention.StdCall, EntryPoint = "canObjBufEnable")]
-    public static extern canStatus canObjBufEnable(int hnd, int idx);
-
-    [DllImport("canlib32", CallingConvention = CallingConvention.StdCall, EntryPoint = "canObjBufDisable")]
-    public static extern canStatus canObjBufDisable(int hnd, int idx);
-
-    [DllImport("canlib32", CallingConvention = CallingConvention.StdCall, EntryPoint = "canObjBufWrite")]
-    public static extern canStatus canObjBufWrite(int hnd, int idx, int id, byte[] msg, uint dlc, uint flags);
-
-    [DllImport("canlib32", CallingConvention = CallingConvention.StdCall, EntryPoint = "canObjBufSetPeriod")]
-    public static extern canStatus canObjBufSetPeriod(int hnd, int idx, uint periodUs);
-
-    [DllImport("canlib32", CallingConvention = CallingConvention.StdCall, EntryPoint = "kvSetNotifyCallback")]
-    public static extern canStatus kvSetNotifyCallback(int hnd, kvCallbackDelegate callback, IntPtr context, uint notifyFlags);
-
-    [DllImport("canlib32", CallingConvention = CallingConvention.StdCall, EntryPoint = "canGetChannelData")]
-    public static extern canStatus canGetChannelData_UInt32(
-        int channel, int item, out uint value, UIntPtr bufsize);
-
-    [DllImport("canlib32", CallingConvention = CallingConvention.StdCall, EntryPoint = "canGetChannelData")]
-    public static extern canStatus canGetChannelData_UInt32Array(
-        int channel, int item, uint[] buffer, UIntPtr bufsize);
-
-    [DllImport("canlib32", CallingConvention = CallingConvention.StdCall, EntryPoint = "canGetChannelData")]
-    public static extern canStatus canGetChannelData_UInt64Array(
-        int channel, int item, ulong[] buffer, UIntPtr bufsize);
-
-    // --- 字符串版本（ANSI / Unicode / UTF-8）---
-    [DllImport("canlib32", CallingConvention = CallingConvention.StdCall,
-        CharSet = CharSet.Ansi, EntryPoint = "canGetChannelData")]
-    public static extern canStatus canGetChannelData_Ansi(
-        int channel, int item, StringBuilder buffer, UIntPtr bufsize);
-
-    [DllImport("canlib32", CallingConvention = CallingConvention.StdCall,
-        CharSet = CharSet.Unicode, EntryPoint = "canGetChannelData")]
-    public static extern canStatus canGetChannelData_Wide(
-        int channel, int item, StringBuilder buffer, UIntPtr bufsize);
-
-    [DllImport("canlib32", CallingConvention = CallingConvention.StdCall,
-        EntryPoint = "canGetChannelData")]
-    public static extern canStatus canGetChannelData_Bytes(
-        int channel, int item, byte[] buffer, UIntPtr bufsize);
     public static canStatus canGetErrorText(canStatus err, out string msg)
     {
         var sb = new StringBuilder(256);
