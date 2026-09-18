@@ -24,10 +24,14 @@ public sealed class KvaserCanException : CanNativeCallException
     }
 
     /// <summary>
-    /// Wrap a <see cref="DllNotFoundException"/> or <see cref="BadImageFormatException"/> from canlib32.
+    /// Wrap a <see cref="DllNotFoundException"/> or <see cref="BadImageFormatException"/> from
+    /// canlib32 (Windows) or libcanlib.so (Linux).
     /// </summary>
     public static KvaserCanException NativeLibraryNotFound(string operation, Exception innerException)
-        => new(operation, NativeLibraryLoad.FormatMessage("canlib32", "Kvaser CANlib", innerException), innerException);
+        => new(operation, NativeLibraryLoad.FormatMessage(
+            KvaserNativeLibraries.LibraryName,
+            KvaserNativeLibraries.VendorRuntime,
+            innerException), innerException);
 
     /// <summary>
     /// Kvaser CANlib status code. Unused when <see cref="CanKitException.ErrorCode"/> is
