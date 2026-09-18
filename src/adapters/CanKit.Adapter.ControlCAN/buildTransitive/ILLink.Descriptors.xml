@@ -1,4 +1,0 @@
-<linker>
-  <assembly fullname="CanKit.Adapter.ControlCAN" preserve="all" />
-</linker>
-

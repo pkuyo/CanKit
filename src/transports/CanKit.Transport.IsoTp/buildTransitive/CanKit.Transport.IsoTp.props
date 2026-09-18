@@ -1,5 +1,5 @@
 <Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
-    <CanKitRegistrationType Include="CanKit.Adapter.Virtual.CanKitRegistration" />
+    <CanKitRegistrationType Include="CanKit.Transport.IsoTp.CanKitRegistration" />
   </ItemGroup>
 </Project>

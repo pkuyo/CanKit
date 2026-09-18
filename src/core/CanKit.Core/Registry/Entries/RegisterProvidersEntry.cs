@@ -1,11 +1,9 @@
 using System;
 using System.Linq;
-using CanKit.Abstractions.Attributes;
 using CanKit.Abstractions.SPI.Registry.Core;
 
 namespace CanKit.Core.Registry.Entries;
 
-[CanRegistryEntry(CanRegistryEntryKind.Adapter, "Providers", Order = -50)]
 internal sealed class RegisterProvidersEntry : ICanRegistryEntry
 {
     public void Register(string name, ICanRegister register)

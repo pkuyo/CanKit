@@ -20,7 +20,9 @@ dotnet add package CanKit.Adapter.ZLG
 dotnet add package CanKit.Adapter.Virtual
 ```
 
-CanKit.Core auto-discovers adapter assemblies from your references (via a small generated preload list). No manual registration is needed.
+CanKit.Core generates strongly typed adapter registration calls from your references at build time. No runtime assembly scanning or manual registration is needed.
+
+When referencing an adapter DLL or project directly instead of consuming its NuGet build assets, call the adapter's `CanKitRegistration.Register()` method before first using `CanBus`.
 
 ## 2) Install Drivers / Native Runtimes
 
