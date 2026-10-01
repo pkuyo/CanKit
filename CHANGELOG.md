@@ -10,7 +10,7 @@
 ### Fixed
 
 * ControlCAN batch `Transmit` compared the running write total to `BATCH_COUNT` (64), so a second full native batch aborted the rest of the payload (128 frames sent, remainder dropped). The short-write check now uses this `VCI_Transmit` call's return value. `VCI_Receive` marshals the receive array as `[Out]` so native fills copy back into managed memory.
-* Kvaser ignored `ChannelWorkMode.ListenOnly`: the channel kept acknowledging and transmitting. It is now opened with `canDRIVER_SILENT` (`canSetBusOutputControl`, before bus-on). Opening fails if the driver type does not read back as silent. Channels without `canCHANNEL_CAP_SILENT_MODE` (e.g. Leaf Light v2, CANlib virtual channels) now throw `CanFeatureNotSupportedException` for ListenOnly instead of running in normal mode, because CANlib accepts the call there but ignores it.
+* Kvaser ignored `ChannelWorkMode.ListenOnly`: the channel kept acknowledging and transmitting. It is now opened with `canDRIVER_SILENT` (`canSetBusOutputControl`, before bus-on). Opening fails if the driver type cannot be read back or does not read back as silent. Channels without `canCHANNEL_CAP_SILENT_MODE` (e.g. Leaf Light v2, CANlib virtual channels) now throw `CanFeatureNotSupportedException` for ListenOnly instead of running in normal mode, because CANlib accepts the call there but ignores it.
 
 ## 0.5.6
 

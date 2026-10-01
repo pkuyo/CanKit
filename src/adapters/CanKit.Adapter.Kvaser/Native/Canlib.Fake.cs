@@ -309,10 +309,16 @@ public static class Canlib
         return canStatus.canOK;
     }
 
+    /// <summary>
+    /// Test switch: canGetBusOutputControl returns this status instead of the driver type.
+    /// </summary>
+    public static canStatus? BusOutputControlReadbackError { get; set; }
+
     public static canStatus canGetBusOutputControl(int hnd, out uint drivertype)
     {
         drivertype = 0;
         if (!TryGetHandle(hnd, out var h)) return canStatus.canERR_INVHANDLE;
+        if (BusOutputControlReadbackError is { } error) return error;
         drivertype = h.DriverType;
         return canStatus.canOK;
     }

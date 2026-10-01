@@ -78,6 +78,32 @@ public class KvaserListenOnlyTests
     }
 
     [Fact]
+    public void ListenOnly_Is_Rejected_When_The_Driver_Type_Cannot_Be_Read_Back()
+    {
+        // Without a readback there is no confirmation that the channel is silent.
+        CanKit.Adapter.Kvaser.Native.Canlib.BusOutputControlReadbackError =
+            CanKit.Adapter.Kvaser.Native.Canlib.canStatus.canERR_NOT_IMPLEMENTED;
+        try
+        {
+            var open = () => Kvaser.Open(0, cfg => cfg
+                .SetProtocolMode(CanProtocolMode.Can20)
+                .Baud(500_000)
+                .SetWorkMode(ChannelWorkMode.ListenOnly));
+
+            open.Should().Throw<CanBusCreationException>();
+
+            // Normal mode does not depend on the readback.
+            using var normal = Kvaser.Open(0, cfg => cfg
+                .SetProtocolMode(CanProtocolMode.Can20)
+                .Baud(500_000));
+        }
+        finally
+        {
+            CanKit.Adapter.Kvaser.Native.Canlib.BusOutputControlReadbackError = null;
+        }
+    }
+
+    [Fact]
     public void Normal_Mode_Opens_On_A_Channel_Without_Silent_Mode()
     {
         using var bus = Kvaser.Open(2, cfg => cfg
