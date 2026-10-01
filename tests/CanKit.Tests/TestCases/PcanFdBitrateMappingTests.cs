@@ -60,7 +60,7 @@ public class PcanFdBitrateMappingTests
     [InlineData(10_000_000u, 40u)]
     public void Data_Phase_Can_Use_Fewer_Than_Eight_Quanta_When_The_Clock_Requires_It(uint dataBitrate, uint clockMHz)
     {
-        // 8 Mbit/s on a 40 MHz clock only fits 5 time quanta: BRP=1, TSEG1=3, TSEG2=1 at 80 %.
+        // 8 Mbit/s on a 40 MHz clock only fits 5 time quanta: BRP=1, TSEG1=2, TSEG2=2 at 60 %.
         var timing = new CanBusTiming(new CanFdTiming(
             CanPhaseTiming.Target(500_000, 800),
             CanPhaseTiming.Target(dataBitrate, 800),
@@ -90,6 +90,48 @@ public class PcanFdBitrateMappingTests
 
         Rate(data.Brp, data.Tseg1, data.Tseg2).Should().Be(dataBitrate);
         (1 + (int)data.Tseg1 + (int)data.Tseg2).Should().BeGreaterThanOrEqualTo(8);
+    }
+
+    // Combinations the PCAN-Basic driver rejected on a PCAN-USB Pro FD (5.1.0.1194) with InvalidValue,
+    // all of them with data_brp=1 and data_tseg2=1.
+    [Theory]
+    [InlineData(8_000_000u, (ushort)800, 40u)]
+    [InlineData(10_000_000u, (ushort)800, 40u)]
+    [InlineData(4_000_000u, (ushort)875, 40u)]
+    [InlineData(8_000_000u, (ushort)875, 80u)]
+    [InlineData(10_000_000u, (ushort)875, 80u)]
+    [InlineData(5_000_000u, (ushort)875, 60u)]
+    [InlineData(5_000_000u, (ushort)800, 30u)]
+    [InlineData(4_000_000u, (ushort)800, 24u)]
+    [InlineData(2_000_000u, (ushort)875, 20u)]
+    [InlineData(5_000_000u, (ushort)800, 20u)]
+    public void Data_Phase_Uses_Tseg2_Of_At_Least_Two_When_Brp_Is_One(uint dataBitrate, ushort samplePointPermille, uint clockMHz)
+    {
+        var timing = new CanBusTiming(new CanFdTiming(
+            CanPhaseTiming.Target(500_000, 800),
+            CanPhaseTiming.Target(dataBitrate, samplePointPermille),
+            clockMHz));
+
+        var data = PcanUtils.MapFdBitrate(timing).Data;
+
+        Rate(data.Brp, data.Tseg1, data.Tseg2, clockMHz * 1_000_000.0).Should().Be(dataBitrate);
+        if (data.Brp == 1)
+            ((int)data.Tseg2).Should().BeGreaterThanOrEqualTo(2);
+    }
+
+    [Fact]
+    public void Data_Phase_Keeps_Tseg2_Of_One_When_Brp_Is_Above_One()
+    {
+        // 2 Mbit/s at 87.5 % on 80 MHz is only exact with BRP=5, TSEG1=6, TSEG2=1; the driver accepts it.
+        var timing = new CanBusTiming(new CanFdTiming(
+            CanPhaseTiming.Target(500_000, 800),
+            CanPhaseTiming.Target(2_000_000, 875),
+            80));
+
+        var data = PcanUtils.MapFdBitrate(timing).Data;
+
+        Rate(data.Brp, data.Tseg1, data.Tseg2).Should().Be(2_000_000);
+        SamplePoint(data.Tseg1, data.Tseg2).Should().BeApproximately(0.875, 0.001);
     }
 
     private static double Rate(double brp, double tseg1, double tseg2, double clockHz = 80_000_000.0)

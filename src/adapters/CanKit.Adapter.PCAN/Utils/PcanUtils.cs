@@ -156,6 +156,45 @@ public static class PcanUtils
         SjwMax = 16
     };
 
+    // The driver rejects data_tseg2=1 when data_brp=1 (InvalidValue, PCAN-USB Pro FD, PCAN-Basic 5.1.0.1194),
+    // but accepts it for data_brp >= 2, e.g. 2 Mbit/s at 87.5 % on 80 MHz is only exact with BRP=5, TSEG2=1.
+    // Solve both cases and keep the closer sample point, preferring more quanta when tied.
+    private static BitTimingSegments SolveDataPhase(uint clock, uint bitrate, double samplePoint)
+    {
+        BitTimingSegments? best = null;
+        InvalidOperationException? error = null;
+        foreach (var limits in new[]
+                 {
+                     FdDataPhaseLimits with { BrpMax = 1, Tseg2Min = 2 },
+                     FdDataPhaseLimits with { BrpMin = 2 }
+                 })
+        {
+            BitTimingSegments candidate;
+            try
+            {
+                candidate = BitTimingSolver.FromSamplePoint(clock, bitrate, samplePoint, limits);
+            }
+            catch (InvalidOperationException ex)
+            {
+                error = ex;
+                continue;
+            }
+
+            if (best is not { } b ||
+                SamplePointError(candidate, samplePoint) < SamplePointError(b, samplePoint) - 1e-12 ||
+                (Math.Abs(SamplePointError(candidate, samplePoint) - SamplePointError(b, samplePoint)) < 1e-12 &&
+                 candidate.Ntq > b.Ntq))
+            {
+                best = candidate;
+            }
+        }
+
+        return best ?? throw error!;
+    }
+
+    private static double SamplePointError(BitTimingSegments segment, double samplePoint)
+        => Math.Abs((1.0 + segment.Tseg1) / segment.Ntq - samplePoint);
+
     public static BitrateFD MapFdBitrate(CanBusTiming timing)
     {
 
@@ -204,7 +243,7 @@ public static class PcanUtils
         {
             var bit = data.Bitrate!.Value;
             var samplePoint = data.SamplePointPermille ?? 800;
-            var segment = BitTimingSolver.FromSamplePoint(clock, bit, samplePoint/1000.0, FdDataPhaseLimits);
+            var segment = SolveDataPhase(clock, bit, samplePoint/1000.0);
             dataSeg.Tseg1 = segment.Tseg1;
             dataSeg.Tseg2 = segment.Tseg2;
             dataSeg.Brp = segment.Brp;
