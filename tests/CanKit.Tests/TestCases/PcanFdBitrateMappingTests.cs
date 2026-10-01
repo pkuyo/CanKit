@@ -1,3 +1,4 @@
+using System;
 using CanKit.Abstractions.API.Common.Definitions;
 using CanKit.Adapter.PCAN;
 using FluentAssertions;
@@ -57,7 +58,7 @@ public class PcanFdBitrateMappingTests
 
     [Theory]
     [InlineData(8_000_000u, 40u)]
-    [InlineData(10_000_000u, 40u)]
+    [InlineData(10_000_000u, 60u)]
     public void Data_Phase_Can_Use_Fewer_Than_Eight_Quanta_When_The_Clock_Requires_It(uint dataBitrate, uint clockMHz)
     {
         // 8 Mbit/s on a 40 MHz clock only fits 5 time quanta: BRP=1, TSEG1=2, TSEG2=2 at 60 %.
@@ -72,6 +73,23 @@ public class PcanFdBitrateMappingTests
         (1 + (int)data.Tseg1 + (int)data.Tseg2).Should().BeLessThan(8);
         ((int)data.Tseg1).Should().BeInRange(1, 32);
         ((int)data.Tseg2).Should().BeInRange(1, 16);
+    }
+
+    // 10 Mbit/s on 40 MHz only fits 4 time quanta (TSEG1=1, TSEG2=2 at 50 %). The driver accepts it,
+    // but on a PCAN-USB Pro FD the transmitter went bus-off after about 150 BRS frames.
+    [Theory]
+    [InlineData(10_000_000u, 40u)]
+    [InlineData(5_000_000u, 20u)]
+    public void Data_Phase_Rejects_Timings_With_Fewer_Than_Five_Quanta(uint dataBitrate, uint clockMHz)
+    {
+        var timing = new CanBusTiming(new CanFdTiming(
+            CanPhaseTiming.Target(500_000, 800),
+            CanPhaseTiming.Target(dataBitrate, 800),
+            clockMHz));
+
+        var map = () => PcanUtils.MapFdBitrate(timing);
+
+        map.Should().Throw<InvalidOperationException>();
     }
 
     [Theory]
@@ -96,7 +114,6 @@ public class PcanFdBitrateMappingTests
     // all of them with data_brp=1 and data_tseg2=1.
     [Theory]
     [InlineData(8_000_000u, (ushort)800, 40u)]
-    [InlineData(10_000_000u, (ushort)800, 40u)]
     [InlineData(4_000_000u, (ushort)875, 40u)]
     [InlineData(8_000_000u, (ushort)875, 80u)]
     [InlineData(10_000_000u, (ushort)875, 80u)]
@@ -104,7 +121,7 @@ public class PcanFdBitrateMappingTests
     [InlineData(5_000_000u, (ushort)800, 30u)]
     [InlineData(4_000_000u, (ushort)800, 24u)]
     [InlineData(2_000_000u, (ushort)875, 20u)]
-    [InlineData(5_000_000u, (ushort)800, 20u)]
+    [InlineData(4_000_000u, (ushort)800, 20u)]
     public void Data_Phase_Uses_Tseg2_Of_At_Least_Two_When_Brp_Is_One(uint dataBitrate, ushort samplePointPermille, uint clockMHz)
     {
         var timing = new CanBusTiming(new CanFdTiming(
