@@ -122,17 +122,27 @@ public class KvaserPeriodicRepeatTests
         using var rx = Open(1);
 
         // The driver rejects the immediate frame (full TX buffer); Transmit returns 0.
-        CanKit.Adapter.Kvaser.Native.Canlib.FailNextWriteWith =
-            CanKit.Adapter.Kvaser.Native.Canlib.canStatus.canERR_TXBUFOFL;
+        // The failure is tied to an ID that only this test writes, so a transmit of a test
+        // running in parallel cannot consume it.
+        const int id = 0x6A3;
+        CanKit.Adapter.Kvaser.Native.Canlib.FailNextWriteOf(id,
+            CanKit.Adapter.Kvaser.Native.Canlib.canStatus.canERR_TXBUFOFL);
+        var pending = true;
         try
         {
-            using var periodic = tx.TransmitPeriodic(Frame(), new PeriodicTxOptions(Period, 3, true));
+            using var periodic = tx.TransmitPeriodic(CanFrame.Classic(id, new byte[] { 0xAA }),
+                new PeriodicTxOptions(Period, 3, true));
 
-            Count(rx, TimeSpan.FromMilliseconds(400)).Should().Be(3);
+            // The immediate frame must have run into the injected failure. Otherwise the
+            // count below would also be reached by the immediate frame plus two from the buffer.
+            pending = CanKit.Adapter.Kvaser.Native.Canlib.ClearInjectedWriteFailure(id);
+            pending.Should().BeFalse();
+
+            Count(rx, TimeSpan.FromMilliseconds(400), id).Should().Be(3);
         }
         finally
         {
-            CanKit.Adapter.Kvaser.Native.Canlib.FailNextWriteWith = null;
+            if (pending) CanKit.Adapter.Kvaser.Native.Canlib.ClearInjectedWriteFailure(id);
         }
     }
 
@@ -141,12 +151,12 @@ public class KvaserPeriodicRepeatTests
 
     private static CanFrame Frame() => CanFrame.Classic(0x6A0, new byte[] { 0xAA });
 
-    private static int Count(ICanBus bus, TimeSpan window)
+    private static int Count(ICanBus bus, TimeSpan window, int id = 0x6A0)
     {
         var count = 0;
         var until = DateTime.UtcNow + window;
         while (DateTime.UtcNow < until)
-            count += bus.Receive(64, 20).Count(r => r.CanFrame.ID == 0x6A0);
+            count += bus.Receive(64, 20).Count(r => r.CanFrame.ID == id);
         return count;
     }
 }

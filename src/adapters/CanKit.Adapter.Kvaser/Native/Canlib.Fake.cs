@@ -312,19 +312,25 @@ public static class Canlib
         _ = hnd; txErr = 0; rxErr = 0; ovErr = 0; return canStatus.canOK;
     }
 
+    private static readonly ConcurrentDictionary<int, canStatus> s_injectedWriteFailures = new();
+
     /// <summary>
-    /// Test switch: the next canWrite returns this status and sends nothing, e.g.
-    /// canERR_TXBUFOFL for a full transmit buffer. It is consumed by that call.
+    /// Test switch: the next canWrite of a message with this ID returns the given status and
+    /// sends nothing, e.g. canERR_TXBUFOFL for a full transmit buffer. It is consumed by that
+    /// call. Keyed by ID, so writes of tests running in parallel are not affected.
     /// </summary>
-    public static canStatus? FailNextWriteWith { get; set; }
+    public static void FailNextWriteOf(int id, canStatus status) => s_injectedWriteFailures[id] = status;
+
+    /// <summary>
+    /// Removes a failure injected with <see cref="FailNextWriteOf"/>.
+    /// Returns true if it was still pending, i.e. no canWrite has consumed it.
+    /// </summary>
+    public static bool ClearInjectedWriteFailure(int id) => s_injectedWriteFailures.TryRemove(id, out _);
 
     public static unsafe canStatus canWrite(int hnd, int id, byte* msg, uint dlc, uint flag)
     {
-        if (FailNextWriteWith is { } injected)
-        {
-            FailNextWriteWith = null;
+        if (s_injectedWriteFailures.TryRemove(id, out var injected))
             return injected;
-        }
 
         if (!TryGetHandle(hnd, out var h) || !h.BusOn) return canStatus.canERR_INVHANDLE;
 
