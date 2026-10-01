@@ -144,6 +144,14 @@ public static class PcanUtils
         };
     }
 
+    // PCAN-Basic data phase ranges: data_tseg1 1..32, data_tseg2 1..16, data_sjw 1..16.
+    private static readonly BitTimingLimits FdDataPhaseLimits = new()
+    {
+        Tseg1Max = 32,
+        Tseg2Max = 16,
+        SjwMax = 16
+    };
+
     public static BitrateFD MapFdBitrate(CanBusTiming timing)
     {
 
@@ -190,13 +198,13 @@ public static class PcanUtils
         }
         else
         {
-            var bit = timing.Fd.Value.Nominal.Bitrate!.Value;
-            var samplePoint = timing.Fd.Value.Nominal.SamplePointPermille ?? 800;
-            var segment = BitTimingSolver.FromSamplePoint(clock, bit, samplePoint/1000.0);
+            var bit = data.Bitrate!.Value;
+            var samplePoint = data.SamplePointPermille ?? 800;
+            var segment = BitTimingSolver.FromSamplePoint(clock, bit, samplePoint/1000.0, FdDataPhaseLimits);
             dataSeg.Tseg1 = segment.Tseg1;
             dataSeg.Tseg2 = segment.Tseg2;
             dataSeg.Brp = segment.Brp;
-            dataSeg.Mode = BitrateFD.BitrateType.ArbitrationPhase;
+            dataSeg.Mode = BitrateFD.BitrateType.DataPhase;
             dataSeg.Sjw = segment.Sjw;
         }
         return new BitrateFD((BitrateFD.ClockFrequency)(clock * 1_000_000), nominalSeg, dataSeg);
