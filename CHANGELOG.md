@@ -10,6 +10,7 @@
 ### Fixed
 
 * ControlCAN batch `Transmit` compared the running write total to `BATCH_COUNT` (64), so a second full native batch aborted the rest of the payload (128 frames sent, remainder dropped). The short-write check now uses this `VCI_Transmit` call's return value. `VCI_Receive` marshals the receive array as `[Out]` so native fills copy back into managed memory.
+* ZLG merged receive (`ZCAN_ReceiveData`, used for PCIe-CANFD) looped until the requested number of frames had arrived and never gave up. Because the merged queue is device-wide, a channel could wait for frames another channel had already taken; its receive thread then spun at 100 % CPU and kept running after `Dispose()`. The call now returns when the driver delivers nothing within the wait time.
 * Kvaser ignored `ChannelWorkMode.ListenOnly`: the channel kept acknowledging and transmitting. It is now opened with `canDRIVER_SILENT` (`canSetBusOutputControl`, before bus-on). Opening fails if the driver type cannot be read back or does not read back as silent. Channels without `canCHANNEL_CAP_SILENT_MODE` (e.g. Leaf Light v2, CANlib virtual channels) now throw `CanFeatureNotSupportedException` for ListenOnly instead of running in normal mode, because CANlib accepts the call there but ignores it.
 
 ## 0.5.6
