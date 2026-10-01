@@ -156,6 +156,7 @@ public static class Canlib
         public int Dlc;
         public uint Flags;
         public int PeriodUs = 1000;
+        public uint MsgCount; // 0 => infinite
         public Timer Timer;
     }
 
@@ -311,8 +312,26 @@ public static class Canlib
         _ = hnd; txErr = 0; rxErr = 0; ovErr = 0; return canStatus.canOK;
     }
 
+    private static readonly ConcurrentDictionary<int, canStatus> s_injectedWriteFailures = new();
+
+    /// <summary>
+    /// Test switch: the next canWrite of a message with this ID returns the given status and
+    /// sends nothing, e.g. canERR_TXBUFOFL for a full transmit buffer. It is consumed by that
+    /// call. Keyed by ID, so writes of tests running in parallel are not affected.
+    /// </summary>
+    public static void FailNextWriteOf(int id, canStatus status) => s_injectedWriteFailures[id] = status;
+
+    /// <summary>
+    /// Removes a failure injected with <see cref="FailNextWriteOf"/>.
+    /// Returns true if it was still pending, i.e. no canWrite has consumed it.
+    /// </summary>
+    public static bool ClearInjectedWriteFailure(int id) => s_injectedWriteFailures.TryRemove(id, out _);
+
     public static unsafe canStatus canWrite(int hnd, int id, byte* msg, uint dlc, uint flag)
     {
+        if (s_injectedWriteFailures.TryRemove(id, out var injected))
+            return injected;
+
         if (!TryGetHandle(hnd, out var h) || !h.BusOn) return canStatus.canERR_INVHANDLE;
 
         byte[] data = Array.Empty<byte>();
@@ -480,12 +499,28 @@ public static class Canlib
         // Start timer
         int due = Math.Max(1, p.PeriodUs / 1000);
         p.Timer?.Dispose();
-        p.Timer = new Timer(_ =>
+        // canObjBufSetMsgCount: send MsgCount frames, then stop and reset the count to 0 (infinite).
+        // Modelled from the CANlib documentation, not verified on a device.
+        var remaining = p.MsgCount;
+        Timer timer = null;
+        timer = new Timer(_ =>
         {
-            // Construct frame and send
-            var f = new Frame { Id = p.Id, Data = p.Data.ToArray(), Dlc = p.Dlc, Flags = (int)p.Flags, Time = 0 };
-            EnqueueToReceivers(h, f);
-        }, null, due, due);
+            lock (h.Periodics)
+            {
+                if (!ReferenceEquals(p.Timer, timer)) return;
+                // Construct frame and send
+                var f = new Frame { Id = p.Id, Data = p.Data.ToArray(), Dlc = p.Dlc, Flags = (int)p.Flags, Time = 0 };
+                EnqueueToReceivers(h, f);
+                if (remaining > 0 && --remaining == 0)
+                {
+                    try { timer.Dispose(); } catch { }
+                    p.Timer = null;
+                    p.MsgCount = 0;
+                }
+            }
+        }, null, Timeout.Infinite, Timeout.Infinite);
+        lock (h.Periodics) { p.Timer = timer; }
+        timer.Change(due, due);
         return canStatus.canOK;
     }
 
@@ -524,6 +559,17 @@ public static class Canlib
         {
             if (!h.Periodics.TryGetValue(idx, out var p)) return canStatus.canERR_PARAM;
             p.PeriodUs = (int)Math.Max(1, periodUs);
+        }
+        return canStatus.canOK;
+    }
+
+    public static canStatus canObjBufSetMsgCount(int hnd, int idx, uint count)
+    {
+        if (!TryGetHandle(hnd, out var h)) return canStatus.canERR_INVHANDLE;
+        lock (h.Periodics)
+        {
+            if (!h.Periodics.TryGetValue(idx, out var p)) return canStatus.canERR_PARAM;
+            p.MsgCount = count;
         }
         return canStatus.canOK;
     }
