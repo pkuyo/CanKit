@@ -6,6 +6,7 @@ using CanKit.Abstractions.API.Can.Definitions;
 using CanKit.Abstractions.API.Common.Definitions;
 using CanKit.Adapter.Vector;
 using CanKit.Core;
+using CanKit.Core.Diagnostics;
 using FluentAssertions;
 using Xunit;
 
@@ -59,6 +60,39 @@ public class VectorReceiveLoopTests
 
         var received = await rx.ReceiveAsync(1, 2000, TestContext.Current.CancellationToken);
         received.Should().ContainSingle().Which.CanFrame.ID.Should().Be(0x321);
+    }
+
+    [Fact]
+    public async Task Fault_Raised_From_A_Subscriber_Callback_Stops_The_Loop_Without_A_Second_Report()
+    {
+        // With this policy a throwing subscriber faults the bus. The dispatcher then stops the
+        // receive loop from the loop thread itself.
+        var policy = new CanExceptionPolicy { SubscriberCallbackSeverity = CanExceptionSeverity.Fault };
+        var faults = new List<Exception>();
+        var background = new List<Exception>();
+
+        using var rx = (VectorBus)CanBus.Open(EndpointA, cfg =>
+        {
+            Configure(cfg);
+            cfg.ExceptionPolicy(policy);
+        });
+        using var tx = CanBus.Open(EndpointB, Configure);
+        rx.FaultOccurred += (_, ex) => { lock (faults) faults.Add(ex); };
+        rx.BackgroundExceptionOccurred += (_, ex) => { lock (background) background.Add(ex); };
+        rx.FrameObserved += (_, _) => throw new InvalidOperationException("subscriber failed");
+        var loop = rx.ReceiveLoopTask!;
+
+        tx.Transmit(CanFrame.Classic(0x321, new byte[] { 1 })).Should().Be(1);
+
+        var finished = await Task.WhenAny(loop, Task.Delay(TimeSpan.FromSeconds(3), TestContext.Current.CancellationToken));
+        finished.Should().BeSameAs(loop, "a fault stops the receive loop");
+        loop.IsFaulted.Should().BeFalse();
+
+        lock (faults)
+            faults.Should().ContainSingle().Which.Should().BeOfType<InvalidOperationException>();
+        lock (background)
+            background.Should().ContainSingle("the loop must not report a second exception while it leaves")
+                .Which.Should().BeOfType<InvalidOperationException>();
     }
 
     private static void Configure(CanKit.Abstractions.API.Common.IBusInitOptionsConfigurator cfg)

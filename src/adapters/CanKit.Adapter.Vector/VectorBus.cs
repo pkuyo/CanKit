@@ -475,22 +475,37 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
     {
         var cts = Interlocked.Exchange(ref _pollCts, null);
         if (cts is null) return;
-        try
-        {
-            try { cts.Cancel(); } catch { }
 
-            // Let the loop leave before the token source, the notification event and the port
-            // go away. Never wait on ourselves (stop requested from the loop thread or from a
-            // subscriber callback running on it).
-            var task = _rxTask;
-            if (task != null && Task.CurrentId != task.Id)
-            {
-                try { task.Wait(TimeSpan.FromSeconds(1)); } catch { /* the loop reports its own faults */ }
-            }
-        }
-        finally
+        try { cts.Cancel(); } catch { }
+
+        var task = _rxTask;
+        if (task is null)
         {
             cts.Dispose();
+            return;
+        }
+
+        // Let the loop leave before the notification event and the port go away. Never wait on
+        // ourselves (stop requested from the loop thread or from a subscriber callback on it).
+        if (Task.CurrentId != task.Id)
+        {
+            try { task.Wait(TimeSpan.FromSeconds(1)); } catch { /* the loop reports its own faults */ }
+        }
+
+        // The loop keeps the token's wait handle. Release the source only after the loop has
+        // left; when the stop came from the loop thread or the wait timed out, that is later.
+        if (task.IsCompleted)
+        {
+            cts.Dispose();
+        }
+        else
+        {
+            task.ContinueWith(
+                static (_, state) => ((CancellationTokenSource)state!).Dispose(),
+                cts,
+                CancellationToken.None,
+                TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
         }
     }
 
@@ -629,6 +644,10 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
                         receiveData.Clear();
                         errInfos.Clear();
                     }
+                    // A stop requested from a callback on this thread ends the loop here, before
+                    // it waits or polls again.
+                    token.ThrowIfCancellationRequested();
+
                     if (_rxEvent != null)
                     {
                         // Notification mode: the queue is empty, go back to waiting for the event.
