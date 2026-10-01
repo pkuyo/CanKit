@@ -110,8 +110,12 @@ public sealed class KvaserPeriodicTx : IPeriodicTx
     {
         if (_stopped) throw new CanBusDisposedException();
 
-        // Without a new count the frames that are still due stay due; take the estimate before
-        // the run is interrupted.
+        // Interrupt the run first. Frames sent while the buffer is being reprogrammed would
+        // otherwise belong to the old run and be scheduled again by the new one.
+        try { _ = Canlib.canObjBufDisable(_bus.Handle, _bufNo); } catch { }
+
+        // Without a new count the frames that are still due stay due; the estimate is taken at
+        // the point where the buffer stopped.
         var remaining = repeatCount ?? EstimateRemaining();
 
         if (frame is not null) _frame = frame.Value;
@@ -119,8 +123,6 @@ public sealed class KvaserPeriodicTx : IPeriodicTx
         if (repeatCount is not null) RepeatCount = repeatCount.Value;
 
         ProgramBuffer(_frame, Period);
-        try { _ = Canlib.canObjBufDisable(_bus.Handle, _bufNo); } catch { }
-
         StartRun(remaining);
     }
 
