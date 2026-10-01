@@ -215,11 +215,13 @@ namespace CanKit.Adapter.ZLG.Native
             public _ZCAN_CHANNEL_INIT_CONFIG config; // union { can; canfd; }
         }
 
-        [StructLayout(LayoutKind.Sequential)]
+        // zlgcan.h declares this member as `union { can; canfd; }`: both views start at offset 0
+        // and the driver picks one by can_type. The whole init config is 4 + 28 = 32 bytes.
+        [StructLayout(LayoutKind.Explicit)]
         public struct _ZCAN_CHANNEL_INIT_CONFIG
         {
-            public _ZCAN_CHANNEL_CAN_INIT_CONFIG can;
-            public _ZCAN_CHANNEL_CANFD_INIT_CONFIG canfd;
+            [FieldOffset(0)] public _ZCAN_CHANNEL_CAN_INIT_CONFIG can;
+            [FieldOffset(0)] public _ZCAN_CHANNEL_CANFD_INIT_CONFIG canfd;
         }
 
         [StructLayout(LayoutKind.Sequential)]
