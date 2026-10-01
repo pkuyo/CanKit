@@ -145,8 +145,12 @@ public static class PcanUtils
     }
 
     // PCAN-Basic data phase ranges: data_tseg1 1..32, data_tseg2 1..16, data_sjw 1..16.
+    // A bit therefore needs at least 3 time quanta (sync + tseg1 + tseg2). The solver default of 8
+    // would reject timings that only fit fewer quanta, e.g. 8 Mbit/s on a 40 MHz clock (5 tq).
+    // With equal sample point error the solver still prefers the larger quanta count.
     private static readonly BitTimingLimits FdDataPhaseLimits = new()
     {
+        NtqMin = 3,
         Tseg1Max = 32,
         Tseg2Max = 16,
         SjwMax = 16
