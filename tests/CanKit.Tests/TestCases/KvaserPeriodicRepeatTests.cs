@@ -90,25 +90,28 @@ public class KvaserPeriodicRepeatTests
     {
         using var tx = Open(0);
         using var rx = Open(1);
-        var slow = TimeSpan.FromMilliseconds(50);
+        // A long period keeps the test independent of scheduling delays on a busy machine:
+        // the update has to land somewhere inside the run, not at an exact frame.
+        var slow = TimeSpan.FromMilliseconds(250);
         const int repeat = 6;
 
         using var periodic = tx.TransmitPeriodic(Frame(), new PeriodicTxOptions(slow, repeat));
 
-        // Let half of the run pass, then change only the frame.
+        // Read frame by frame until half of the run has arrived, then change only the frame.
         var before = 0;
-        var deadline = DateTime.UtcNow.AddSeconds(3);
+        var deadline = DateTime.UtcNow.AddSeconds(5);
         while (before < 3 && DateTime.UtcNow < deadline)
-            before += rx.Receive(64, 20).Count(r => r.CanFrame.ID == 0x6A0);
+            before += rx.Receive(1, 50).Count(r => r.CanFrame.ID == 0x6A0);
         before.Should().Be(3);
 
         periodic.Update(frame: CanFrame.Classic(0x6A1, new byte[] { 0xBB }));
 
-        // About three frames are left. Restarting the configured total would send six more.
+        // About three frames are left. Restarting the configured total would send six more,
+        // which fits into this window as well.
         var after = 0;
-        var until = DateTime.UtcNow.AddMilliseconds(700);
+        var until = DateTime.UtcNow.AddMilliseconds(2000);
         while (DateTime.UtcNow < until)
-            after += rx.Receive(64, 20).Count(r => r.CanFrame.ID == 0x6A1);
+            after += rx.Receive(64, 50).Count(r => r.CanFrame.ID == 0x6A1);
         after.Should().BeInRange(1, repeat - 1);
     }
 
