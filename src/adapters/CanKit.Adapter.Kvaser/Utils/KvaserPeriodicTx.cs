@@ -25,14 +25,6 @@ public sealed class KvaserPeriodicTx : IPeriodicTx
 
         Period = options.Period <= TimeSpan.Zero ? TimeSpan.FromMilliseconds(1) : options.Period;
         RepeatCount = options.Repeat;
-
-        if (options.FireImmediately)
-        {
-            _ = _bus.Transmit([frame]);
-        }
-
-        ProgramBuffer(_frame, Period);
-        StartBuffer();
     }
 
     public static bool TryStart(KvaserBus bus, CanFrame frame, PeriodicTxOptions options, out KvaserPeriodicTx? periodicTx)
@@ -48,15 +40,44 @@ public sealed class KvaserPeriodicTx : IPeriodicTx
             return false;
         }
 
+        var tx = new KvaserPeriodicTx(bus, bufNo, frame, options);
         try
         {
-            periodicTx = new KvaserPeriodicTx(bus, bufNo, frame, options);
-            bus.AttachOwner(periodicTx);
+            tx.ProgramBuffer(frame, tx.Period);
+
+            // A finite Repeat sends Repeat frames in total (as the BCM and software schedulers do);
+            // the immediate frame counts as the first one.
+            var bufferCount = options.IsInfinite ? -1 : options.Repeat - (options.FireImmediately ? 1 : 0);
+            if (bufferCount > 0)
+            {
+                // Program the count before anything is sent, so a device without message count
+                // support falls back cleanly instead of sending forever.
+                var st = Canlib.canObjBufSetMsgCount(bus.Handle, bufNo, (uint)bufferCount);
+                if (st != Canlib.canStatus.canOK)
+                {
+                    CanKitLogger.LogDebug($"Kvaser: canObjBufSetMsgCount failed: {st}");
+                    tx.Dispose();
+                    return false;
+                }
+            }
+
+            if (options.FireImmediately)
+            {
+                _ = bus.Transmit([frame]);
+            }
+
+            if (options.IsInfinite || bufferCount > 0)
+            {
+                tx.StartBuffer();
+            }
+
+            bus.AttachOwner(tx);
+            periodicTx = tx;
             return true;
         }
         catch
         {
-            try { _ = Canlib.canObjBufFree(bus.Handle, bufNo); } catch { }
+            tx.Dispose();
             throw;
         }
     }
@@ -86,6 +107,15 @@ public sealed class KvaserPeriodicTx : IPeriodicTx
 
         ProgramBuffer(_frame, Period);
         try { _ = Canlib.canObjBufDisable(_bus.Handle, _bufNo); } catch { }
+
+        // CANlib resets the message count to 0 (infinite) once it is used up, so a finite
+        // RepeatCount has to be programmed again before every enable.
+        if (RepeatCount == 0) return;
+        if (RepeatCount > 0)
+        {
+            KvaserUtils.ThrowIfError(Canlib.canObjBufSetMsgCount(_bus.Handle, _bufNo, (uint)RepeatCount),
+                "canObjBufSetMsgCount", "Failed to set periodic message count");
+        }
         StartBuffer();
     }
 

@@ -10,6 +10,7 @@
 ### Fixed
 
 * ControlCAN batch `Transmit` compared the running write total to `BATCH_COUNT` (64), so a second full native batch aborted the rest of the payload (128 frames sent, remainder dropped). The short-write check now uses this `VCI_Transmit` call's return value. `VCI_Receive` marshals the receive array as `[Out]` so native fills copy back into managed memory.
+* Kvaser hardware periodic TX ignored a finite `PeriodicTxOptions.Repeat`: the object buffer kept sending until it was stopped. A finite `Repeat` now sends `Repeat` frames in total (the immediate frame counts as the first), using `canObjBufSetMsgCount`. If the device rejects the message count, the buffer is released and the software scheduler (or the existing error) takes over. `Update()` programs the count again before re-enabling, because CANlib resets it to infinite once it is used up.
 
 ## 0.5.6
 

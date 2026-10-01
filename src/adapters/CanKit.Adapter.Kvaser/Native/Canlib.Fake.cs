@@ -156,6 +156,7 @@ public static class Canlib
         public int Dlc;
         public uint Flags;
         public int PeriodUs = 1000;
+        public uint MsgCount; // 0 => infinite
         public Timer Timer;
     }
 
@@ -480,12 +481,28 @@ public static class Canlib
         // Start timer
         int due = Math.Max(1, p.PeriodUs / 1000);
         p.Timer?.Dispose();
-        p.Timer = new Timer(_ =>
+        // canObjBufSetMsgCount: send MsgCount frames, then stop and reset the count to 0 (infinite).
+        // Modelled from the CANlib documentation, not verified on a device.
+        var remaining = p.MsgCount;
+        Timer timer = null;
+        timer = new Timer(_ =>
         {
-            // Construct frame and send
-            var f = new Frame { Id = p.Id, Data = p.Data.ToArray(), Dlc = p.Dlc, Flags = (int)p.Flags, Time = 0 };
-            EnqueueToReceivers(h, f);
-        }, null, due, due);
+            lock (h.Periodics)
+            {
+                if (!ReferenceEquals(p.Timer, timer)) return;
+                // Construct frame and send
+                var f = new Frame { Id = p.Id, Data = p.Data.ToArray(), Dlc = p.Dlc, Flags = (int)p.Flags, Time = 0 };
+                EnqueueToReceivers(h, f);
+                if (remaining > 0 && --remaining == 0)
+                {
+                    try { timer.Dispose(); } catch { }
+                    p.Timer = null;
+                    p.MsgCount = 0;
+                }
+            }
+        }, null, Timeout.Infinite, Timeout.Infinite);
+        lock (h.Periodics) { p.Timer = timer; }
+        timer.Change(due, due);
         return canStatus.canOK;
     }
 
@@ -524,6 +541,17 @@ public static class Canlib
         {
             if (!h.Periodics.TryGetValue(idx, out var p)) return canStatus.canERR_PARAM;
             p.PeriodUs = (int)Math.Max(1, periodUs);
+        }
+        return canStatus.canOK;
+    }
+
+    public static canStatus canObjBufSetMsgCount(int hnd, int idx, uint count)
+    {
+        if (!TryGetHandle(hnd, out var h)) return canStatus.canERR_INVHANDLE;
+        lock (h.Periodics)
+        {
+            if (!h.Periodics.TryGetValue(idx, out var p)) return canStatus.canERR_PARAM;
+            p.MsgCount = count;
         }
         return canStatus.canOK;
     }
