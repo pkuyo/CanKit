@@ -14,6 +14,7 @@ internal static class VendorAdapterPreload
         TryLoad("CanKit.Adapter.Vector");
         TryLoad("CanKit.Adapter.ControlCAN");
         TryLoad("CanKit.Adapter.ZLG");
+        TryLoad("CanKit.Adapter.Virtual");
     }
 
     private static void TryLoad(string name)

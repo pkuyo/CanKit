@@ -67,6 +67,8 @@ namespace CanKit.Core.Utils
         public void Start()
         {
             if (_task != null) return;
+            // Repeat = 0: nothing to send, not even the FireImmediately frame.
+            if (IsExhausted()) return;
             _running = true;
             _task = Task.Factory.StartNew(Loop, _cts.Token,
                 TaskCreationOptions.LongRunning, TaskScheduler.Default);
@@ -133,6 +135,7 @@ namespace CanKit.Core.Utils
 
             if (_fireImmediately)
             {
+                if (IsExhausted()) { _running = false; return; }
                 TrySendOnce();
                 if (DecreaseAndMaybeFinish()) { _running = false; return; }
                 t0 = sw.Elapsed;
@@ -154,6 +157,9 @@ namespace CanKit.Core.Utils
                 var target = t0 + TimeSpan.FromTicks(period.Ticks * n);
 
                 _sPreWait(ref _ctx, sw, target, token);
+
+                // Update(repeatCount: 0) may have used up the count while waiting.
+                if (IsExhausted()) { Stop(); break; }
 
                 // 发送
                 var sendStart = sw.Elapsed;
@@ -190,11 +196,16 @@ namespace CanKit.Core.Utils
             }
         }
 
+        private bool IsExhausted()
+        {
+            lock (_gate) return _remaining == 0;
+        }
+
         private bool DecreaseAndMaybeFinish()
         {
             lock (_gate)
             {
-                if (_remaining == 0) return false;
+                if (_remaining == 0) return true;
                 if (_remaining > 0)
                 {
                     _remaining--;

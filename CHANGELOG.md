@@ -10,6 +10,7 @@
 ### Fixed
 
 * ControlCAN batch `Transmit` compared the running write total to `BATCH_COUNT` (64), so a second full native batch aborted the rest of the payload (128 frames sent, remainder dropped). The short-write check now uses this `VCI_Transmit` call's return value. `VCI_Receive` marshals the receive array as `[Out]` so native fills copy back into managed memory.
+* `SoftwarePeriodicTx` (software periodic TX used by PCAN, Vector, Virtual and as fallback) sent forever for `PeriodicTxOptions.Repeat = 0` and after `Update(repeatCount: 0)`. `Repeat = 0` now sends no frame, not even the `FireImmediately` one, and `Update(repeatCount: 0)` stops the schedule.
 
 ## 0.5.6
 
