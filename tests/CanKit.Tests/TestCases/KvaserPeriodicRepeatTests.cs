@@ -72,6 +72,67 @@ public class KvaserPeriodicRepeatTests
         Count(rx, TimeSpan.FromMilliseconds(400)).Should().Be(2);
     }
 
+    [Fact]
+    public void Update_To_Infinite_During_A_Finite_Run_Keeps_Sending()
+    {
+        using var tx = Open(0);
+        using var rx = Open(1);
+
+        using var periodic = tx.TransmitPeriodic(Frame(), new PeriodicTxOptions(Period, 5));
+        periodic.Update(repeatCount: -1);
+
+        // A finite count left in the buffer would stop it after a few frames.
+        Count(rx, TimeSpan.FromMilliseconds(400)).Should().BeGreaterThan(15);
+    }
+
+    [Fact]
+    public void Update_Of_The_Frame_Keeps_The_Remaining_Count()
+    {
+        using var tx = Open(0);
+        using var rx = Open(1);
+        var slow = TimeSpan.FromMilliseconds(50);
+        const int repeat = 6;
+
+        using var periodic = tx.TransmitPeriodic(Frame(), new PeriodicTxOptions(slow, repeat));
+
+        // Let half of the run pass, then change only the frame.
+        var before = 0;
+        var deadline = DateTime.UtcNow.AddSeconds(3);
+        while (before < 3 && DateTime.UtcNow < deadline)
+            before += rx.Receive(64, 20).Count(r => r.CanFrame.ID == 0x6A0);
+        before.Should().Be(3);
+
+        periodic.Update(frame: CanFrame.Classic(0x6A1, new byte[] { 0xBB }));
+
+        // About three frames are left. Restarting the configured total would send six more.
+        var after = 0;
+        var until = DateTime.UtcNow.AddMilliseconds(700);
+        while (DateTime.UtcNow < until)
+            after += rx.Receive(64, 20).Count(r => r.CanFrame.ID == 0x6A1);
+        after.Should().BeInRange(1, repeat - 1);
+    }
+
+    [Fact]
+    public void Immediate_Frame_That_Is_Not_Accepted_Does_Not_Reduce_The_Count()
+    {
+        using var tx = Open(0);
+        using var rx = Open(1);
+
+        // The driver rejects the immediate frame (full TX buffer); Transmit returns 0.
+        CanKit.Adapter.Kvaser.Native.Canlib.FailNextWriteWith =
+            CanKit.Adapter.Kvaser.Native.Canlib.canStatus.canERR_TXBUFOFL;
+        try
+        {
+            using var periodic = tx.TransmitPeriodic(Frame(), new PeriodicTxOptions(Period, 3, true));
+
+            Count(rx, TimeSpan.FromMilliseconds(400)).Should().Be(3);
+        }
+        finally
+        {
+            CanKit.Adapter.Kvaser.Native.Canlib.FailNextWriteWith = null;
+        }
+    }
+
     private static ICanBus Open(int channel)
         => Kvaser.Open(channel, cfg => cfg.SetProtocolMode(CanProtocolMode.Can20).Baud(500_000));
 

@@ -312,8 +312,20 @@ public static class Canlib
         _ = hnd; txErr = 0; rxErr = 0; ovErr = 0; return canStatus.canOK;
     }
 
+    /// <summary>
+    /// Test switch: the next canWrite returns this status and sends nothing, e.g.
+    /// canERR_TXBUFOFL for a full transmit buffer. It is consumed by that call.
+    /// </summary>
+    public static canStatus? FailNextWriteWith { get; set; }
+
     public static unsafe canStatus canWrite(int hnd, int id, byte* msg, uint dlc, uint flag)
     {
+        if (FailNextWriteWith is { } injected)
+        {
+            FailNextWriteWith = null;
+            return injected;
+        }
+
         if (!TryGetHandle(hnd, out var h) || !h.BusOn) return canStatus.canERR_INVHANDLE;
 
         byte[] data = Array.Empty<byte>();

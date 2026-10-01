@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using CanKit.Abstractions.API.Can;
 using CanKit.Abstractions.API.Can.Definitions;
 using CanKit.Abstractions.API.Common;
@@ -16,6 +17,13 @@ public sealed class KvaserPeriodicTx : IPeriodicTx
     private int _bufNo = -1;
     private CanFrame _frame;
     private bool _stopped;
+
+    // State of the current run. CANlib does not report how many frames are left, so the
+    // remaining count is derived from the time since the buffer was enabled.
+    private int _runCount;          // frames programmed for the run: -1 infinite, 0 not running
+    private TimeSpan _runPeriod;
+    private long _runStarted;       // Stopwatch timestamp of the enable
+    private bool _countProgrammed;  // a finite count may still be stored in the buffer
 
     private KvaserPeriodicTx(KvaserBus bus, int bufNo, CanFrame frame, PeriodicTxOptions options)
     {
@@ -45,9 +53,9 @@ public sealed class KvaserPeriodicTx : IPeriodicTx
         {
             tx.ProgramBuffer(frame, tx.Period);
 
-            // A finite Repeat sends Repeat frames in total (as the BCM and software schedulers do);
-            // the immediate frame counts as the first one. Repeat = 0 sends nothing at all.
-            var bufferCount = options.IsInfinite ? -1 : options.Repeat - (options.FireImmediately ? 1 : 0);
+            // A finite Repeat sends Repeat frames in total (as the BCM and software schedulers do).
+            // Repeat = 0 sends nothing at all.
+            var bufferCount = options.IsInfinite ? -1 : options.Repeat;
             if (bufferCount > 0)
             {
                 // Program the count before anything is sent, so a device without message count
@@ -59,17 +67,18 @@ public sealed class KvaserPeriodicTx : IPeriodicTx
                     tx.Dispose();
                     return false;
                 }
+                tx._countProgrammed = true;
             }
 
-            if (options.FireImmediately && (options.IsInfinite || options.Repeat > 0))
+            if (options.FireImmediately && bufferCount != 0)
             {
-                _ = bus.Transmit([frame]);
+                // The immediate frame counts as the first one, but only if the driver accepted it.
+                // Transmit returns 0 without throwing on a full TX buffer or a timeout.
+                if (bus.Transmit([frame]) == 1 && bufferCount > 0)
+                    bufferCount--;
             }
 
-            if (options.IsInfinite || bufferCount > 0)
-            {
-                tx.StartBuffer();
-            }
+            tx.StartRun(bufferCount);
 
             bus.AttachOwner(tx);
             periodicTx = tx;
@@ -101,6 +110,10 @@ public sealed class KvaserPeriodicTx : IPeriodicTx
     {
         if (_stopped) throw new CanBusDisposedException();
 
+        // Without a new count the frames that are still due stay due; take the estimate before
+        // the run is interrupted.
+        var remaining = repeatCount ?? EstimateRemaining();
+
         if (frame is not null) _frame = frame.Value;
         if (period is not null) Period = period.Value <= TimeSpan.Zero ? TimeSpan.FromMilliseconds(1) : period.Value;
         if (repeatCount is not null) RepeatCount = repeatCount.Value;
@@ -108,15 +121,7 @@ public sealed class KvaserPeriodicTx : IPeriodicTx
         ProgramBuffer(_frame, Period);
         try { _ = Canlib.canObjBufDisable(_bus.Handle, _bufNo); } catch { }
 
-        // CANlib resets the message count to 0 (infinite) once it is used up, so a finite
-        // RepeatCount has to be programmed again before every enable.
-        if (RepeatCount == 0) return;
-        if (RepeatCount > 0)
-        {
-            KvaserUtils.ThrowIfError(Canlib.canObjBufSetMsgCount(_bus.Handle, _bufNo, (uint)RepeatCount),
-                "canObjBufSetMsgCount", "Failed to set periodic message count");
-        }
-        StartBuffer();
+        StartRun(remaining);
     }
 
     public event EventHandler? Completed
@@ -139,6 +144,51 @@ public sealed class KvaserPeriodicTx : IPeriodicTx
         {
             _bufNo = -1;
         }
+    }
+
+    /// <summary>
+    /// Programs the message count for a run of <paramref name="count"/> frames (-1 = infinite)
+    /// and enables the buffer. A count of 0 leaves the buffer disabled.
+    /// </summary>
+    private void StartRun(int count)
+    {
+        _runCount = 0;
+        if (count == 0 || _bufNo < 0) return;
+
+        if (count > 0)
+        {
+            // CANlib resets the count to 0 (infinite) once it is used up, so a finite count is
+            // programmed before every enable instead of relying on what the buffer still holds.
+            KvaserUtils.ThrowIfError(Canlib.canObjBufSetMsgCount(_bus.Handle, _bufNo, (uint)count),
+                "canObjBufSetMsgCount", "Failed to set periodic message count");
+            _countProgrammed = true;
+        }
+        else if (_countProgrammed)
+        {
+            // Switching to infinite while a finite count may not be used up yet: clear it,
+            // otherwise the buffer would stop after the frames that were left.
+            KvaserUtils.ThrowIfError(Canlib.canObjBufSetMsgCount(_bus.Handle, _bufNo, 0),
+                "canObjBufSetMsgCount", "Failed to clear periodic message count");
+            _countProgrammed = false;
+        }
+
+        StartBuffer();
+        _runCount = count;
+        _runPeriod = Period;
+        _runStarted = Stopwatch.GetTimestamp();
+    }
+
+    /// <summary>
+    /// Frames still due in the current run: -1 for infinite, 0 when nothing is running.
+    /// Derived from the elapsed time, so it can be off by one frame.
+    /// </summary>
+    private int EstimateRemaining()
+    {
+        if (_runCount <= 0) return _runCount;
+
+        var elapsedTicks = (Stopwatch.GetTimestamp() - _runStarted) * (double)TimeSpan.TicksPerSecond / Stopwatch.Frequency;
+        var sent = (long)(elapsedTicks / Math.Max(1, _runPeriod.Ticks));
+        return (int)Math.Max(0, _runCount - sent);
     }
 
     private void StartBuffer()
