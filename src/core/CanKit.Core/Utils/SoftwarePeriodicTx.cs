@@ -135,7 +135,9 @@ namespace CanKit.Core.Utils
 
             if (_fireImmediately)
             {
-                if (IsExhausted()) { _running = false; return; }
+                // The platform timer state is already set up here, so leave through Stop()
+                // to release it (waitable timer handle, timer resolution on Windows).
+                if (IsExhausted()) { Stop(); return; }
                 TrySendOnce();
                 if (DecreaseAndMaybeFinish()) { _running = false; return; }
                 t0 = sw.Elapsed;
@@ -205,7 +207,13 @@ namespace CanKit.Core.Utils
         {
             lock (_gate)
             {
-                if (_remaining == 0) return true;
+                if (_remaining == 0)
+                {
+                    // Used up by Update(repeatCount: 0) in the meantime: same cleanup as a
+                    // completed schedule, but no Completed event.
+                    Stop();
+                    return true;
+                }
                 if (_remaining > 0)
                 {
                     _remaining--;
