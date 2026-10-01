@@ -52,6 +52,9 @@ namespace CanKit.Core.Utils
         }
 
         public bool IsRunning => _running;
+
+        /// <summary>The worker loop; exposed to the test assembly to verify that it ends.</summary>
+        internal Task? WorkerTask => _task;
         public TimeSpan Period => _period;
         public int RepeatCount => _repeat;
         public int RemainingCount => _remaining;
@@ -164,6 +167,9 @@ namespace CanKit.Core.Utils
                 var target = t0 + TimeSpan.FromTicks(period.Ticks * n);
 
                 _sPreWait(ref _ctx, sw, target, token);
+
+                // Stopped while waiting: leave without sending the frame that was due.
+                if (token.IsCancellationRequested) break;
 
                 // Update(repeatCount: 0) may have used up the count while waiting.
                 if (IsExhausted()) { Stop(); break; }
@@ -654,7 +660,17 @@ namespace CanKit.Core.Utils
                     var ms = remain.TotalMilliseconds - guardMs;
                     // Thread.Sleep 只能到毫秒，做个保守下取整
                     int sleepMs = (int)Math.Max(1, Math.Floor(ms));
-                    Thread.Sleep(sleepMs);
+                    // Wait on the token instead of Thread.Sleep so that Stop() ends the wait at
+                    // once; a coarse period can be seconds or more.
+                    try
+                    {
+                        if (token.WaitHandle.WaitOne(sleepMs)) break;
+                    }
+                    catch (ObjectDisposedException)
+                    {
+                        // The schedule was disposed in the meantime; that is a stop as well.
+                        break;
+                    }
                 }
                 else if (remain.TotalMilliseconds > 1.5)
                 {

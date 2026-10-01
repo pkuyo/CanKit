@@ -85,6 +85,28 @@ public class SoftwarePeriodicRepeatTests : IClassFixture<TestCaseProvider>
 
             schedule.IsRunning.Should().BeFalse("a zero count stops the schedule right away");
             periodic.RemainingCount.Should().Be(0);
+            // Not only the flag: the worker itself must be gone, not asleep until the next period.
+            schedule.WorkerTask!.Wait(TimeSpan.FromSeconds(2)).Should().BeTrue("the worker must not sleep on");
+        }
+    }
+
+    [Fact]
+    public void Stop_Ends_The_Worker_And_Sends_No_Further_Frame()
+    {
+        var (tx, rx) = OpenPair();
+        using (tx)
+        using (rx)
+        {
+            using var periodic = tx.TransmitPeriodic(Frame(),
+                new PeriodicTxOptions(TimeSpan.FromMilliseconds(300), -1));
+            var schedule = periodic.Should().BeOfType<CanKit.Core.Utils.SoftwarePeriodicTx>().Subject;
+            Count(rx, TimeSpan.FromMilliseconds(100)).Should().Be(1);
+
+            periodic.Stop();
+
+            schedule.WorkerTask!.Wait(TimeSpan.FromSeconds(2)).Should().BeTrue("Stop() interrupts the wait");
+            // The frame that was due 300 ms after the first one must not be sent any more.
+            Count(rx, TimeSpan.FromMilliseconds(500)).Should().Be(0);
         }
     }
 
