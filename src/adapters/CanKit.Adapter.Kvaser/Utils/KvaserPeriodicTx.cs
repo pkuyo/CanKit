@@ -46,7 +46,7 @@ public sealed class KvaserPeriodicTx : IPeriodicTx
             tx.ProgramBuffer(frame, tx.Period);
 
             // A finite Repeat sends Repeat frames in total (as the BCM and software schedulers do);
-            // the immediate frame counts as the first one.
+            // the immediate frame counts as the first one. Repeat = 0 sends nothing at all.
             var bufferCount = options.IsInfinite ? -1 : options.Repeat - (options.FireImmediately ? 1 : 0);
             if (bufferCount > 0)
             {
@@ -61,7 +61,7 @@ public sealed class KvaserPeriodicTx : IPeriodicTx
                 }
             }
 
-            if (options.FireImmediately)
+            if (options.FireImmediately && (options.IsInfinite || options.Repeat > 0))
             {
                 _ = bus.Transmit([frame]);
             }

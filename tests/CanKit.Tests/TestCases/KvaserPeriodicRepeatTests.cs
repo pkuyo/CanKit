@@ -34,6 +34,19 @@ public class KvaserPeriodicRepeatTests
         Count(rx, TimeSpan.FromMilliseconds(400)).Should().Be(3);
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Repeat_Zero_Sends_Nothing(bool fireImmediately)
+    {
+        using var tx = Open(0);
+        using var rx = Open(1);
+
+        using var periodic = tx.TransmitPeriodic(Frame(), new PeriodicTxOptions(Period, 0, fireImmediately));
+
+        Count(rx, TimeSpan.FromMilliseconds(200)).Should().Be(0);
+    }
+
     [Fact]
     public void Infinite_Repeat_Keeps_Sending()
     {
