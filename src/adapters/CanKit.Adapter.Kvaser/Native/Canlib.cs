@@ -695,13 +695,7 @@ public static class Canlib
     }
 
     public static canStatus canSetAcceptanceFilter(int hnd, uint code, uint mask, int is_extended)
-    {
-        var re = canAccept(hnd, (int)code, (uint)(canFILTER_SET_CODE_STD + is_extended));
-        if (re != canStatus.canOK)
-            return re;
-        re = canAccept(hnd, (int)code, (uint)(canFILTER_SET_MASK_STD + is_extended));
-        return re;
-    }
+        => CanlibAcceptance.Set(hnd, code, mask, is_extended != 0);
 
     public static canStatus canGetErrorText(canStatus err, out string msg)
     {
