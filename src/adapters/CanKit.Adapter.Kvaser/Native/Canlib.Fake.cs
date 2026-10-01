@@ -524,7 +524,9 @@ public static class Canlib
         {
             // Construct frame and send
             var f = new Frame { Id = p.Id, Data = p.Data.ToArray(), Dlc = p.Dlc, Flags = (int)p.Flags, Time = 0 };
-            EnqueueToReceivers(h, f);
+            // Same rule as canWrite: a silent controller puts nothing on the bus.
+            if (h.DriverType != canDRIVER_SILENT)
+                EnqueueToReceivers(h, f);
         }, null, due, due);
         return canStatus.canOK;
     }

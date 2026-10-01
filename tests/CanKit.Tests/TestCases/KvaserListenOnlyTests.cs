@@ -38,6 +38,25 @@ public class KvaserListenOnlyTests
     }
 
     [Fact]
+    public void ListenOnly_Channel_Does_Not_Transmit_Periodic_Frames()
+    {
+        using var listener = Kvaser.Open(0, cfg => cfg
+            .SetProtocolMode(CanProtocolMode.Can20)
+            .Baud(500_000)
+            .SetWorkMode(ChannelWorkMode.ListenOnly));
+        using var peer = Kvaser.Open(1, cfg => cfg
+            .SetProtocolMode(CanProtocolMode.Can20)
+            .Baud(500_000));
+
+        // The object buffer is a second transmit path next to canWrite.
+        using var periodic = listener.TransmitPeriodic(
+            CanFrame.Classic(0x300, new byte[] { 3 }),
+            new CanKit.Abstractions.API.Common.PeriodicTxOptions(TimeSpan.FromMilliseconds(10)));
+
+        ReceiveIds(peer).Should().BeEmpty();
+    }
+
+    [Fact]
     public void ListenOnly_Is_Rejected_On_A_Channel_Without_Silent_Mode()
     {
         // canSetBusOutputControl(canDRIVER_SILENT) returns canOK on such a device but is ignored,
