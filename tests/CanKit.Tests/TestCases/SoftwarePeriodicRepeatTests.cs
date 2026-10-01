@@ -54,6 +54,43 @@ public class SoftwarePeriodicRepeatTests : IClassFixture<TestCaseProvider>
         }
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Update_From_Zero_To_A_Count_Sends_That_Count(bool fireImmediately)
+    {
+        var (tx, rx) = OpenPair();
+        using (tx)
+        using (rx)
+        {
+            // Created with a zero count, the schedule has no worker yet.
+            using var periodic = tx.TransmitPeriodic(Frame(), new PeriodicTxOptions(Period, 0, fireImmediately));
+            periodic.Update(repeatCount: 0); // still nothing to send, and not a stop
+            Count(rx, TimeSpan.FromMilliseconds(50)).Should().Be(0);
+
+            periodic.Update(repeatCount: 3);
+
+            Count(rx, TimeSpan.FromMilliseconds(300)).Should().Be(3);
+            periodic.RemainingCount.Should().Be(0);
+        }
+    }
+
+    [Fact]
+    public void Update_After_Stop_Does_Not_Start_A_Schedule_Created_With_Zero()
+    {
+        var (tx, rx) = OpenPair();
+        using (tx)
+        using (rx)
+        {
+            using var periodic = tx.TransmitPeriodic(Frame(), new PeriodicTxOptions(Period, 0));
+            periodic.Stop();
+
+            periodic.Update(repeatCount: 3);
+
+            Count(rx, TimeSpan.FromMilliseconds(200)).Should().Be(0);
+        }
+    }
+
     [Fact]
     public void Finite_Repeat_Sends_Exactly_Repeat_Frames()
     {

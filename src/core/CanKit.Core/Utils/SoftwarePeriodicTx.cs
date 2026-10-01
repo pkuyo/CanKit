@@ -69,12 +69,18 @@ namespace CanKit.Core.Utils
 
         public void Start()
         {
-            if (_task != null) return;
-            // Repeat = 0: nothing to send, not even the FireImmediately frame.
-            if (IsExhausted()) return;
-            _running = true;
-            _task = Task.Factory.StartNew(Loop, _cts.Token,
-                TaskCreationOptions.LongRunning, TaskScheduler.Default);
+            lock (_gate)
+            {
+                if (_task != null) return;
+                // Stopped or disposed before the worker was ever started: stays stopped.
+                if (_cts.IsCancellationRequested) return;
+                // Repeat = 0: nothing to send, not even the FireImmediately frame.
+                // The worker is started once Update() sets a count.
+                if (_remaining == 0) return;
+                _running = true;
+                _task = Task.Factory.StartNew(Loop, _cts.Token,
+                    TaskCreationOptions.LongRunning, TaskScheduler.Default);
+            }
         }
 
         public void Stop()
@@ -114,10 +120,19 @@ namespace CanKit.Core.Utils
                 }
             }
 
-            // A zero count ends the schedule. Do it here instead of at the next send time, which
-            // can be a full period away. Outside the lock: Stop() waits for the worker, and the
-            // worker takes the lock.
-            if (repeatCount == 0) Stop();
+            if (repeatCount == 0)
+            {
+                // A zero count ends the schedule. Do it here instead of at the next send time,
+                // which can be a full period away. Outside the lock: Stop() waits for the
+                // worker, and the worker takes the lock. Without a worker (created with a zero
+                // count) there is nothing to end, and a later count can still start it.
+                if (_task != null) Stop();
+            }
+            else if (repeatCount.HasValue)
+            {
+                // Created with a zero count: the worker was never started. Start it now.
+                Start();
+            }
         }
 
         public void Dispose()
