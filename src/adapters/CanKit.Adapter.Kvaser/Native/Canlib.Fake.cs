@@ -293,12 +293,19 @@ public static class Canlib
         return canStatus.canOK;
     }
 
+    /// <summary>
+    /// Test switch: canSetBusOutputControl returns canOK but leaves the driver type unchanged,
+    /// like a device that accepts the call and ignores it.
+    /// </summary>
+    public static bool IgnoreBusOutputControl { get; set; }
+
     public static canStatus canSetBusOutputControl(int hnd, uint drivertype)
     {
         if (!TryGetHandle(hnd, out var h)) return canStatus.canERR_INVHANDLE;
         if (drivertype is not (canDRIVER_OFF or canDRIVER_SILENT or canDRIVER_NORMAL or canDRIVER_SELFRECEPTION))
             return canStatus.canERR_PARAM;
-        h.DriverType = drivertype;
+        if (!IgnoreBusOutputControl)
+            h.DriverType = drivertype;
         return canStatus.canOK;
     }
 

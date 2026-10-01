@@ -140,10 +140,14 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IOwnership
             throw new CanBusCreationException($"Kvaser canSetBusOutputControl(canDRIVER_SILENT) failed: {st}");
         }
 
+        // The call can succeed without taking effect. A channel that is known not to be silent
+        // would acknowledge and transmit, so it must not be handed out as listen-only.
         if (Canlib.canGetBusOutputControl(handle, out var driver) == Canlib.canStatus.canOK &&
             driver != Canlib.canDRIVER_SILENT)
         {
-            CanKitLogger.LogWarning($"Kvaser: listen-only requested, but the driver type reads back as {driver}.");
+            Canlib.canClose(handle);
+            throw new CanBusCreationException(
+                $"Kvaser: listen-only requested, but the driver type reads back as {driver} instead of canDRIVER_SILENT.");
         }
     }
 
