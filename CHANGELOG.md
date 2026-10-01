@@ -10,6 +10,7 @@
 ### Fixed
 
 * ControlCAN batch `Transmit` compared the running write total to `BATCH_COUNT` (64), so a second full native batch aborted the rest of the payload (128 frames sent, remainder dropped). The short-write check now uses this `VCI_Transmit` call's return value. `VCI_Receive` marshals the receive array as `[Out]` so native fills copy back into managed memory.
+* ZLG merged receive (`ZCAN_ReceiveData`, used for PCIe-CANFD) looped until the requested number of frames had arrived and never gave up. Because the merged queue is device-wide, a channel could wait for frames another channel had already taken; its receive thread then spun at 100 % CPU and kept running after `Dispose()`. The call now returns when the driver delivers nothing within the wait time.
 * `SoftwarePeriodicTx` (software periodic TX used by PCAN, Vector, Virtual and as fallback) sent forever for `PeriodicTxOptions.Repeat = 0` and after `Update(repeatCount: 0)`. `Repeat = 0` now sends no frame, not even the `FireImmediately` one, and `Update(repeatCount: 0)` stops the schedule. The documentation of `PeriodicTxOptions.Repeat` now states this: it is the total number of frames, not the repeats after the first one. `Stop()` (and a zero count) now ends the worker at once for periods above 50 ms instead of letting it sleep until the next period, and the frame that was due is no longer sent after a stop.
 
 ## 0.5.6

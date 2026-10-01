@@ -81,6 +81,12 @@ public class ZlgCanMergeTransceiver : ITransceiver
                 rec = (int)ZLGCAN.ZCAN_ReceiveData(canBus.Handle.DeviceHandle, buf,
                     Math.Min(ZLGCAN.BATCH_COUNT, (uint)count), remaining);
 
+                // Nothing arrived within the wait time: return what we have. ZCAN_ReceiveData is
+                // device-wide, so the frames this channel counted may already have been taken by
+                // another channel; waiting for them here would spin forever.
+                if (rec == 0)
+                    yield break;
+
                 count -= rec;
                 for (int i = 0; i < rec; i++)
                 {
