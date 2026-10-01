@@ -11,6 +11,7 @@
 
 * ControlCAN batch `Transmit` compared the running write total to `BATCH_COUNT` (64), so a second full native batch aborted the rest of the payload (128 frames sent, remainder dropped). The short-write check now uses this `VCI_Transmit` call's return value. `VCI_Receive` marshals the receive array as `[Out]` so native fills copy back into managed memory.
 * ZLG merged receive (`ZCAN_ReceiveData`, used for PCIe-CANFD) looped until the requested number of frames had arrived and never gave up. Because the merged queue is device-wide, a channel could wait for frames another channel had already taken; its receive thread then spun at 100 % CPU and kept running after `Dispose()`. The call now returns when the driver delivers nothing within the wait time.
+* ZLG `Dispose()` could throw `NullReferenceException` on .NET Framework and report a spurious fault: the poll loop ran into the disposed check, treated it as a fault and stopped itself while `Dispose()` was stopping it too, so both released the same cancellation source. Disposal during a poll is now a normal exit, and the loop state is handed over atomically.
 
 ## 0.5.6
 
