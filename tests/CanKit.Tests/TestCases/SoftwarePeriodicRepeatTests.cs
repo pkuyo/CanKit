@@ -67,6 +67,27 @@ public class SoftwarePeriodicRepeatTests : IClassFixture<TestCaseProvider>
         }
     }
 
+    [Fact]
+    public void Update_To_Zero_Stops_A_Waiting_Schedule_Without_Waiting_For_The_Next_Period()
+    {
+        var (tx, rx) = OpenPair();
+        using (tx)
+        using (rx)
+        {
+            // Long period: after the immediate frame the scheduler waits ten seconds.
+            using var periodic = tx.TransmitPeriodic(Frame(),
+                new PeriodicTxOptions(TimeSpan.FromSeconds(10), -1));
+            var schedule = periodic.Should().BeOfType<CanKit.Core.Utils.SoftwarePeriodicTx>().Subject;
+            Count(rx, TimeSpan.FromMilliseconds(100)).Should().Be(1);
+            schedule.IsRunning.Should().BeTrue();
+
+            periodic.Update(repeatCount: 0);
+
+            schedule.IsRunning.Should().BeFalse("a zero count stops the schedule right away");
+            periodic.RemainingCount.Should().Be(0);
+        }
+    }
+
     private static (ICanBus tx, ICanBus rx) OpenPair()
     {
         var session = "swperiodic" + Guid.NewGuid().ToString("N");

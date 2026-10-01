@@ -110,6 +110,11 @@ namespace CanKit.Core.Utils
                     _repeat = repeatCount.Value;
                 }
             }
+
+            // A zero count ends the schedule. Do it here instead of at the next send time, which
+            // can be a full period away. Outside the lock: Stop() waits for the worker, and the
+            // worker takes the lock.
+            if (repeatCount == 0) Stop();
         }
 
         public void Dispose()
