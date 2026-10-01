@@ -21,7 +21,8 @@ public sealed class KvaserPeriodicTx : IPeriodicTx
     // State of the current run. CANlib does not report how many frames are left, so the
     // remaining count is derived from the time since the buffer was enabled.
     private int _runCount;          // frames programmed for the run: -1 infinite, 0 not running
-    private TimeSpan _runPeriod;
+    private TimeSpan _runPeriod;    // period as programmed into the buffer (whole microseconds)
+    private TimeSpan _programmedPeriod;
     private long _runStarted;       // Stopwatch timestamp of the enable
     private bool _countProgrammed;  // a finite count may still be stored in the buffer
 
@@ -176,7 +177,7 @@ public sealed class KvaserPeriodicTx : IPeriodicTx
 
         StartBuffer();
         _runCount = count;
-        _runPeriod = Period;
+        _runPeriod = _programmedPeriod;
         _runStarted = Stopwatch.GetTimestamp();
     }
 
@@ -205,6 +206,8 @@ public sealed class KvaserPeriodicTx : IPeriodicTx
 
         var us = (int)Math.Max(1, (long)Math.Round(period.TotalMilliseconds * 1000.0));
         KvaserUtils.ThrowIfError(Canlib.canObjBufSetPeriod(_bus.Handle, _bufNo, (uint)us), "canObjBufSetPeriod", "Failed to set period");
+        // The buffer runs on the rounded value, so the remaining count is estimated with it.
+        _programmedPeriod = TimeSpan.FromTicks((uint)us * (TimeSpan.TicksPerMillisecond / 1000));
 
         int id = (int)frame.ID;
         var data = frame.Data.ToArray();
