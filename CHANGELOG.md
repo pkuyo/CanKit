@@ -10,7 +10,7 @@
 ### Fixed
 
 * ControlCAN batch `Transmit` compared the running write total to `BATCH_COUNT` (64), so a second full native batch aborted the rest of the payload (128 frames sent, remainder dropped). The short-write check now uses this `VCI_Transmit` call's return value. `VCI_Receive` marshals the receive array as `[Out]` so native fills copy back into managed memory.
-* PCAN FD set the data phase to the nominal bitrate when it was given as a target bitrate: `Fd(500_000, 2_000_000)` ran at 500 kbit/s in the data phase. The data phase now uses the data bitrate and data sample point, stays within the PCAN-Basic data ranges (`data_tseg1` 1..32, `data_tseg2` 1..16, `data_sjw` 1..16) and needs at least 5 time quanta. With `data_brp=1` it keeps `data_tseg2` at 2 or more, because the driver rejects 1 there. `BitTimingSolver` now shortens TSEG1 to respect `Tseg2Min` instead of dropping the quanta count.
+* PCAN FD set the data phase to the nominal bitrate when it was given as a target bitrate: `Fd(500_000, 2_000_000)` ran at 500 kbit/s in the data phase. The data phase now uses the data bitrate and data sample point, stays within the PCAN-Basic data ranges (`data_tseg1` 1..32, `data_tseg2` 1..16, `data_sjw` 1..16) and needs at least 5 time quanta. With `data_brp=1` it keeps `data_tseg2` at 2 or more, because the driver rejects 1 there. `BitTimingSolver` now moves TSEG1 so that TSEG2 stays within `Tseg2Min`..`Tseg2Max` instead of dropping the quanta count.
 
 ## 0.5.6
 

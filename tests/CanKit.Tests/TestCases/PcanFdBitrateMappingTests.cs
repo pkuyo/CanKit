@@ -151,6 +151,23 @@ public class PcanFdBitrateMappingTests
         SamplePoint(data.Tseg1, data.Tseg2).Should().BeApproximately(0.875, 0.001);
     }
 
+    [Fact]
+    public void Data_Phase_Moves_Tseg1_Up_When_Tseg2_Would_Exceed_Its_Maximum()
+    {
+        // 800 kbit/s on 20 MHz fits 25 tq (BRP=1) or 5 tq (BRP=5). At 33 % the 25 tq bit needs
+        // TSEG2=17 > 16; TSEG1=8, TSEG2=16 (36 %) is closer than BRP=5 with TSEG1=1, TSEG2=3 (40 %).
+        var timing = new CanBusTiming(new CanFdTiming(
+            CanPhaseTiming.Target(500_000, 800),
+            CanPhaseTiming.Target(800_000, 330),
+            20));
+
+        var data = PcanUtils.MapFdBitrate(timing).Data;
+
+        Rate(data.Brp, data.Tseg1, data.Tseg2, 20_000_000.0).Should().Be(800_000);
+        SamplePoint(data.Tseg1, data.Tseg2).Should().BeApproximately(0.36, 0.001);
+        ((int)data.Tseg2).Should().BeInRange(1, 16);
+    }
+
     private static double Rate(double brp, double tseg1, double tseg2, double clockHz = 80_000_000.0)
         => clockHz / (brp * (1 + tseg1 + tseg2));
 
