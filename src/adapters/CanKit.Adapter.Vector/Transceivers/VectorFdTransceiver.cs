@@ -291,7 +291,7 @@ public sealed class VectorFdTransceiver : IVectorTransceiver
             msg.Dlc = frame.Dlc;
             CopyData(frame.Data.Span.Slice(0, frame.Len), ref msg, frame.Len);
         }
-        else if (frame.FrameKind is CanFrameType.CanXl)
+        else if (frame.FrameKind is CanFrameType.Can20)
         {
             if (frame.IsRemoteFrame)
                 flags |= VxlApi.XL_CAN_TXMSG_FLAG_RTR;
