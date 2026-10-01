@@ -89,13 +89,13 @@ namespace CanKit.Core.Definitions
 
 
         IBusInitOptionsConfigurator IBusInitOptionsConfigurator.Baud(int baud, uint? clockMHz, ushort? samplePointPermille)
-            => Baud(baud, samplePointPermille);
+            => Baud(baud, clockMHz, samplePointPermille);
 
         IBusInitOptionsConfigurator IBusInitOptionsConfigurator.Fd(int abit, int dbit,
             uint? clockMHz,
             ushort? nominalSamplePointPermille,
             ushort? dataSamplePointPermille)
-            => Fd(abit, dbit, nominalSamplePointPermille, dataSamplePointPermille);
+            => Fd(abit, dbit, clockMHz, nominalSamplePointPermille, dataSamplePointPermille);
 
         IBusInitOptionsConfigurator IBusInitOptionsConfigurator.TimingClassic(CanClassicTiming timing)
             => TimingClassic(timing);
