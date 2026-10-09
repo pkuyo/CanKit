@@ -75,6 +75,12 @@ public static class Canlib
     public const uint canIOCTL_SET_LOCAL_TXECHO = 32;
     public const uint canIOCTL_SET_TXACK = 7;
 
+    // Bus driver types (canSetBusOutputControl)
+    public const uint canDRIVER_OFF = 0;
+    public const uint canDRIVER_SILENT = 1;
+    public const uint canDRIVER_NORMAL = 4;
+    public const uint canDRIVER_SELFRECEPTION = 8;
+
     // Predefined classic bitrates
     public const int canBITRATE_1M = -1;
     public const int canBITRATE_500K = -2;
@@ -211,6 +217,20 @@ public static class Canlib
         return KvaserNativeLibraries.IsLinux
             ? LinuxAbi.canBusOff(hnd)
             : WindowsAbi.canBusOff(hnd);
+    }
+
+    public static canStatus canSetBusOutputControl(int hnd, uint drivertype)
+    {
+        return KvaserNativeLibraries.IsLinux
+            ? LinuxAbi.canSetBusOutputControl(hnd, drivertype)
+            : WindowsAbi.canSetBusOutputControl(hnd, drivertype);
+    }
+
+    public static canStatus canGetBusOutputControl(int hnd, out uint drivertype)
+    {
+        return KvaserNativeLibraries.IsLinux
+            ? LinuxAbi.canGetBusOutputControl(hnd, out drivertype)
+            : WindowsAbi.canGetBusOutputControl(hnd, out drivertype);
     }
 
     public static canStatus canSetBusParams(int hnd, int freq, int tseg1, int tseg2, int sjw, int noSamp, int syncmode)
@@ -498,6 +518,12 @@ public static class Canlib
         [DllImport(Dll, CallingConvention = CallingConvention.StdCall, EntryPoint = "canBusOff")]
         public static extern canStatus canBusOff(int hnd);
 
+        [DllImport(Dll, CallingConvention = CallingConvention.StdCall, EntryPoint = "canSetBusOutputControl")]
+        public static extern canStatus canSetBusOutputControl(int hnd, uint drivertype);
+
+        [DllImport(Dll, CallingConvention = CallingConvention.StdCall, EntryPoint = "canGetBusOutputControl")]
+        public static extern canStatus canGetBusOutputControl(int hnd, out uint drivertype);
+
         [DllImport(Dll, CallingConvention = CallingConvention.StdCall, EntryPoint = "canSetBusParams")]
         public static extern canStatus canSetBusParams(int hnd, int freq, int tseg1, int tseg2, int sjw, int noSamp, int syncmode);
 
@@ -615,6 +641,12 @@ public static class Canlib
 
         [DllImport(Dll, CallingConvention = CallingConvention.Cdecl, EntryPoint = "canBusOff")]
         public static extern canStatus canBusOff(int hnd);
+
+        [DllImport(Dll, CallingConvention = CallingConvention.Cdecl, EntryPoint = "canSetBusOutputControl")]
+        public static extern canStatus canSetBusOutputControl(int hnd, uint drivertype);
+
+        [DllImport(Dll, CallingConvention = CallingConvention.Cdecl, EntryPoint = "canGetBusOutputControl")]
+        public static extern canStatus canGetBusOutputControl(int hnd, out uint drivertype);
 
         [DllImport(Dll, CallingConvention = CallingConvention.Cdecl, EntryPoint = "canSetBusParams")]
         public static extern canStatus canSetBusParams(int hnd, nint freq, int tseg1, int tseg2, int sjw, int noSamp, int syncmode);

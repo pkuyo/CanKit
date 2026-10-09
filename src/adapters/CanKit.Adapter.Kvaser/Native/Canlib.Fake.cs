@@ -44,6 +44,12 @@ public static class Canlib
         canERR_NOT_IMPLEMENTED = -32,
     }
 
+    // Bus driver types (canSetBusOutputControl)
+    public const uint canDRIVER_OFF = 0;
+    public const uint canDRIVER_SILENT = 1;
+    public const uint canDRIVER_NORMAL = 4;
+    public const uint canDRIVER_SELFRECEPTION = 8;
+
     // Open channel flags (subset)
     public const int canOPEN_ACCEPT_VIRTUAL = 0x0020;
     public const int canOPEN_CAN_FD = 0x0400;
@@ -165,6 +171,7 @@ public static class Canlib
         public int HandleId;
         public int Channel; // 0,1,2
         public bool BusOn;
+        public uint DriverType = canDRIVER_NORMAL;
         public int TimerScaleUs = 1000; // default
         public int RxQueueSize = 0; // 0 => unlimited
         public kvCallbackDelegate Callback;
@@ -287,6 +294,36 @@ public static class Canlib
         return canStatus.canOK;
     }
 
+    /// <summary>
+    /// Test switch: canSetBusOutputControl returns canOK but leaves the driver type unchanged,
+    /// like a device that accepts the call and ignores it.
+    /// </summary>
+    public static bool IgnoreBusOutputControl { get; set; }
+
+    public static canStatus canSetBusOutputControl(int hnd, uint drivertype)
+    {
+        if (!TryGetHandle(hnd, out var h)) return canStatus.canERR_INVHANDLE;
+        if (drivertype is not (canDRIVER_OFF or canDRIVER_SILENT or canDRIVER_NORMAL or canDRIVER_SELFRECEPTION))
+            return canStatus.canERR_PARAM;
+        if (!IgnoreBusOutputControl)
+            h.DriverType = drivertype;
+        return canStatus.canOK;
+    }
+
+    /// <summary>
+    /// Test switch: canGetBusOutputControl returns this status instead of the driver type.
+    /// </summary>
+    public static canStatus? BusOutputControlReadbackError { get; set; }
+
+    public static canStatus canGetBusOutputControl(int hnd, out uint drivertype)
+    {
+        drivertype = 0;
+        if (!TryGetHandle(hnd, out var h)) return canStatus.canERR_INVHANDLE;
+        if (BusOutputControlReadbackError is { } error) return error;
+        drivertype = h.DriverType;
+        return canStatus.canOK;
+    }
+
     public static canStatus canReadStatus(int hnd, out int status)
     {
         status = 0;
@@ -351,7 +388,10 @@ public static class Canlib
             Time = 0 // simple timestamp; KvaserBus scales it
         };
 
-        EnqueueToReceivers(h, frame);
+        // canDRIVER_SILENT: the controller does not transmit anything, so the frame never reaches
+        // the bus. Modelled from the CANlib driver type description, not verified on a device.
+        if (h.DriverType != canDRIVER_SILENT)
+            EnqueueToReceivers(h, frame);
         return canStatus.canOK;
     }
 
@@ -597,6 +637,8 @@ public static class Canlib
         if (item == canCHANNELDATA_CHANNEL_CAP)
         {
             value = canCHANNEL_CAP_CAN_FD | canCHANNEL_CAP_CAN_FD_NONISO | canCHANNEL_CAP_SILENT_MODE | canCHANNEL_CAP_ERROR_COUNTERS | canCHANNEL_CAP_BUS_STATISTICS;
+            // Channel 2 models a device without silent mode, e.g. a Kvaser Leaf Light v2.
+            if (channel == 2) value &= ~canCHANNEL_CAP_SILENT_MODE;
             return canStatus.canOK;
         }
         return canStatus.canERR_NOT_IMPLEMENTED;
