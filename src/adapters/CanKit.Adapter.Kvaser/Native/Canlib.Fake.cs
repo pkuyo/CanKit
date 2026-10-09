@@ -550,7 +550,9 @@ public static class Canlib
                 if (!ReferenceEquals(p.Timer, timer)) return;
                 // Construct frame and send
                 var f = new Frame { Id = p.Id, Data = p.Data.ToArray(), Dlc = p.Dlc, Flags = (int)p.Flags, Time = 0 };
-                EnqueueToReceivers(h, f);
+                // Same rule as canWrite: a silent controller puts nothing on the bus.
+                if (h.DriverType != canDRIVER_SILENT)
+                    EnqueueToReceivers(h, f);
                 if (remaining > 0 && --remaining == 0)
                 {
                     try { timer.Dispose(); } catch { }
