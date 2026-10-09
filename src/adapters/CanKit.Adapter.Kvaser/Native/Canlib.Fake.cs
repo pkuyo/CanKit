@@ -605,12 +605,20 @@ public static class Canlib
         return canStatus.canOK;
     }
 
+    private static readonly ConcurrentDictionary<int, canStatus> s_injectedMsgCountFailures = new();
+
+    /// <summary>Models unsupported message counts for the buffer's frame ID without affecting other tests.</summary>
+    public static void FailMsgCountFor(int id, canStatus status) => s_injectedMsgCountFailures[id] = status;
+
+    public static void ClearMsgCountFailure(int id) => s_injectedMsgCountFailures.TryRemove(id, out _);
+
     public static canStatus canObjBufSetMsgCount(int hnd, int idx, uint count)
     {
         if (!TryGetHandle(hnd, out var h)) return canStatus.canERR_INVHANDLE;
         lock (h.Periodics)
         {
             if (!h.Periodics.TryGetValue(idx, out var p)) return canStatus.canERR_PARAM;
+            if (s_injectedMsgCountFailures.TryGetValue(p.Id, out var failure)) return failure;
             p.MsgCount = count;
         }
         return canStatus.canOK;

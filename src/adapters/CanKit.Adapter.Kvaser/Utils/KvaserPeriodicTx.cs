@@ -57,19 +57,17 @@ public sealed class KvaserPeriodicTx : IPeriodicTx
             // A finite Repeat sends Repeat frames in total (as the BCM and software schedulers do).
             // Repeat = 0 sends nothing at all.
             var bufferCount = options.IsInfinite ? -1 : options.Repeat;
-            if (bufferCount > 0)
+            // Probe count support even for an infinite or idle job: Update() may later request
+            // a finite count. Reject unsupported hardware before sending so fallback can apply.
+            var initialCount = bufferCount > 0 ? (uint)bufferCount : 0u;
+            var st = Canlib.canObjBufSetMsgCount(bus.Handle, bufNo, initialCount);
+            if (st != Canlib.canStatus.canOK)
             {
-                // Program the count before anything is sent, so a device without message count
-                // support falls back cleanly instead of sending forever.
-                var st = Canlib.canObjBufSetMsgCount(bus.Handle, bufNo, (uint)bufferCount);
-                if (st != Canlib.canStatus.canOK)
-                {
-                    CanKitLogger.LogDebug($"Kvaser: canObjBufSetMsgCount failed: {st}");
-                    tx.Dispose();
-                    return false;
-                }
-                tx._countProgrammed = true;
+                CanKitLogger.LogDebug($"Kvaser: canObjBufSetMsgCount failed: {st}");
+                tx.Dispose();
+                return false;
             }
+            tx._countProgrammed = initialCount > 0;
 
             if (options.FireImmediately && bufferCount != 0)
             {

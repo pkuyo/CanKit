@@ -6,6 +6,9 @@ using CanKit.Abstractions.API.Can.Definitions;
 using CanKit.Abstractions.API.Common;
 using CanKit.Abstractions.API.Common.Definitions;
 using CanKit.Adapter.Kvaser;
+using CanKit.Adapter.Kvaser.Native;
+using CanKit.Core.Exceptions;
+using CanKit.Core.Utils;
 using FluentAssertions;
 using Xunit;
 
@@ -143,6 +146,57 @@ public class KvaserPeriodicRepeatTests
         finally
         {
             if (pending) CanKit.Adapter.Kvaser.Native.Canlib.ClearInjectedWriteFailure(id);
+        }
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(0)]
+    [InlineData(3)]
+    public void Unsupported_Message_Count_Uses_Software_Fallback_And_Can_Update(int initialRepeat)
+    {
+        const int id = 0x6A4;
+        using var tx = Kvaser.Open(0, cfg => cfg.SetProtocolMode(CanProtocolMode.Can20).Baud(500_000)
+            .SoftwareFeaturesFallBack(CanFeature.CyclicTx));
+        using var rx = Open(1);
+        Canlib.FailMsgCountFor(id, Canlib.canStatus.canERR_NOT_IMPLEMENTED);
+        try
+        {
+            using var periodic = tx.TransmitPeriodic(CanFrame.Classic(id, new byte[] { 0xAA }),
+                new PeriodicTxOptions(TimeSpan.FromMilliseconds(250), initialRepeat, false));
+            periodic.Should().BeOfType<SoftwarePeriodicTx>();
+
+            periodic.Update(repeatCount: 3);
+
+            Count(rx, TimeSpan.FromSeconds(3), id).Should().Be(3);
+        }
+        finally
+        {
+            Canlib.ClearMsgCountFailure(id);
+        }
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(0)]
+    [InlineData(3)]
+    public void Unsupported_Message_Count_Without_Fallback_Fails_Before_Sending(int initialRepeat)
+    {
+        const int id = 0x6A5;
+        using var tx = Open(0);
+        using var rx = Open(1);
+        Canlib.FailMsgCountFor(id, Canlib.canStatus.canERR_NOT_IMPLEMENTED);
+        try
+        {
+            var start = () => tx.TransmitPeriodic(CanFrame.Classic(id, new byte[] { 0xAA }),
+                new PeriodicTxOptions(Period, initialRepeat));
+
+            start.Should().Throw<CanKitException>();
+            Count(rx, TimeSpan.FromMilliseconds(100), id).Should().Be(0);
+        }
+        finally
+        {
+            Canlib.ClearMsgCountFailure(id);
         }
     }
 
