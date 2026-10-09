@@ -52,6 +52,9 @@ namespace CanKit.Core.Utils
         }
 
         public bool IsRunning => _running;
+
+        /// <summary>The worker loop; exposed to the test assembly to verify that it ends.</summary>
+        internal Task? WorkerTask => _task;
         public TimeSpan Period => _period;
         public int RepeatCount => _repeat;
         public int RemainingCount => _remaining;
@@ -66,10 +69,18 @@ namespace CanKit.Core.Utils
 
         public void Start()
         {
-            if (_task != null) return;
-            _running = true;
-            _task = Task.Factory.StartNew(Loop, _cts.Token,
-                TaskCreationOptions.LongRunning, TaskScheduler.Default);
+            lock (_gate)
+            {
+                if (_task != null) return;
+                // Stopped or disposed before the worker was ever started: stays stopped.
+                if (_cts.IsCancellationRequested) return;
+                // Repeat = 0: nothing to send, not even the FireImmediately frame.
+                // The worker is started once Update() sets a count.
+                if (_remaining == 0) return;
+                _running = true;
+                _task = Task.Factory.StartNew(Loop, _cts.Token,
+                    TaskCreationOptions.LongRunning, TaskScheduler.Default);
+            }
         }
 
         public void Stop()
@@ -108,6 +119,20 @@ namespace CanKit.Core.Utils
                     _repeat = repeatCount.Value;
                 }
             }
+
+            if (repeatCount == 0)
+            {
+                // A zero count ends the schedule. Do it here instead of at the next send time,
+                // which can be a full period away. Outside the lock: Stop() waits for the
+                // worker, and the worker takes the lock. Without a worker (created with a zero
+                // count) there is nothing to end, and a later count can still start it.
+                if (_task != null) Stop();
+            }
+            else if (repeatCount.HasValue)
+            {
+                // Created with a zero count: the worker was never started. Start it now.
+                Start();
+            }
         }
 
         public void Dispose()
@@ -133,6 +158,9 @@ namespace CanKit.Core.Utils
 
             if (_fireImmediately)
             {
+                // The platform timer state is already set up here, so leave through Stop()
+                // to release it (waitable timer handle, timer resolution on Windows).
+                if (IsExhausted()) { Stop(); return; }
                 TrySendOnce();
                 if (DecreaseAndMaybeFinish()) { _running = false; return; }
                 t0 = sw.Elapsed;
@@ -154,6 +182,12 @@ namespace CanKit.Core.Utils
                 var target = t0 + TimeSpan.FromTicks(period.Ticks * n);
 
                 _sPreWait(ref _ctx, sw, target, token);
+
+                // Stopped while waiting: leave without sending the frame that was due.
+                if (token.IsCancellationRequested) break;
+
+                // Update(repeatCount: 0) may have used up the count while waiting.
+                if (IsExhausted()) { Stop(); break; }
 
                 // 发送
                 var sendStart = sw.Elapsed;
@@ -190,11 +224,22 @@ namespace CanKit.Core.Utils
             }
         }
 
+        private bool IsExhausted()
+        {
+            lock (_gate) return _remaining == 0;
+        }
+
         private bool DecreaseAndMaybeFinish()
         {
             lock (_gate)
             {
-                if (_remaining == 0) return false;
+                if (_remaining == 0)
+                {
+                    // Used up by Update(repeatCount: 0) in the meantime: same cleanup as a
+                    // completed schedule, but no Completed event.
+                    Stop();
+                    return true;
+                }
                 if (_remaining > 0)
                 {
                     _remaining--;
@@ -630,7 +675,17 @@ namespace CanKit.Core.Utils
                     var ms = remain.TotalMilliseconds - guardMs;
                     // Thread.Sleep 只能到毫秒，做个保守下取整
                     int sleepMs = (int)Math.Max(1, Math.Floor(ms));
-                    Thread.Sleep(sleepMs);
+                    // Wait on the token instead of Thread.Sleep so that Stop() ends the wait at
+                    // once; a coarse period can be seconds or more.
+                    try
+                    {
+                        if (token.WaitHandle.WaitOne(sleepMs)) break;
+                    }
+                    catch (ObjectDisposedException)
+                    {
+                        // The schedule was disposed in the meantime; that is a stop as well.
+                        break;
+                    }
                 }
                 else if (remain.TotalMilliseconds > 1.5)
                 {

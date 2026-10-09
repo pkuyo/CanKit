@@ -646,10 +646,33 @@ internal static class Libc
                     lock (b.TxOps)
                         b.TxOps.Add((canId, isFd));
 
+                    int written = headSize + (head.nframes > 0 ? frameSize : 0);
+                    var ival1 = ToTimeSpan(head.ival1);
+                    var ival2 = ToTimeSpan(head.ival2);
+
+                    // Timer rules of the kernel (bcm_tx_setup), as far as CanKit uses them:
+                    // only STARTTIMER (re)starts the job, and it sends one frame right away,
+                    // whatever the count is. Without it, SETTIMER with both intervals zero
+                    // stops a running timer, and a job that is not running stays that way.
+                    if ((head.flags & STARTTIMER) == 0)
+                    {
+                        bool clearsTimer = (head.flags & SETTIMER) != 0
+                                           && ival1 == TimeSpan.Zero && ival2 == TimeSpan.Zero;
+                        if (clearsTimer) CancelBcmJob(b);
+                        if (clearsTimer || b.JobCts is null) return written;
+                    }
+                    else if (head.count == 0 && ival2 == TimeSpan.Zero)
+                    {
+                        // No count and no second interval: the frame sent on start is all there is.
+                        CancelBcmJob(b);
+                        EmitFrame(b.IfIndex, payload, isFd, sourceFd: null);
+                        return written;
+                    }
+
                     // configure periodic loop
-                    var period = ToTimeSpan(head.ival1);
+                    var period = ival1;
                     var inf = head.count == 0; // our convention from higher level
-                    if (inf && period == TimeSpan.Zero) period = ToTimeSpan(head.ival2);
+                    if (inf && period == TimeSpan.Zero) period = ival2;
                     int remaining = inf ? -1 : (int)head.count;
 
                     // Replace any previous job on this BCM socket (TX_SETUP is upsert).
@@ -659,7 +682,7 @@ internal static class Libc
 
                     // launch a background sender for this job
                     _ = RunBcmJobAsync(b, canId, payload, isFd, period, remaining, cts.Token);
-                    return headSize + (head.nframes > 0 ? frameSize : 0);
+                    return written;
                 }
                 else if (head.opcode == TX_DELETE)
                 {
