@@ -78,6 +78,11 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IOwnership
                     try { _asyncRx.ExceptionOccured(ex); } catch { /*ignore*/ }
                 });
 
+            // canSetBusOutputControl(canDRIVER_SILENT) returns canOK on a channel without
+            // canCHANNEL_CAP_SILENT_MODE but has no effect, so check the capability up front.
+            if (options.WorkMode == ChannelWorkMode.ListenOnly)
+                CanKitErr.ThrowIfNotSupport(Options.Features, CanFeature.ListenOnly);
+
             // Open channel
             _handle = OpenChannel((KvaserBusOptions)options);
             CanKitLogger.LogInformation($"Kvaser: Initializing on '{_handle}', Mode={options.ProtocolMode}, Features={Options.Features}");
@@ -96,6 +101,9 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IOwnership
                 int obj = Options.ReceiveBufferCapacity.Value;
                 Canlib.canIoCtl(_handle, Canlib.canIOCTL_SET_RX_QUEUE_SIZE, ref obj, (uint)Marshal.SizeOf<int>());
             }
+
+            if (options.WorkMode == ChannelWorkMode.ListenOnly)
+                SetSilentMode(_handle);
 
             var st = Canlib.canBusOn(_handle);
             CanKitLogger.LogInformation("PCAN: Initialize succeeded.");
@@ -122,6 +130,33 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IOwnership
     }
 
     public int Handle => _handle;
+
+    private static void SetSilentMode(int handle)
+    {
+        var st = Canlib.canSetBusOutputControl(handle, Canlib.canDRIVER_SILENT);
+        if (st != Canlib.canStatus.canOK)
+        {
+            Canlib.canClose(handle);
+            throw new CanBusCreationException($"Kvaser canSetBusOutputControl(canDRIVER_SILENT) failed: {st}");
+        }
+
+        // The call can succeed without taking effect. Only a channel that is confirmed to be
+        // silent may be handed out as listen-only; anything else could acknowledge and transmit.
+        st = Canlib.canGetBusOutputControl(handle, out var driver);
+        if (st != Canlib.canStatus.canOK)
+        {
+            Canlib.canClose(handle);
+            throw new CanBusCreationException(
+                $"Kvaser: listen-only requested, but silent mode could not be confirmed (canGetBusOutputControl failed: {st}).");
+        }
+
+        if (driver != Canlib.canDRIVER_SILENT)
+        {
+            Canlib.canClose(handle);
+            throw new CanBusCreationException(
+                $"Kvaser: listen-only requested, but the driver type reads back as {driver} instead of canDRIVER_SILENT.");
+        }
+    }
 
 
     public BusNativeHandle NativeHandle { get; }
