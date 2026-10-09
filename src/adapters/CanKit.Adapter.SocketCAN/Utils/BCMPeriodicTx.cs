@@ -84,13 +84,18 @@ public sealed class BCMPeriodicTx : IPeriodicTx
 
 
             var period = options.Period <= TimeSpan.Zero ? TimeSpan.FromMilliseconds(1) : options.Period;
-            var ival1 = (options.Repeat < 0) ? TimeSpan.Zero : period; // repeat config times and stop
+            var ival1 = (options.Repeat > 0) ? period : TimeSpan.Zero; // repeat config times and stop
             var ival2 = (options.Repeat < 0) ? period : TimeSpan.Zero; // immediately enter ival2 infinite inf loop
+
+            // STARTTIMER makes the kernel send one frame right away, whatever the count is.
+            // Repeat = 0 sends nothing, so it only registers the job, without a timer;
+            // Update(repeatCount: n) can start it later.
+            var timerFlags = options.Repeat == 0 ? Libc.SETTIMER : Libc.SETTIMER | Libc.STARTTIMER;
 
             var head = new Libc.bcm_msg_head
             {
                 opcode = Libc.TX_SETUP,
-                flags = Libc.SETTIMER | Libc.STARTTIMER | Libc.TX_COUNTEVT
+                flags = timerFlags | Libc.TX_COUNTEVT
                         | (frame.FrameKind is CanFrameType.CanFd ? Libc.CAN_FD_FRAME : 0u),
                 count = (options.Repeat < 0) ? 0u : (uint)options.Repeat,
                 ival1 = SocketCanUtils.ToTimeval(ival1),
@@ -191,7 +196,10 @@ public sealed class BCMPeriodicTx : IPeriodicTx
 
         var flags = Libc.TX_COUNTEVT;
         if (period is not null || repeatCount is not null) flags |= Libc.SETTIMER;
-        if (repeatCount is not null) flags |= Libc.STARTTIMER;
+        // STARTTIMER makes the kernel send one frame right away, whatever the count is, so a
+        // zero count must not start the timer. SETTIMER with both intervals zero stops a timer
+        // that is still running.
+        if (repeatCount is not null && RepeatCount != 0) flags |= Libc.STARTTIMER;
         if (_frame.FrameKind is CanFrameType.CanFd)
             flags |= Libc.CAN_FD_FRAME;
 
@@ -200,7 +208,7 @@ public sealed class BCMPeriodicTx : IPeriodicTx
             opcode = Libc.TX_SETUP,
             flags = flags,
             count = (RepeatCount < 0) ? 0u : (uint)newCount,
-            ival1 = SocketCanUtils.ToTimeval((RepeatCount < 0) ? TimeSpan.Zero : Period), // repeat config times and stop
+            ival1 = SocketCanUtils.ToTimeval((RepeatCount > 0) ? Period : TimeSpan.Zero), // repeat config times and stop
             ival2 = SocketCanUtils.ToTimeval((RepeatCount < 0) ? Period : TimeSpan.Zero), // immediately enter ival2 for infinite loop
             can_id = _frame.ToCanID(),
             nframes = 1
