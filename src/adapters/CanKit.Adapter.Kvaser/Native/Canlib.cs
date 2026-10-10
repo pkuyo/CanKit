@@ -413,6 +413,17 @@ public static class Canlib
             : WindowsAbi.canObjBufSetPeriod(hnd, idx, periodUs);
     }
 
+    /// <summary>
+    /// Total number of frames a periodic buffer sends once enabled; 0 means infinite.
+    /// CANlib resets the count to 0 after the last frame.
+    /// </summary>
+    public static canStatus canObjBufSetMsgCount(int hnd, int idx, uint count)
+    {
+        return KvaserNativeLibraries.IsLinux
+            ? LinuxAbi.canObjBufSetMsgCount(hnd, idx, count)
+            : WindowsAbi.canObjBufSetMsgCount(hnd, idx, count);
+    }
+
     public static canStatus canGetChannelData_UInt32(int channel, int item, out uint value, UIntPtr bufsize)
     {
         return KvaserNativeLibraries.IsLinux
@@ -582,6 +593,9 @@ public static class Canlib
         [DllImport(Dll, CallingConvention = CallingConvention.StdCall, EntryPoint = "canObjBufSetPeriod")]
         public static extern canStatus canObjBufSetPeriod(int hnd, int idx, uint periodUs);
 
+        [DllImport(Dll, CallingConvention = CallingConvention.StdCall, EntryPoint = "canObjBufSetMsgCount")]
+        public static extern canStatus canObjBufSetMsgCount(int hnd, int idx, uint count);
+
         [DllImport(Dll, CallingConvention = CallingConvention.StdCall, EntryPoint = "canGetChannelData")]
         public static extern canStatus canGetChannelData_UInt32(int channel, int item, out uint value, UIntPtr bufsize);
 
@@ -702,6 +716,9 @@ public static class Canlib
 
         [DllImport(Dll, CallingConvention = CallingConvention.Cdecl, EntryPoint = "canObjBufSetPeriod")]
         public static extern canStatus canObjBufSetPeriod(int hnd, int idx, uint periodUs);
+
+        [DllImport(Dll, CallingConvention = CallingConvention.Cdecl, EntryPoint = "canObjBufSetMsgCount")]
+        public static extern canStatus canObjBufSetMsgCount(int hnd, int idx, uint count);
 
         [DllImport(Dll, CallingConvention = CallingConvention.Cdecl, EntryPoint = "canGetChannelData")]
         public static extern canStatus canGetChannelData_UInt32(int channel, int item, out uint value, UIntPtr bufsize);
