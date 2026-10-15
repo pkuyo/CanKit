@@ -22,7 +22,7 @@
         <PackageReference Include="CanKit.Core" Version="$(CanKitCoreDependencyVersion)"/>
     </ItemGroup>
 
-    <!-- Removed dependency on Kvaser.CanLib; using direct P/Invoke to canlib32.dll -->
+    <!-- Removed dependency on Kvaser.CanLib; P/Invokes canlib32 (Windows) / libcanlib.so (Linux) -->
 
     <ItemGroup>
         <None Include="buildTransitive\**\*.*" Pack="true" PackagePath="buildTransitive\"/>

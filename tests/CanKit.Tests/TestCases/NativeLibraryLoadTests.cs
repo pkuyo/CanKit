@@ -61,9 +61,12 @@ public class NativeLibraryLoadTests
     [Fact]
     public void Adapter_Factories_Preserve_InnerException_And_ErrorCode()
     {
-        var inner = new DllNotFoundException("canlib32");
+        var library = RuntimeInformation.IsOSPlatform(OSPlatform.Linux)
+            ? "libcanlib.so"
+            : "canlib32";
+        var inner = new DllNotFoundException(library);
         AssertWrapped(ZlgCanException.NativeLibraryNotFound("Open", new DllNotFoundException("zlgcan.dll")), "zlgcan.dll", "ZLG CAN driver");
-        AssertWrapped(KvaserCanException.NativeLibraryNotFound("Open", inner), "canlib32", "Kvaser CANlib");
+        AssertWrapped(KvaserCanException.NativeLibraryNotFound("Open", inner), library, "Kvaser CANlib");
         AssertWrapped(ControlCanException.NativeLibraryNotFound("Open", new DllNotFoundException("controlcan")), "controlcan", "ControlCAN");
         AssertWrapped(
             PcanCanException.NativeLibraryNotFound("Open", "PCANBasic", "Peak PCAN-Basic runtime", new DllNotFoundException("PCANBasic")),
@@ -96,11 +99,19 @@ public class AdapterMissingNativeLibraryTests : IClassFixture<TestCaseProvider>
 {
     [Theory]
     [InlineData("zlg://USBCANFD-200U?index=0#ch0", "zlgcan.dll", typeof(ZlgCanException))]
-    [InlineData("kvaser://0", "canlib32", typeof(KvaserCanException))]
     [InlineData("controlcan://VCI_USBCAN2?index=0#ch0", "controlcan", typeof(ControlCanException))]
     public void Open_Wraps_Missing_Vendor_Library(string endpoint, string library, Type exceptionType)
     {
         AssertOpenWrapsOrLibPresent(endpoint, library, exceptionType);
+    }
+
+    [Fact]
+    public void Open_Kvaser_Wraps_Missing_Canlib()
+    {
+        var library = RuntimeInformation.IsOSPlatform(OSPlatform.Linux)
+            ? "libcanlib.so"
+            : "canlib32";
+        AssertOpenWrapsOrLibPresent("kvaser://0", library, typeof(KvaserCanException));
     }
 
     [Fact]
