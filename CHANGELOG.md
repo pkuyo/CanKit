@@ -6,6 +6,9 @@
 
 * Kvaser CANlib adapter binds `canlib32` (Windows, stdcall) and `libcanlib.so` (Linux, cdecl), including cdecl notify callbacks on Linux. Opening on Linux no longer depends on the Windows `canlib32` ABI. Fake builds are unchanged.
 * Vendor adapters wrap a missing or wrong-bitness native library (`DllNotFoundException` / `BadImageFormatException`) at the first Open/constructor native call as adapter-specific `CanNativeCallException` types, with `CanKitErrorCode.NativeLibraryNotFound`, the original exception retained, and a message that names the DLL and the vendor runtime. Fake builds are unchanged.
+* CanKit packages now support trimming and NativeAOT through build-time generated, strongly typed component registration. Applications no longer need to root complete CanKit assemblies.
+* NuGet validation publishes and runs both NativeAOT and trimmed, self-contained Virtual smoke applications on Windows x64. Both verify generated registration and a frame roundtrip, and treat compilation, trimming, and AOT warnings as errors.
+* NuGet validation also runs a .NET Framework 4.8 smoke application that verifies automatic Virtual adapter registration and a frame roundtrip without an explicit `Register()` call.
 
 ### Fixed
 
@@ -16,6 +19,17 @@
 * SocketCAN BCM periodic TX sent one frame for `PeriodicTxOptions.Repeat = 0` and one more frame on `Update(repeatCount: 0)`: the kernel sends a frame whenever a job is set up with `STARTTIMER`, whatever the count is. A zero count no longer starts the timer. `Repeat = 0` only registers the job, so `Update(repeatCount: n)` can start it later, and `Update(repeatCount: 0)` stops a running job without a further frame.
 * PCAN FD set the data phase to the nominal bitrate when it was given as a target bitrate: `Fd(500_000, 2_000_000)` ran at 500 kbit/s in the data phase. The data phase now uses the data bitrate and data sample point, stays within the PCAN-Basic data ranges (`data_tseg1` 1..32, `data_tseg2` 1..16, `data_sjw` 1..16) and needs at least 5 time quanta. With `data_brp=1` it keeps `data_tseg2` at 2 or more, because the driver rejects 1 there. `BitTimingSolver` now moves TSEG1 so that TSEG2 stays within `Tseg2Min`..`Tseg2Max` instead of dropping the quanta count.
 * Kvaser ignored `ChannelWorkMode.ListenOnly`: the channel kept acknowledging and transmitting. It is now opened with `canDRIVER_SILENT` (`canSetBusOutputControl`, before bus-on). Opening fails if the driver type cannot be read back or does not read back as silent. Channels without `canCHANNEL_CAP_SILENT_MODE` (e.g. Leaf Light v2, CANlib virtual channels) now throw `CanFeatureNotSupportedException` for ListenOnly instead of running in normal mode, because CANlib accepts the call there but ignores it.
+* Initializing `CanRegistry` without any adapter registrations now reports how to call `CanKitRegistration.Register()` or check NuGet build assets.
+* The package smoke project now explicitly registers Virtual when using local project references; NuGet builds continue to exercise generated registration.
+
+### Deprecated
+
+* `CanRegistryEntryAttribute` is now obsolete. It is no longer scanned; use `CanKitRegistration.Register()` for static registration.
+
+### Breaking Changes
+
+* Runtime reflection-based component discovery has been replaced by static registration. `[CanRegistryEntry]` alone no longer registers custom or third-party adapters. Such adapters must provide a `CanKitRegistration.Register()` entry point and arrange for it to be called, either explicitly or through NuGet build assets. Direct DLL/ProjectReference consumers must call each adapter's registration entry point before first using `CanBus` or `CanRegistry`.
+* The component registrations are permanently frozen on first access to `CanRegistry.Registry`, including through `CanBus`. Adapters and extensions cannot be added after initialization; register all plugins beforehand.
 
 ## 0.5.6
 

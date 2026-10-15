@@ -3,7 +3,9 @@ param(
     [string]$ManifestPath = "eng/packages.json",
     [string]$VersionFilePath = "eng/package-versions.props",
     [string]$PackageDirectory = "artifacts/nuget",
-    [string]$SmokeProject = "eng/package-smoke/CanKit.PackageSmoke.csproj"
+    [string]$SmokeProject = "eng/package-smoke/CanKit.PackageSmoke.csproj",
+    [string]$Net48SmokeProject = "eng/net48-smoke/CanKit.Net48Smoke.csproj",
+    [string]$AotSmokeProject = "eng/aot-smoke/CanKit.AotSmoke.csproj"
 )
 
 Set-StrictMode -Version Latest
@@ -35,11 +37,13 @@ function Get-VersionMap {
 }
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
-$manifest = Get-Content (Join-Path $repoRoot $ManifestPath) -Raw | ConvertFrom-Json
+$manifest = Get-Content (Join-Path $repoRoot $ManifestPath) -Raw -Encoding UTF8 | ConvertFrom-Json
 $packages = @($manifest.packages)
-$versionMap = Get-VersionMap -XmlContent (Get-Content (Join-Path $repoRoot $VersionFilePath) -Raw) -Packages $packages
+$versionMap = Get-VersionMap -XmlContent (Get-Content (Join-Path $repoRoot $VersionFilePath) -Raw -Encoding UTF8) -Packages $packages
 $packageDirectoryPath = Join-Path $repoRoot $PackageDirectory
 $smokeProjectPath = Join-Path $repoRoot $SmokeProject
+$net48SmokeProjectPath = Join-Path $repoRoot $Net48SmokeProject
+$aotSmokeProjectPath = Join-Path $repoRoot $AotSmokeProject
 
 foreach ($package in $packages) {
     $packageId = [string]$package.id
@@ -71,34 +75,98 @@ foreach ($package in $packages) {
     }
 }
 
-$tempDirectory = Join-Path ([System.IO.Path]::GetTempPath()) ("CanKit.PackageValidation." + [System.Guid]::NewGuid().ToString("N"))
+$temporaryRootPath = [System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath()).TrimEnd([System.IO.Path]::DirectorySeparatorChar)
+$tempDirectory = Join-Path $temporaryRootPath ("CanKit.PackageValidation." + [System.Guid]::NewGuid().ToString("N"))
 $null = New-Item -ItemType Directory -Path $tempDirectory -Force
 $configPath = Join-Path $tempDirectory "NuGet.Config"
+$packagesPath = Join-Path $tempDirectory "packages"
+$smokeArtifactsPath = Join-Path $tempDirectory "package-smoke"
+$escapedPackageDirectory = [System.Security.SecurityElement]::Escape($packageDirectoryPath)
 $configContent = @"
 <?xml version="1.0" encoding="utf-8"?>
 <configuration>
   <packageSources>
     <clear />
-    <add key="local" value="$packageDirectoryPath" />
+    <add key="local" value="$escapedPackageDirectory" />
     <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />
   </packageSources>
+  <packageSourceMapping>
+    <packageSource key="local">
+      <package pattern="CanKit.*" />
+    </packageSource>
+    <packageSource key="nuget.org">
+      <package pattern="*" />
+    </packageSource>
+  </packageSourceMapping>
 </configuration>
 "@
 Set-Content -Path $configPath -Value $configContent -Encoding UTF8
 
 try {
-    & dotnet restore $smokeProjectPath --configfile $configPath -p:UseLocalProjectReferences=false -p:GeneratePackageOnBuild=false
+    & dotnet restore $smokeProjectPath --configfile $configPath --packages $packagesPath --artifacts-path $smokeArtifactsPath -p:UseLocalProjectReferences=false -p:GeneratePackageOnBuild=false
     if ($LASTEXITCODE -ne 0) {
         throw "dotnet restore failed for the package smoke project."
     }
 
-    & dotnet build $smokeProjectPath -c Release --no-restore -p:UseLocalProjectReferences=false -p:GeneratePackageOnBuild=false
+    & dotnet build $smokeProjectPath -c Release --no-restore --artifacts-path $smokeArtifactsPath -p:UseLocalProjectReferences=false -p:GeneratePackageOnBuild=false
     if ($LASTEXITCODE -ne 0) {
         throw "dotnet build failed for the package smoke project."
     }
+
+    & dotnet run --project $smokeProjectPath -c Release -f net10.0 --no-build --artifacts-path $smokeArtifactsPath -p:UseLocalProjectReferences=false -p:GeneratePackageOnBuild=false
+    if ($LASTEXITCODE -ne 0) {
+        throw "dotnet run failed for the package smoke project."
+    }
+
+    $net48ArtifactsPath = Join-Path $tempDirectory "net48"
+    $net48OutputPath = Join-Path $net48ArtifactsPath "output"
+    Write-Host "Validating automatic registration on .NET Framework 4.8"
+
+    & dotnet restore $net48SmokeProjectPath --configfile $configPath --packages $packagesPath --artifacts-path $net48ArtifactsPath -p:GeneratePackageOnBuild=false
+    if ($LASTEXITCODE -ne 0) {
+        throw "dotnet restore failed for the net48 smoke project."
+    }
+
+    & dotnet build $net48SmokeProjectPath -c Release --no-restore --artifacts-path $net48ArtifactsPath -o $net48OutputPath -p:GeneratePackageOnBuild=false
+    if ($LASTEXITCODE -ne 0) {
+        throw "dotnet build failed for the net48 smoke project."
+    }
+
+    & (Join-Path $net48OutputPath "CanKit.Net48Smoke.exe")
+    if ($LASTEXITCODE -ne 0) {
+        throw "The net48 automatic registration smoke executable failed."
+    }
+
+    foreach ($mode in @("aot", "trimmed")) {
+        $publishAot = ($mode -eq "aot").ToString().ToLowerInvariant()
+        $modeArtifactsPath = Join-Path $tempDirectory $mode
+        $publishPath = Join-Path $modeArtifactsPath "publish"
+        $publishProperties = @("-p:PublishAot=$publishAot", "-p:GeneratePackageOnBuild=false")
+        Write-Host "Validating $mode publish (win-x64)"
+
+        & dotnet restore $aotSmokeProjectPath --configfile $configPath --packages $packagesPath --artifacts-path $modeArtifactsPath -r win-x64 -p:Configuration=Release @publishProperties
+        if ($LASTEXITCODE -ne 0) {
+            throw "dotnet restore failed for the $mode smoke project."
+        }
+
+        & dotnet publish $aotSmokeProjectPath -c Release -r win-x64 --no-restore --artifacts-path $modeArtifactsPath -o $publishPath @publishProperties
+        if ($LASTEXITCODE -ne 0) {
+            throw "dotnet publish failed for the $mode smoke project."
+        }
+
+        & (Join-Path $publishPath "CanKit.AotSmoke.exe")
+        if ($LASTEXITCODE -ne 0) {
+            throw "The $mode smoke executable failed."
+        }
+    }
 }
 finally {
-    Remove-Item -Path $tempDirectory -Recurse -Force -ErrorAction SilentlyContinue
+    $cleanupPath = [System.IO.Path]::GetFullPath($tempDirectory)
+    if ([System.IO.Path]::GetDirectoryName($cleanupPath) -ne $temporaryRootPath -or
+        -not [System.IO.Path]::GetFileName($cleanupPath).StartsWith("CanKit.PackageValidation.", [System.StringComparison]::Ordinal)) {
+        throw "Unexpected package validation cleanup path '$cleanupPath'."
+    }
+    Remove-Item -LiteralPath $cleanupPath -Recurse -Force -ErrorAction SilentlyContinue
 }
 
 Write-Host "NuGet package validation completed successfully."

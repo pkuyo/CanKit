@@ -1,45 +1,49 @@
 <Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <PropertyGroup>
-    <CanKitAdapterHintsGenerated>$(IntermediateOutputPath)CanKit.AdapterHints.g.cs</CanKitAdapterHintsGenerated>
+    <CanKitRegistrationsGenerated>$(IntermediateOutputPath)CanKit.Registrations.g.cs</CanKitRegistrationsGenerated>
   </PropertyGroup>
 
-  <Target Name="CanKit_GenerateAdapterHints" AfterTargets="ResolveReferences" BeforeTargets="CoreCompile">
+  <ItemGroup Condition=" '@(CanKitRegistrationType)' != '' ">
+    <Compile Include="$(MSBuildThisFileDirectory)CanKit.ModuleInitializerAttribute.cs"
+             Link="CanKit.Generated\CanKit.ModuleInitializerAttribute.cs"
+             Visible="false" />
+  </ItemGroup>
+
+  <Target Name="CanKit_GenerateStaticRegistrations"
+          AfterTargets="ResolveReferences"
+          BeforeTargets="CoreCompile"
+          Condition=" '@(CanKitRegistrationType)' != '' ">
     <ItemGroup>
-      <_AdapterHintLines Remove="@(_AdapterHintLines)" />
-      <_QuotedAdapters    Remove="@(_QuotedAdapters)" />
-      <_CanKitAdapterNames Remove="@(_CanKitAdapterNames)" />
+      <_CanKitRegistrationTypes Remove="@(_CanKitRegistrationTypes)" />
+      <_CanKitRegistrationLines Remove="@(_CanKitRegistrationLines)" />
+      <_CanKitRegistrationCalls Remove="@(_CanKitRegistrationCalls)" />
     </ItemGroup>
+
+    <RemoveDuplicates Inputs="@(CanKitRegistrationType)">
+      <Output TaskParameter="Filtered" ItemName="_CanKitRegistrationTypes" />
+    </RemoveDuplicates>
 
     <ItemGroup>
-      <_CanKitAdapterNames Include="@(CanKitAdapterAssemblyName)" />
+      <_CanKitRegistrationLines Include="// &lt;auto-generated /&gt;" />
+      <_CanKitRegistrationLines Include="namespace CanKit.Core.Internal {" />
+      <_CanKitRegistrationLines Include="    internal static class CanKitModuleInitializer {" />
+      <_CanKitRegistrationLines Include="        [global::System.Runtime.CompilerServices.ModuleInitializer]" />
+      <_CanKitRegistrationLines Include="        internal static void Initialize() {" />
+      <_CanKitRegistrationCalls Include="@(_CanKitRegistrationTypes-&gt;'            global::%(Identity).Register()%3B')" />
+      <_CanKitRegistrationLines Include="@(_CanKitRegistrationCalls)" />
+      <_CanKitRegistrationLines Include="        }" />
+      <_CanKitRegistrationLines Include="    }" />
+      <_CanKitRegistrationLines Include="}" />
     </ItemGroup>
 
-    <ItemGroup Condition=" '@(_CanKitAdapterNames)' != '' ">
-      <_QuotedAdapters Include="@(_CanKitAdapterNames)">
-        <Q>&quot;%(Identity)&quot;</Q>
-      </_QuotedAdapters>
-    </ItemGroup>
-
-    <PropertyGroup Condition=" '@(_QuotedAdapters)' != '' ">
-      <_JoinedAdapters>@(_QuotedAdapters->'%(Q)', ', ')</_JoinedAdapters>
-    </PropertyGroup>
-
-    <ItemGroup Condition=" '$(_JoinedAdapters)' != '' ">
-      <_AdapterHintLines Include="// &lt;auto-generated /&gt;" />
-      <_AdapterHintLines Include="namespace CanKit.Core.Internal {" />
-      <_AdapterHintLines Include="    internal static class AdapterPreloadList {" />
-      <_AdapterHintLines Include="        internal static readonly string[] Assemblies = new string[] { $(_JoinedAdapters) }$([MSBuild]::Escape(';'))" />
-      <_AdapterHintLines Include="    }" />
-      <_AdapterHintLines Include="}" />
-    </ItemGroup>
-
-    <WriteLinesToFile File="$(CanKitAdapterHintsGenerated)"
-                      Lines="@(_AdapterHintLines)"
+    <WriteLinesToFile File="$(CanKitRegistrationsGenerated)"
+                      Lines="@(_CanKitRegistrationLines)"
                       Overwrite="true"
-                      Condition=" '$(_JoinedAdapters)' != '' " />
+                      WriteOnlyWhenDifferent="true"
+                      Encoding="UTF-8" />
 
-    <ItemGroup Condition=" '$(_JoinedAdapters)' != '' ">
-      <Compile Include="$(CanKitAdapterHintsGenerated)" Visible="false" />
+    <ItemGroup>
+      <Compile Include="$(CanKitRegistrationsGenerated)" Visible="false" />
     </ItemGroup>
   </Target>
 </Project>

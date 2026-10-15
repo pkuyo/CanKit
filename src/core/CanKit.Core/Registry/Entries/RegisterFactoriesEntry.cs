@@ -1,10 +1,8 @@
 using System;
-using CanKit.Abstractions.Attributes;
 using CanKit.Abstractions.SPI.Registry.Core;
 
 namespace CanKit.Core.Registry.Entries;
 
-[CanRegistryEntry(CanRegistryEntryKind.Adapter, "Factories", Order = -100)]
 internal sealed class RegisterFactoriesEntry : ICanRegistryEntry
 {
     public void Register(string name, ICanRegister register)
