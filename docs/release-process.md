@@ -39,6 +39,8 @@ Package-level notes:
 
 Package validation restores CanKit packages exclusively from the freshly built local artifacts. It publishes and runs the same Virtual adapter smoke program as both NativeAOT and a trimmed, self-contained .NET application on Windows x64. Each mode uses separate build and publish directories and verifies generated registration, bus opening, and frame transmission/reception. Smoke project compilation, trimming, and AOT warnings are treated as errors, with detailed dependency warnings enabled.
 
+The Windows `pack_validate` job also builds and directly runs `eng/net48-smoke/CanKit.Net48Smoke.csproj` on .NET Framework 4.8. This package-only consumer verifies automatic Virtual adapter registration and a frame roundtrip without explicitly calling `CanKitRegistration.Register()`. It exercises the packaged module initializer generator and attribute polyfill on the Framework CLR; a missing initializer fails validation.
+
 Required GitHub repository secret:
 
 - `NUGET_USER`: the nuget.org profile username (not an email address).

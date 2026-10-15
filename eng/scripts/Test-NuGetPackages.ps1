@@ -4,6 +4,7 @@ param(
     [string]$VersionFilePath = "eng/package-versions.props",
     [string]$PackageDirectory = "artifacts/nuget",
     [string]$SmokeProject = "eng/package-smoke/CanKit.PackageSmoke.csproj",
+    [string]$Net48SmokeProject = "eng/net48-smoke/CanKit.Net48Smoke.csproj",
     [string]$AotSmokeProject = "eng/aot-smoke/CanKit.AotSmoke.csproj"
 )
 
@@ -41,6 +42,7 @@ $packages = @($manifest.packages)
 $versionMap = Get-VersionMap -XmlContent (Get-Content (Join-Path $repoRoot $VersionFilePath) -Raw -Encoding UTF8) -Packages $packages
 $packageDirectoryPath = Join-Path $repoRoot $PackageDirectory
 $smokeProjectPath = Join-Path $repoRoot $SmokeProject
+$net48SmokeProjectPath = Join-Path $repoRoot $Net48SmokeProject
 $aotSmokeProjectPath = Join-Path $repoRoot $AotSmokeProject
 
 foreach ($package in $packages) {
@@ -114,6 +116,25 @@ try {
     & dotnet run --project $smokeProjectPath -c Release -f net10.0 --no-build --artifacts-path $smokeArtifactsPath -p:UseLocalProjectReferences=false -p:GeneratePackageOnBuild=false
     if ($LASTEXITCODE -ne 0) {
         throw "dotnet run failed for the package smoke project."
+    }
+
+    $net48ArtifactsPath = Join-Path $tempDirectory "net48"
+    $net48OutputPath = Join-Path $net48ArtifactsPath "output"
+    Write-Host "Validating automatic registration on .NET Framework 4.8"
+
+    & dotnet restore $net48SmokeProjectPath --configfile $configPath --packages $packagesPath --artifacts-path $net48ArtifactsPath -p:GeneratePackageOnBuild=false
+    if ($LASTEXITCODE -ne 0) {
+        throw "dotnet restore failed for the net48 smoke project."
+    }
+
+    & dotnet build $net48SmokeProjectPath -c Release --no-restore --artifacts-path $net48ArtifactsPath -o $net48OutputPath -p:GeneratePackageOnBuild=false
+    if ($LASTEXITCODE -ne 0) {
+        throw "dotnet build failed for the net48 smoke project."
+    }
+
+    & (Join-Path $net48OutputPath "CanKit.Net48Smoke.exe")
+    if ($LASTEXITCODE -ne 0) {
+        throw "The net48 automatic registration smoke executable failed."
     }
 
     foreach ($mode in @("aot", "trimmed")) {

@@ -8,6 +8,7 @@
 * Vendor adapters wrap a missing or wrong-bitness native library (`DllNotFoundException` / `BadImageFormatException`) at the first Open/constructor native call as adapter-specific `CanNativeCallException` types, with `CanKitErrorCode.NativeLibraryNotFound`, the original exception retained, and a message that names the DLL and the vendor runtime. Fake builds are unchanged.
 * CanKit packages now support trimming and NativeAOT through build-time generated, strongly typed component registration. Applications no longer need to root complete CanKit assemblies.
 * NuGet validation publishes and runs both NativeAOT and trimmed, self-contained Virtual smoke applications on Windows x64. Both verify generated registration and a frame roundtrip, and treat compilation, trimming, and AOT warnings as errors.
+* NuGet validation also runs a .NET Framework 4.8 smoke application that verifies automatic Virtual adapter registration and a frame roundtrip without an explicit `Register()` call.
 
 ### Fixed
 

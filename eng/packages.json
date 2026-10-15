@@ -114,6 +114,7 @@
     "src/Directory.Build.props",
     "eng/package-versions.props",
     "eng/aot-smoke/",
+    "eng/net48-smoke/",
     "eng/packages.json",
     "eng/package-smoke/",
     "eng/scripts/",
