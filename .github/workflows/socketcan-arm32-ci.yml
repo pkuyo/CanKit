@@ -12,9 +12,7 @@ on:
       - fix-arm32-tailscale-ci
     paths:
       - '.github/workflows/socketcan-arm32-ci.yml'
-      - 'eng/scripts/Invoke-SocketCanArm32.sh'
-      - 'eng/scripts/Test-SocketCanArm32.sh'
-      - 'eng/scripts/Run-SocketCanArm32.py'
+      - 'eng/CanKit.Arm32Ci/**'
       - 'src/core/**'
       - 'src/adapters/CanKit.Adapter.SocketCAN/**'
       - 'tests/CanKit.Tests/**'
@@ -26,9 +24,7 @@ on:
     types: [opened, synchronize, reopened]
     paths:
       - '.github/workflows/socketcan-arm32-ci.yml'
-      - 'eng/scripts/Invoke-SocketCanArm32.sh'
-      - 'eng/scripts/Test-SocketCanArm32.sh'
-      - 'eng/scripts/Run-SocketCanArm32.py'
+      - 'eng/CanKit.Arm32Ci/**'
       - 'src/core/**'
       - 'src/adapters/CanKit.Adapter.SocketCAN/**'
       - 'tests/CanKit.Tests/**'
@@ -68,6 +64,14 @@ jobs:
           path: .arm32-source
           persist-credentials: false
 
+      - name: Setup .NET for the controller
+        uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      - name: Build ARM32 CI tool
+        run: dotnet publish eng/CanKit.Arm32Ci/CanKit.Arm32Ci.csproj -c Release -o artifacts/arm32-ci
+
       - name: Check ARM32 connection settings
         shell: bash
         env:
@@ -96,7 +100,7 @@ jobs:
           ARM32_HOST: ${{ vars.ARM32_HOST }}
           ARM32_USER: ${{ vars.ARM32_USER || 'actions-runner' }}
           ARM32_SOURCE_DIRECTORY: .arm32-source
-        run: exec bash eng/scripts/Invoke-SocketCanArm32.sh
+        run: exec dotnet artifacts/arm32-ci/CanKit.Arm32Ci.dll controller
 
       - name: Upload ARM32 test results
         if: always()
@@ -122,6 +126,14 @@ jobs:
         uses: actions/checkout@v7
         with:
           persist-credentials: false
+
+      - name: Setup .NET for the controller
+        uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      - name: Build ARM32 CI tool
+        run: dotnet publish eng/CanKit.Arm32Ci/CanKit.Arm32Ci.csproj -c Release -o artifacts/arm32-ci
 
       - name: Check ARM32 connection settings
         shell: bash
@@ -150,7 +162,7 @@ jobs:
         env:
           ARM32_HOST: ${{ vars.ARM32_HOST }}
           ARM32_USER: ${{ vars.ARM32_USER || 'actions-runner' }}
-        run: exec bash eng/scripts/Invoke-SocketCanArm32.sh
+        run: exec dotnet artifacts/arm32-ci/CanKit.Arm32Ci.dll controller
 
       - name: Upload ARM32 test results
         if: always()
