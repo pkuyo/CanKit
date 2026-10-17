@@ -9,12 +9,10 @@ on:
   push:
     branches:
       - master
-      - fix-arm32-tailscale-ci
+      - fix-arm32-tailscale-ci # TODO: remove before merging
     paths:
       - '.github/workflows/socketcan-arm32-ci.yml'
-      - 'eng/scripts/Invoke-SocketCanArm32.sh'
-      - 'eng/scripts/Test-SocketCanArm32.sh'
-      - 'eng/scripts/Run-SocketCanArm32.py'
+      - 'eng/CanKit.Arm32Ci/**'
       - 'src/core/**'
       - 'src/adapters/CanKit.Adapter.SocketCAN/**'
       - 'tests/CanKit.Tests/**'
@@ -26,9 +24,7 @@ on:
     types: [opened, synchronize, reopened]
     paths:
       - '.github/workflows/socketcan-arm32-ci.yml'
-      - 'eng/scripts/Invoke-SocketCanArm32.sh'
-      - 'eng/scripts/Test-SocketCanArm32.sh'
-      - 'eng/scripts/Run-SocketCanArm32.py'
+      - 'eng/CanKit.Arm32Ci/**'
       - 'src/core/**'
       - 'src/adapters/CanKit.Adapter.SocketCAN/**'
       - 'tests/CanKit.Tests/**'
@@ -38,13 +34,10 @@ on:
       - 'global.json'
 
 jobs:
-  linux-arm32-pr:
-    name: SocketCAN (Linux ARM32, ${{ github.event_name == 'pull_request_target' && 'PR' || github.event_name == 'workflow_dispatch' && 'manual' || 'branch' }})
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      github.event_name == 'pull_request_target' ||
-      (github.event_name == 'push' && github.ref == 'refs/heads/fix-arm32-tailscale-ci')
-    environment: arm32-runner
+  linux-arm32:
+    name: SocketCAN (Linux ARM32, ${{ github.event_name == 'pull_request_target' && 'PR' || github.event_name == 'workflow_dispatch' && 'manual' || 'push' }})
+    # PR and manual runs execute unreviewed code on the Pi, so they need approval.
+    environment: ${{ github.event_name != 'push' && 'arm32-runner' || '' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 50
     permissions:
@@ -61,67 +54,21 @@ jobs:
           ref: ${{ github.workflow_sha }}
           persist-credentials: false
 
-      - name: Checkout test commit
+      - name: Checkout PR head
+        if: github.event_name == 'pull_request_target'
         uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.event.pull_request.head.sha }}
           path: .arm32-source
           persist-credentials: false
 
-      - name: Check ARM32 connection settings
-        shell: bash
-        env:
-          ARM32_HOST: ${{ vars.ARM32_HOST }}
-          TS_ARM32_CLIENT_ID: ${{ vars.TS_ARM32_CLIENT_ID }}
-          TS_ARM32_AUDIENCE: ${{ vars.TS_ARM32_AUDIENCE }}
-        run: |
-          for setting in ARM32_HOST TS_ARM32_CLIENT_ID TS_ARM32_AUDIENCE; do
-            if [[ -z "${!setting}" ]]; then
-              echo "::error::Set the repository variable $setting."
-              exit 1
-            fi
-          done
-
-      - name: Connect to ARM32 test network
-        uses: tailscale/github-action@v4
+      - name: Setup .NET for the controller
+        uses: actions/setup-dotnet@v6
         with:
-          oauth-client-id: ${{ vars.TS_ARM32_CLIENT_ID }}
-          audience: ${{ vars.TS_ARM32_AUDIENCE }}
-          tags: tag:cankit-ci
-          ping: ${{ vars.ARM32_HOST }}
+          global-json-file: global.json
 
-      - name: Test SocketCAN on ARM32
-        shell: bash
-        env:
-          ARM32_HOST: ${{ vars.ARM32_HOST }}
-          ARM32_USER: ${{ vars.ARM32_USER || 'actions-runner' }}
-          ARM32_SOURCE_DIRECTORY: .arm32-source
-        run: exec bash eng/scripts/Invoke-SocketCanArm32.sh
-
-      - name: Upload ARM32 test results
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: socketcan-linux-arm32-pr
-          path: TestResults/arm32/
-
-  linux-arm32-push:
-    name: SocketCAN (Linux ARM32, push)
-    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 50
-    permissions:
-      contents: read
-      id-token: write
-    concurrency:
-      group: cankit-socketcan-arm32
-      cancel-in-progress: false
-      queue: max
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v7
-        with:
-          persist-credentials: false
+      - name: Build ARM32 CI tool
+        run: dotnet publish eng/CanKit.Arm32Ci/CanKit.Arm32Ci.csproj -c Release -o artifacts/arm32-ci
 
       - name: Check ARM32 connection settings
         shell: bash
@@ -150,11 +97,12 @@ jobs:
         env:
           ARM32_HOST: ${{ vars.ARM32_HOST }}
           ARM32_USER: ${{ vars.ARM32_USER || 'actions-runner' }}
-        run: exec bash eng/scripts/Invoke-SocketCanArm32.sh
+          ARM32_SOURCE_DIRECTORY: ${{ github.event_name == 'pull_request_target' && '.arm32-source' || '.' }}
+        run: exec dotnet artifacts/arm32-ci/CanKit.Arm32Ci.dll controller
 
       - name: Upload ARM32 test results
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: socketcan-linux-arm32-push
+          name: socketcan-linux-arm32
           path: TestResults/arm32/
