@@ -36,8 +36,8 @@ on:
 jobs:
   linux-arm32:
     name: SocketCAN (Linux ARM32, ${{ github.event_name == 'pull_request_target' && 'PR' || github.event_name == 'workflow_dispatch' && 'manual' || 'push' }})
-    # PR and manual runs execute unreviewed code on the Pi, so they need approval.
-    environment: ${{ github.event_name != 'push' && 'arm32-runner' || '' }}
+    # Only pushes to master run without approval; every other run needs arm32-runner approval.
+    environment: ${{ (github.event_name != 'push' || github.ref != 'refs/heads/master') && 'arm32-runner' || '' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 50
     permissions:
