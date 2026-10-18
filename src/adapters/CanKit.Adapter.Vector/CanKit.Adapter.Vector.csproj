@@ -22,6 +22,11 @@
     <PackageReference Include="CanKit.Core" Version="$(CanKitCoreDependencyVersion)" />
   </ItemGroup>
 
+  <!-- Lets the xUnit suite observe the receive loop task (VectorReceiveLoopTests). -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="CanKit.Tests" />
+  </ItemGroup>
+
   <ItemGroup>
     <None Include="buildTransitive\**\*.*" Pack="true" PackagePath="buildTransitive\" />
     <None Include="README.md" Pack="true" PackagePath="" />

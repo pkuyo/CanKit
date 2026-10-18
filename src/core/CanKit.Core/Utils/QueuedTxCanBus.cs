@@ -196,13 +196,18 @@ public sealed class QueuedCanBus : ICanBus, IAsyncDisposable
         {
             try
             {
-                if (!await _txChan.Reader.WaitToReadAsync(token)) break;
-                while (index < _opts.SendBatchSize && _txChan.Reader.TryRead(out var f))
+                // Only block for new frames while nothing is held back from a previous round;
+                // frames the driver did not accept yet must be retried without a new enqueue.
+                if (index == 0 && !await _txChan.Reader.WaitToReadAsync(token)) break;
+                while (index < batch.Length && _txChan.Reader.TryRead(out var f))
                     batch[index++] = f;
 
                 if (index == 0) continue;
 
-                int accepted = _inner.Transmit(batch, timeOut: 0);
+                // Hand over only the filled part of the batch. Passing the whole array would
+                // transmit default(CanFrame) slots and frames left over from earlier rounds.
+                int accepted = _inner.Transmit(new ArraySegment<CanFrame>(batch, 0, index), timeOut: 0);
+                if (accepted > index) accepted = index;
                 if (accepted > 0)
                 {
                     Interlocked.Add(ref _drvAccepted, accepted);
@@ -210,15 +215,12 @@ public sealed class QueuedCanBus : ICanBus, IAsyncDisposable
                     {
                         batch[i].Dispose();
                     }
-                    if (accepted < index)
-                    {
-                        for (int i = accepted; i < index; i++)
-                        {
-                            batch[i - accepted] = batch[i];
-                        }
-                    }
 
-                    index -= accepted;
+                    var remaining = index - accepted;
+                    Array.Copy(batch, accepted, batch, 0, remaining);
+                    Array.Clear(batch, remaining, accepted);
+
+                    index = remaining;
                     ResetBackoffInternal();
                     continue;
                 }

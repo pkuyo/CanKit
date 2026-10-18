@@ -8,10 +8,12 @@ Kvaser CANlib adapter for CanKit. Provides a unified .NET API to Kvaser devices 
 
 ## Requirements
 
-- Install Kvaser CANlib drivers/runtime from Kvaser.
+- Install Kvaser CANlib drivers/runtime from Kvaser (Windows and Linux).
+- Windows loads `canlib32`; Linux loads `libcanlib.so`.
 - Ensure CANlib is installed and the runtime is available on the machine.
 简体中文
-- 需要安装 Kvaser CANlib 驱动/运行库。
+- 需要安装 Kvaser CANlib 驱动/运行库（Windows 与 Linux）。
+- Windows 加载 `canlib32`，Linux 加载 `libcanlib.so`。
 - 请确认目标机器已安装并能加载 CANlib 运行库。
 ## Install
 

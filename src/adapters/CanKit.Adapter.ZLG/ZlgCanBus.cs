@@ -621,20 +621,39 @@ namespace CanKit.Adapter.ZLG
 
         private void StopReceiveLoop()
         {
-            var task = Volatile.Read(ref _pollTask);
-            var cts = Volatile.Read(ref _pollCts);
+            // Take the loop state over atomically. Dispose and the fault path of the poll loop
+            // can get here at the same time, and CancellationTokenSource.Dispose must not run
+            // concurrently on the same instance (NullReferenceException on .NET Framework).
+            var cts = Interlocked.Exchange(ref _pollCts, null);
+            var task = Interlocked.Exchange(ref _pollTask, null);
+            if (cts is null) return;
+
             try
             {
                 _asyncRx.Clear();
-                cts?.Cancel();
-                _pollTask?.Wait(500);
+                cts.Cancel();
+                // Never wait for the poll loop from the poll loop itself.
+                if (task != null && Task.CurrentId != task.Id)
+                    task.Wait(500);
             }
             catch { /* ignore on shutdown */ }
             finally
             {
-                Interlocked.CompareExchange(ref _pollTask, null, task);
-                Interlocked.CompareExchange(ref _pollCts, null, cts);
-                cts?.Dispose();
+                // The loop still uses the token for its cancellable delay; release the source
+                // only after the loop has left.
+                if (task is null || task.IsCompleted)
+                {
+                    cts.Dispose();
+                }
+                else
+                {
+                    task.ContinueWith(
+                        static (_, state) => ((CancellationTokenSource)state!).Dispose(),
+                        cts,
+                        CancellationToken.None,
+                        TaskContinuationOptions.ExecuteSynchronously,
+                        TaskScheduler.Default);
+                }
                 CanKitLogger.LogDebug("ZLG: Poll loop stopped.");
             }
         }
@@ -718,6 +737,11 @@ namespace CanKit.Adapter.ZLG
                     ex,
                     CanExceptionSource.BackgroundLoop,
                     message: "ZlgCAN poll loop canceled.");
+            }
+            catch (CanBusDisposedException) when (_isDisposed)
+            {
+                // Dispose() marks the bus as disposed before it stops this loop, so a poll can
+                // run into the disposed check. That is a normal shutdown, not a fault.
             }
             catch (Exception ex)
             {
