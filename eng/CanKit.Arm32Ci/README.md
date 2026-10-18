@@ -15,7 +15,7 @@ over Tailscale SSH. The same build of this tool runs on both sides:
 
 ## Requirements
 
-- Repository variables: `ARM32_HOST` (Tailscale address), `TS_ARM32_CLIENT_ID`,
+- Repository secrets: `ARM32_HOST` (Tailscale address), `TS_ARM32_CLIENT_ID`,
   `TS_ARM32_AUDIENCE`, and optionally `ARM32_USER` (default `actions-runner`).
 - Pi: .NET 10, the SDK/runtime needed by the tested commit, util-linux `setsid`
   and `flock`, and `vcan0`–`vcan2`. Proxy or `DOTNET_ROOT` settings go in

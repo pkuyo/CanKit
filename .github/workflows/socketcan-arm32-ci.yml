@@ -73,13 +73,13 @@ jobs:
       - name: Check ARM32 connection settings
         shell: bash
         env:
-          ARM32_HOST: ${{ vars.ARM32_HOST }}
-          TS_ARM32_CLIENT_ID: ${{ vars.TS_ARM32_CLIENT_ID }}
-          TS_ARM32_AUDIENCE: ${{ vars.TS_ARM32_AUDIENCE }}
+          ARM32_HOST: ${{ secrets.ARM32_HOST }}
+          TS_ARM32_CLIENT_ID: ${{ secrets.TS_ARM32_CLIENT_ID }}
+          TS_ARM32_AUDIENCE: ${{ secrets.TS_ARM32_AUDIENCE }}
         run: |
           for setting in ARM32_HOST TS_ARM32_CLIENT_ID TS_ARM32_AUDIENCE; do
             if [[ -z "${!setting}" ]]; then
-              echo "::error::Set the repository variable $setting."
+              echo "::error::Missing required repository setting: $setting."
               exit 1
             fi
           done
@@ -87,16 +87,16 @@ jobs:
       - name: Connect to ARM32 test network
         uses: tailscale/github-action@v4
         with:
-          oauth-client-id: ${{ vars.TS_ARM32_CLIENT_ID }}
-          audience: ${{ vars.TS_ARM32_AUDIENCE }}
+          oauth-client-id: ${{ secrets.TS_ARM32_CLIENT_ID }}
+          audience: ${{ secrets.TS_ARM32_AUDIENCE }}
           tags: tag:cankit-ci
-          ping: ${{ vars.ARM32_HOST }}
+          ping: ${{ secrets.ARM32_HOST }}
 
       - name: Test SocketCAN on ARM32
         shell: bash
         env:
-          ARM32_HOST: ${{ vars.ARM32_HOST }}
-          ARM32_USER: ${{ vars.ARM32_USER || 'actions-runner' }}
+          ARM32_HOST: ${{ secrets.ARM32_HOST }}
+          ARM32_USER: ${{ secrets.ARM32_USER || 'actions-runner' }}
           ARM32_SOURCE_DIRECTORY: ${{ github.event_name == 'pull_request_target' && '.arm32-source' || '.' }}
         run: exec dotnet artifacts/arm32-ci/CanKit.Arm32Ci.dll controller
 
