@@ -17,7 +17,7 @@ public sealed class CanRegistryEntryAttribute : Attribute
 
     /// <summary>
     /// Entry kind, used for grouping or ordering between categories.
-    /// 条目类别（如 Adapter/Transport/Protocol）。
+    /// 条目类别（如 Adapter/Misc）。
     /// </summary>
     public CanRegistryEntryKind Kind { get; }
 
@@ -43,8 +43,6 @@ public sealed class CanRegistryEntryAttribute : Attribute
 public enum CanRegistryEntryKind
 {
     Adapter = 0,
-    Transport = 1,
-    Protocol = 2,
     Misc = 3,
 }
 
