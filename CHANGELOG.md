@@ -19,7 +19,7 @@
 
 ### Breaking Changes
 
-* Removed the unfinished ISO-TP transport, its public API/SPI types, and PCAN ISO-TP support. The `CanKit.Transport.IsoTp` project and its solution/package entries are no longer included. `CanKitErrorCode.TransportOperationFailed` and `CanRegistryEntryKind.Transport` / `Protocol` are removed as well; `CanRegistryEntryKind.Misc` keeps its value 3.
+* Removed the unfinished ISO-TP transport, its public API/SPI types, and PCAN ISO-TP support. The `CanKit.Transport.IsoTp` project and its solution/package entries are no longer included.
 
 ## 0.5.6
 
