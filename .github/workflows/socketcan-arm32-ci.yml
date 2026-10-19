@@ -9,7 +9,6 @@ on:
   push:
     branches:
       - master
-      - fix-arm32-tailscale-ci # TODO: remove before merging
     paths:
       - '.github/workflows/socketcan-arm32-ci.yml'
       - 'eng/CanKit.Arm32Ci/**'
