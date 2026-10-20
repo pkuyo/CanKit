@@ -166,14 +166,15 @@ public sealed class PcanClassicTransceiver : ITransceiver
             var st = PcanBasicNative.CAN_Read((UInt16)ch.Handle, out PcanBasicNative.TpcanMsg pmsg, out var timestamp);
             if (st == TPCANStatus.PCAN_ERROR_QRCVEMPTY)
                 break;
+            // Driver status messages are not CAN frames. PCAN-Basic also returns the reported
+            // bus state (overrun, warning, passive, bus-off) as the read result, so check this
+            // before the status is treated as a failure.
+            if ((pmsg.MSGTYPE & TPCANMessageType.PCAN_MESSAGE_STATUS) != 0)
+                continue;
             if (st != TPCANStatus.PCAN_ERROR_OK)
             {
                 PcanUtils.ThrowIfError((PcanStatus)st, "CAN_Read()", $"PCAN: receive frame failed. Channel:{((PcanBus)bus).Handle}");
             }
-            // Driver status messages are not CAN frames.
-            if ((pmsg.MSGTYPE & TPCANMessageType.PCAN_MESSAGE_STATUS) != 0)
-                continue;
-
             var isExt = (pmsg.MSGTYPE & TPCANMessageType.PCAN_MESSAGE_EXTENDED) != 0;
             var isRtr = (pmsg.MSGTYPE & TPCANMessageType.PCAN_MESSAGE_RTR) != 0;
             var isErr = (pmsg.MSGTYPE & TPCANMessageType.PCAN_MESSAGE_ERRFRAME) != 0;

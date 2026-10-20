@@ -205,14 +205,15 @@ public sealed class PcanFdTransceiver : ITransceiver
             var st = PcanBasicNative.CAN_ReadFD((UInt16)ch.Handle, out var pmsg, out var timestamp);
             if (st == TPCANStatus.PCAN_ERROR_QRCVEMPTY)
                 break;
+            // Driver status messages are not CAN frames. PCAN-Basic also returns the reported
+            // bus state (overrun, warning, passive, bus-off) as the read result, so check this
+            // before the status is treated as a failure.
+            if ((pmsg.MSGTYPE & TPCANMessageType.PCAN_MESSAGE_STATUS) != 0)
+                continue;
             if (st != TPCANStatus.PCAN_ERROR_OK)
             {
                 PcanUtils.ThrowIfError((PcanStatus)st, "CAN_ReadFD()", $"PCAN: receive frame failed. Channel:{((PcanBus)bus).Handle}");
             }
-
-            // Driver status messages are not CAN frames.
-            if ((pmsg.MSGTYPE & TPCANMessageType.PCAN_MESSAGE_STATUS) != 0)
-                continue;
 
             var isFd = (pmsg.MSGTYPE & TPCANMessageType.PCAN_MESSAGE_FD) != 0;
             var isExt = (pmsg.MSGTYPE & TPCANMessageType.PCAN_MESSAGE_EXTENDED) != 0;
