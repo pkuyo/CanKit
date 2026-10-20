@@ -22,14 +22,17 @@ public sealed class VirtualBusHub
     private static readonly Dictionary<string, VirtualBusHub> _hubs = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
-    /// Gets (creating if necessary) the hub for the session. A hub obtained this way without any attached
-    /// bus stays registered until a bus joins and leaves it.
+    /// Gets (creating if necessary) the hub for the session. A hub returned here is pinned: it stays
+    /// registered after its last bus leaves, so the handle keeps working when the session is opened again.
+    /// Hubs that were only joined by buses are removed when the last bus leaves.
     /// </summary>
     public static VirtualBusHub Get(string sessionId)
     {
         lock (_hubsGate)
         {
-            return GetOrCreate(sessionId ?? "default");
+            var hub = GetOrCreate(sessionId ?? "default");
+            hub._pinned = true;
+            return hub;
         }
     }
 
@@ -57,6 +60,7 @@ public sealed class VirtualBusHub
         return hub;
     }
 
+    private bool _pinned; // guarded by _hubsGate
     private readonly string _sessionId;
     private readonly object _gate = new();
     private readonly List<VirtualBus> _channels = new();
@@ -89,7 +93,7 @@ public sealed class VirtualBusHub
             {
                 _channels.Remove(bus);
                 // Drop the hub once its last member leaves so sessions do not accumulate.
-                if (_channels.Count == 0 && _hubs.TryGetValue(_sessionId, out var current) && ReferenceEquals(current, this))
+                if (_channels.Count == 0 && !_pinned && _hubs.TryGetValue(_sessionId, out var current) && ReferenceEquals(current, this))
                 {
                     _hubs.Remove(_sessionId);
                 }

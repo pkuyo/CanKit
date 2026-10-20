@@ -218,12 +218,20 @@ public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, IOwnership
         finally
         {
             _disposed = true;
+            // release the copies this bus received but nobody read
+            _asyncRx.Clear(static data => data.CanFrame.Dispose());
             _owner?.Dispose();
         }
     }
 
     internal void InternalDeliver(CanReceiveData data)
     {
+        if (_disposed)
+        {
+            data.CanFrame.Dispose();
+            return;
+        }
+
         var pred = _softwareFilterPredicate;
         if (_useSoftwareFilter && pred is not null && !pred(data.CanFrame))
         {

@@ -98,4 +98,53 @@ public class VirtualBusOwnershipTests : IClassFixture<TestCaseProvider>
 
         hubs.Contains(session).Should().BeFalse();
     }
+
+    [Fact]
+    public void Hub_Handle_From_Get_Stays_Connected_After_The_Last_Bus_Leaves()
+    {
+        var session = NewSession();
+        var hub = VirtualBusHub.Get(session);
+
+        CanBus.Open($"virtual://{session}/0", cfg => cfg.SetProtocolMode(CanProtocolMode.Can20).Baud(TestCaseProvider.AbitRate)).Dispose();
+        using var again = CanBus.Open($"virtual://{session}/0", cfg => cfg.SetProtocolMode(CanProtocolMode.Can20).Baud(TestCaseProvider.AbitRate));
+
+        VirtualBusHub.Get(session).Should().BeSameAs(hub);
+    }
+
+    [Fact]
+    public void Disposing_A_Bus_Releases_Unread_Copies()
+    {
+        var session = NewSession();
+        var allocator = new CountingAllocator();
+
+        using var sender = CanBus.Open($"virtual://{session}/0", cfg => cfg.SetProtocolMode(CanProtocolMode.Can20).Baud(TestCaseProvider.AbitRate));
+        var receiver = CanBus.Open($"virtual://{session}/1", cfg =>
+            cfg.SetProtocolMode(CanProtocolMode.Can20).Baud(TestCaseProvider.AbitRate).BufferAllocator(allocator));
+
+        sender.Transmit(CanFrame.Classic(0x1, new byte[] { 1 }));
+        sender.Transmit(CanFrame.Classic(0x2, new byte[] { 2 }));
+        allocator.Rented.Should().Be(2);
+
+        receiver.Dispose();
+
+        allocator.Disposed.Should().Be(2);
+    }
+
+    private sealed class CountingAllocator : CanKit.Abstractions.SPI.Common.IBufferAllocator
+    {
+        public int Rented, Disposed;
+        public bool FrameNeedDispose => true;
+
+        public System.Buffers.IMemoryOwner<byte> Rent(int length, bool zeroFill = false)
+        {
+            Interlocked.Increment(ref Rented);
+            return new Owner(this, new byte[length]);
+        }
+
+        private sealed class Owner(CountingAllocator parent, byte[] buf) : System.Buffers.IMemoryOwner<byte>
+        {
+            public Memory<byte> Memory { get; } = buf;
+            public void Dispose() => Interlocked.Increment(ref parent.Disposed);
+        }
+    }
 }
