@@ -75,6 +75,7 @@ public static class Canlib
 
     // Notification flags (subset)
     public const int canNOTIFY_RX = 0x0001;
+    public const int canNOTIFY_TX = 0x0002;
     public const int canNOTIFY_ERROR = 0x0004;
 
     // Bus status flags
@@ -206,7 +207,7 @@ public static class Canlib
     private static void Notify(Handle h)
     {
         var cb = h.Callback;
-        if (cb != null && (h.CallbackMask & canNOTIFY_RX) != 0)
+        if (cb != null && (h.CallbackMask & (canNOTIFY_RX | canNOTIFY_TX)) != 0)
         {
             try { cb(h.HandleId, h.CallbackCtx, canNOTIFY_RX); } catch { }
         }
