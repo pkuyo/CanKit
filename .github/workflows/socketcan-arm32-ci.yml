@@ -1,0 +1,107 @@
+name: CI-adapter-socketcan-arm32
+run-name: >-
+  ${{ github.event_name == 'pull_request_target'
+      && format('ARM32 PR #{0}', github.event.number)
+      || format('ARM32 {0} - {1}', github.event_name == 'workflow_dispatch' && 'manual' || 'push', github.ref_name) }}
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - master
+    paths:
+      - '.github/workflows/socketcan-arm32-ci.yml'
+      - 'eng/CanKit.Arm32Ci/**'
+      - 'src/core/**'
+      - 'src/adapters/CanKit.Adapter.SocketCAN/**'
+      - 'tests/CanKit.Tests/**'
+      - 'src/Directory.Build.props'
+      - 'src/Directory.Build.targets'
+      - 'eng/package-versions.props'
+      - 'global.json'
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+    paths:
+      - '.github/workflows/socketcan-arm32-ci.yml'
+      - 'eng/CanKit.Arm32Ci/**'
+      - 'src/core/**'
+      - 'src/adapters/CanKit.Adapter.SocketCAN/**'
+      - 'tests/CanKit.Tests/**'
+      - 'src/Directory.Build.props'
+      - 'src/Directory.Build.targets'
+      - 'eng/package-versions.props'
+      - 'global.json'
+
+jobs:
+  linux-arm32:
+    name: SocketCAN (Linux ARM32, ${{ github.event_name == 'pull_request_target' && 'PR' || github.event_name == 'workflow_dispatch' && 'manual' || 'push' }})
+    # Only pushes to master run without approval; every other run needs arm32-runner approval.
+    environment: ${{ (github.event_name != 'push' || github.ref != 'refs/heads/master') && 'arm32-runner' || '' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    permissions:
+      contents: read
+      id-token: write
+    concurrency:
+      group: cankit-socketcan-arm32
+      cancel-in-progress: false
+      queue: max
+    steps:
+      - name: Checkout trusted controller
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+
+      - name: Checkout PR head
+        if: github.event_name == 'pull_request_target'
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: .arm32-source
+          persist-credentials: false
+
+      - name: Setup .NET for the controller
+        uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      - name: Build ARM32 CI tool
+        run: dotnet publish eng/CanKit.Arm32Ci/CanKit.Arm32Ci.csproj -c Release -o artifacts/arm32-ci
+
+      - name: Check ARM32 connection settings
+        shell: bash
+        env:
+          ARM32_HOST: ${{ secrets.ARM32_HOST }}
+          TS_ARM32_CLIENT_ID: ${{ secrets.TS_ARM32_CLIENT_ID }}
+          TS_ARM32_AUDIENCE: ${{ secrets.TS_ARM32_AUDIENCE }}
+        run: |
+          for setting in ARM32_HOST TS_ARM32_CLIENT_ID TS_ARM32_AUDIENCE; do
+            if [[ -z "${!setting}" ]]; then
+              echo "::error::Missing required repository setting: $setting."
+              exit 1
+            fi
+          done
+
+      - name: Connect to ARM32 test network
+        uses: tailscale/github-action@v4
+        with:
+          oauth-client-id: ${{ secrets.TS_ARM32_CLIENT_ID }}
+          audience: ${{ secrets.TS_ARM32_AUDIENCE }}
+          tags: tag:cankit-ci
+          ping: ${{ secrets.ARM32_HOST }}
+
+      - name: Test SocketCAN on ARM32
+        shell: bash
+        env:
+          ARM32_HOST: ${{ secrets.ARM32_HOST }}
+          ARM32_USER: ${{ secrets.ARM32_USER || 'actions-runner' }}
+          ARM32_SOURCE_DIRECTORY: ${{ github.event_name == 'pull_request_target' && '.arm32-source' || '.' }}
+        run: exec dotnet artifacts/arm32-ci/CanKit.Arm32Ci.dll controller
+
+      - name: Upload ARM32 test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: socketcan-linux-arm32
+          path: TestResults/arm32/
