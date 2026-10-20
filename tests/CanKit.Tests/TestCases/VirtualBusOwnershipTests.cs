@@ -130,6 +130,25 @@ public class VirtualBusOwnershipTests : IClassFixture<TestCaseProvider>
         allocator.Disposed.Should().Be(2);
     }
 
+    [Fact]
+    public void Disposing_The_Bus_From_Its_Own_Handler_Does_Not_Leak_The_Frame()
+    {
+        var session = NewSession();
+        var allocator = new CountingAllocator();
+
+        using var sender = CanBus.Open($"virtual://{session}/0", cfg => cfg.SetProtocolMode(CanProtocolMode.Can20).Baud(TestCaseProvider.AbitRate));
+        var receiver = CanBus.Open($"virtual://{session}/1", cfg =>
+            cfg.SetProtocolMode(CanProtocolMode.Can20).Baud(TestCaseProvider.AbitRate).BufferAllocator(allocator));
+#pragma warning disable CS0618
+        receiver.FrameReceived += (_, _) => receiver.Dispose();
+#pragma warning restore CS0618
+
+        sender.Transmit(CanFrame.Classic(0x1, new byte[] { 1 }));
+
+        allocator.Rented.Should().Be(1);
+        allocator.Disposed.Should().Be(1);
+    }
+
     private sealed class CountingAllocator : CanKit.Abstractions.SPI.Common.IBufferAllocator
     {
         public int Rented, Disposed;
