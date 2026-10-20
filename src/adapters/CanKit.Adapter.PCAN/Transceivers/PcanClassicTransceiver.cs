@@ -170,6 +170,10 @@ public sealed class PcanClassicTransceiver : ITransceiver
             {
                 PcanUtils.ThrowIfError((PcanStatus)st, "CAN_Read()", $"PCAN: receive frame failed. Channel:{((PcanBus)bus).Handle}");
             }
+            // Driver status messages are not CAN frames.
+            if ((pmsg.MSGTYPE & TPCANMessageType.PCAN_MESSAGE_STATUS) != 0)
+                continue;
+
             var isExt = (pmsg.MSGTYPE & TPCANMessageType.PCAN_MESSAGE_EXTENDED) != 0;
             var isRtr = (pmsg.MSGTYPE & TPCANMessageType.PCAN_MESSAGE_RTR) != 0;
             var isErr = (pmsg.MSGTYPE & TPCANMessageType.PCAN_MESSAGE_ERRFRAME) != 0;

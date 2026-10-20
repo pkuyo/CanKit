@@ -210,6 +210,10 @@ public sealed class PcanFdTransceiver : ITransceiver
                 PcanUtils.ThrowIfError((PcanStatus)st, "CAN_ReadFD()", $"PCAN: receive frame failed. Channel:{((PcanBus)bus).Handle}");
             }
 
+            // Driver status messages are not CAN frames.
+            if ((pmsg.MSGTYPE & TPCANMessageType.PCAN_MESSAGE_STATUS) != 0)
+                continue;
+
             var isFd = (pmsg.MSGTYPE & TPCANMessageType.PCAN_MESSAGE_FD) != 0;
             var isExt = (pmsg.MSGTYPE & TPCANMessageType.PCAN_MESSAGE_EXTENDED) != 0;
             var isErr = (pmsg.MSGTYPE & TPCANMessageType.PCAN_MESSAGE_ERRFRAME) != 0;
