@@ -161,7 +161,8 @@ public sealed class PcanClassicTransceiver : ITransceiver
     {
         var ch = (PcanBus)bus;
         if (count < 0) throw new ArgumentOutOfRangeException(nameof(count));
-        for (int i = 0; i < count; i++)
+        // Discarded status messages do not count against the requested frames.
+        for (int received = 0; received < count;)
         {
             var st = PcanBasicNative.CAN_Read((UInt16)ch.Handle, out PcanBasicNative.TpcanMsg pmsg, out var timestamp);
             if (st == TPCANStatus.PCAN_ERROR_QRCVEMPTY)
@@ -185,6 +186,7 @@ public sealed class PcanClassicTransceiver : ITransceiver
                     bus.Options.BufferAllocator.FrameNeedDispose, isErr);
 
             // Assume PCAN timestamp is in microseconds. Convert to TimeSpan
+            received++;
             yield return new CanReceiveData(frame) { ReceiveTimestamp = timestamp.ToTimeSpan() };
 
             unsafe IMemoryOwner<byte> Copy(in PcanBasicNative.TpcanMsg msg, ICanBus bus)

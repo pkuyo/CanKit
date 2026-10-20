@@ -200,7 +200,8 @@ public sealed class PcanFdTransceiver : ITransceiver
     {
         var ch = (PcanBus)bus;
         if (count < 0) throw new ArgumentOutOfRangeException(nameof(count));
-        for (int i = 0; i < count; i++)
+        // Discarded status messages do not count against the requested frames.
+        for (int received = 0; received < count;)
         {
             var st = PcanBasicNative.CAN_ReadFD((UInt16)ch.Handle, out var pmsg, out var timestamp);
             if (st == TPCANStatus.PCAN_ERROR_QRCVEMPTY)
@@ -226,6 +227,7 @@ public sealed class PcanFdTransceiver : ITransceiver
                 var cf = CanFrame.Classic((int)pmsg.ID, scf, isExt, isRtr,
                     bus.Options.BufferAllocator.FrameNeedDispose, isErr);
 
+                received++;
                 yield return new CanReceiveData(cf) { ReceiveTimestamp = TimeSpan.FromTicks((long)ticks) };
                 continue;
             }
@@ -238,6 +240,7 @@ public sealed class PcanFdTransceiver : ITransceiver
                 bus.Options.BufferAllocator.FrameNeedDispose, isErr);
 
 
+            received++;
             yield return new CanReceiveData(fd) { ReceiveTimestamp = TimeSpan.FromTicks((long)ticks) };
         }
 
