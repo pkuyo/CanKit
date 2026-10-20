@@ -161,11 +161,17 @@ public sealed class PcanClassicTransceiver : ITransceiver
     {
         var ch = (PcanBus)bus;
         if (count < 0) throw new ArgumentOutOfRangeException(nameof(count));
-        for (int i = 0; i < count; i++)
+        // Discarded status messages do not count against the requested frames.
+        for (int received = 0; received < count;)
         {
             var st = PcanBasicNative.CAN_Read((UInt16)ch.Handle, out PcanBasicNative.TpcanMsg pmsg, out var timestamp);
             if (st == TPCANStatus.PCAN_ERROR_QRCVEMPTY)
                 break;
+            // Driver status messages are not CAN frames. PCAN-Basic also returns the reported
+            // bus state (overrun, warning, passive, bus-off) as the read result, so check this
+            // before the status is treated as a failure.
+            if ((pmsg.MSGTYPE & TPCANMessageType.PCAN_MESSAGE_STATUS) != 0)
+                continue;
             if (st != TPCANStatus.PCAN_ERROR_OK)
             {
                 PcanUtils.ThrowIfError((PcanStatus)st, "CAN_Read()", $"PCAN: receive frame failed. Channel:{((PcanBus)bus).Handle}");
@@ -180,6 +186,7 @@ public sealed class PcanClassicTransceiver : ITransceiver
                     bus.Options.BufferAllocator.FrameNeedDispose, isErr);
 
             // Assume PCAN timestamp is in microseconds. Convert to TimeSpan
+            received++;
             yield return new CanReceiveData(frame) { ReceiveTimestamp = timestamp.ToTimeSpan() };
 
             unsafe IMemoryOwner<byte> Copy(in PcanBasicNative.TpcanMsg msg, ICanBus bus)
