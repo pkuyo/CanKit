@@ -179,7 +179,7 @@ public sealed class PcanClassicTransceiver : ITransceiver
             var isExt = (pmsg.MSGTYPE & TPCANMessageType.PCAN_MESSAGE_EXTENDED) != 0;
             var isRtr = (pmsg.MSGTYPE & TPCANMessageType.PCAN_MESSAGE_RTR) != 0;
             var isErr = (pmsg.MSGTYPE & TPCANMessageType.PCAN_MESSAGE_ERRFRAME) != 0;
-
+            var isEcho = (pmsg.MSGTYPE & TPCANMessageType.PCAN_MESSAGE_ECHO) != 0;
 
             var slice = Copy(pmsg, bus);
             var frame = CanFrame.Classic((int)pmsg.ID, slice, isExt, isRtr,
@@ -187,7 +187,7 @@ public sealed class PcanClassicTransceiver : ITransceiver
 
             // Assume PCAN timestamp is in microseconds. Convert to TimeSpan
             received++;
-            yield return new CanReceiveData(frame) { ReceiveTimestamp = timestamp.ToTimeSpan() };
+            yield return new CanReceiveData(frame) { ReceiveTimestamp = timestamp.ToTimeSpan(), IsEcho = isEcho };
 
             unsafe IMemoryOwner<byte> Copy(in PcanBasicNative.TpcanMsg msg, ICanBus bus)
             {
