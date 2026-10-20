@@ -207,7 +207,7 @@ public static class Canlib
     private static void Notify(Handle h)
     {
         var cb = h.Callback;
-        if (cb != null && (h.CallbackMask & (canNOTIFY_RX | canNOTIFY_TX)) != 0)
+        if (cb != null && (h.CallbackMask & canNOTIFY_RX) != 0)
         {
             try { cb(h.HandleId, h.CallbackCtx, canNOTIFY_RX); } catch { }
         }
