@@ -66,8 +66,7 @@ public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, IOwnership
             });
 
         // join hub
-        _hub = VirtualBusHub.Get(Options.SessionId);
-        _hub.Attach(this);
+        _hub = VirtualBusHub.Join(Options.SessionId, this);
 
         // apply initial options (software filter, etc.)
         ApplyConfig(_options);
@@ -228,6 +227,7 @@ public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, IOwnership
         var pred = _softwareFilterPredicate;
         if (_useSoftwareFilter && pred is not null && !pred(data.CanFrame))
         {
+            data.CanFrame.Dispose();
             return;
         }
 

@@ -9,6 +9,9 @@
 
 ### Fixed
 
+* `CanFrame.Dispose()` released the backing `IMemoryOwner<byte>` even for frames created with `ownMemory: false`. It now does nothing for frames that do not own their memory. Code that relied on `ownMemory: false` frames releasing the owner must dispose the owner itself.
+* Virtual bus `VirtualBusHub.Broadcast` handed the same frame memory to every recipient and to the echo, so one consumer disposing its frame invalidated all others. Each recipient now gets its own copy (new `CanFrame.Copy(IBufferAllocator)`), and the echoed frame is marked `IsEcho = true`. Frames dropped by the software filter are disposed.
+* `VirtualBusHub` kept every session hub forever. A hub is now removed when its last bus is disposed, and joining and leaving go through one registry lock.
 * ControlCAN batch `Transmit` compared the running write total to `BATCH_COUNT` (64), so a second full native batch aborted the rest of the payload (128 frames sent, remainder dropped). The short-write check now uses this `VCI_Transmit` call's return value. `VCI_Receive` marshals the receive array as `[Out]` so native fills copy back into managed memory.
 * ZLG merged receive (`ZCAN_ReceiveData`, used for PCIe-CANFD) looped until the requested number of frames had arrived and never gave up. Because the merged queue is device-wide, a channel could wait for frames another channel had already taken; its receive thread then spun at 100 % CPU and kept running after `Dispose()`. The call now returns when the driver delivers nothing within the wait time.
 * ZLG `Dispose()` could throw `NullReferenceException` on .NET Framework and report a spurious fault: the poll loop ran into the disposed check, treated it as a fault and stopped itself while `Dispose()` was stopping it too, so both released the same cancellation source. Disposal during a poll is now a normal exit, and the loop state is handed over atomically.
