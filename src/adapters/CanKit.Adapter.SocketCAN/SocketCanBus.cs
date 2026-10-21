@@ -387,6 +387,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IOwnersh
         try
         {
             _isDisposed = true;
+            _asyncRx.Complete();
             StopReceiveLoop();
             _fd.Dispose();
         }

@@ -325,6 +325,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IOwnership
         try
         {
             _isDisposed = true;
+            _asyncRx.Complete();
             StopReceiveLoop();
             try { _recEvent?.Dispose(); } catch { }
             _ = Api.Uninitialize(_handle);
