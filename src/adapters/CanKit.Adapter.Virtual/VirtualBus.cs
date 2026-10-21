@@ -44,8 +44,10 @@ public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, IOwnership
         Options.Init((VirtualBusOptions)options);
         _options = options;
         _transceiver = transceiver;
+        // The hub hands every receiver the sender's own CanFrame (see #18): this bus does not own
+        // the payload, so a frame dropped from the pipe must not be released here.
         _asyncRx = new AsyncFramePipe<CanReceiveData>(Options.AsyncBufferCapacity > 0 ? Options.AsyncBufferCapacity : null,
-            static data => data.CanFrame.Dispose());
+            static _ => { });
 
         _exceptionPolicy = options.ExceptionPolicy ?? CanExceptionPolicy.Default;
         _exceptions = new CanBusExceptionDispatcher(
