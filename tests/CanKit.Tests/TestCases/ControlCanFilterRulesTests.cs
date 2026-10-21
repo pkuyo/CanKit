@@ -22,10 +22,11 @@ namespace CanKit.Tests.TestCases;
 /// </summary>
 public class ControlCanFilterRulesTests
 {
-    private const string RangeRx = "controlcan://VCI_USBCAN_2E_U?index=0#ch0";
-    private const string RangeTx = "controlcan://VCI_USBCAN_2E_U?index=0#ch1";
-    private const string MaskRx = "controlcan://VCI_USBCAN2?index=0#ch0";
-    private const string MaskTx = "controlcan://VCI_USBCAN2?index=0#ch1";
+    // Dedicated fake devices; index 0 belongs to the matrix, index 1 to ControlCanRangeFilterTests.
+    private const string RangeRx = "controlcan://VCI_USBCAN_2E_U?index=2#ch0";
+    private const string RangeTx = "controlcan://VCI_USBCAN_2E_U?index=2#ch1";
+    private const string MaskRx = "controlcan://VCI_USBCAN2?index=2#ch0";
+    private const string MaskTx = "controlcan://VCI_USBCAN2?index=2#ch1";
 
     [Fact]
     public async Task Range_And_Mask_Rules_Are_Evaluated_In_Software_As_A_Union()
