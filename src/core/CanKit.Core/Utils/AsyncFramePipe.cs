@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using CanKit.Core.Definitions;
+using CanKit.Core.Diagnostics;
 using System.Threading.Channels;
 using CanKit.Abstractions.API.Common;
 using CanKit.Abstractions.API.Common.Definitions;
@@ -33,7 +34,7 @@ public sealed class AsyncFramePipe<T>
 
             _channel = onDropped is null
                 ? Channel.CreateBounded<T>(opt)
-                : Channel.CreateBounded<T>(opt, onDropped);
+                : Channel.CreateBounded<T>(opt, DropItem);
         }
         else
         {
@@ -46,7 +47,7 @@ public sealed class AsyncFramePipe<T>
         if (!_channel.Writer.TryWrite(frame))
         {
             // The pipe is completed: nobody will read the frame, so release it.
-            _onDropped?.Invoke(frame);
+            DropItem(frame);
         }
     }
 
@@ -63,13 +64,27 @@ public sealed class AsyncFramePipe<T>
 
     /// <summary>
     /// Discards every queued item. Each one is handed to the drop callback so that pooled
-    /// frame memory is released.
+    /// frame memory is released. Callback failures are logged without interrupting cleanup.
     /// </summary>
     public void Clear()
     {
         while (_channel.Reader.TryRead(out var item))
         {
+            DropItem(item);
+        }
+    }
+
+    private void DropItem(T item)
+    {
+        try
+        {
             _onDropped?.Invoke(item);
+        }
+        catch (Exception ex)
+        {
+            // A failing custom owner must not prevent other releases or shutdown cancellation.
+            try { CanKitLogger.LogWarning("AsyncFramePipe drop callback failed.", ex); }
+            catch { /* A custom logger must not interrupt cleanup either. */ }
         }
     }
 

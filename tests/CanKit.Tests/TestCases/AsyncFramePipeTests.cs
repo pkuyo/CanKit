@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using CanKit.Core.Utils;
@@ -87,6 +88,68 @@ public class AsyncFramePipeTests
         pipe.Clear();
 
         dropped.Should().Equal(1, 2);
+    }
+
+    [Theory]
+    [InlineData(null, false)]
+    [InlineData(null, true)]
+    [InlineData(4, false)]
+    [InlineData(4, true)]
+    public async Task Clear_Drains_Every_Item_When_Drop_Callbacks_Throw(int? capacity, bool complete)
+    {
+        var dropped = new List<int>();
+        var pipe = new AsyncFramePipe<int>(capacity, item =>
+        {
+            dropped.Add(item);
+            if (item % 2 != 0)
+                throw new InvalidOperationException("Buffer disposal failed.");
+        });
+        for (var item = 1; item <= 4; item++)
+            pipe.Publish(item);
+        if (complete)
+            pipe.Complete();
+
+        Action clear = pipe.Clear;
+        clear.Should().NotThrow("cleanup must continue to shutdown cancellation after draining");
+
+        dropped.Should().Equal(1, 2, 3, 4);
+        (await pipe.ReceiveBatchAsync(0, 0, TestContext.Current.CancellationToken)).Should().BeEmpty();
+        pipe.Clear();
+        dropped.Should().HaveCount(4, "a failed callback must not leave an item queued for another release");
+    }
+
+    [Fact]
+    public void Publish_After_Complete_Does_Not_Propagate_A_Drop_Callback_Failure()
+    {
+        var dropped = new List<int>();
+        var pipe = new AsyncFramePipe<int>(onDropped: item =>
+        {
+            dropped.Add(item);
+            throw new InvalidOperationException("Buffer disposal failed.");
+        });
+        pipe.Complete();
+
+        Action publish = () => pipe.Publish(42);
+        publish.Should().NotThrow();
+        dropped.Should().Equal(42);
+    }
+
+    [Fact]
+    public async Task Bounded_Publish_Preserves_The_New_Item_When_The_Drop_Callback_Throws()
+    {
+        var dropped = new List<int>();
+        var pipe = new AsyncFramePipe<int>(1, item =>
+        {
+            dropped.Add(item);
+            throw new InvalidOperationException("Buffer disposal failed.");
+        });
+        pipe.Publish(1);
+
+        Action publish = () => pipe.Publish(2);
+        publish.Should().NotThrow();
+
+        dropped.Should().Equal(1);
+        (await pipe.ReceiveBatchAsync(0, 0, TestContext.Current.CancellationToken)).Should().Equal(2);
     }
 
     [Fact]
