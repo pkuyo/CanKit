@@ -52,18 +52,24 @@ public sealed class AsyncFramePipe<T>
 
     /// <summary>
     /// Completes the pipe. Pending and future reads end: <see cref="ReadAllAsync"/> finishes
-    /// after the remaining items, <see cref="ReceiveBatchAsync"/> returns what it has collected.
-    /// Frames published afterwards are handed to the drop callback. Idempotent.
+    /// once the queue is empty, <see cref="ReceiveBatchAsync"/> returns what it has collected.
+    /// Frames published afterwards are handed to the drop callback. Items still queued stay
+    /// readable until <see cref="Clear"/> releases them. Idempotent.
     /// </summary>
     public void Complete()
     {
         _ = _channel.Writer.TryComplete();
     }
 
+    /// <summary>
+    /// Discards every queued item. Each one is handed to the drop callback so that pooled
+    /// frame memory is released.
+    /// </summary>
     public void Clear()
     {
-        while (_channel.Reader.TryRead(out _))
+        while (_channel.Reader.TryRead(out var item))
         {
+            _onDropped?.Invoke(item);
         }
     }
 

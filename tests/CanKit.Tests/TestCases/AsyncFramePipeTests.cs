@@ -22,7 +22,7 @@ public class AsyncFramePipeTests
 
         pipe.Complete();
 
-        var items = await read.WaitAsync(System.TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken);
+        var items = await read.WithinTwoSeconds();
         items.Should().BeEmpty();
     }
 
@@ -34,7 +34,7 @@ public class AsyncFramePipeTests
         pipe.Publish(2);
         pipe.Complete();
 
-        var items = await ReadAllAsync(pipe).WaitAsync(System.TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken);
+        var items = await ReadAllAsync(pipe).WithinTwoSeconds();
         items.Should().Equal(1, 2);
     }
 
@@ -49,7 +49,7 @@ public class AsyncFramePipeTests
 
         pipe.Complete();
 
-        var batch = await read.WaitAsync(System.TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken);
+        var batch = await read.WithinTwoSeconds();
         batch.Should().Equal(7);
     }
 
@@ -60,7 +60,7 @@ public class AsyncFramePipeTests
         pipe.Complete();
 
         var batch = await pipe.ReceiveBatchAsync(1, -1, TestContext.Current.CancellationToken)
-            .WaitAsync(System.TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken);
+            .WithinTwoSeconds();
         batch.Should().BeEmpty();
     }
 
@@ -74,6 +74,19 @@ public class AsyncFramePipeTests
         pipe.Publish(42);
 
         dropped.Should().Equal(42);
+    }
+
+    [Fact]
+    public void Clear_Hands_Queued_Items_To_The_Drop_Callback()
+    {
+        var dropped = new List<int>();
+        var pipe = new AsyncFramePipe<int>(onDropped: dropped.Add);
+        pipe.Publish(1);
+        pipe.Publish(2);
+
+        pipe.Clear();
+
+        dropped.Should().Equal(1, 2);
     }
 
     [Fact]
@@ -91,5 +104,16 @@ public class AsyncFramePipeTests
         await foreach (var item in pipe.ReadAllAsync(TestContext.Current.CancellationToken))
             list.Add(item);
         return list;
+    }
+}
+
+internal static class TaskTimeoutExtensions
+{
+    /// <summary>Task.WaitAsync is not available on .NET Framework, so race against a delay.</summary>
+    public static async Task<T> WithinTwoSeconds<T>(this Task<T> task)
+    {
+        var completed = await Task.WhenAny(task, Task.Delay(System.TimeSpan.FromSeconds(2)));
+        completed.Should().BeSameAs(task, "the task must complete within two seconds");
+        return await task;
     }
 }
