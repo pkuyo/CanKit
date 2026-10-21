@@ -479,7 +479,10 @@ public sealed class ControlCanBus : ICanBus<ControlCanBusRtConfigurator>, IOwner
             foreach (var frame in _transceiver.Receive(this, CcApi.BATCH_COUNT))
             {
                 if (_softwareFilterPredicate != null && !_softwareFilterPredicate(frame.CanFrame))
+                {
+                    frame.CanFrame.Dispose();
                     continue;
+                }
                 try
                 {
                     var evSnap = Volatile.Read(ref _frameReceived);

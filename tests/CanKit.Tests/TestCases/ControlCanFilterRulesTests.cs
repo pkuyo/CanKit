@@ -1,9 +1,13 @@
 #if FAKE
+using System;
+using System.Buffers;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using CanKit.Abstractions.API.Can.Definitions;
 using CanKit.Abstractions.API.Common;
 using CanKit.Abstractions.API.Common.Definitions;
+using CanKit.Abstractions.SPI.Common;
 using CanKit.Core;
 using CanKit.Core.Definitions;
 using FluentAssertions;
@@ -88,6 +92,82 @@ public class ControlCanFilterRulesTests
 
         var got = await rx.ReceiveAsync(8, 300, TestContext.Current.CancellationToken);
         got.Select(d => d.CanFrame.ID).Should().Equal(0x105, 0x405);
+    }
+
+    [Theory]
+    [InlineData(true, true)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(false, false)]
+    public async Task Software_Filter_Releases_Rejected_Frames_And_Preserves_Accepted_Frames(
+        bool mixedRules, bool includeAccepted)
+    {
+        var allocator = new CountingBufferAllocator();
+        using var rx = CanBus.Open(mixedRules ? RangeRx : MaskRx, cfg =>
+        {
+            Configure(cfg).BufferAllocator(allocator).SoftwareFeaturesFallBack(CanFeature.MaskFilter);
+            if (mixedRules)
+                cfg.RangeFilter(0x100, 0x1FF, CanFilterIDType.Standard);
+            else
+                cfg.AccMask(0x100, 0x7F0, CanFilterIDType.Standard);
+            cfg.AccMask(0x400, 0x7F0, CanFilterIDType.Standard);
+        });
+        using var tx = CanBus.Open(mixedRules ? RangeTx : MaskTx, cfg => Configure(cfg));
+
+        tx.Transmit(new[]
+        {
+            CanFrame.Classic(0x300, new byte[] { 1 }),
+            CanFrame.Classic(0x4FF, new byte[] { 2 }),
+            CanFrame.Classic(includeAccepted ? 0x105 : 0x305, new byte[] { 3 }),
+            CanFrame.Classic(includeAccepted ? 0x405 : 0x505, new byte[] { 4 }),
+        }).Should().Be(4);
+
+        var got = await rx.ReceiveAsync(8, 300, TestContext.Current.CancellationToken);
+        try
+        {
+            allocator.RentCount.Should().Be(4, "every frame passes the open hardware filter");
+            allocator.DisposeCount.Should().Be(includeAccepted ? 2 : 4,
+                "only rejected frames should have been released before delivery");
+            got.Select(d => d.CanFrame.ID).Should().Equal(includeAccepted ? new[] { 0x105, 0x405 } : Array.Empty<int>());
+            if (includeAccepted)
+                got.Select(d => d.CanFrame.Data.Span[0]).Should().Equal(3, 4);
+        }
+        finally
+        {
+            foreach (var frame in got)
+                frame.CanFrame.Dispose();
+        }
+
+        allocator.DisposeCount.Should().Be(allocator.RentCount, "every rental must be released exactly once");
+    }
+
+    private sealed class CountingBufferAllocator : IBufferAllocator
+    {
+        private int _rentCount;
+        private int _disposeCount;
+
+        public int RentCount => Volatile.Read(ref _rentCount);
+        public int DisposeCount => Volatile.Read(ref _disposeCount);
+        public bool FrameNeedDispose => true;
+
+        public IMemoryOwner<byte> Rent(int length, bool zeroFill = false)
+        {
+            Interlocked.Increment(ref _rentCount);
+            return new TrackedOwner(length, this);
+        }
+
+        private sealed class TrackedOwner(int length, CountingBufferAllocator allocator) : IMemoryOwner<byte>
+        {
+            private byte[]? _buffer = new byte[length];
+
+            public Memory<byte> Memory => _buffer ?? throw new ObjectDisposedException(nameof(TrackedOwner));
+
+            public void Dispose()
+            {
+                Interlocked.Increment(ref allocator._disposeCount);
+                _buffer = null;
+            }
+        }
     }
 
     private static IBusInitOptionsConfigurator Configure(IBusInitOptionsConfigurator cfg)
