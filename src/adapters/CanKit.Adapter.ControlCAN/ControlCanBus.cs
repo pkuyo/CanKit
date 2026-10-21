@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using CanKit.Abstractions.API.Can;
@@ -192,11 +193,13 @@ public sealed class ControlCanBus : ICanBus<ControlCanBusRtConfigurator>, IOwner
             {
                 var pRecord = stackalloc CcApi.VCI_FILTER_RECORD[1];
                 var any = false;
-                foreach (var filter in Options.Filter.FilterRules)
+                // Iterate a snapshot: rules the hardware cannot take are moved to the software
+                // list, and SoftwareFilterRules must not be the list being iterated.
+                foreach (var filter in Options.Filter.FilterRules.ToArray())
                 {
                     if (filter is not FilterRule.Range range)
                     {
-                        options.Filter.FilterRules.Add(filter);
+                        options.Filter.SoftwareFilterRules.Add(filter);
                     }
                     else
                     {
