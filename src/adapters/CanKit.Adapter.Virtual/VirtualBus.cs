@@ -219,6 +219,7 @@ public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, IOwnership
         finally
         {
             _disposed = true;
+            _asyncRx.Complete();
             _owner?.Dispose();
         }
     }

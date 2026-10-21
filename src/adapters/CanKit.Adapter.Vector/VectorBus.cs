@@ -518,6 +518,7 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
     {
         if (_isDisposed) return;
         _isDisposed = true;
+        _asyncRx.Complete();
 
         try
         {

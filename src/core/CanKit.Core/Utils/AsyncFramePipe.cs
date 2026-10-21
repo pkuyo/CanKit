@@ -14,12 +14,14 @@ namespace CanKit.Core.Utils;
 public sealed class AsyncFramePipe<T>
 {
     private readonly Channel<T> _channel;
+    private readonly Action<T>? _onDropped;
 
     private volatile TaskCompletionSource<Exception?> _exceptionPulse =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     public AsyncFramePipe(int? capacity = null, Action<T>? onDropped = null)
     {
+        _onDropped = onDropped;
         if (capacity.HasValue)
         {
             var opt = new BoundedChannelOptions(capacity.Value)
@@ -41,7 +43,21 @@ public sealed class AsyncFramePipe<T>
 
     public void Publish(T frame)
     {
-        _ = _channel.Writer.TryWrite(frame);
+        if (!_channel.Writer.TryWrite(frame))
+        {
+            // The pipe is completed: nobody will read the frame, so release it.
+            _onDropped?.Invoke(frame);
+        }
+    }
+
+    /// <summary>
+    /// Completes the pipe. Pending and future reads end: <see cref="ReadAllAsync"/> finishes
+    /// after the remaining items, <see cref="ReceiveBatchAsync"/> returns what it has collected.
+    /// Frames published afterwards are handed to the drop callback. Idempotent.
+    /// </summary>
+    public void Complete()
+    {
+        _ = _channel.Writer.TryComplete();
     }
 
     public void Clear()
@@ -95,7 +111,8 @@ public sealed class AsyncFramePipe<T>
                     catch (ChannelClosedException cce)
                     {
                         if (cce.InnerException is not null) throw cce.InnerException;
-                        throw;
+                        // Completed without error: the bus was disposed.
+                        return list;
                     }
                 }
                 else

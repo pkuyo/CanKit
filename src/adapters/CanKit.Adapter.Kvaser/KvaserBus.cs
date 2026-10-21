@@ -431,6 +431,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IOwnership
     {
         if (_isDisposed) return;
         _isDisposed = true;
+        _asyncRx.Complete();
         StopReceiveLoop();
         try { _ = Canlib.canBusOff(_handle); } catch { }
         try { _ = Canlib.canClose(_handle); } catch { }
