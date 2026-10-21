@@ -102,8 +102,11 @@ public sealed class ControlCanBus : ICanBus<ControlCanBusRtConfigurator>, IOwner
             Mode = options.WorkMode == ChannelWorkMode.ListenOnly ? (byte)1 : (byte)0,
         };
 
+        // A single mask rule is the only list the init config can express as a whole. Anything
+        // else leaves the hardware open here; ApplyConfigAfterInit programs ranges or falls
+        // back to software.
         var rules = options.Filter.FilterRules;
-        if (rules.Count > 0 && rules[0] is FilterRule.Mask mask)
+        if (rules.Count == 1 && rules[0] is FilterRule.Mask mask)
         {
             cfg.AccCode = mask.AccCode;
             cfg.AccMask = mask.AccMask;
@@ -187,51 +190,41 @@ public sealed class ControlCanBus : ICanBus<ControlCanBusRtConfigurator>, IOwner
     }
     public void ApplyConfigAfterInit(IBusOptions options)
     {
-        if ((options.Features & CanFeature.RangeFilter) != 0)
+        var rules = Options.Filter.FilterRules.ToArray();
+        if (rules.Length == 0) return;
+
+        // Rules are combined with OR (FilterRule.Build). The hardware takes the list only when
+        // it can express it as a whole: range rules only on a range-filter device, or a single
+        // mask rule (programmed through VCI_INIT_CONFIG in the constructor). Any other list is
+        // evaluated in software with the hardware filter left open, so that the OR does not turn
+        // into an AND across the two stages.
+        if ((options.Features & CanFeature.RangeFilter) != 0 && rules.All(r => r is FilterRule.Range))
         {
             unsafe
             {
                 var pRecord = stackalloc CcApi.VCI_FILTER_RECORD[1];
-                var any = false;
-                // Iterate a snapshot: rules the hardware cannot take are moved to the software
-                // list, and SoftwareFilterRules must not be the list being iterated.
-                foreach (var filter in Options.Filter.FilterRules.ToArray())
+                foreach (var range in rules.Cast<FilterRule.Range>())
                 {
-                    if (filter is not FilterRule.Range range)
-                    {
-                        options.Filter.SoftwareFilterRules.Add(filter);
-                    }
-                    else
-                    {
-                        pRecord->Start = range.From;
-                        pRecord->End = range.To;
-                        pRecord->ExtFrame = (range.FilterIdType == CanFilterIDType.Extend ? 1U : 0U);
-                        ControlCanErr.ThrowIfErr(CcApi.VCI_SetReference(_rawDevType, _devIndex, CanIndex, 1, pRecord), "VCI_SetReference(Filter)", this);
-                        any = true;
-                    }
+                    pRecord->Start = range.From;
+                    pRecord->End = range.To;
+                    pRecord->ExtFrame = (range.FilterIdType == CanFilterIDType.Extend ? 1U : 0U);
+                    ControlCanErr.ThrowIfErr(CcApi.VCI_SetReference(_rawDevType, _devIndex, CanIndex, 1, pRecord), "VCI_SetReference(Filter)", this);
                 }
-
-                if (any)
-                {
-                    ControlCanErr.ThrowIfErr(CcApi.VCI_SetReference(_rawDevType, _devIndex, CanIndex, 2, null), "VCI_SetReference(StartFilter)", this);
-                }
+                ControlCanErr.ThrowIfErr(CcApi.VCI_SetReference(_rawDevType, _devIndex, CanIndex, 2, null), "VCI_SetReference(StartFilter)", this);
             }
-        }
-        else
-        {
-            foreach (var filter in Options.Filter.FilterRules)
-            {
-                if (filter is not FilterRule.Mask)
-                {
-                    options.Filter.SoftwareFilterRules.Add(filter);
-                }
-            }
+            return;
         }
 
-        if (options.Filter.FilterRules.Count != 0)
+        if (rules.Length == 1 && rules[0] is FilterRule.Mask)
         {
-            _softwareFilterPredicate = FilterRule.Build(Options.Filter.SoftwareFilterRules);
+            return;
         }
+
+        foreach (var filter in rules)
+        {
+            options.Filter.SoftwareFilterRules.Add(filter);
+        }
+        _softwareFilterPredicate = FilterRule.Build(Options.Filter.SoftwareFilterRules);
     }
 
     public void Reset()
