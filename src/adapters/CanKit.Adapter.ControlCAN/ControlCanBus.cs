@@ -433,7 +433,7 @@ public sealed class ControlCanBus : ICanBus<ControlCanBusRtConfigurator>, IOwner
             while (true)
             {
                 token.ThrowIfCancellationRequested();
-                DrainReceive();
+                DrainReceive(token);
                 var errSnap = Volatile.Read(ref _errorOccurred);
                 if (errSnap != null && Options.AllowErrorInfo && ReadErrorInfo(out var info) && info is not null)
                 {
@@ -471,13 +471,15 @@ public sealed class ControlCanBus : ICanBus<ControlCanBusRtConfigurator>, IOwner
         }
     }
 
-    private void DrainReceive()
+    private void DrainReceive(CancellationToken token)
     {
         while (true)
         {
-            bool any = false;
+            token.ThrowIfCancellationRequested();
+            bool anyReceived = false;
             foreach (var frame in _transceiver.Receive(this, CcApi.BATCH_COUNT))
             {
+                anyReceived = true;
                 if (_softwareFilterPredicate != null && !_softwareFilterPredicate(frame.CanFrame))
                 {
                     frame.CanFrame.Dispose();
@@ -512,9 +514,8 @@ public sealed class ControlCanBus : ICanBus<ControlCanBusRtConfigurator>, IOwner
                 }
 
                 _asyncRx.Publish(frame);
-                any = true;
             }
-            if (!any) break;
+            if (!anyReceived) break;
         }
     }
 

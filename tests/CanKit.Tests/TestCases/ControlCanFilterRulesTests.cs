@@ -8,6 +8,7 @@ using CanKit.Abstractions.API.Can.Definitions;
 using CanKit.Abstractions.API.Common;
 using CanKit.Abstractions.API.Common.Definitions;
 using CanKit.Abstractions.SPI.Common;
+using CanKit.Adapter.ControlCAN;
 using CanKit.Core;
 using CanKit.Core.Definitions;
 using FluentAssertions;
@@ -93,6 +94,55 @@ public class ControlCanFilterRulesTests
 
         var got = await rx.ReceiveAsync(8, 300, TestContext.Current.CancellationToken);
         got.Select(d => d.CanFrame.ID).Should().Equal(0x105, 0x405);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Matching_Frames_After_Fully_Rejected_Batches_Arrive_In_The_Same_Poll(bool mixedRules)
+    {
+        var allocator = new CountingBufferAllocator();
+        using var rx = (ControlCanBus)CanBus.Open(mixedRules ? RangeRx : MaskRx, cfg =>
+        {
+            Configure(cfg).BufferAllocator(allocator).SoftwareFeaturesFallBack(CanFeature.MaskFilter);
+            if (mixedRules)
+                cfg.RangeFilter(0x100, 0x1FF, CanFilterIDType.Standard);
+            else
+                cfg.AccMask(0x100, 0x7F0, CanFilterIDType.Standard);
+            cfg.AccMask(0x400, 0x7F0, CanFilterIDType.Standard);
+        });
+        using var tx = CanBus.Open(mixedRules ? RangeTx : MaskTx, cfg => Configure(cfg));
+        var burst = Enumerable.Range(0, 128)
+            .Select(_ => CanFrame.Classic(0x300, new byte[] { 1 }))
+            .Concat(new[]
+            {
+                CanFrame.Classic(0x105, new byte[] { 2 }),
+                CanFrame.Classic(0x405, new byte[] { 3 }),
+            }).ToArray();
+
+        rx.FrameObserved += (_, data) =>
+        {
+            if (data.CanFrame.ID != 0x100) return;
+            // Queue two fully rejected native batches while the current drain is active.
+            // A second poll is deliberately too late to satisfy the receive below.
+            rx.Options.PollingInterval = 10_000;
+            tx.Transmit(burst);
+        };
+        tx.Transmit(CanFrame.Classic(0x100, new byte[] { 0 })).Should().Be(1);
+
+        var got = await rx.ReceiveAsync(3, 1000, TestContext.Current.CancellationToken);
+        try
+        {
+            got.Select(d => d.CanFrame.ID).Should().Equal(0x100, 0x105, 0x405);
+            allocator.RentCount.Should().Be(131, "one poll must drain all received frames, including rejected batches");
+            allocator.DisposeCount.Should().Be(128, "every rejected frame must release its buffer");
+        }
+        finally
+        {
+            foreach (var frame in got)
+                frame.CanFrame.Dispose();
+        }
+        allocator.DisposeCount.Should().Be(allocator.RentCount);
     }
 
     [Theory]
