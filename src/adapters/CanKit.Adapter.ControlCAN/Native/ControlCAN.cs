@@ -33,11 +33,13 @@ internal static class ControlCAN
         [MarshalAs(UnmanagedType.ByValArray, SizeConst = 4)] public ushort[] Reserved;
     }
 
+    // ControlCAN.h: DWORD ExtFrame; DWORD Start; DWORD End; -> 12 bytes
     [StructLayout(LayoutKind.Sequential)]
-    public struct VCI_FILTER_RECORD{
-        public ulong ExtFrame;
-        public ulong Start;
-        public ulong End;
+    public struct VCI_FILTER_RECORD
+    {
+        public uint ExtFrame;
+        public uint Start;
+        public uint End;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -136,11 +138,12 @@ internal static class ControlCAN
 
     public struct VCI_BOARD_INFO { }
 
+    // Same layout as the real binding: DWORD ExtFrame; DWORD Start; DWORD End; -> 12 bytes
     public struct VCI_FILTER_RECORD
     {
-        public ulong ExtFrame;
-        public ulong Start;
-        public ulong End;
+        public uint ExtFrame;
+        public uint Start;
+        public uint End;
     }
 
     public unsafe struct VCI_CAN_OBJ
@@ -505,24 +508,10 @@ internal static class ControlCAN
                 }
                 return 1;
             case 1:
-                // Add range filter record; pData may be pointer-to-pointer depending on caller
+                // Add a range filter record. As in the vendor library, pData points directly
+                // at one VCI_FILTER_RECORD.
                 if (pData == null) return 0;
-                {
-                    VCI_FILTER_RECORD* pr;
-                    // Try treat as pointer-to-pointer first
-                    var ppr = (VCI_FILTER_RECORD**)pData;
-                    try
-                    {
-                        pr = *ppr;
-                        if (pr == null) return 0;
-                    }
-                    catch
-                    {
-                        pr = (VCI_FILTER_RECORD*)pData;
-                    }
-                    var rec = *pr;
-                    ch.PendingRanges.Add(rec);
-                }
+                ch.PendingRanges.Add(*(VCI_FILTER_RECORD*)pData);
                 return 1;
             case 2:
                 // Start/commit range filters

@@ -203,7 +203,7 @@ public sealed class ControlCanBus : ICanBus<ControlCanBusRtConfigurator>, IOwner
                         pRecord->Start = range.From;
                         pRecord->End = range.To;
                         pRecord->ExtFrame = (range.FilterIdType == CanFilterIDType.Extend ? 1U : 0U);
-                        ControlCanErr.ThrowIfErr(CcApi.VCI_SetReference(_rawDevType, _devIndex, CanIndex, 1, &pRecord), "VCI_SetReference(Filter)", this);
+                        ControlCanErr.ThrowIfErr(CcApi.VCI_SetReference(_rawDevType, _devIndex, CanIndex, 1, pRecord), "VCI_SetReference(Filter)", this);
                         any = true;
                     }
                 }
