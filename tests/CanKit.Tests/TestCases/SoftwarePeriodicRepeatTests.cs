@@ -1,6 +1,5 @@
 using System;
 using System.Linq;
-using System.Threading;
 using CanKit.Abstractions.API.Can;
 using CanKit.Abstractions.API.Can.Definitions;
 using CanKit.Abstractions.API.Common;
@@ -47,9 +46,9 @@ public class SoftwarePeriodicRepeatTests : IClassFixture<TestCaseProvider>
             Count(rx, TimeSpan.FromMilliseconds(100)).Should().BeGreaterThan(0);
 
             periodic.Update(repeatCount: 0);
-            Thread.Sleep(50); // let a send that was already in flight arrive
-
-            Count(rx, TimeSpan.FromMilliseconds(50)).Should().BeLessThanOrEqualTo(1);
+            // Update waits for the worker to stop. Discard frames already received before
+            // it returned; a busy sender can leave more than one queued at this point.
+            _ = rx.Receive(0, 0).ToArray();
             Count(rx, TimeSpan.FromMilliseconds(200)).Should().Be(0);
         }
     }
