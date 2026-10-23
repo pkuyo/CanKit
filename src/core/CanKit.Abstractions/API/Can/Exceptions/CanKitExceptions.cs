@@ -73,7 +73,8 @@ namespace CanKit.Core.Exceptions
         FeatureNotSupported = 5001,
 
         /// <summary>
-        /// Transport operation failed (e.g., ISO-TP)
+        /// Transport or protocol operation failed (传输/协议操作失败)。
+        /// The 6000 range is reserved for transport and protocol errors.
         /// </summary>
         TransportOperationFailed = 6001,
 
