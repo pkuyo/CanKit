@@ -9,6 +9,7 @@
 
 ### Fixed
 
+* Kvaser in `ChannelWorkMode.Echo` never signalled the channel's own frames on a quiet bus: the notify callback was registered for `canNOTIFY_RX` only, while a transmit acknowledgement (`canMSG_TXACK`) is reported with `canNOTIFY_TX` (`0x2`). The mask now includes `canNOTIFY_TX` in Echo mode, so own frames are received without a foreign frame arriving first (#70).
 * PCAN in `ChannelWorkMode.Echo` delivered the channel's own frames without `CanReceiveData.IsEcho`, so they could not be told from frames of other nodes. The classic and the FD transceiver now set `IsEcho` from `PCAN_MESSAGE_ECHO` (MSGTYPE `0x20`).
 * ControlCAN batch `Transmit` compared the running write total to `BATCH_COUNT` (64), so a second full native batch aborted the rest of the payload (128 frames sent, remainder dropped). The short-write check now uses this `VCI_Transmit` call's return value. `VCI_Receive` marshals the receive array as `[Out]` so native fills copy back into managed memory.
 * ZLG merged receive (`ZCAN_ReceiveData`, used for PCIe-CANFD) looped until the requested number of frames had arrived and never gave up. Because the merged queue is device-wide, a channel could wait for frames another channel had already taken; its receive thread then spun at 100 % CPU and kept running after `Dispose()`. The call now returns when the driver delivers nothing within the wait time.
