@@ -157,6 +157,8 @@ public sealed class KvaserFdTransceiver : ITransceiver
                 var esi = (flags & Canlib.canFDMSG_ESI) != 0;
                 var isErr = (flags & Canlib.canMSG_ERROR_FRAME) != 0;
                 var isRtr = (flags & Canlib.canMSG_RTR) != 0;
+                var timestamp = ch.ToTimestamp(time);
+                ch.ReportReceiveStatus(flags, timestamp);
                 var payLoad = bus.Options.BufferAllocator.Rent(dlc);
                 data.AsSpan().Slice(0, dlc).CopyTo(payLoad.Memory.Span);
                 CanFrame frame = isFd
@@ -165,11 +167,9 @@ public sealed class KvaserFdTransceiver : ITransceiver
                     : CanFrame.Classic(id, payLoad, isExt, isRtr,
                         bus.Options.BufferAllocator.FrameNeedDispose, isErr);
 
-                var kch = (KvaserBus)bus;
-                var ticks = time * kch.Options.TimerScaleMicroseconds * 10L; // us -> ticks
                 yield return new CanReceiveData(frame)
                 {
-                    ReceiveTimestamp = TimeSpan.FromTicks(ticks),
+                    ReceiveTimestamp = timestamp,
                     IsEcho = (flags & Canlib.canMSG_TXACK) != 0,
                 };
 
@@ -183,6 +183,7 @@ public sealed class KvaserFdTransceiver : ITransceiver
             }
             else
             {
+                ch.ThrowIfReceiveStopped();
                 var msg = "Failed to read frame";
                 if (Canlib.canGetErrorText(st, out var str) == Canlib.canStatus.canOK)
                     msg += $". Message:{str}";
