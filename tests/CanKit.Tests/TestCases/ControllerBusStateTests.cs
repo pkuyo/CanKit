@@ -38,6 +38,8 @@ public class ControllerBusStateTests
     public void Pcan_Distinguishes_Controller_State_From_Unavailable_Status(PcanStatus native, BusState expected)
     {
         using var bus = Pcan.Open("PCAN_USBBUS1", cfg => cfg.Baud(500_000));
+        // Inject native return values to test mapping, not channel lifecycle. Initialize
+        // would normally be returned only for an uninitialized channel.
         Api.SetStatus(PcanChannel.Usb01, native);
 
         bus.BusState.Should().Be(expected);
