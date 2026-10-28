@@ -79,3 +79,12 @@ foreach (var ep in BusEndpointEntry.Enumerate("kvaser"))
 ## Notes
 
 - Bit timing and FD support depend on the device and CANlib capabilities.
+
+## Controller status
+
+`BusState` maps the status flags returned by a successful `canReadStatus` call.
+A failed query reports `Unknown`, even if output flags appear active. A query
+returns the driver's latest known status, not a complete transition history.
+Neither `Unknown` nor a successful `Reset()` call confirms bus-off recovery.
+
+See [CANlib canReadStatus](https://kvaser.com/canlib-webhelp/group___c_a_n.htm).

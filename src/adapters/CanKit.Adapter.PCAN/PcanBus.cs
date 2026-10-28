@@ -409,7 +409,7 @@ public sealed class PcanBus : ICanBus<PcanBusRtConfigurator>, IOwnership
                 return BusState.ErrPassive;
             if ((state & PcanStatus.BusWarning) != 0)
                 return BusState.ErrWarning;
-            return BusState.None;
+            return state == PcanStatus.OK ? BusState.ErrActive : BusState.Unknown;
         }
 
     }

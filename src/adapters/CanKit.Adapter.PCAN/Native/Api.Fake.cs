@@ -244,6 +244,7 @@ namespace Peak.Can.Basic
             public ParameterValue.Filter FilterStatus = ParameterValue.Filter.Open;
             public EventWaitHandle? RecEvent;
             public bool Initialized;
+            public PcanStatus Status;
             public bool FdMode;
             public bool AllowErr;
             public uint NominalBitrate;
@@ -374,8 +375,11 @@ namespace Peak.Can.Basic
             return PcanStatus.OK;
         }
 
-        public static PcanStatus GetStatus(PcanChannel _)
-        { return PcanStatus.OK; }
+        public static void SetStatus(PcanChannel channel, PcanStatus status)
+            => World.Get(channel).Status = status;
+
+        public static PcanStatus GetStatus(PcanChannel channel)
+            => World.Get(channel).Status;
 
         public static PcanStatus SetValue(PcanChannel channel, PcanParameter param, ParameterValue.Activation value)
         {
