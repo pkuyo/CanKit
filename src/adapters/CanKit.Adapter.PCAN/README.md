@@ -66,7 +66,8 @@ foreach (var ep in BusEndpointEntry.Enumerate("pcan"))
 ## Controller status
 
 `BusState` reports `ErrActive` only when PCAN-Basic returns exactly `PcanStatus.OK`.
-Known bus fault flags retain their priority: bus-off, passive, then warning. Other
+Known bus fault flags retain their priority: bus-off, passive, then warning. Both
+`BusLight` and `BusWarning` map to `ErrWarning`. Other
 status/error values report `Unknown`; they are not evidence that the controller
 has recovered. A successful `Reset()` call alone does not confirm recovery.
 

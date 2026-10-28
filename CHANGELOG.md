@@ -9,7 +9,7 @@
 
 ### Fixed
 
-* PCAN now reports `ErrActive` for an explicit normal controller status and `Unknown` for unrecognized status errors. Kvaser reports `Unknown` when its controller-status query fails, so unavailable status cannot be mistaken for recovery.
+* PCAN now reports `ErrActive` for an explicit normal controller status, `ErrWarning` for both `BusLight` and `BusWarning`, and `Unknown` for unrecognized status errors. Kvaser reports `Unknown` when its controller-status query fails, so unavailable status cannot be mistaken for recovery.
 
 * Kvaser in `ChannelWorkMode.Echo` never signalled the channel's own frames on a quiet bus: the notify callback was registered for `canNOTIFY_RX` only, while a transmit acknowledgement (`canMSG_TXACK`) is reported with `canNOTIFY_TX` (`0x2`). The mask now includes `canNOTIFY_TX` in Echo mode, so own frames are received without a foreign frame arriving first (#70).
 * PCAN in `ChannelWorkMode.Echo` delivered the channel's own frames without `CanReceiveData.IsEcho`, so they could not be told from frames of other nodes. The classic and the FD transceiver now set `IsEcho` from `PCAN_MESSAGE_ECHO` (MSGTYPE `0x20`).

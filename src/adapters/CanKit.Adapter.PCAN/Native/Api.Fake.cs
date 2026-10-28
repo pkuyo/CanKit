@@ -88,10 +88,18 @@ namespace Peak.Can.Basic
     {
         OK = 0,
         TransmitBufferFull = 1,
+        Overrun = 2,
+        BusLight = 4,
         BusWarning = 8,
         BusOff = 16,
+        ReceiveQueueEmpty = 32,
+        ReceiveQueueOverrun = 64,
         TransmitQueueFull = 128,
-        BusPassive = 262_144,
+        IllegalHardwareHandle = 0x1400,
+        IllegalHandle = 0x1C00,
+        BusPassive = 0x40000,
+        AnyBusError = BusLight | BusWarning | BusOff | BusPassive,
+        Initialize = 0x4000000,
 
     }
 
