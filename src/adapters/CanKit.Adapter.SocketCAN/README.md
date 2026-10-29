@@ -2,6 +2,16 @@
 
 SocketCAN adapter for CanKit. Provides a unified .NET API to Linux SocketCAN interfaces.
 
+## Controller status
+
+`BusState` maps a successful `can_get_state` query to `ErrActive`, `ErrWarning`,
+`ErrPassive`, or `BusOff`. Stopped, sleeping, unrecognized states and failed
+queries report `Unknown`; none of these confirms recovery. A successful
+`Reset()` call alone is not proof of recovery. Queries report a snapshot,
+not a complete transition history.
+
+See the [Linux CAN state definitions](https://github.com/torvalds/linux/blob/master/include/uapi/linux/can/netlink.h).
+
 - Repository: https://github.com/pkuyo/CanKit
 - Package: `CanKit.Adapter.SocketCAN`
 - Depends on: `CanKit.Core`

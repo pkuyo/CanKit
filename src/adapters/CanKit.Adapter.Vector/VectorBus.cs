@@ -39,7 +39,7 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
     private readonly ulong _accessMask;
     private readonly ManualResetEvent? _rxEvent = null;
 
-    private BusState _busState;
+    private volatile BusState _busState = BusState.Unknown;
     private CanErrorCounters _errorCounters;
     private CanExceptionPolicy _exceptionPolicy;
     private CanBusExceptionDispatcher _exceptions;
@@ -620,7 +620,7 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
                                     VxlApi.XL_CHIPSTAT_ERROR_PASSIVE => BusState.ErrPassive,
                                     VxlApi.XL_CHIPSTAT_ERROR_WARNING => BusState.ErrWarning,
                                     VxlApi.XL_CHIPSTAT_ERROR_ACTIVE => BusState.ErrActive,
-                                    _ => BusState.None
+                                    _ => BusState.Unknown
                                 };
                                 _errorCounters = errInfo.ErrorCounters!.Value;
                             }

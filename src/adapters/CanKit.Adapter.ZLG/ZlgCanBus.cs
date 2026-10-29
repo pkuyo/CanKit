@@ -380,7 +380,9 @@ namespace CanKit.Adapter.ZLG
                         return BusState.ErrPassive;
                     if ((cs & (CanControllerStatus.RxWarning | CanControllerStatus.TxWarning)) != 0)
                         return BusState.ErrWarning;
-                    return BusState.None;
+                    // Error diagnostics without controller fault evidence do not
+                    // establish that the controller is error-active.
+                    return BusState.Unknown;
                 }
 
                 return BusState.Unknown;
