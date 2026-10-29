@@ -1,5 +1,15 @@
 # CanKit.Adapter.ZLG
 
+## Controller status
+
+`BusState` uses `ZCAN_ReadChannelErrInfo` diagnostics: a bus-off flag takes
+priority over passive and warning error-counter thresholds. Failed queries,
+empty diagnostics, and diagnostics without those controller fault indications
+report `Unknown`. Neither a zero error code nor low error counters establish
+that the controller is error-active, so this diagnostic path does not report
+`ErrActive`. A successful `Reset()` call alone does not confirm recovery.
+These diagnostics are not a complete controller-state transition history.
+
 用于 CanKit 的 ZLG 适配器。通过 `zlgcan.dll` 为周立功（ZLG）的 USBCAN/PCIe 系列设备（支持 CAN 与 CAN FD）提供统一的 .NET API。
 
 * 代码仓库：[https://github.com/pkuyo/CanKit](https://github.com/pkuyo/CanKit)
