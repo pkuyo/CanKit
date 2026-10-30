@@ -50,6 +50,15 @@ public sealed class QueuedCanBus : ICanBus, IAsyncDisposable
     private readonly CancellationTokenSource _cts = new();
     private readonly Task _worker;
 
+    // Forwarders for the inner bus events, kept so they can be detached on dispose.
+    private readonly EventHandler<CanReceiveData> _onFrameReceived;
+    private readonly EventHandler<CanReceiveDataView> _onFrameObserved;
+    private readonly EventHandler<ICanErrorInfo> _onErrorFrameReceived;
+    private readonly EventHandler<Exception> _onBackgroundException;
+    private readonly EventHandler<Exception> _onFault;
+    private readonly object _errorEvtGate = new();
+    private EventHandler<ICanErrorInfo>? _errorFrameReceived;
+
     // 指数回退状态
     private TimeSpan _backoff;
     private CancellationTokenSource _sleepCts = new(); // 用于打断回退等待
@@ -75,12 +84,34 @@ public sealed class QueuedCanBus : ICanBus, IAsyncDisposable
         _backoff = _opts.BackoffInitial;
         _worker = Task.Run(SendLoop, _cts.Token);
 
-        // 透明转发底层事件
-        _inner.FrameReceived += (s, e) => FrameReceived?.Invoke(this, e);
-        _inner.FrameObserved += (s, view) => FrameObserved?.Invoke(this, view);
-        _inner.ErrorFrameReceived += (s, e) => ErrorFrameReceived?.Invoke(this, e);
-        _inner.BackgroundExceptionOccurred += (s, e) => BackgroundExceptionOccurred?.Invoke(this, e);
-        _inner.FaultOccurred += (s, e) => FaultOccurred?.Invoke(this, e);
+        // Forward the inner bus events. ErrorFrameReceived is attached lazily by its add
+        // accessor: adapters reject that subscription unless EnableErrorInfo() was configured,
+        // and a bus without error info must still be wrappable.
+        _onFrameReceived = (s, e) => FrameReceived?.Invoke(this, e);
+        _onFrameObserved = (s, view) => FrameObserved?.Invoke(this, view);
+        _onErrorFrameReceived = (s, e) => _errorFrameReceived?.Invoke(this, e);
+        _onBackgroundException = (s, e) => BackgroundExceptionOccurred?.Invoke(this, e);
+        _onFault = (s, e) => FaultOccurred?.Invoke(this, e);
+        _inner.FrameReceived += _onFrameReceived;
+        _inner.FrameObserved += _onFrameObserved;
+        _inner.BackgroundExceptionOccurred += _onBackgroundException;
+        _inner.FaultOccurred += _onFault;
+    }
+
+    private void DetachInnerEvents()
+    {
+        _inner.FrameReceived -= _onFrameReceived;
+        _inner.FrameObserved -= _onFrameObserved;
+        _inner.BackgroundExceptionOccurred -= _onBackgroundException;
+        _inner.FaultOccurred -= _onFault;
+        lock (_errorEvtGate)
+        {
+            if (_errorFrameReceived is not null)
+            {
+                _inner.ErrorFrameReceived -= _onErrorFrameReceived;
+                _errorFrameReceived = null;
+            }
+        }
     }
 
     #region ICanBus
@@ -111,7 +142,34 @@ public sealed class QueuedCanBus : ICanBus, IAsyncDisposable
 
     public event EventHandler<CanReceiveData>? FrameReceived;
     public event EventHandler<CanReceiveDataView>? FrameObserved;
-    public event EventHandler<ICanErrorInfo>? ErrorFrameReceived;
+    /// <summary>
+    /// Forwards the inner bus's <c>ErrorFrameReceived</c>. The inner subscription is made on the
+    /// first add and released on the last remove, so an inner bus opened without
+    /// <c>EnableErrorInfo()</c> throws here, at subscription time, and not in <c>WithQueuedTx()</c>.
+    /// </summary>
+    public event EventHandler<ICanErrorInfo>? ErrorFrameReceived
+    {
+        add
+        {
+            if (value is null) return;
+            lock (_errorEvtGate)
+            {
+                if (_errorFrameReceived is null)
+                    _inner.ErrorFrameReceived += _onErrorFrameReceived;
+                _errorFrameReceived += value;
+            }
+        }
+        remove
+        {
+            if (value is null) return;
+            lock (_errorEvtGate)
+            {
+                _errorFrameReceived -= value;
+                if (_errorFrameReceived is null)
+                    _inner.ErrorFrameReceived -= _onErrorFrameReceived;
+            }
+        }
+    }
     public event EventHandler<Exception>? BackgroundExceptionOccurred;
     public event EventHandler<Exception>? FaultOccurred;
 
@@ -302,6 +360,7 @@ public sealed class QueuedCanBus : ICanBus, IAsyncDisposable
         catch
         { /* ignore */ }
 
+        DetachInnerEvents();
         if (_opts.OwnsInnerBus) _inner.Dispose();
         _cts.Dispose();
         _sleepCts.Cancel();
@@ -319,6 +378,7 @@ public sealed class QueuedCanBus : ICanBus, IAsyncDisposable
         catch
         { /* ignore */ }
 
+        DetachInnerEvents();
         if (_opts.OwnsInnerBus) _inner.Dispose();
         _cts.Dispose();
         _sleepCts.Cancel();

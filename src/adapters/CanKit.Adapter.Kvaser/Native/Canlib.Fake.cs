@@ -75,6 +75,7 @@ public static class Canlib
 
     // Notification flags (subset)
     public const int canNOTIFY_RX = 0x0001;
+    public const int canNOTIFY_TX = 0x0002;
     public const int canNOTIFY_ERROR = 0x0004;
 
     // Bus status flags
