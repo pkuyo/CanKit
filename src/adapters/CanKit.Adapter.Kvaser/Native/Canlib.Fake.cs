@@ -64,6 +64,9 @@ public static class Canlib
     public const int canMSG_STD = 0x0002;
     public const int canMSG_EXT = 0x0004;
     public const int canMSG_ERROR_FRAME = 0x0020;
+    public const int canMSGERR_HW_OVERRUN = 0x0200;
+    public const int canMSGERR_SW_OVERRUN = 0x0400;
+    public const int canMSGERR_OVERRUN = canMSGERR_HW_OVERRUN | canMSGERR_SW_OVERRUN;
     public const int canMSG_SINGLE_SHOT = 0x1000000;
     public const int canMSG_LOCAL_TXACK = 0x10000000;
     public const int canMSG_TXACK = 0x0040;
@@ -177,6 +180,9 @@ public static class Canlib
         public int HandleId;
         public int Channel; // 0,1,2
         public bool BusOn;
+        public canStatus ErrorCountersResult = canStatus.canOK;
+        public canStatus ReadResult = canStatus.canOK;
+        public Action AfterRead;
         public uint DriverType = canDRIVER_NORMAL;
         public int TimerScaleUs = 1000; // default
         public int RxQueueSize = 0; // 0 => unlimited
@@ -213,6 +219,15 @@ public static class Canlib
         }
     }
 
+    private static bool MatchesAcceptanceFilter(Handle channel, Frame frame)
+    {
+        lock (channel.Filters)
+        {
+            var filter = channel.Filters.FirstOrDefault(i => i.Extended == ((frame.Flags & canMSG_EXT) != 0));
+            return filter is null || ((filter.Code ^ (frame.Id & (filter.Extended ? 0x1FFF_FFFF : 0x7FF))) & filter.Mask) == 0;
+        }
+    }
+
     private static void EnqueueToReceivers(Handle sender, Frame frame)
     {
         // Deliver to all open handles on channels 0/1/2 except sender, if BusOn and matches filter.
@@ -224,15 +239,7 @@ public static class Canlib
 
         foreach (var t in targets)
         {
-            bool accepted = true;
-            if (t.Filters.Count > 0)
-            {
-                var filter = t.Filters.FirstOrDefault(i => i.Extended == ((frame.Flags & canMSG_EXT) != 0));
-                if(filter is not null)
-                    accepted = ((filter.Code ^ (frame.Id & (filter.Extended ? 0x1FFF_FFFF : 0x7FF))) & filter.Mask) == 0;
-            }
-
-            if (!accepted) continue;
+            if (!MatchesAcceptanceFilter(t, frame)) continue;
 
             // Copy frame as value
             var copy = new Frame
@@ -350,9 +357,16 @@ public static class Canlib
         return canStatus.canOK;
     }
 
+    public static void SetErrorCountersResult(int hnd, canStatus result)
+    {
+        if (!TryGetHandle(hnd, out var h)) throw new ArgumentException("Unknown channel handle.", nameof(hnd));
+        h.ErrorCountersResult = result;
+    }
+
     public static canStatus canReadErrorCounters(int hnd, out uint txErr, out uint rxErr, out uint ovErr)
     {
-        _ = hnd; txErr = 0; rxErr = 0; ovErr = 0; return canStatus.canOK;
+        txErr = 0; rxErr = 0; ovErr = 0;
+        return TryGetHandle(hnd, out var h) ? h.ErrorCountersResult : canStatus.canERR_INVHANDLE;
     }
 
     public static unsafe canStatus canWrite(int hnd, int id, byte* msg, uint dlc, uint flag)
@@ -383,10 +397,44 @@ public static class Canlib
         return canStatus.canOK;
     }
 
+    public static bool InjectReceiveFrame(int hnd, int id, byte[] data, int flags, uint time = 0)
+    {
+        if (!TryGetHandle(hnd, out var h)) throw new ArgumentException("Unknown channel handle.", nameof(hnd));
+        var frame = new Frame { Id = id, Data = data.ToArray(), Dlc = data.Length, Flags = flags, Time = time };
+        if (!MatchesAcceptanceFilter(h, frame)) return false;
+        h.Rx.Enqueue(frame);
+        Notify(h);
+        return true;
+    }
+
+    public static void SetReadResult(int hnd, canStatus result)
+    {
+        if (!TryGetHandle(hnd, out var h)) throw new ArgumentException("Unknown channel handle.", nameof(hnd));
+        h.ReadResult = result;
+    }
+
+    public static uint GetNotificationMask(int hnd)
+    {
+        if (!TryGetHandle(hnd, out var h)) throw new ArgumentException("Unknown channel handle.", nameof(hnd));
+        return h.CallbackMask;
+    }
+
+    public static void SetReadHook(int hnd, Action afterRead)
+    {
+        if (!TryGetHandle(hnd, out var h)) throw new ArgumentException("Unknown channel handle.", nameof(hnd));
+        h.AfterRead = afterRead;
+    }
+
     public static canStatus canRead(int hnd, out int id, byte[] msg, out int dlc, out int flag, out uint time)
     {
         id = 0; dlc = 0; flag = 0; time = 0;
         if (!TryGetHandle(hnd, out var h)) return canStatus.canERR_INVHANDLE;
+        if (h.ReadResult != canStatus.canOK)
+        {
+            var result = h.ReadResult;
+            h.AfterRead?.Invoke();
+            return result;
+        }
         if (h.Rx.TryDequeue(out var f))
         {
             id = f.Id;
@@ -394,6 +442,7 @@ public static class Canlib
             if (dlc > 0) Array.Copy(f.Data, 0, msg, 0, dlc);
             flag = f.Flags;
             time = f.Time;
+            h.AfterRead?.Invoke();
             return canStatus.canOK;
         }
         return canStatus.canERR_NOMSG;

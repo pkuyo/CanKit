@@ -4,8 +4,14 @@
 
 ### Added
 
+* Kvaser reports native HW/SW receive-overrun indications through `ErrorFrameReceived` even when they accompany ordinary Classic CAN or CAN FD data. The data frame is preserved and an error frame carrying overrun flags generates one diagnostic.
 * Kvaser CANlib adapter binds `canlib32` (Windows, stdcall) and `libcanlib.so` (Linux, cdecl), including cdecl notify callbacks on Linux. Opening on Linux no longer depends on the Windows `canlib32` ABI. Fake builds are unchanged.
 * Vendor adapters wrap a missing or wrong-bitness native library (`DllNotFoundException` / `BadImageFormatException`) at the first Open/constructor native call as adapter-specific `CanNativeCallException` types, with `CanKitErrorCode.NativeLibraryNotFound`, the original exception retained, and a message that names the DLL and the vendor runtime. Fake builds are unchanged.
+
+### Changed
+
+* All Kvaser error-frame diagnostics now report `Direction = Rx`, native message flags in `RawErrorCode`, and the read timestamp in `DeviceTimeSpan` (previously `Unknown`, zero, and null). Overrun-bearing error frames use `Type = Controller` instead of `Unknown`. Kvaser transceiver receive iterators emit diagnostics during enumeration, before the carrying frame is yielded and before software filtering; existing subscribers can observe these metadata and ordering changes.
+* Native status failures from optional Kvaser diagnostic counter queries now leave `ErrorCounters = null` instead of faulting the receive loop. Overrun flags and data delivery are preserved; read completion racing with disposal is treated as cancellation. Failures of the actual receive operation retain their existing failure handling.
 
 ### Fixed
 

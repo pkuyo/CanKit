@@ -1,5 +1,4 @@
 using System;
-using System.Buffers;
 using System.Threading;
 using System.Threading.Tasks;
 using CanKit.Abstractions.API.Can;
@@ -9,6 +8,7 @@ using CanKit.Abstractions.API.Common.Definitions;
 using CanKit.Abstractions.SPI.Common;
 using CanKit.Core;
 using CanKit.Core.Definitions;
+using CanKit.Tests.Utils;
 using FluentAssertions;
 using Xunit;
 
@@ -47,40 +47,6 @@ public class SocketCanBcmOwnershipTests
     {
         var env = Environment.GetEnvironmentVariable("CANKIT_TEST_ADAPTERS");
         return string.Equals(env, "CanKit.Adapter.SocketCAN", StringComparison.OrdinalIgnoreCase);
-    }
-
-    // Tracks outstanding rentals so ownership handoffs are directly observable.
-    // Only rentals routed through this instance count.
-    private sealed class CountingBufferAllocator : IBufferAllocator
-    {
-        private readonly ArrayPoolBufferAllocator _inner = new();
-        private int _outstanding;
-
-        public int Outstanding => Volatile.Read(ref _outstanding);
-
-        public IMemoryOwner<byte> Rent(int length, bool zeroFill = false)
-        {
-            Interlocked.Increment(ref _outstanding);
-            return new TrackedOwner(_inner.Rent(length, zeroFill), this);
-        }
-
-        public bool FrameNeedDispose => true;
-
-        private sealed class TrackedOwner(IMemoryOwner<byte> inner, CountingBufferAllocator owner) : IMemoryOwner<byte>
-        {
-            private int _disposed;
-
-            public Memory<byte> Memory => inner.Memory;
-
-            public void Dispose()
-            {
-                if (Interlocked.Exchange(ref _disposed, 1) == 0)
-                {
-                    inner.Dispose();
-                    Interlocked.Decrement(ref owner._outstanding);
-                }
-            }
-        }
     }
 
     private static ICanBus OpenClassic(string endpoint, IBufferAllocator busAllocator)
