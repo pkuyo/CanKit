@@ -3,8 +3,8 @@ using CanKit.Abstractions.API.Can;
 using CanKit.Abstractions.API.Can.Definitions;
 using CanKit.Abstractions.API.Common;
 using CanKit.Abstractions.API.Common.Definitions;
-using CanKit.Adapter.ControlCAN.Diagnostics;
 using CanKit.Core.Definitions;
+using CanKit.Core.Diagnostics;
 using CanKit.Core.Exceptions;
 using CcApi = CanKit.Adapter.ControlCAN.Native.ControlCAN;
 
@@ -13,11 +13,12 @@ namespace CanKit.Adapter.ControlCAN.Utils;
 public sealed class ControlCanPeriodicTx : IPeriodicTx
 {
     private ControlCanBus _bus;
-    private readonly object _evtGate = new();
+    private readonly object _lifecycleGate = new();
     private CanFrame _frame;
     private ushort _index;
     private volatile int _remaining;
     private bool _stopped;
+    private bool _disposed;
     private bool _retry;
 
     public ControlCanPeriodicTx(ControlCanBus bus, CanFrame frame, PeriodicTxOptions options)
@@ -71,20 +72,38 @@ public sealed class ControlCanPeriodicTx : IPeriodicTx
 
     public void Dispose()
     {
-        Stop();
-        _bus.FreeAutoSendIndex(_index);
+        lock (_lifecycleGate)
+        {
+            if (_disposed) return;
+            Stop();
+            if (!_stopped) return; // A failed disable remains retryable, with its slot reserved.
+            _disposed = true;
+            _bus.FreeAutoSendIndex(_index);
+        }
     }
 
     public void Stop()
     {
-        if (_stopped) return;
-        _stopped = true;
-        try
+        lock (_lifecycleGate)
         {
-            StopHardware();
+            if (_stopped) return;
+            try
+            {
+                StopHardware();
+                _stopped = true;
+            }
+            catch (CanBusDisposedException)
+            {
+                // Bus cleanup owns any remaining hardware entry once shutdown starts.
+                _stopped = true;
+            }
+            catch (Exception ex)
+            {
+                // Preserve the non-throwing Stop/Dispose contract, but allow a retry.
+                try { CanKitLogger.LogWarning($"ControlCAN: Failed to stop auto-send entry {_index}; Stop or Dispose can retry.", ex); }
+                catch { /* Logging must not prevent a later retry. */ }
+            }
         }
-        catch
-        {/*ignored*/}
     }
 
     private unsafe void ApplyHardware(bool enable, CanFrame frame, TimeSpan period)
@@ -94,9 +113,7 @@ public sealed class ControlCanPeriodicTx : IPeriodicTx
         pObj->Index = (byte)_index;
         pObj->Interval = (uint)(period.TotalMilliseconds*2);
         frame.ToNative(&pObj->Obj, _retry);
-        ControlCanErr.ThrowIfErr(CcApi.VCI_SetReference(_bus.RawDevType, _bus.DevIndex, _bus.CanIndex, 5, pObj),
-            "VCI_SetReference(period)", _bus,
-            $"failed to {(enable ? "enable" : "disable")} filter. FilterIndex={_index}");
+        _bus.ApplyAutoSend(*pObj);
     }
 
     private void StopHardware()
@@ -106,6 +123,14 @@ public sealed class ControlCanPeriodicTx : IPeriodicTx
         ApplyHardware(false, _frame, Period);
     }
     public void Update(CanFrame? frame = null, TimeSpan? period = null, int? repeatCount = null)
+    {
+        lock (_lifecycleGate)
+        {
+            UpdateHardware(frame, period, repeatCount);
+        }
+    }
+
+    private void UpdateHardware(CanFrame? frame, TimeSpan? period, int? repeatCount)
     {
         if (_stopped) throw new CanBusDisposedException();
         if (frame is not null)
