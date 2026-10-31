@@ -58,6 +58,7 @@ public static class Canlib
 
     // Notification flags
     public const int canNOTIFY_RX = 0x0001;
+    public const int canNOTIFY_TX = 0x0002;
     public const int canNOTIFY_ERROR = 0x0004;
 
     // Bus status flags
@@ -74,6 +75,12 @@ public static class Canlib
     public const uint canIOCTL_SET_LOCAL_TXACK = 46;
     public const uint canIOCTL_SET_LOCAL_TXECHO = 32;
     public const uint canIOCTL_SET_TXACK = 7;
+
+    // Bus driver types (canSetBusOutputControl)
+    public const uint canDRIVER_OFF = 0;
+    public const uint canDRIVER_SILENT = 1;
+    public const uint canDRIVER_NORMAL = 4;
+    public const uint canDRIVER_SELFRECEPTION = 8;
 
     // Predefined classic bitrates
     public const int canBITRATE_1M = -1;
@@ -211,6 +218,20 @@ public static class Canlib
         return KvaserNativeLibraries.IsLinux
             ? LinuxAbi.canBusOff(hnd)
             : WindowsAbi.canBusOff(hnd);
+    }
+
+    public static canStatus canSetBusOutputControl(int hnd, uint drivertype)
+    {
+        return KvaserNativeLibraries.IsLinux
+            ? LinuxAbi.canSetBusOutputControl(hnd, drivertype)
+            : WindowsAbi.canSetBusOutputControl(hnd, drivertype);
+    }
+
+    public static canStatus canGetBusOutputControl(int hnd, out uint drivertype)
+    {
+        return KvaserNativeLibraries.IsLinux
+            ? LinuxAbi.canGetBusOutputControl(hnd, out drivertype)
+            : WindowsAbi.canGetBusOutputControl(hnd, out drivertype);
     }
 
     public static canStatus canSetBusParams(int hnd, int freq, int tseg1, int tseg2, int sjw, int noSamp, int syncmode)
@@ -393,6 +414,17 @@ public static class Canlib
             : WindowsAbi.canObjBufSetPeriod(hnd, idx, periodUs);
     }
 
+    /// <summary>
+    /// Total number of frames a periodic buffer sends once enabled; 0 means infinite.
+    /// CANlib resets the count to 0 after the last frame.
+    /// </summary>
+    public static canStatus canObjBufSetMsgCount(int hnd, int idx, uint count)
+    {
+        return KvaserNativeLibraries.IsLinux
+            ? LinuxAbi.canObjBufSetMsgCount(hnd, idx, count)
+            : WindowsAbi.canObjBufSetMsgCount(hnd, idx, count);
+    }
+
     public static canStatus canGetChannelData_UInt32(int channel, int item, out uint value, UIntPtr bufsize)
     {
         return KvaserNativeLibraries.IsLinux
@@ -487,6 +519,12 @@ public static class Canlib
         [DllImport(Dll, CallingConvention = CallingConvention.StdCall, EntryPoint = "canBusOff")]
         public static extern canStatus canBusOff(int hnd);
 
+        [DllImport(Dll, CallingConvention = CallingConvention.StdCall, EntryPoint = "canSetBusOutputControl")]
+        public static extern canStatus canSetBusOutputControl(int hnd, uint drivertype);
+
+        [DllImport(Dll, CallingConvention = CallingConvention.StdCall, EntryPoint = "canGetBusOutputControl")]
+        public static extern canStatus canGetBusOutputControl(int hnd, out uint drivertype);
+
         [DllImport(Dll, CallingConvention = CallingConvention.StdCall, EntryPoint = "canSetBusParams")]
         public static extern canStatus canSetBusParams(int hnd, int freq, int tseg1, int tseg2, int sjw, int noSamp, int syncmode);
 
@@ -556,6 +594,9 @@ public static class Canlib
         [DllImport(Dll, CallingConvention = CallingConvention.StdCall, EntryPoint = "canObjBufSetPeriod")]
         public static extern canStatus canObjBufSetPeriod(int hnd, int idx, uint periodUs);
 
+        [DllImport(Dll, CallingConvention = CallingConvention.StdCall, EntryPoint = "canObjBufSetMsgCount")]
+        public static extern canStatus canObjBufSetMsgCount(int hnd, int idx, uint count);
+
         [DllImport(Dll, CallingConvention = CallingConvention.StdCall, EntryPoint = "canGetChannelData")]
         public static extern canStatus canGetChannelData_UInt32(int channel, int item, out uint value, UIntPtr bufsize);
 
@@ -601,6 +642,12 @@ public static class Canlib
 
         [DllImport(Dll, CallingConvention = CallingConvention.Cdecl, EntryPoint = "canBusOff")]
         public static extern canStatus canBusOff(int hnd);
+
+        [DllImport(Dll, CallingConvention = CallingConvention.Cdecl, EntryPoint = "canSetBusOutputControl")]
+        public static extern canStatus canSetBusOutputControl(int hnd, uint drivertype);
+
+        [DllImport(Dll, CallingConvention = CallingConvention.Cdecl, EntryPoint = "canGetBusOutputControl")]
+        public static extern canStatus canGetBusOutputControl(int hnd, out uint drivertype);
 
         [DllImport(Dll, CallingConvention = CallingConvention.Cdecl, EntryPoint = "canSetBusParams")]
         public static extern canStatus canSetBusParams(int hnd, nint freq, int tseg1, int tseg2, int sjw, int noSamp, int syncmode);
@@ -671,6 +718,9 @@ public static class Canlib
         [DllImport(Dll, CallingConvention = CallingConvention.Cdecl, EntryPoint = "canObjBufSetPeriod")]
         public static extern canStatus canObjBufSetPeriod(int hnd, int idx, uint periodUs);
 
+        [DllImport(Dll, CallingConvention = CallingConvention.Cdecl, EntryPoint = "canObjBufSetMsgCount")]
+        public static extern canStatus canObjBufSetMsgCount(int hnd, int idx, uint count);
+
         [DllImport(Dll, CallingConvention = CallingConvention.Cdecl, EntryPoint = "canGetChannelData")]
         public static extern canStatus canGetChannelData_UInt32(int channel, int item, out uint value, UIntPtr bufsize);
 
@@ -695,13 +745,7 @@ public static class Canlib
     }
 
     public static canStatus canSetAcceptanceFilter(int hnd, uint code, uint mask, int is_extended)
-    {
-        var re = canAccept(hnd, (int)code, (uint)(canFILTER_SET_CODE_STD + is_extended));
-        if (re != canStatus.canOK)
-            return re;
-        re = canAccept(hnd, (int)code, (uint)(canFILTER_SET_MASK_STD + is_extended));
-        return re;
-    }
+        => CanlibAcceptance.Set(hnd, code, mask, is_extended != 0);
 
     public static canStatus canGetErrorText(canStatus err, out string msg)
     {

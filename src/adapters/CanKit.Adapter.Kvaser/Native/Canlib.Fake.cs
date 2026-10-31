@@ -44,10 +44,22 @@ public static class Canlib
         canERR_NOT_IMPLEMENTED = -32,
     }
 
+    // Bus driver types (canSetBusOutputControl)
+    public const uint canDRIVER_OFF = 0;
+    public const uint canDRIVER_SILENT = 1;
+    public const uint canDRIVER_NORMAL = 4;
+    public const uint canDRIVER_SELFRECEPTION = 8;
+
     // Open channel flags (subset)
     public const int canOPEN_ACCEPT_VIRTUAL = 0x0020;
     public const int canOPEN_CAN_FD = 0x0400;
     // Message flags
+    // filter (same values as canlib.h)
+    public const uint canFILTER_SET_CODE_EXT = 5;
+    public const uint canFILTER_SET_CODE_STD = 3;
+    public const uint canFILTER_SET_MASK_EXT = 6;
+    public const uint canFILTER_SET_MASK_STD = 4;
+
     public const int canMSG_RTR = 0x0001;
     public const int canMSG_STD = 0x0002;
     public const int canMSG_EXT = 0x0004;
@@ -63,6 +75,7 @@ public static class Canlib
 
     // Notification flags (subset)
     public const int canNOTIFY_RX = 0x0001;
+    public const int canNOTIFY_TX = 0x0002;
     public const int canNOTIFY_ERROR = 0x0004;
 
     // Bus status flags
@@ -156,6 +169,7 @@ public static class Canlib
         public int Dlc;
         public uint Flags;
         public int PeriodUs = 1000;
+        public uint MsgCount; // 0 => infinite
         public Timer Timer;
     }
 
@@ -164,6 +178,7 @@ public static class Canlib
         public int HandleId;
         public int Channel; // 0,1,2
         public bool BusOn;
+        public uint DriverType = canDRIVER_NORMAL;
         public int TimerScaleUs = 1000; // default
         public int RxQueueSize = 0; // 0 => unlimited
         public kvCallbackDelegate Callback;
@@ -286,6 +301,36 @@ public static class Canlib
         return canStatus.canOK;
     }
 
+    /// <summary>
+    /// Test switch: canSetBusOutputControl returns canOK but leaves the driver type unchanged,
+    /// like a device that accepts the call and ignores it.
+    /// </summary>
+    public static bool IgnoreBusOutputControl { get; set; }
+
+    public static canStatus canSetBusOutputControl(int hnd, uint drivertype)
+    {
+        if (!TryGetHandle(hnd, out var h)) return canStatus.canERR_INVHANDLE;
+        if (drivertype is not (canDRIVER_OFF or canDRIVER_SILENT or canDRIVER_NORMAL or canDRIVER_SELFRECEPTION))
+            return canStatus.canERR_PARAM;
+        if (!IgnoreBusOutputControl)
+            h.DriverType = drivertype;
+        return canStatus.canOK;
+    }
+
+    /// <summary>
+    /// Test switch: canGetBusOutputControl returns this status instead of the driver type.
+    /// </summary>
+    public static canStatus? BusOutputControlReadbackError { get; set; }
+
+    public static canStatus canGetBusOutputControl(int hnd, out uint drivertype)
+    {
+        drivertype = 0;
+        if (!TryGetHandle(hnd, out var h)) return canStatus.canERR_INVHANDLE;
+        if (BusOutputControlReadbackError is { } error) return error;
+        drivertype = h.DriverType;
+        return canStatus.canOK;
+    }
+
     public static canStatus canReadStatus(int hnd, out int status)
     {
         status = 0;
@@ -311,8 +356,26 @@ public static class Canlib
         _ = hnd; txErr = 0; rxErr = 0; ovErr = 0; return canStatus.canOK;
     }
 
+    private static readonly ConcurrentDictionary<int, canStatus> s_injectedWriteFailures = new();
+
+    /// <summary>
+    /// Test switch: the next canWrite of a message with this ID returns the given status and
+    /// sends nothing, e.g. canERR_TXBUFOFL for a full transmit buffer. It is consumed by that
+    /// call. Keyed by ID, so writes of tests running in parallel are not affected.
+    /// </summary>
+    public static void FailNextWriteOf(int id, canStatus status) => s_injectedWriteFailures[id] = status;
+
+    /// <summary>
+    /// Removes a failure injected with <see cref="FailNextWriteOf"/>.
+    /// Returns true if it was still pending, i.e. no canWrite has consumed it.
+    /// </summary>
+    public static bool ClearInjectedWriteFailure(int id) => s_injectedWriteFailures.TryRemove(id, out _);
+
     public static unsafe canStatus canWrite(int hnd, int id, byte* msg, uint dlc, uint flag)
     {
+        if (s_injectedWriteFailures.TryRemove(id, out var injected))
+            return injected;
+
         if (!TryGetHandle(hnd, out var h) || !h.BusOn) return canStatus.canERR_INVHANDLE;
 
         byte[] data = Array.Empty<byte>();
@@ -332,7 +395,10 @@ public static class Canlib
             Time = 0 // simple timestamp; KvaserBus scales it
         };
 
-        EnqueueToReceivers(h, frame);
+        // canDRIVER_SILENT: the controller does not transmit anything, so the frame never reaches
+        // the bus. Modelled from the CANlib driver type description, not verified on a device.
+        if (h.DriverType != canDRIVER_SILENT)
+            EnqueueToReceivers(h, frame);
         return canStatus.canOK;
     }
 
@@ -433,20 +499,36 @@ public static class Canlib
 
     public static canStatus canAccept(int hnd, int envelope, uint flag)
     {
-        _ = hnd; _ = envelope; _ = flag; return canStatus.canERR_NOT_IMPLEMENTED;
-    }
-
-    public static canStatus canSetAcceptanceFilter(int hnd, uint code, uint mask, int is_extended)
-    {
         if (!TryGetHandle(hnd, out var h)) return canStatus.canERR_INVHANDLE;
-        var rule = new FilterRule { Code = code, Mask = mask, Extended = is_extended != 0 };
+
+        bool extended, isMask;
+        switch (flag)
+        {
+            case canFILTER_SET_CODE_STD: extended = false; isMask = false; break;
+            case canFILTER_SET_MASK_STD: extended = false; isMask = true; break;
+            case canFILTER_SET_CODE_EXT: extended = true; isMask = false; break;
+            case canFILTER_SET_MASK_EXT: extended = true; isMask = true; break;
+            default: return canStatus.canERR_PARAM;
+        }
+
         lock (h.Filters)
         {
-            h.Filters.RemoveAll(i => i.Extended == (is_extended != 0));
-            h.Filters.Add(rule);
+            var rule = h.Filters.FirstOrDefault(i => i.Extended == extended);
+            if (rule is null)
+            {
+                rule = new FilterRule { Extended = extended };
+                h.Filters.Add(rule);
+            }
+
+            if (isMask) rule.Mask = unchecked((uint)envelope);
+            else rule.Code = unchecked((uint)envelope);
         }
         return canStatus.canOK;
     }
+
+    // Same sequence as the real binding, so the FAKE suite covers the flag/code/mask logic.
+    public static canStatus canSetAcceptanceFilter(int hnd, uint code, uint mask, int is_extended)
+        => CanlibAcceptance.Set(hnd, code, mask, is_extended != 0);
 
     // Object buffers for periodic TX
     public static canStatus canObjBufAllocate(int hnd, int type)
@@ -480,12 +562,30 @@ public static class Canlib
         // Start timer
         int due = Math.Max(1, p.PeriodUs / 1000);
         p.Timer?.Dispose();
-        p.Timer = new Timer(_ =>
+        // canObjBufSetMsgCount: send MsgCount frames, then stop and reset the count to 0 (infinite).
+        // Modelled from the CANlib documentation, not verified on a device.
+        var remaining = p.MsgCount;
+        Timer timer = null;
+        timer = new Timer(_ =>
         {
-            // Construct frame and send
-            var f = new Frame { Id = p.Id, Data = p.Data.ToArray(), Dlc = p.Dlc, Flags = (int)p.Flags, Time = 0 };
-            EnqueueToReceivers(h, f);
-        }, null, due, due);
+            lock (h.Periodics)
+            {
+                if (!ReferenceEquals(p.Timer, timer)) return;
+                // Construct frame and send
+                var f = new Frame { Id = p.Id, Data = p.Data.ToArray(), Dlc = p.Dlc, Flags = (int)p.Flags, Time = 0 };
+                // Same rule as canWrite: a silent controller puts nothing on the bus.
+                if (h.DriverType != canDRIVER_SILENT)
+                    EnqueueToReceivers(h, f);
+                if (remaining > 0 && --remaining == 0)
+                {
+                    try { timer.Dispose(); } catch { }
+                    p.Timer = null;
+                    p.MsgCount = 0;
+                }
+            }
+        }, null, Timeout.Infinite, Timeout.Infinite);
+        lock (h.Periodics) { p.Timer = timer; }
+        timer.Change(due, due);
         return canStatus.canOK;
     }
 
@@ -528,6 +628,25 @@ public static class Canlib
         return canStatus.canOK;
     }
 
+    private static readonly ConcurrentDictionary<int, canStatus> s_injectedMsgCountFailures = new();
+
+    /// <summary>Models unsupported message counts for the buffer's frame ID without affecting other tests.</summary>
+    public static void FailMsgCountFor(int id, canStatus status) => s_injectedMsgCountFailures[id] = status;
+
+    public static void ClearMsgCountFailure(int id) => s_injectedMsgCountFailures.TryRemove(id, out _);
+
+    public static canStatus canObjBufSetMsgCount(int hnd, int idx, uint count)
+    {
+        if (!TryGetHandle(hnd, out var h)) return canStatus.canERR_INVHANDLE;
+        lock (h.Periodics)
+        {
+            if (!h.Periodics.TryGetValue(idx, out var p)) return canStatus.canERR_PARAM;
+            if (s_injectedMsgCountFailures.TryGetValue(p.Id, out var failure)) return failure;
+            p.MsgCount = count;
+        }
+        return canStatus.canOK;
+    }
+
     public static canStatus kvSetNotifyCallback(int hnd, kvCallbackDelegate callback, IntPtr context, uint notifyFlags)
     {
         if (!TryGetHandle(hnd, out var h)) return canStatus.canERR_INVHANDLE;
@@ -551,6 +670,8 @@ public static class Canlib
         if (item == canCHANNELDATA_CHANNEL_CAP)
         {
             value = canCHANNEL_CAP_CAN_FD | canCHANNEL_CAP_CAN_FD_NONISO | canCHANNEL_CAP_SILENT_MODE | canCHANNEL_CAP_ERROR_COUNTERS | canCHANNEL_CAP_BUS_STATISTICS;
+            // Channel 2 models a device without silent mode, e.g. a Kvaser Leaf Light v2.
+            if (channel == 2) value &= ~canCHANNEL_CAP_SILENT_MODE;
             return canStatus.canOK;
         }
         return canStatus.canERR_NOT_IMPLEMENTED;

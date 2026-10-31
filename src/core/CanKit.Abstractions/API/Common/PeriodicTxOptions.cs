@@ -13,10 +13,13 @@ namespace CanKit.Abstractions.API.Common
         public TimeSpan Period { get; init; }
 
         /// <summary>
-        /// Number of repeats after the initial emission; use -1 for infinite repeats.
+        /// Total number of frames to send; use -1 for an infinite schedule.
+        /// With <see cref="FireImmediately"/> the immediate frame counts as the first one.
+        /// 0 sends nothing, not even the immediate frame.
         ///
-        /// (首次发送之后的重复次数；-1 表示无限重复。
-        ///
+        /// (要发送的帧总数；-1 表示无限发送。
+        /// 启用 <see cref="FireImmediately"/> 时，立即发送的那一帧计为第一帧。
+        /// 0 表示不发送任何帧，包括立即发送的那一帧。)
         /// </summary>
         public int Repeat { get; init; }
 
@@ -38,7 +41,7 @@ namespace CanKit.Abstractions.API.Common
         /// Create periodic transmit options. (创建周期发送配置。)
         /// </summary>
         /// <param name="period">Interval between sends; must be &gt; 0. (发送间隔；必须大于 0。)</param>
-        /// <param name="repeat">Repeats after the first; -1 for infinite. (首次之后的重复次数；-1 表示无限。)</param>
+        /// <param name="repeat">Total number of frames; -1 for infinite, 0 for none. (发送的帧总数；-1 表示无限，0 表示不发送。)</param>
         /// <param name="fireImmediately">Fire once immediately if true. (为 true 时安排后立即发送一次。)</param>
         public PeriodicTxOptions(
             TimeSpan period,

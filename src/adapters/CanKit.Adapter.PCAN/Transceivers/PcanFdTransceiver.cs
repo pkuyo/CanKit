@@ -200,11 +200,17 @@ public sealed class PcanFdTransceiver : ITransceiver
     {
         var ch = (PcanBus)bus;
         if (count < 0) throw new ArgumentOutOfRangeException(nameof(count));
-        for (int i = 0; i < count; i++)
+        // Discarded status messages do not count against the requested frames.
+        for (int received = 0; received < count;)
         {
             var st = PcanBasicNative.CAN_ReadFD((UInt16)ch.Handle, out var pmsg, out var timestamp);
             if (st == TPCANStatus.PCAN_ERROR_QRCVEMPTY)
                 break;
+            // Driver status messages are not CAN frames. PCAN-Basic also returns the reported
+            // bus state (overrun, warning, passive, bus-off) as the read result, so check this
+            // before the status is treated as a failure.
+            if ((pmsg.MSGTYPE & TPCANMessageType.PCAN_MESSAGE_STATUS) != 0)
+                continue;
             if (st != TPCANStatus.PCAN_ERROR_OK)
             {
                 PcanUtils.ThrowIfError((PcanStatus)st, "CAN_ReadFD()", $"PCAN: receive frame failed. Channel:{((PcanBus)bus).Handle}");
@@ -213,6 +219,7 @@ public sealed class PcanFdTransceiver : ITransceiver
             var isFd = (pmsg.MSGTYPE & TPCANMessageType.PCAN_MESSAGE_FD) != 0;
             var isExt = (pmsg.MSGTYPE & TPCANMessageType.PCAN_MESSAGE_EXTENDED) != 0;
             var isErr = (pmsg.MSGTYPE & TPCANMessageType.PCAN_MESSAGE_ERRFRAME) != 0;
+            var isEcho = (pmsg.MSGTYPE & TPCANMessageType.PCAN_MESSAGE_ECHO) != 0;
             var ticks = timestamp * 10UL; // microseconds -> ticks (100ns)
             if (!isFd)
             {
@@ -221,7 +228,8 @@ public sealed class PcanFdTransceiver : ITransceiver
                 var cf = CanFrame.Classic((int)pmsg.ID, scf, isExt, isRtr,
                     bus.Options.BufferAllocator.FrameNeedDispose, isErr);
 
-                yield return new CanReceiveData(cf) { ReceiveTimestamp = TimeSpan.FromTicks((long)ticks) };
+                received++;
+                yield return new CanReceiveData(cf) { ReceiveTimestamp = TimeSpan.FromTicks((long)ticks), IsEcho = isEcho };
                 continue;
             }
 
@@ -233,7 +241,8 @@ public sealed class PcanFdTransceiver : ITransceiver
                 bus.Options.BufferAllocator.FrameNeedDispose, isErr);
 
 
-            yield return new CanReceiveData(fd) { ReceiveTimestamp = TimeSpan.FromTicks((long)ticks) };
+            received++;
+            yield return new CanReceiveData(fd) { ReceiveTimestamp = TimeSpan.FromTicks((long)ticks), IsEcho = isEcho };
         }
 
         unsafe IMemoryOwner<byte> CopyFd(in PcanBasicNative.TpcanMsgFd msg, ICanBus bus)

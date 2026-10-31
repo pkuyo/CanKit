@@ -161,11 +161,17 @@ public sealed class PcanClassicTransceiver : ITransceiver
     {
         var ch = (PcanBus)bus;
         if (count < 0) throw new ArgumentOutOfRangeException(nameof(count));
-        for (int i = 0; i < count; i++)
+        // Discarded status messages do not count against the requested frames.
+        for (int received = 0; received < count;)
         {
             var st = PcanBasicNative.CAN_Read((UInt16)ch.Handle, out PcanBasicNative.TpcanMsg pmsg, out var timestamp);
             if (st == TPCANStatus.PCAN_ERROR_QRCVEMPTY)
                 break;
+            // Driver status messages are not CAN frames. PCAN-Basic also returns the reported
+            // bus state (overrun, warning, passive, bus-off) as the read result, so check this
+            // before the status is treated as a failure.
+            if ((pmsg.MSGTYPE & TPCANMessageType.PCAN_MESSAGE_STATUS) != 0)
+                continue;
             if (st != TPCANStatus.PCAN_ERROR_OK)
             {
                 PcanUtils.ThrowIfError((PcanStatus)st, "CAN_Read()", $"PCAN: receive frame failed. Channel:{((PcanBus)bus).Handle}");
@@ -173,14 +179,15 @@ public sealed class PcanClassicTransceiver : ITransceiver
             var isExt = (pmsg.MSGTYPE & TPCANMessageType.PCAN_MESSAGE_EXTENDED) != 0;
             var isRtr = (pmsg.MSGTYPE & TPCANMessageType.PCAN_MESSAGE_RTR) != 0;
             var isErr = (pmsg.MSGTYPE & TPCANMessageType.PCAN_MESSAGE_ERRFRAME) != 0;
-
+            var isEcho = (pmsg.MSGTYPE & TPCANMessageType.PCAN_MESSAGE_ECHO) != 0;
 
             var slice = Copy(pmsg, bus);
             var frame = CanFrame.Classic((int)pmsg.ID, slice, isExt, isRtr,
                     bus.Options.BufferAllocator.FrameNeedDispose, isErr);
 
             // Assume PCAN timestamp is in microseconds. Convert to TimeSpan
-            yield return new CanReceiveData(frame) { ReceiveTimestamp = timestamp.ToTimeSpan() };
+            received++;
+            yield return new CanReceiveData(frame) { ReceiveTimestamp = timestamp.ToTimeSpan(), IsEcho = isEcho };
 
             unsafe IMemoryOwner<byte> Copy(in PcanBasicNative.TpcanMsg msg, ICanBus bus)
             {

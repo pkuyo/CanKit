@@ -3,17 +3,21 @@ name: CI-adapter-kvaser
 on:
   push:
     paths:
-      - 'src/core/CanKit.Core/**'
+      - 'src/core/**'
       - 'src/adapters/CanKit.Adapter.Kvaser/**'
       - 'tests/CanKit.Tests/**'
       - 'src/Directory.Build.props'
+      - 'src/Directory.Build.targets'
+      - 'eng/package-versions.props'
       - 'global.json'
   pull_request:
     paths:
-      - 'src/core/CanKit.Core/**'
+      - 'src/core/**'
       - 'src/adapters/CanKit.Adapter.Kvaser/**'
       - 'tests/CanKit.Tests/**'
       - 'src/Directory.Build.props'
+      - 'src/Directory.Build.targets'
+      - 'eng/package-versions.props'
       - 'global.json'
 jobs:
   windows:

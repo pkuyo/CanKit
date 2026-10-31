@@ -24,6 +24,7 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
     private readonly AsyncFramePipe<CanReceiveData> _asyncRx;
     private readonly IDisposable _driverScope;
     private CancellationTokenSource? _pollCts;
+    private Task? _rxTask;
 
     private EventHandler<CanReceiveData>? _frameReceived;
     private EventHandler<CanReceiveDataView>? _frameObserved;
@@ -148,7 +149,8 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
             _driverScope.Dispose();
             throw;
         }
-        Task.Run(() => RxDrainLoop(_pollCts.Token));
+        var rxToken = _pollCts.Token;
+        _rxTask = Task.Run(() => RxDrainLoop(rxToken));
     }
 
     private void UpdateCapabilities(IBusOptions options, VectorChannelInfo info)
@@ -464,22 +466,47 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
         return _errorCounters;
     }
 
+    /// <summary>
+    /// The background receive loop. Exposed to the test assembly to verify that it ends.
+    /// </summary>
+    internal Task? ReceiveLoopTask => _rxTask;
+
     private void StopReceiveLoop()
     {
-        var cts = Volatile.Read(ref _pollCts);
-        try
+        var cts = Interlocked.Exchange(ref _pollCts, null);
+        if (cts is null) return;
+
+        try { cts.Cancel(); } catch { }
+
+        var task = _rxTask;
+        if (task is null)
         {
-            try { cts?.Cancel(); } catch { }
-        }
-        finally
-        {
-            cts?.Dispose();
-            if (_pollCts != null)
-            {
-                Interlocked.CompareExchange(ref _pollCts, null, cts);
-            }
+            cts.Dispose();
+            return;
         }
 
+        // Let the loop leave before the notification event and the port go away. Never wait on
+        // ourselves (stop requested from the loop thread or from a subscriber callback on it).
+        if (Task.CurrentId != task.Id)
+        {
+            try { task.Wait(TimeSpan.FromSeconds(1)); } catch { /* the loop reports its own faults */ }
+        }
+
+        // The loop keeps the token's wait handle. Release the source only after the loop has
+        // left; when the stop came from the loop thread or the wait timed out, that is later.
+        if (task.IsCompleted)
+        {
+            cts.Dispose();
+        }
+        else
+        {
+            task.ContinueWith(
+                static (_, state) => ((CancellationTokenSource)state!).Dispose(),
+                cts,
+                CancellationToken.None,
+                TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
+        }
     }
 
     public void RequestBusState()
@@ -528,19 +555,25 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
         {
             List<CanReceiveData> receiveData = new(VxlApi.RX_BATCH_COUNT);
             List<ICanErrorInfo> errInfos = new(VxlApi.RX_BATCH_COUNT);
+            // Resolve the wait handles once: the token's handle must not be requested again
+            // after its source was disposed.
+            WaitHandle[]? handles = _rxEvent != null ? [_rxEvent, token.WaitHandle] : null;
             while (!_isDisposed)
             {
-                if (_rxEvent != null)
+                if (handles != null)
                 {
-                    var handles = new[] { _rxEvent, token.WaitHandle };
                     WaitHandle.WaitAny(handles);
                 }
 
                 token.ThrowIfCancellationRequested();
 
+                // Reset before draining: an event that arrives while the queue is drained sets the
+                // notification again, so no wake-up is lost.
+                _rxEvent?.Reset();
+
                 while (true)
                 {
-                    while (_transceiver.ReceiveEvents(this, receiveData, errInfos))
+                    while (!token.IsCancellationRequested && _transceiver.ReceiveEvents(this, receiveData, errInfos))
                     {
                         foreach (var data in receiveData)
                         {
@@ -611,16 +644,25 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
                         receiveData.Clear();
                         errInfos.Clear();
                     }
-                    if (_rxEvent == null)
+                    // A stop requested from a callback on this thread ends the loop here, before
+                    // it waits or polls again.
+                    token.ThrowIfCancellationRequested();
+
+                    if (_rxEvent != null)
                     {
-                        PreciseDelay.Delay(TimeSpan.FromMilliseconds(Options.PollingInterval));
+                        // Notification mode: the queue is empty, go back to waiting for the event.
+                        break;
                     }
-                    else
-                    {
-                        _rxEvent.Reset();
-                    }
+
+                    // Polling mode: pause, then drain again unless the loop was stopped.
+                    PreciseDelay.Delay(TimeSpan.FromMilliseconds(Options.PollingInterval), ct: token);
+                    token.ThrowIfCancellationRequested();
                 }
             }
+        }
+        catch (ObjectDisposedException) when (_isDisposed)
+        {
+            // The bus was disposed while the loop was leaving; nothing to report.
         }
         catch (OperationCanceledException ex)
         {
