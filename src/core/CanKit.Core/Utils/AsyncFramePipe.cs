@@ -44,10 +44,14 @@ public sealed class AsyncFramePipe<T>
         _ = _channel.Writer.TryWrite(frame);
     }
 
-    public void Clear()
+    /// <summary>
+    /// Removes all queued items, passing each one to <paramref name="onItem"/> (e.g. to release its memory).
+    /// </summary>
+    public void Clear(Action<T>? onItem = null)
     {
-        while (_channel.Reader.TryRead(out _))
+        while (_channel.Reader.TryRead(out var item))
         {
+            onItem?.Invoke(item);
         }
     }
 

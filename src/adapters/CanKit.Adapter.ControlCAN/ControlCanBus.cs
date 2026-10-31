@@ -490,11 +490,7 @@ public sealed class ControlCanBus : ICanBus<ControlCanBusRtConfigurator>, IOwner
 
     private void DiscardQueuedFrames()
     {
-        // A zero-timeout drain completes synchronously and transfers ownership to this caller.
-        foreach (var frame in _asyncRx.ReceiveBatchAsync(0, 0, CancellationToken.None).GetAwaiter().GetResult())
-        {
-            frame.CanFrame.Dispose();
-        }
+        _asyncRx.Clear(static frame => frame.CanFrame.Dispose());
     }
 
     private void LogCleanupFailure(string operation, Exception ex)
