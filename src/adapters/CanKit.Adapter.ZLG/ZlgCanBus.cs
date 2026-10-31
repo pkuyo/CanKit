@@ -114,19 +114,37 @@ namespace CanKit.Adapter.ZLG
                 {
                     config.can_type = 1U;
                 }
-                config.config.can.mode = (byte)options.WorkMode;
                 CanKitLogger.LogInformation($"ZLG: Initializing on '{options.ChannelIndex}', Mode={options.ProtocolMode}, Features={Options.Features}");
-                config.config.can.acc_code = 0;
-                config.config.can.acc_mask = 0xffffffff;
+                uint accCode = 0;
+                uint accMask = 0xffffffff;
+                byte filterIdType = 0;
                 if (options.Filter.FilterRules.Count > 0)
                 {
                     if (options.Filter.FilterRules[0] is FilterRule.Mask mask)
                     {
-                        config.config.can.acc_code = mask.AccCode;
-                        config.config.can.acc_mask = mask.AccMask;
-                        config.config.can.filter = (byte)mask.FilterIdType;
-
+                        accCode = mask.AccCode;
+                        accMask = mask.AccMask;
+                        filterIdType = (byte)mask.FilterIdType;
                     }
+                }
+
+                // `config.config` is a union: only the member selected by can_type may be written,
+                // because filter/mode sit at different offsets in the two views.
+                if (config.can_type == 0U)
+                {
+                    config.config.can.acc_code = accCode;
+                    config.config.can.acc_mask = accMask;
+                    config.config.can.filter = filterIdType;
+                    config.config.can.mode = (byte)options.WorkMode;
+                }
+                else
+                {
+                    config.config.canfd.acc_code = accCode;
+                    config.config.canfd.acc_mask = accMask;
+                    config.config.canfd.filter = filterIdType;
+                    // canfd.mode only defines 0 (normal) and 1 (listen-only). Echo is requested per
+                    // frame through transmit_type and must not leak into this field.
+                    config.config.canfd.mode = options.WorkMode == ChannelWorkMode.ListenOnly ? (byte)1 : (byte)0;
                 }
 
 
