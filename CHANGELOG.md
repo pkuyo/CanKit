@@ -26,6 +26,10 @@
 * `bus.WithQueuedTx()` threw `CanBusConfigurationException` for any bus opened without `EnableErrorInfo()`, because `QueuedCanBus` subscribed to the inner `ErrorFrameReceived` in its constructor. The inner subscription is now made when the first consumer subscribes to the wrapper's `ErrorFrameReceived` and released with the last one, so a bus without error info can be wrapped and the configuration error surfaces at subscription time, as it does on the inner bus. `Dispose()` detaches the wrapper's forwarders from the inner bus.
 * Kvaser ignored `ChannelWorkMode.ListenOnly`: the channel kept acknowledging and transmitting. It is now opened with `canDRIVER_SILENT` (`canSetBusOutputControl`, before bus-on). Opening fails if the driver type cannot be read back or does not read back as silent. Channels without `canCHANNEL_CAP_SILENT_MODE` (e.g. Leaf Light v2, CANlib virtual channels) now throw `CanFeatureNotSupportedException` for ListenOnly instead of running in normal mode, because CANlib accepts the call there but ignores it.
 
+### Breaking Changes
+
+* Removed the unfinished ISO-TP transport, its public API/SPI types, and PCAN ISO-TP support. The `CanKit.Transport.IsoTp` project and its solution/package entries are no longer included.
+
 ## 0.5.6
 
 Published packages:
