@@ -85,5 +85,69 @@ public class CanFrameTests : IClassFixture<TestCaseProvider>
         frame.Data.Span.SequenceEqual(data.AsSpan());
         CanFrame.DlcToLen(frame.Dlc).Should().Be((byte)len);
     }
+
+    private sealed class CountingOwner(byte[] buffer) : System.Buffers.IMemoryOwner<byte>
+    {
+        public int Disposed;
+        public Memory<byte> Memory { get; } = buffer;
+        public void Dispose() => Disposed++;
+    }
+
+    [Fact]
+    public void Dispose_Without_OwnMemory_Does_Not_Release_The_Owner()
+    {
+        var owner = new CountingOwner(new byte[4]);
+        var frame = CanFrame.Classic(0x1, owner, ownMemory: false);
+
+        frame.Dispose();
+
+        owner.Disposed.Should().Be(0);
+    }
+
+    [Fact]
+    public void Dispose_With_OwnMemory_Releases_The_Owner()
+    {
+        var owner = new CountingOwner(new byte[4]);
+        var frame = CanFrame.Classic(0x1, owner);
+
+        frame.Dispose();
+
+        owner.Disposed.Should().Be(1);
+    }
+
+    [Fact]
+    public void Copy_Is_Independent_Of_The_Source_Memory()
+    {
+        var owner = new CountingOwner(new byte[] { 1, 2, 3 });
+        var source = CanFrame.Fd(0x1ABCDE, owner, BRS: true, ESI: true, isExtendedFrame: true);
+
+        var clone = source.Copy(new DefaultBufferAllocator());
+        source.Dispose();
+        owner.Memory.Span.Clear();
+
+        clone.Data.ToArray().Should().Equal(1, 2, 3);
+        clone.ID.Should().Be(source.ID);
+        clone.Flags.Should().Be(source.Flags);
+        clone.FrameKind.Should().Be(CanFrameType.CanFd);
+        owner.Disposed.Should().Be(1);
+    }
+
+    [Fact]
+    public void Copy_Owns_Its_Buffer()
+    {
+        var rented = new CountingOwner(new byte[2]);
+        var allocator = new SingleOwnerAllocator(rented);
+
+        var clone = CanFrame.Classic(0x1, new byte[] { 5, 6 }).Copy(allocator);
+        clone.Dispose();
+
+        rented.Disposed.Should().Be(1);
+    }
+
+    private sealed class SingleOwnerAllocator(System.Buffers.IMemoryOwner<byte> owner) : CanKit.Abstractions.SPI.Common.IBufferAllocator
+    {
+        public System.Buffers.IMemoryOwner<byte> Rent(int length, bool zeroFill = false) => owner;
+        public bool FrameNeedDispose => true;
+    }
 }
 

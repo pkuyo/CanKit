@@ -34,6 +34,7 @@ public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, IOwnership
     private EventHandler<ICanErrorInfo>? _errorOccurred;
     private IDisposable? _owner;
     private bool _disposed;
+    private readonly object _rxGate = new(); // orders the final queue publish against Dispose
     private readonly CanExceptionPolicy _exceptionPolicy;
     private readonly CanBusExceptionDispatcher _exceptions;
 
@@ -66,8 +67,7 @@ public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, IOwnership
             });
 
         // join hub
-        _hub = VirtualBusHub.Get(Options.SessionId);
-        _hub.Attach(this);
+        _hub = VirtualBusHub.Join(Options.SessionId, this);
 
         // apply initial options (software filter, etc.)
         ApplyConfig(_options);
@@ -218,16 +218,28 @@ public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, IOwnership
         }
         finally
         {
-            _disposed = true;
+            lock (_rxGate)
+            {
+                _disposed = true;
+            }
+            // release the copies this bus received but nobody read
+            _asyncRx.Clear(static data => data.CanFrame.Dispose());
             _owner?.Dispose();
         }
     }
 
     internal void InternalDeliver(CanReceiveData data)
     {
+        if (_disposed)
+        {
+            data.CanFrame.Dispose();
+            return;
+        }
+
         var pred = _softwareFilterPredicate;
         if (_useSoftwareFilter && pred is not null && !pred(data.CanFrame))
         {
+            data.CanFrame.Dispose();
             return;
         }
 
@@ -257,7 +269,15 @@ public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, IOwnership
                 severity: _exceptionPolicy.SubscriberCallbackSeverity,
                 message: "Virtual FrameObserved handler threw an exception.");
         }
-        _asyncRx.Publish(data);
+        lock (_rxGate)
+        {
+            if (!_disposed)
+            {
+                _asyncRx.Publish(data);
+                return;
+            }
+        }
+        data.CanFrame.Dispose();
 
     }
 
