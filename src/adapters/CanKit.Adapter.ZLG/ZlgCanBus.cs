@@ -276,6 +276,7 @@ namespace CanKit.Adapter.ZLG
             try
             {
                 _isDisposed = true;
+                _asyncRx.Complete();
                 try
                 {
                     StopReceiveLoop();

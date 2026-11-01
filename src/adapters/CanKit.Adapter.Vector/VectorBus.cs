@@ -518,10 +518,13 @@ public sealed class VectorBus : ICanBus<VectorBusRtConfigurator>
     {
         if (_isDisposed) return;
         _isDisposed = true;
+        _asyncRx.Complete();
 
         try
         {
             StopReceiveLoop();
+            // The loop no longer publishes: release the frames still queued.
+            _asyncRx.Clear();
             if (_isActivated)
                 VectorErr.ThrowIfError(VxlApi.xlDeactivateChannel(_portHandle, _accessMask), "xlDeactivateChannel");
         }

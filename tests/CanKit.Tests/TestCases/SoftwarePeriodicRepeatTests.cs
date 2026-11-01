@@ -1,11 +1,12 @@
 using System;
 using System.Linq;
-using System.Threading;
+using System.Threading.Tasks;
 using CanKit.Abstractions.API.Can;
 using CanKit.Abstractions.API.Can.Definitions;
 using CanKit.Abstractions.API.Common;
 using CanKit.Abstractions.API.Common.Definitions;
 using CanKit.Core;
+using CanKit.Core.Utils;
 using FluentAssertions;
 using Xunit;
 
@@ -37,19 +38,20 @@ public class SoftwarePeriodicRepeatTests : IClassFixture<TestCaseProvider>
     }
 
     [Fact]
-    public void Update_To_Zero_Repeats_Stops_Sending()
+    public async Task Update_To_Zero_Repeats_Stops_Sending()
     {
         var (tx, rx) = OpenPair();
         using (tx)
         using (rx)
         {
             using var periodic = tx.TransmitPeriodic(Frame(), new PeriodicTxOptions(Period, -1));
-            Count(rx, TimeSpan.FromMilliseconds(100)).Should().BeGreaterThan(0);
+            await WaitForFramesAsync(rx, 1);
 
             periodic.Update(repeatCount: 0);
-            Thread.Sleep(50); // let a send that was already in flight arrive
-
-            Count(rx, TimeSpan.FromMilliseconds(50)).Should().BeLessThanOrEqualTo(1);
+            await WaitForWorkerToEndAsync(periodic);
+            // Update waits for the worker to stop. Discard frames already received before
+            // it returned; a busy sender can leave more than one queued at this point.
+            _ = rx.Receive(0, 0).ToArray();
             Count(rx, TimeSpan.FromMilliseconds(200)).Should().Be(0);
         }
     }
@@ -57,7 +59,7 @@ public class SoftwarePeriodicRepeatTests : IClassFixture<TestCaseProvider>
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
-    public void Update_From_Zero_To_A_Count_Sends_That_Count(bool fireImmediately)
+    public async Task Update_From_Zero_To_A_Count_Sends_That_Count(bool fireImmediately)
     {
         var (tx, rx) = OpenPair();
         using (tx)
@@ -70,7 +72,9 @@ public class SoftwarePeriodicRepeatTests : IClassFixture<TestCaseProvider>
 
             periodic.Update(repeatCount: 3);
 
-            Count(rx, TimeSpan.FromMilliseconds(300)).Should().Be(3);
+            await WaitForFramesAsync(rx, 3);
+            await WaitForWorkerToEndAsync(periodic);
+            rx.Receive(0, 0).Should().BeEmpty("the finite schedule must send exactly three frames");
             periodic.RemainingCount.Should().Be(0);
         }
     }
@@ -92,7 +96,7 @@ public class SoftwarePeriodicRepeatTests : IClassFixture<TestCaseProvider>
     }
 
     [Fact]
-    public void Finite_Repeat_Sends_Exactly_Repeat_Frames()
+    public async Task Finite_Repeat_Sends_Exactly_Repeat_Frames()
     {
         var (tx, rx) = OpenPair();
         using (tx)
@@ -100,12 +104,14 @@ public class SoftwarePeriodicRepeatTests : IClassFixture<TestCaseProvider>
         {
             using var periodic = tx.TransmitPeriodic(Frame(), new PeriodicTxOptions(Period, 3));
 
-            Count(rx, TimeSpan.FromMilliseconds(300)).Should().Be(3);
+            await WaitForFramesAsync(rx, 3);
+            await WaitForWorkerToEndAsync(periodic);
+            rx.Receive(0, 0).Should().BeEmpty("the finite schedule must send exactly three frames");
         }
     }
 
     [Fact]
-    public void Update_To_Zero_Stops_A_Waiting_Schedule_Without_Waiting_For_The_Next_Period()
+    public async Task Update_To_Zero_Stops_A_Waiting_Schedule_Without_Waiting_For_The_Next_Period()
     {
         var (tx, rx) = OpenPair();
         using (tx)
@@ -114,8 +120,8 @@ public class SoftwarePeriodicRepeatTests : IClassFixture<TestCaseProvider>
             // Long period: after the immediate frame the scheduler waits ten seconds.
             using var periodic = tx.TransmitPeriodic(Frame(),
                 new PeriodicTxOptions(TimeSpan.FromSeconds(10), -1));
-            var schedule = periodic.Should().BeOfType<CanKit.Core.Utils.SoftwarePeriodicTx>().Subject;
-            Count(rx, TimeSpan.FromMilliseconds(100)).Should().Be(1);
+            var schedule = periodic.Should().BeOfType<SoftwarePeriodicTx>().Subject;
+            await WaitForFramesAsync(rx, 1);
             schedule.IsRunning.Should().BeTrue();
 
             periodic.Update(repeatCount: 0);
@@ -123,12 +129,12 @@ public class SoftwarePeriodicRepeatTests : IClassFixture<TestCaseProvider>
             schedule.IsRunning.Should().BeFalse("a zero count stops the schedule right away");
             periodic.RemainingCount.Should().Be(0);
             // Not only the flag: the worker itself must be gone, not asleep until the next period.
-            schedule.WorkerTask!.Wait(TimeSpan.FromSeconds(2)).Should().BeTrue("the worker must not sleep on");
+            await WaitForWorkerToEndAsync(periodic);
         }
     }
 
     [Fact]
-    public void Stop_Ends_The_Worker_And_Sends_No_Further_Frame()
+    public async Task Stop_Ends_The_Worker_And_Sends_No_Further_Frame()
     {
         var (tx, rx) = OpenPair();
         using (tx)
@@ -136,12 +142,13 @@ public class SoftwarePeriodicRepeatTests : IClassFixture<TestCaseProvider>
         {
             using var periodic = tx.TransmitPeriodic(Frame(),
                 new PeriodicTxOptions(TimeSpan.FromMilliseconds(300), -1));
-            var schedule = periodic.Should().BeOfType<CanKit.Core.Utils.SoftwarePeriodicTx>().Subject;
-            Count(rx, TimeSpan.FromMilliseconds(100)).Should().Be(1);
+            await WaitForFramesAsync(rx, 1);
 
             periodic.Stop();
 
-            schedule.WorkerTask!.Wait(TimeSpan.FromSeconds(2)).Should().BeTrue("Stop() interrupts the wait");
+            await WaitForWorkerToEndAsync(periodic);
+            // Exclude frames already queued before Stop() returned on a busy runner.
+            _ = rx.Receive(0, 0).ToArray();
             // The frame that was due 300 ms after the first one must not be sent any more.
             Count(rx, TimeSpan.FromMilliseconds(500)).Should().Be(0);
         }
@@ -161,6 +168,23 @@ public class SoftwarePeriodicRepeatTests : IClassFixture<TestCaseProvider>
     }
 
     private static CanFrame Frame() => CanFrame.Classic(0x6B0, new byte[] { 0xBB });
+
+    private static async Task WaitForFramesAsync(ICanBus bus, int count)
+    {
+        // Worker startup on a busy CI runner is not guaranteed within a 100/300 ms window.
+        var frames = await bus.ReceiveAsync(count, 5000, TestContext.Current.CancellationToken);
+        frames.Should().HaveCount(count, "the worker must send the expected frames within the startup timeout");
+        frames.Should().OnlyContain(frame => frame.CanFrame.ID == 0x6B0);
+    }
+
+    private static async Task WaitForWorkerToEndAsync(IPeriodicTx periodic)
+    {
+        var worker = periodic.Should().BeOfType<SoftwarePeriodicTx>().Subject.WorkerTask;
+        worker.Should().NotBeNull();
+        var finished = await Task.WhenAny(worker!, Task.Delay(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken));
+        finished.Should().BeSameAs(worker, "the worker must end without waiting for the next period");
+        await worker!;
+    }
 
     private static int Count(ICanBus bus, TimeSpan window)
     {

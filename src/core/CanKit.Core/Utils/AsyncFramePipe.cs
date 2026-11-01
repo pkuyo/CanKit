@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using CanKit.Core.Definitions;
+using CanKit.Core.Diagnostics;
 using System.Threading.Channels;
 using CanKit.Abstractions.API.Common;
 using CanKit.Abstractions.API.Common.Definitions;
@@ -14,12 +15,14 @@ namespace CanKit.Core.Utils;
 public sealed class AsyncFramePipe<T>
 {
     private readonly Channel<T> _channel;
+    private readonly Action<T>? _onDropped;
 
     private volatile TaskCompletionSource<Exception?> _exceptionPulse =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
 
     public AsyncFramePipe(int? capacity = null, Action<T>? onDropped = null)
     {
+        _onDropped = onDropped;
         if (capacity.HasValue)
         {
             var opt = new BoundedChannelOptions(capacity.Value)
@@ -31,7 +34,7 @@ public sealed class AsyncFramePipe<T>
 
             _channel = onDropped is null
                 ? Channel.CreateBounded<T>(opt)
-                : Channel.CreateBounded<T>(opt, onDropped);
+                : Channel.CreateBounded<T>(opt, DropItem);
         }
         else
         {
@@ -41,17 +44,55 @@ public sealed class AsyncFramePipe<T>
 
     public void Publish(T frame)
     {
-        _ = _channel.Writer.TryWrite(frame);
+        if (!_channel.Writer.TryWrite(frame))
+        {
+            // The pipe is completed: nobody will read the frame, so release it.
+            DropItem(frame);
+        }
     }
 
     /// <summary>
-    /// Removes all queued items, passing each one to <paramref name="onItem"/> (e.g. to release its memory).
+    /// Completes the pipe. Pending and future reads end: <see cref="ReadAllAsync"/> finishes
+    /// once the queue is empty, <see cref="ReceiveBatchAsync"/> returns what it has collected.
+    /// Frames published afterwards are handed to the drop callback. Items still queued stay
+    /// readable until <see cref="Clear()"/> releases them. Idempotent.
     /// </summary>
-    public void Clear(Action<T>? onItem = null)
+    public void Complete()
+    {
+        _ = _channel.Writer.TryComplete();
+    }
+
+    /// <summary>
+    /// Discards every queued item. Each one is handed to the drop callback so that pooled
+    /// frame memory is released. Callback failures are logged without interrupting cleanup.
+    /// </summary>
+    public void Clear() => Clear(null);
+
+    /// <summary>
+    /// Discards every queued item, passing each one to <paramref name="onItem"/> (e.g. to release
+    /// its memory) instead of the drop callback. Callback failures are logged without interrupting cleanup.
+    /// </summary>
+    public void Clear(Action<T>? onItem)
     {
         while (_channel.Reader.TryRead(out var item))
         {
-            onItem?.Invoke(item);
+            DropItem(item, onItem);
+        }
+    }
+
+    private void DropItem(T item) => DropItem(item, null);
+
+    private void DropItem(T item, Action<T>? onItem)
+    {
+        try
+        {
+            (onItem ?? _onDropped)?.Invoke(item);
+        }
+        catch (Exception ex)
+        {
+            // A failing custom owner must not prevent other releases or shutdown cancellation.
+            try { CanKitLogger.LogWarning("AsyncFramePipe drop callback failed.", ex); }
+            catch { /* A custom logger must not interrupt cleanup either. */ }
         }
     }
 
@@ -99,7 +140,8 @@ public sealed class AsyncFramePipe<T>
                     catch (ChannelClosedException cce)
                     {
                         if (cce.InnerException is not null) throw cce.InnerException;
-                        throw;
+                        // Completed without error: the bus was disposed.
+                        return list;
                     }
                 }
                 else
