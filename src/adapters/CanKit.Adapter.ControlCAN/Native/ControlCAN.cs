@@ -164,7 +164,7 @@ internal static class ControlCAN
         public uint AccCode;
         public uint AccMask;
         public uint Reserved;
-        public byte Filter; // note: in this FAKE, 1=std, 2=ext (compat); 0/1 dual/single ignored
+        public byte Filter; // 1=single, 0=dual; independent of the received ID format
         public byte Timing0;
         public byte Timing1;
         public byte Mode; // 0=normal, 1=listOnly
@@ -196,6 +196,8 @@ internal static class ControlCAN
     {
         public uint Type;
         public uint Index;
+        public bool PreserveRangeTablesOnClose;
+        public int OpenCount; // Cumulative VCI_OpenDevice calls, not the number of live handles.
         public readonly Dictionary<uint, Channel> Channels = new();
     }
 
@@ -214,7 +216,16 @@ internal static class ControlCAN
         // Filters: mask or range
         public uint AccCode;
         public uint AccMask;
-        public byte FilterIdType; // 1=std, 2=ext (compat with higher layer)
+        public byte FilterMode; // 1=single, 0=dual; independent of the received ID format
+        public int ErrorCode;
+        public int RangeWritesUntilFailure = -1;
+        public bool RangeFilterEnabled;
+        public int InitCount;
+        public int ResetCount;
+        public int ReceiveCount;
+        public bool ClearRangesOnReset;
+        public Action? BeforeTransmit;
+        public readonly HashSet<uint> RejectedReferences = new();
 
         public readonly List<VCI_FILTER_RECORD> PendingRanges = new();
         public readonly List<VCI_FILTER_RECORD> ActiveRanges = new();
@@ -315,16 +326,19 @@ internal static class ControlCAN
     private static uint ExtractId(uint canId)
         => IsExtended(canId) ? (canId & CAN_EFF_MASK) : (canId & CAN_SFF_MASK);
 
-    private static uint EncodeSjaAcceptance(uint id, bool ext, bool rtr)
+    private static uint EncodeSjaAcceptance(uint id, bool ext, bool rtr, byte data0, byte data1)
     {
+        // Keep the fake's byte-register model independent of the production planner.
+        // Regression tests assert literal expected matches, not only hardware/software parity.
         uint b0, b1, b2, b3;
         if (!ext)
         {
-            // Standard: ACR0 = ID10..3; ACR1[7:5]=ID2..0, ACR1[4]=RTR; 其余位填 0
+            // Standard: ACR0 = ID10..3; ACR1[7:5]=ID2..0, ACR1[4]=RTR;
+            // ACR2/ACR3 compare the first two data bytes, ACR1[3:0] is unused.
             b0 = (id >> 3) & 0xFF;
             b1 = ((id & 0x7) << 5) | (rtr ? 0x10U : 0U);
-            b2 = 0;
-            b3 = 0;
+            b2 = data0;
+            b3 = data1;
         }
         else
         {
@@ -339,15 +353,26 @@ internal static class ControlCAN
     }
 
 
-    private static bool AcceptByMask(Channel ch, uint canId)
+    private static unsafe bool AcceptByMask(Channel ch, in VCI_CAN_OBJ obj)
     {
+        var canId = obj.ID;
         bool ext = IsExtended(canId);
-        if (ch.FilterIdType == 2 && !ext) return false;
-        if (ch.FilterIdType == 1 && ext) return false;
+        // The adapter uses dual mode only for an all-pass initialization. Its hardware
+        // mask plans must use the documented 32-bit single-filter mode.
+        if (ch.FilterMode == 0) return ch.AccMask == uint.MaxValue;
         var id = ExtractId(canId);
-        var rep = EncodeSjaAcceptance(id, ext, IsRtr(canId));
+        var dataLength = IsRtr(canId) ? 0 : obj.DataLen;
+        var rep = EncodeSjaAcceptance(id, ext, IsRtr(canId),
+            dataLength > 0 ? obj.Data[0] : (byte)0, dataLength > 1 ? obj.Data[1] : (byte)0);
+        var ignored = ch.AccMask | (ext ? 0x3U : 0x000F0000U);
+        if (!ext)
+        {
+            // SJA1000 6.4.15.1: bytes absent due to DLC or RTR do not constrain acceptance.
+            if (dataLength < 1) ignored |= 0x0000FF00U;
+            if (dataLength < 2) ignored |= 0x000000FFU;
+        }
         // SJA rule: (rep ^ AccCode) & ~AccMask == 0
-        return ((rep ^ ch.AccCode) & ~ch.AccMask) == 0;
+        return ((rep ^ ch.AccCode) & ~ignored) == 0;
     }
 
     private static bool AcceptByRange(Channel ch, uint canId)
@@ -374,10 +399,10 @@ internal static class ControlCAN
         uint id = obj.ID; // already includes flags
         bool accepted = false;
 
-        if (peer.ActiveRanges.Count > 0)
+        if (peer.RangeFilterEnabled)
             accepted = AcceptByRange(peer, id);
         else
-            accepted = AcceptByMask(peer, id);
+            accepted = AcceptByMask(peer, in obj);
 
         if (!accepted) return;
 
@@ -403,7 +428,7 @@ internal static class ControlCAN
     // -------- Public API --------
     public static uint VCI_OpenDevice(uint DevType, uint DevIndex, uint Reserved)
     {
-        _ = GetOrCreateDevice(DevType, DevIndex);
+        GetOrCreateDevice(DevType, DevIndex).OpenCount++;
         return 1;
     }
 
@@ -411,7 +436,22 @@ internal static class ControlCAN
     {
         lock (World.Gate)
         {
-            _ = World.Devices.Remove((DevType, DevIndex));
+            if (World.Devices.TryGetValue((DevType, DevIndex), out var dev))
+            {
+                foreach (var ch in dev.Channels.Values)
+                {
+                    ch.Started = false;
+                    lock (ch.Periodic)
+                    {
+                        foreach (var timer in ch.Periodic.Values) timer.Dispose();
+                        ch.Periodic.Clear();
+                        ch.PeriodicPayload.Clear();
+                    }
+                    while (ch.Rx.TryDequeue(out _)) { }
+                }
+                if (!dev.PreserveRangeTablesOnClose)
+                    World.Devices.Remove((DevType, DevIndex));
+            }
         }
         return 1;
     }
@@ -420,15 +460,25 @@ internal static class ControlCAN
     {
         var dev = GetOrCreateDevice(DevType, DevIndex);
         var ch = GetOrCreateChannel(dev, CANIndex);
+        ch.InitCount++;
         ch.Mode = pInitConfig.Mode;
         ch.T0 = pInitConfig.Timing0;
         ch.T1 = pInitConfig.Timing1;
-        ch.AccCode = pInitConfig.AccCode;
-        ch.AccMask = pInitConfig.AccMask;
-        ch.FilterIdType = pInitConfig.Filter; // 1=std,2=ext (compat)
+        // Range-only devices ignore the init mask fields (ControlCAN manual, 2.5.5/2.6.3).
+        var rangeOnly = (ControlCanDeviceKind)DevType is ControlCanDeviceKind.VCI_USBCAN_E_U
+            or ControlCanDeviceKind.VCI_USBCAN_2E_U or ControlCanDeviceKind.VCI_USBCAN_4E_U
+            or ControlCanDeviceKind.VCI_USBCAN_8E_U;
+        ch.AccCode = rangeOnly ? 0 : pInitConfig.AccCode;
+        ch.AccMask = rangeOnly ? uint.MaxValue : pInitConfig.AccMask;
+        if (!rangeOnly && pInitConfig.Filter > 1) return 0;
+        ch.FilterMode = rangeOnly ? (byte)0 : pInitConfig.Filter;
         while (ch.Rx.TryDequeue(out _)) /*Ignore*/;
-        ch.ActiveRanges.Clear();
-        ch.PendingRanges.Clear();
+        if (!rangeOnly)
+        {
+            ch.RangeFilterEnabled = false;
+            ch.ActiveRanges.Clear();
+            ch.PendingRanges.Clear();
+        }
         return 1;
     }
 
@@ -444,19 +494,32 @@ internal static class ControlCAN
     {
         var dev = GetOrCreateDevice(DevType, DevIndex);
         var ch = GetOrCreateChannel(dev, CANIndex);
+        ch.ResetCount++;
+        ch.Started = false;
+        // Optional firmware behavior used to verify that opening never depends on
+        // acceptance tables surviving ResetCAN. The default still exercises stale tables.
+        if (ch.ClearRangesOnReset)
+        {
+            ch.RangeFilterEnabled = false;
+            ch.PendingRanges.Clear();
+            ch.ActiveRanges.Clear();
+        }
         while (ch.Rx.TryDequeue(out _)) { }
         return 1;
     }
 
     public static uint VCI_ClearBuffer(uint DevType, uint DevIndex, uint CANIndex)
     {
-        return VCI_ResetCAN(DevType, DevIndex, CANIndex);
+        var ch = GetOrCreateChannel(GetOrCreateDevice(DevType, DevIndex), CANIndex);
+        while (ch.Rx.TryDequeue(out _)) { }
+        return 1;
     }
 
     public static unsafe uint VCI_Transmit(uint DevType, uint DevIndex, uint CANIndex, VCI_CAN_OBJ* pSend, uint Len)
     {
         var dev = GetOrCreateDevice(DevType, DevIndex);
         var ch = GetOrCreateChannel(dev, CANIndex);
+        Volatile.Read(ref ch.BeforeTransmit)?.Invoke();
         if (ch.Mode == 1) return 0; // listen-only: drop TX
         uint sent = 0;
         for (int i = 0; i < Len; i++)
@@ -477,14 +540,75 @@ internal static class ControlCAN
 
     public static uint VCI_ReadErrInfo(uint DevType, uint DevIndex, uint CANIndex, out VCI_ERR_INFO pErrInfo)
     {
-        pErrInfo = new VCI_ERR_INFO { ErrCode = 0, Passive_ErrData = new byte[] { 0, 0, 0 }, ArLost_ErrData = 0 };
+        var ch = GetOrCreateChannel(GetOrCreateDevice(DevType, DevIndex), CANIndex);
+        pErrInfo = new VCI_ERR_INFO
+        {
+            ErrCode = (uint)Interlocked.Exchange(ref ch.ErrorCode, 0),
+            Passive_ErrData = new byte[] { 0, 0, 0 },
+            ArLost_ErrData = 0
+        };
         return 1;
     }
+
+    internal static void InjectError(uint devType, uint devIndex, uint canIndex, uint errorCode)
+    {
+        var ch = GetOrCreateChannel(GetOrCreateDevice(devType, devIndex), canIndex);
+        Interlocked.Exchange(ref ch.ErrorCode, (int)errorCode);
+    }
+
+    internal static void FailRangeWriteAfter(uint devType, uint devIndex, uint canIndex, int successfulWrites)
+        => GetOrCreateChannel(GetOrCreateDevice(devType, devIndex), canIndex).RangeWritesUntilFailure = successfulWrites;
+
+    internal static int PendingRangeCount(uint devType, uint devIndex, uint canIndex)
+        => GetOrCreateChannel(GetOrCreateDevice(devType, devIndex), canIndex).PendingRanges.Count;
+
+    internal static int InitializationCount(uint devType, uint devIndex, uint canIndex)
+        => GetOrCreateChannel(GetOrCreateDevice(devType, devIndex), canIndex).InitCount;
+
+    internal static int ResetCount(uint devType, uint devIndex, uint canIndex)
+        => GetOrCreateChannel(GetOrCreateDevice(devType, devIndex), canIndex).ResetCount;
+
+    internal static void ClearRangesOnReset(uint devType, uint devIndex, uint canIndex, bool clear)
+        => GetOrCreateChannel(GetOrCreateDevice(devType, devIndex), canIndex).ClearRangesOnReset = clear;
+
+    internal static void SetTransmitHook(uint devType, uint devIndex, uint canIndex, Action? hook)
+        => Volatile.Write(ref GetOrCreateChannel(GetOrCreateDevice(devType, devIndex), canIndex).BeforeTransmit, hook);
+
+    internal static int AutoSendCount(uint devType, uint devIndex, uint canIndex)
+    {
+        var ch = GetOrCreateChannel(GetOrCreateDevice(devType, devIndex), canIndex);
+        lock (ch.Periodic) return ch.Periodic.Count;
+    }
+
+    internal static int ReceiveCount(uint devType, uint devIndex, uint canIndex)
+        => Volatile.Read(ref GetOrCreateChannel(GetOrCreateDevice(devType, devIndex), canIndex).ReceiveCount);
+
+    internal static byte AcceptanceMode(uint devType, uint devIndex, uint canIndex)
+        => GetOrCreateChannel(GetOrCreateDevice(devType, devIndex), canIndex).FilterMode;
+
+    internal static void RejectReference(uint devType, uint devIndex, uint canIndex, uint reference)
+        => GetOrCreateChannel(GetOrCreateDevice(devType, devIndex), canIndex).RejectedReferences.Add(reference);
+
+    internal static void AllowReference(uint devType, uint devIndex, uint canIndex, uint reference)
+        => GetOrCreateChannel(GetOrCreateDevice(devType, devIndex), canIndex).RejectedReferences.Remove(reference);
+
+    internal static void PreserveRangeTablesOnClose(uint devType, uint devIndex, bool preserve)
+        => GetOrCreateDevice(devType, devIndex).PreserveRangeTablesOnClose = preserve;
+
+    internal static int OpenCount(uint devType, uint devIndex)
+        => GetOrCreateDevice(devType, devIndex).OpenCount;
+
+    internal static bool IsStarted(uint devType, uint devIndex, uint canIndex)
+        => GetOrCreateChannel(GetOrCreateDevice(devType, devIndex), canIndex).Started;
+
+    internal static int ActiveRangeCount(uint devType, uint devIndex, uint canIndex)
+        => GetOrCreateChannel(GetOrCreateDevice(devType, devIndex), canIndex).ActiveRanges.Count;
 
     public static unsafe uint VCI_Receive(uint DevType, uint DevIndex, uint CANIndex, VCI_CAN_OBJ[] pReceive, uint Len, int WaitTime)
     {
         var dev = GetOrCreateDevice(DevType, DevIndex);
         var ch = GetOrCreateChannel(dev, CANIndex);
+        Interlocked.Increment(ref ch.ReceiveCount);
         uint cnt = 0;
         while (cnt < Len && ch.Rx.TryDequeue(out var obj))
         {
@@ -498,6 +622,13 @@ internal static class ControlCAN
     {
         var dev = GetOrCreateDevice(DevType, DevIndex);
         var ch = GetOrCreateChannel(dev, CANIndex);
+        if (ch.RejectedReferences.Contains(RefType)) return 0;
+        // The 4E-U uses different range-filter commands (manual, 2.6.8).
+        if ((ControlCanDeviceKind)DevType == ControlCanDeviceKind.VCI_USBCAN_4E_U)
+        {
+            if (RefType is 1 or 2 or 3) return 0;
+            RefType = RefType switch { 7 => 1, 8 => 2, 10 => 3, _ => RefType };
+        }
         switch (RefType)
         {
             case 0:
@@ -511,6 +642,12 @@ internal static class ControlCAN
                 // Add a range filter record. As in the vendor library, pData points directly
                 // at one VCI_FILTER_RECORD.
                 if (pData == null) return 0;
+                if (ch.RangeWritesUntilFailure == 0)
+                {
+                    ch.RangeWritesUntilFailure = -1;
+                    return 0;
+                }
+                if (ch.RangeWritesUntilFailure > 0) ch.RangeWritesUntilFailure--;
                 ch.PendingRanges.Add(*(VCI_FILTER_RECORD*)pData);
                 return 1;
             case 2:
@@ -518,10 +655,22 @@ internal static class ControlCAN
                 ch.ActiveRanges.Clear();
                 ch.ActiveRanges.AddRange(ch.PendingRanges);
                 ch.PendingRanges.Clear();
+                ch.RangeFilterEnabled = true;
+                return 1;
+            case 3:
+                ch.ActiveRanges.Clear();
+                ch.PendingRanges.Clear();
+                // 4E-U has a separate stop command; clearing its table need not disable it.
+                if ((ControlCanDeviceKind)DevType != ControlCanDeviceKind.VCI_USBCAN_4E_U)
+                    ch.RangeFilterEnabled = false;
+                return 1;
+            case 9:
+                ch.RangeFilterEnabled = false;
                 return 1;
             case 5:
                 // Periodic transmit control
                 if (pData == null) return 0;
+                lock (ch.Periodic)
                 {
                     var pobj = (VCI_AUTO_SEND_OBJ*)pData;
                     int idx = pobj->Index;
@@ -543,7 +692,11 @@ internal static class ControlCAN
                             Timer timer = new Timer(_ =>
                             {
                                 if (!ch.Started) return;
-                                if (!ch.PeriodicPayload.TryGetValue(idx, out var payload)) return;
+                                (uint id, byte dlc, byte ext, byte rtr, byte[] data) payload;
+                                lock (ch.Periodic)
+                                {
+                                    if (!ch.PeriodicPayload.TryGetValue(idx, out payload)) return;
+                                }
                                 var obj = new VCI_CAN_OBJ
                                 {
                                     ID = payload.id,
