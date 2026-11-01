@@ -479,7 +479,7 @@ public sealed class SocketCanBus : ICanBus<SocketCanBusRtConfigurator>, IOwnersh
                     LibSocketCan.can_state.CAN_STATE_ERROR_PASSIVE => BusState.ErrPassive,
                     LibSocketCan.can_state.CAN_STATE_ERROR_WARNING => BusState.ErrWarning,
                     LibSocketCan.can_state.CAN_STATE_ERROR_ACTIVE => BusState.ErrActive,
-                    _ => BusState.None
+                    _ => BusState.Unknown
                 };
             }
             else

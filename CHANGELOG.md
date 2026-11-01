@@ -9,6 +9,8 @@
 
 ### Fixed
 
+* PCAN now reports `ErrActive` for an explicit normal controller status, `ErrWarning` for both `BusLight` and `BusWarning`, and `Unknown` for unrecognized status errors. Kvaser reports `Unknown` when its controller-status query fails, so unavailable status cannot be mistaken for recovery.
+* Vector reports `Unknown` before its first chip-state event and for unrecognized chip states (classical CAN and CAN FD). SocketCAN reports `Unknown` for stopped, sleeping, or unrecognized states. ZLG reports `Unknown` for diagnostics without controller fault evidence, including empty diagnostics; these are not proof of error-active operation or bus-off recovery.
 * `CanFrame.Dispose()` released the backing `IMemoryOwner<byte>` even for frames created with `ownMemory: false`. It now does nothing for frames that do not own their memory. Code that relied on `ownMemory: false` frames releasing the owner must dispose the owner itself.
 * Virtual bus `VirtualBusHub.Broadcast` handed the same frame memory to every recipient and to the echo, so one consumer disposing its frame invalidated all others. Each recipient now gets its own copy (new `CanFrame.Copy(IBufferAllocator)`), and the echoed frame is marked `IsEcho = true`. Frames dropped by the software filter are disposed.
 * `VirtualBusHub` kept every session hub forever. A hub is now removed when its last bus is disposed, and joining and leaving go through one registry lock.
