@@ -119,7 +119,10 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IOwnership
             CanKitLogger.LogDebug("Kvaser: Initial options applied.");
 
             _kvCallback ??= KvNotifyCallback;
-            var mask = (Canlib.canNOTIFY_RX | (Options.AllowErrorInfo ? Canlib.canNOTIFY_ERROR : 0));
+            // TX acknowledgements (Echo mode) are signalled with canNOTIFY_TX, not canNOTIFY_RX.
+            var mask = (Canlib.canNOTIFY_RX
+                        | (Options.WorkMode == ChannelWorkMode.Echo ? Canlib.canNOTIFY_TX : 0)
+                        | (Options.AllowErrorInfo ? Canlib.canNOTIFY_ERROR : 0));
             KvaserUtils.ThrowIfError(Canlib.kvSetNotifyCallback(_handle, _kvCallback, IntPtr.Zero, (uint)mask),
                 "kvSetNotifyCallback", "Failed to register notify callback");
         }

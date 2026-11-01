@@ -2,6 +2,7 @@
 using System.Buffers;
 using CanKit.Abstractions.API.Common;
 using CanKit.Abstractions.API.Common.Definitions;
+using CanKit.Abstractions.SPI.Common;
 
 namespace CanKit.Abstractions.API.Can.Definitions
 {
@@ -365,8 +366,38 @@ namespace CanKit.Abstractions.API.Can.Definitions
         }
 
         /// <summary>
-        /// Releases the owned memory if this frame owns its payload memory. (若该帧拥有其载荷内存，则释放该内存)
+        /// Creates an independent copy of this frame whose payload is copied into a buffer rented from
+        /// <paramref name="allocator"/>. The copy owns that buffer, so disposing it never touches the memory of
+        /// this frame, and disposing this frame never invalidates the copy.
+        /// (创建此帧的独立副本，载荷复制到从 <paramref name="allocator"/> 租借的缓冲区中。副本拥有该缓冲区，
+        /// 因此释放副本不会影响本帧的内存，释放本帧也不会使副本失效。)
         /// </summary>
-        public void Dispose() => _memoryOwner?.Dispose();
+        /// <param name="allocator">Allocator that provides the buffer for the copy. (为副本提供缓冲区的分配器。)</param>
+        public CanFrame Copy(IBufferAllocator allocator)
+        {
+            if (allocator is null) throw new ArgumentNullException(nameof(allocator));
+
+            var owner = allocator.Rent(Data.Length);
+            try
+            {
+                Data.CopyTo(owner.Memory);
+                return new CanFrame(FrameKind, _id, true, owner) { Flags = Flags };
+            }
+            catch
+            {
+                owner.Dispose();
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Releases the payload memory if this frame owns it. For frames that do not own their memory
+        /// (<c>ownMemory: false</c>, or a payload passed as <see cref="ReadOnlyMemory{T}"/>) this is a no-op.
+        /// (若该帧拥有其载荷内存，则释放该内存；不拥有内存的帧调用此方法不执行任何操作。)
+        /// </summary>
+        public void Dispose()
+        {
+            if (OwnMemory) _memoryOwner?.Dispose();
+        }
     }
 }

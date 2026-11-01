@@ -219,6 +219,7 @@ public sealed class PcanFdTransceiver : ITransceiver
             var isFd = (pmsg.MSGTYPE & TPCANMessageType.PCAN_MESSAGE_FD) != 0;
             var isExt = (pmsg.MSGTYPE & TPCANMessageType.PCAN_MESSAGE_EXTENDED) != 0;
             var isErr = (pmsg.MSGTYPE & TPCANMessageType.PCAN_MESSAGE_ERRFRAME) != 0;
+            var isEcho = (pmsg.MSGTYPE & TPCANMessageType.PCAN_MESSAGE_ECHO) != 0;
             var ticks = timestamp * 10UL; // microseconds -> ticks (100ns)
             if (!isFd)
             {
@@ -228,7 +229,7 @@ public sealed class PcanFdTransceiver : ITransceiver
                     bus.Options.BufferAllocator.FrameNeedDispose, isErr);
 
                 received++;
-                yield return new CanReceiveData(cf) { ReceiveTimestamp = TimeSpan.FromTicks((long)ticks) };
+                yield return new CanReceiveData(cf) { ReceiveTimestamp = TimeSpan.FromTicks((long)ticks), IsEcho = isEcho };
                 continue;
             }
 
@@ -241,7 +242,7 @@ public sealed class PcanFdTransceiver : ITransceiver
 
 
             received++;
-            yield return new CanReceiveData(fd) { ReceiveTimestamp = TimeSpan.FromTicks((long)ticks) };
+            yield return new CanReceiveData(fd) { ReceiveTimestamp = TimeSpan.FromTicks((long)ticks), IsEcho = isEcho };
         }
 
         unsafe IMemoryOwner<byte> CopyFd(in PcanBasicNative.TpcanMsgFd msg, ICanBus bus)

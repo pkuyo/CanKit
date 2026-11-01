@@ -34,6 +34,7 @@ public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, IOwnership
     private EventHandler<ICanErrorInfo>? _errorOccurred;
     private IDisposable? _owner;
     private bool _disposed;
+    private readonly object _rxGate = new(); // orders the final queue publish against Dispose
     private readonly CanExceptionPolicy _exceptionPolicy;
     private readonly CanBusExceptionDispatcher _exceptions;
 
@@ -44,10 +45,8 @@ public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, IOwnership
         Options.Init((VirtualBusOptions)options);
         _options = options;
         _transceiver = transceiver;
-        // The hub hands every receiver the sender's own CanFrame (see #18): this bus does not own
-        // the payload, so a frame dropped from the pipe must not be released here.
         _asyncRx = new AsyncFramePipe<CanReceiveData>(Options.AsyncBufferCapacity > 0 ? Options.AsyncBufferCapacity : null,
-            static _ => { });
+            static data => data.CanFrame.Dispose());
 
         _exceptionPolicy = options.ExceptionPolicy ?? CanExceptionPolicy.Default;
         _exceptions = new CanBusExceptionDispatcher(
@@ -68,8 +67,7 @@ public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, IOwnership
             });
 
         // join hub
-        _hub = VirtualBusHub.Get(Options.SessionId);
-        _hub.Attach(this);
+        _hub = VirtualBusHub.Join(Options.SessionId, this);
 
         // apply initial options (software filter, etc.)
         ApplyConfig(_options);
@@ -220,8 +218,12 @@ public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, IOwnership
         }
         finally
         {
-            _disposed = true;
+            lock (_rxGate)
+            {
+                _disposed = true;
+            }
             _asyncRx.Complete();
+            // release the copies this bus received but nobody read
             _asyncRx.Clear();
             _owner?.Dispose();
         }
@@ -229,9 +231,16 @@ public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, IOwnership
 
     internal void InternalDeliver(CanReceiveData data)
     {
+        if (_disposed)
+        {
+            data.CanFrame.Dispose();
+            return;
+        }
+
         var pred = _softwareFilterPredicate;
         if (_useSoftwareFilter && pred is not null && !pred(data.CanFrame))
         {
+            data.CanFrame.Dispose();
             return;
         }
 
@@ -261,7 +270,15 @@ public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, IOwnership
                 severity: _exceptionPolicy.SubscriberCallbackSeverity,
                 message: "Virtual FrameObserved handler threw an exception.");
         }
-        _asyncRx.Publish(data);
+        lock (_rxGate)
+        {
+            if (!_disposed)
+            {
+                _asyncRx.Publish(data);
+                return;
+            }
+        }
+        data.CanFrame.Dispose();
 
     }
 

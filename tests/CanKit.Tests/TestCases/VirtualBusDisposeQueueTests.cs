@@ -51,7 +51,7 @@ public class VirtualBusDisposeQueueTests
             rx.Dispose();
         }
 
-        owner.DisposeCount.Should().Be(0, "the queued frames borrow the sender's payload");
+        owner.DisposeCount.Should().Be(0, "receivers queue their own copies, not the sender's payload");
         frame.Data.Span[0].Should().Be(42);
         (await reader.MoveNextAsync().AsTask().WithinTwoSeconds()).Should().BeFalse(
             "disposal must discard unread frames before the enumeration resumes");
