@@ -79,3 +79,38 @@ foreach (var ep in BusEndpointEntry.Enumerate("kvaser"))
 ## Notes
 
 - Bit timing and FD support depend on the device and CANlib capabilities.
+
+## Receive overruns
+
+With `EnableErrorInfo()`, `ErrorFrameReceived` reports HW/SW receive-overrun flags
+on Classic CAN and CAN FD reads. The diagnostic has `Type = Controller` and
+`ControllerStatus.RxOverflow`. Data frames keep their payload and echo metadata;
+error frames produce one diagnostic and are not delivered as data.
+
+All error diagnostics carry `Direction = Rx`, native flags in `RawErrorCode` and
+the read timestamp in `DeviceTimeSpan`. `Frame` is null. Diagnostics are emitted
+during Kvaser transceiver enumeration, before `FrameReceived` and `FrameObserved`.
+Software range filtering can discard the data while retaining the diagnostic.
+Only flags returned by CANlib are observable; native filtering may hide indications.
+
+Failed optional counter queries leave `ErrorCounters = null` and the controller
+level unknown, preserving overrun flags and reception. `Unknown` describes missing
+controller-level information; `RxOverflow` remains a known loss observation.
+
+Disposal may discard an in-flight frame. The receive-loop cancellation check disposes
+frames it rejects; this does not cover frames already in event delivery or the async
+queue. Cancellation is silent by default. Set `IgnoreOperationCanceledException` to
+`false` to expose it through `BackgroundExceptionOccurred`, subject to the exception policy.
+
+An actual native receive failure reports a channel fault and stops reception.
+Dispose the failed instance and create a new one using `Kvaser.Open(...)` or
+`CanBus.Open(...)`; `Reset()` does not restart reception.
+Only reads already waiting are notified of the failure: later `ReceiveAsync`
+calls may wait or time out instead of rethrowing the original exception.
+
+Each flagged read is one loss indication, not an exact lost-frame count. Both
+native overrun bits may describe the same loss. An unflagged read does not signal
+repair; applications own latching and acknowledgment.
+
+See [CANlib bus errors](https://kvaser.com/canlib-webhelp/page_user_guide_bus_errors.htm)
+and [canstat.h](https://kvaser.com/canlib-webhelp/canstat_8h_source.htm).

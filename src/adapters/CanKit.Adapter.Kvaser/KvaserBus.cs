@@ -28,6 +28,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IOwnership
     private readonly ITransceiver _transceiver;
     private int _pending;
     private int _drainRunning;
+    private Task? _receiveLoopTask;
     private EventHandler<CanReceiveData>? _frameReceived;
     private EventHandler<CanReceiveDataView>? _frameObserved;
     private EventHandler<ICanErrorInfo>? _errorOccured;
@@ -133,6 +134,21 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IOwnership
     }
 
     public int Handle => _handle;
+
+    internal Task? ReceiveLoopTask => Volatile.Read(ref _receiveLoopTask);
+
+    internal TimeSpan ToTimestamp(uint time)
+        => TimeSpan.FromTicks(time * Options.TimerScaleMicroseconds * 10L);
+
+    internal void ThrowIfReceiveStopped()
+    {
+        var cts = Volatile.Read(ref _cts);
+        if (_isDisposed || cts is null || cts.IsCancellationRequested)
+        {
+            var token = cts is { IsCancellationRequested: true } ? cts.Token : new CancellationToken(true);
+            throw new OperationCanceledException("Kvaser reception stopped.", token);
+        }
+    }
 
     private static void SetSilentMode(int handle)
     {
@@ -332,13 +348,25 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IOwnership
         ThrowIfDisposed();
         CanKitErr.ThrowIfNotSupport(Options.Features, CanFeature.ErrorCounters);
 
-        KvaserUtils.ThrowIfError(Canlib.canReadErrorCounters(_handle, out var tx, out var rx, out _),
-            "canReadErrorCounters", "Failed to read error counters");
-        return new CanErrorCounters()
+        if (!TryReadErrorCounters(out var counters, out var result))
+            KvaserUtils.ThrowIfError(result, "canReadErrorCounters", "Failed to read error counters");
+        return counters;
+    }
+
+    private bool TryReadErrorCounters(out CanErrorCounters counters, out Canlib.canStatus result)
+    {
+        result = Canlib.canReadErrorCounters(_handle, out var tx, out var rx, out _);
+        if (result != Canlib.canStatus.canOK)
+        {
+            counters = default;
+            return false;
+        }
+        counters = new CanErrorCounters
         {
             TransmitErrorCounter = (int)tx,
             ReceiveErrorCounter = (int)rx
         };
+        return true;
     }
 
     public IEnumerable<CanReceiveData> Receive(int count = 1, int timeOut = 0)
@@ -569,7 +597,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IOwnership
 
         if (Interlocked.Exchange(ref _drainRunning, 1) == 0)
         {
-            Task.Run(() =>
+            var drainTask = new Task(() =>
             {
                 try
                 {
@@ -611,13 +639,63 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IOwnership
                     }
                     catch { }
                 }
-            });
+            }, CancellationToken.None, TaskCreationOptions.DenyChildAttach);
+            // Publish before scheduling so an older drain cannot overwrite its successor.
+            Volatile.Write(ref _receiveLoopTask, drainTask);
+            drainTask.Start(TaskScheduler.Default);
+        }
+    }
+
+    // CANlib attaches overrun flags to the next read, including ordinary data frames.
+    // They report loss observations, not a persistent condition or a later repair.
+    internal void ReportReceiveStatus(int flags, TimeSpan timestamp)
+    {
+        ThrowIfReceiveStopped();
+        var isError = (flags & Canlib.canMSG_ERROR_FRAME) != 0;
+        var overrun = (flags & Canlib.canMSGERR_OVERRUN) != 0;
+        if (!Options.AllowErrorInfo || (!isError && !overrun)) return;
+        var handler = Volatile.Read(ref _errorOccured);
+        if (handler is null) return;
+
+        CanErrorCounters? counters = null;
+        if ((Options.Features & CanFeature.ErrorCounters) != 0 &&
+            TryReadErrorCounters(out var observedCounters, out _))
+        {
+            counters = observedCounters;
+        }
+        var status = counters is { } known
+            ? CanKitExtension.ToControllerStatus(known.ReceiveErrorCounter, known.TransmitErrorCounter)
+            : CanControllerStatus.Unknown;
+        if (overrun) status |= CanControllerStatus.RxOverflow;
+        try
+        {
+            handler.Invoke(this, new DefaultCanErrorInfo(
+                overrun ? FrameErrorType.Controller : FrameErrorType.Unknown,
+                status,
+                CanProtocolViolationType.Unknown,
+                FrameErrorLocation.Invalid,
+                CanTransceiverStatus.Unknown,
+                DateTime.Now,
+                unchecked((uint)flags),
+                timestamp,
+                FrameDirection.Rx,
+                null,
+                counters,
+                null));
+        }
+        catch (Exception e)
+        {
+            _exceptions.Report(
+                e,
+                CanExceptionSource.SubscriberCallback,
+                severity: _exceptionPolicy.SubscriberCallbackSeverity,
+                message: "Kvaser ErrorFrameReceived handler threw an exception.");
         }
     }
 
     private void DrainReceive()
     {
-        var token = _cts?.Token ?? throw new OperationCanceledException();
+        var token = Volatile.Read(ref _cts)?.Token ?? new CancellationToken(true);
 
         while (true)
         {
@@ -625,41 +703,16 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IOwnership
             token.ThrowIfCancellationRequested();
             foreach (var rec in _transceiver.Receive(this, 64))
             {
+                if (token.IsCancellationRequested)
+                {
+                    rec.CanFrame.Dispose();
+                    token.ThrowIfCancellationRequested();
+                }
                 any = true;
 
+                // The transceiver already reported the diagnostic; error frames are not data.
                 if (rec.CanFrame.IsErrorFrame)
-                {
-                    var enableErrorCounter = (Options.Features & CanFeature.ErrorCounters) != 0;
-                    CanErrorCounters? errorCounters = enableErrorCounter ? ErrorCounters() : null;
-                    try
-                    {
-                        var errSnap = Volatile.Read(ref _errorOccured);
-                        errSnap?.Invoke(this, new DefaultCanErrorInfo(
-                            FrameErrorType.Unknown,
-                            enableErrorCounter ?
-                                CanKitExtension.ToControllerStatus(errorCounters!.Value.ReceiveErrorCounter, errorCounters.Value.TransmitErrorCounter) : CanControllerStatus.Unknown,
-                            CanProtocolViolationType.Unknown,
-                            FrameErrorLocation.Invalid,
-                            CanTransceiverStatus.Unknown,
-                            DateTime.Now,
-                            0,
-                            null,
-                            FrameDirection.Unknown,
-                            null,
-                            errorCounters,
-                            null
-                        ));
-                    }
-                    catch (Exception e)
-                    {
-                        _exceptions.Report(
-                            e,
-                            CanExceptionSource.SubscriberCallback,
-                            severity: _exceptionPolicy.SubscriberCallbackSeverity,
-                            message: "Kvaser ErrorFrameReceived handler threw an exception.");
-                    }
                     continue;
-                }
 
                 var useSw = (Options.EnabledSoftwareFallback & CanFeature.RangeFilter) != 0 && _pred is not null;
                 if (useSw)

@@ -47,6 +47,9 @@ public static class Canlib
     public const int canMSG_STD = 0x0002;
     public const int canMSG_EXT = 0x0004;
     public const int canMSG_ERROR_FRAME = 0x0020;
+    public const int canMSGERR_HW_OVERRUN = 0x0200;
+    public const int canMSGERR_SW_OVERRUN = 0x0400;
+    public const int canMSGERR_OVERRUN = canMSGERR_HW_OVERRUN | canMSGERR_SW_OVERRUN;
     public const int canMSG_SINGLE_SHOT = 0x1000000;
     public const int canMSG_LOCAL_TXACK = 0x10000000;
     public const int canMSG_TXACK = 0x0040;
