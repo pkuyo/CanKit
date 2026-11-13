@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Version>$(CanKitAdapterCandlelightVersion)</Version>
+        <Description>Candlelight USB-CAN adapter for CanKit.</Description>
+        <PackageTags>CAN;can bus;Candlelight;CanKit</PackageTags>
+        <AssemblyVersion>1.0.0.0</AssemblyVersion>
+        <FileVersion>$(CanKitSharedFileVersion)</FileVersion>
+        <Authors>Pkuyo</Authors>
+        <RepositoryUrl>https://github.com/pkuyo/CanKit</RepositoryUrl>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
+        <Configurations>Debug;Release;Fake</Configurations>
+        <Platforms>AnyCPU</Platforms>
+    </PropertyGroup>
+    <ItemGroup Condition="'$(UseLocalProjectReferences)'=='true'">
+        <ProjectReference Include="..\..\core\CanKit.Core\CanKit.Core.csproj" />
+    </ItemGroup>
+    <ItemGroup Condition="'$(UseLocalProjectReferences)'!='true'">
+        <PackageReference Include="CanKit.Core" Version="$(CanKitCoreDependencyVersion)" />
+    </ItemGroup>
+    <ItemGroup>
+        <InternalsVisibleTo Include="CanKit.Tests" />
+        <None Include="buildTransitive\**\*.*" Pack="true" PackagePath="buildTransitive\" />
+        <None Include="README.md" Pack="true" PackagePath="" />
+    </ItemGroup>
+</Project>
