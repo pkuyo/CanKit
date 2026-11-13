@@ -19,7 +19,7 @@
 
 It supports opening buses via endpoint strings or strongly-typed helpers, and exposes common operations (send/receive, filters, periodic TX, error monitoring) across adapters.
 
-- Adapters: PCAN-Basic (Peak CAN), CANlib(Kvaser), SocketCAN (Linux), ZLG
+- Adapters: PCAN-Basic (Peak CAN), CANlib (Kvaser), SocketCAN (Linux), ZLG, Candlelight, ControlCAN, Vector, Virtual
 
 For Chinese readers, see: [README_CN.md](README_CN.md)
 
@@ -60,6 +60,7 @@ dotnet add package CanKit.Core
 // Pick adapters you need
 dotnet add package CanKit.Adapter.PCAN
 dotnet add package CanKit.Adapter.Kvaser
+dotnet add package CanKit.Adapter.Candlelight
 dotnet add package CanKit.Adapter.SocketCAN
 dotnet add package CanKit.Adapter.ZLG
 dotnet add package CanKit.Adapter.Virtual
@@ -72,6 +73,7 @@ Open a bus using an endpoint string, then send/receive frames. Examples:
 
 - PCAN: `pcan://PCAN_USBBUS1`
 - Kvaser: `kvaser://0` or `kvaser://?ch=0`
+- Candlelight: `candlelight://0/0` (Windows; requires a matching `Candle.dll`)
 - SocketCAN (Linux): `socketcan://can0`
 - ZLG: `zlg://USBCANFD-200U?index=0#ch1`
 - Virtual: `virtual://alpha/0`
@@ -154,7 +156,7 @@ Enumerate discoverable endpoints:
 ```csharp
 using CanKit.Core.Endpoints;
 
-foreach (var ep in BusEndpointEntry.Enumerate("pcan", "kvaser", "socketcan", "zlg", "virtual"))
+foreach (var ep in BusEndpointEntry.Enumerate("pcan", "kvaser", "socketcan", "zlg", "virtual", "candlelight"))
 {
     Console.WriteLine($"{ep.Title ?? ep.Endpoint} -> {ep.Endpoint}");
 }

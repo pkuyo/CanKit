@@ -1,6 +1,7 @@
-﻿Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 17
-VisualStudioVersion = 17.13.35931.197
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 18
+VisualStudioVersion = 18.11.12328.437 stable
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CanKit.Core", "src\core\CanKit.Core\CanKit.Core.csproj", "{FAEC4575-7237-465F-9858-B38135176125}"
 EndProject
@@ -47,6 +48,17 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CanKit.Abstractions", "src\core\CanKit.Abstractions\CanKit.Abstractions.csproj", "{1B6D3D33-A6D8-4F75-878E-391C53B2CDED}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CanKit.PackageSmoke", "eng\package-smoke\CanKit.PackageSmoke.csproj", "{9643406A-827D-4BC8-B904-32A99B263E6C}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{DFE8E982-1012-42A8-8141-344207593811}"
+	ProjectSection(SolutionItems) = preProject
+		Candle.dll = Candle.dll
+		Candle.NET\Channel.cs = Candle.NET\Channel.cs
+		Candle.NET\Device.cs = Candle.NET\Device.cs
+		Candle.NET\Frame.cs = Candle.NET\Frame.cs
+		Candle.NET\NativeFunctions.cs = Candle.NET\NativeFunctions.cs
+	EndProjectSection
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CanKit.Adapter.Candlelight", "src\adapters\CanKit.Adapter.Candlelight\CanKit.Adapter.Candlelight.csproj", "{468417BB-CC80-9E65-1E8E-6FD723BBCA46}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -403,6 +415,24 @@ Global
 		{9643406A-827D-4BC8-B904-32A99B263E6C}.Release|x64.Build.0 = Release|Any CPU
 		{9643406A-827D-4BC8-B904-32A99B263E6C}.Release|x86.ActiveCfg = Release|Any CPU
 		{9643406A-827D-4BC8-B904-32A99B263E6C}.Release|x86.Build.0 = Release|Any CPU
+		{468417BB-CC80-9E65-1E8E-6FD723BBCA46}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{468417BB-CC80-9E65-1E8E-6FD723BBCA46}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{468417BB-CC80-9E65-1E8E-6FD723BBCA46}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{468417BB-CC80-9E65-1E8E-6FD723BBCA46}.Debug|x64.Build.0 = Debug|Any CPU
+		{468417BB-CC80-9E65-1E8E-6FD723BBCA46}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{468417BB-CC80-9E65-1E8E-6FD723BBCA46}.Debug|x86.Build.0 = Debug|Any CPU
+		{468417BB-CC80-9E65-1E8E-6FD723BBCA46}.Fake|Any CPU.ActiveCfg = Fake|Any CPU
+		{468417BB-CC80-9E65-1E8E-6FD723BBCA46}.Fake|Any CPU.Build.0 = Fake|Any CPU
+		{468417BB-CC80-9E65-1E8E-6FD723BBCA46}.Fake|x64.ActiveCfg = Fake|Any CPU
+		{468417BB-CC80-9E65-1E8E-6FD723BBCA46}.Fake|x64.Build.0 = Fake|Any CPU
+		{468417BB-CC80-9E65-1E8E-6FD723BBCA46}.Fake|x86.ActiveCfg = Fake|Any CPU
+		{468417BB-CC80-9E65-1E8E-6FD723BBCA46}.Fake|x86.Build.0 = Fake|Any CPU
+		{468417BB-CC80-9E65-1E8E-6FD723BBCA46}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{468417BB-CC80-9E65-1E8E-6FD723BBCA46}.Release|Any CPU.Build.0 = Release|Any CPU
+		{468417BB-CC80-9E65-1E8E-6FD723BBCA46}.Release|x64.ActiveCfg = Release|Any CPU
+		{468417BB-CC80-9E65-1E8E-6FD723BBCA46}.Release|x64.Build.0 = Release|Any CPU
+		{468417BB-CC80-9E65-1E8E-6FD723BBCA46}.Release|x86.ActiveCfg = Release|Any CPU
+		{468417BB-CC80-9E65-1E8E-6FD723BBCA46}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -425,6 +455,7 @@ Global
 		{8A3A1A69-1E50-4B0F-8E3E-D3B3B4B6308C} = {A6B824A9-0F9E-4D7A-AB0E-9E6E0B4B4D5C}
 		{2D523383-1131-4A55-9E50-C2E99817706A} = {F6B4CD19-2CD8-4066-894A-A8E9D6C21336}
 		{9643406A-827D-4BC8-B904-32A99B263E6C} = {A6B824A9-0F9E-4D7A-AB0E-9E6E0B4B4D5C}
+		{468417BB-CC80-9E65-1E8E-6FD723BBCA46} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {396C8FA6-957F-420D-B557-636A8389142E}

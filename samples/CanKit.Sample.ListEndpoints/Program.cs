@@ -54,7 +54,7 @@ namespace CanKit.Sample.ListEndpoints
 
             if (schemes.Length == 0)
             {
-                Console.WriteLine("Hint: pass --scheme <name> to filter (e.g., socketcan, virtual, pcan, kvaser, zlg)");
+                Console.WriteLine("Hint: pass --scheme <name> to filter (e.g., socketcan, virtual, pcan, kvaser, zlg, candlelight)");
             }
         }
     }

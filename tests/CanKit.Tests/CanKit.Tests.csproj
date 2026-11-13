@@ -25,6 +25,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\core\CanKit.Core\CanKit.Core.csproj" />
+    <ProjectReference Include="..\..\src\adapters\CanKit.Adapter.Candlelight\CanKit.Adapter.Candlelight.csproj" />
     <ProjectReference Include="..\..\src\adapters\CanKit.Adapter.ControlCAN\CanKit.Adapter.ControlCAN.csproj" />
     <ProjectReference Include="..\..\src\adapters\CanKit.Adapter.Vector\CanKit.Adapter.Vector.csproj" />
     <ProjectReference Include="..\..\src\adapters\CanKit.Adapter.Virtual\CanKit.Adapter.Virtual.csproj" />
