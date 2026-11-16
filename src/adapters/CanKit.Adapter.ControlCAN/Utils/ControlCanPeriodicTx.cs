@@ -62,8 +62,10 @@ public sealed class ControlCanPeriodicTx : IPeriodicTx
         }
         catch
         {
-            // A constructor that throws is never Disposed by the caller: return the
-            // auto-send slot already taken so failed attempts cannot exhaust the pool.
+            // The caller will never receive this instance. Try to disable the entry
+            // now; if that fails, leave it tracked for retry at the next allocation.
+            // Stop preserves the original enable failure and handles bus shutdown.
+            Stop();
             try { _bus.FreeAutoSendIndex(_index); } catch { /* ignored */ }
             throw;
         }

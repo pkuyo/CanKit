@@ -234,6 +234,8 @@ internal static class ControlCAN
         public readonly ConcurrentQueue<VCI_CAN_OBJ> Rx = new();
 
         // Periodic TX
+        public bool FailAutoSendEnableAfterWrite;
+        public bool RejectAutoSendDisable;
         public readonly Dictionary<int, Timer> Periodic = new();
         public readonly Dictionary<int, (uint id, byte dlc, byte ext, byte rtr, byte[] data)> PeriodicPayload = new();
     }
@@ -580,6 +582,17 @@ internal static class ControlCAN
         lock (ch.Periodic) return ch.Periodic.Count;
     }
 
+    internal static void SetAutoSendFailures(uint devType, uint devIndex, uint canIndex,
+        bool failEnableAfterWrite, bool rejectDisable)
+    {
+        var ch = GetOrCreateChannel(GetOrCreateDevice(devType, devIndex), canIndex);
+        lock (ch.Periodic)
+        {
+            ch.FailAutoSendEnableAfterWrite = failEnableAfterWrite;
+            ch.RejectAutoSendDisable = rejectDisable;
+        }
+    }
+
     internal static int ReceiveCount(uint devType, uint devIndex, uint canIndex)
         => Volatile.Read(ref GetOrCreateChannel(GetOrCreateDevice(devType, devIndex), canIndex).ReceiveCount);
 
@@ -712,9 +725,12 @@ internal static class ControlCAN
                             }, null, TimeSpan.Zero, TimeSpan.FromMilliseconds(periodMs));
                             ch.Periodic[idx] = timer;
                         }
+                        // Model a driver failure after firmware may have accepted the write.
+                        if (ch.FailAutoSendEnableAfterWrite) return 0;
                     }
                     else
                     {
+                        if (ch.RejectAutoSendDisable) return 0;
                         if (ch.Periodic.TryGetValue(idx, out var t))
                         {
                             t.Dispose();

@@ -747,10 +747,13 @@ public sealed class ControlCanBus : ICanBus<ControlCanBusRtConfigurator>, IOwner
 
     internal int GetAutoSendIndex(bool add = true)
     {
-        ThrowIfDisposed();
+        using var operation = EnterNativeOperation();
         int x = 0;
         lock (_autoSendGate)
         {
+            // Failed constructors have no owner to retry Stop/Dispose. Retry their
+            // uncertain entries before checking capacity, without touching live owners.
+            DisableAutoSendEntries(unownedOnly: true);
             while (true)
             {
                 if (!_autoSendIndexes.Contains(x) && !_autoSendEntries.ContainsKey(x))
@@ -791,12 +794,13 @@ public sealed class ControlCanBus : ICanBus<ControlCanBusRtConfigurator>, IOwner
             "VCI_SetReference(period)", this,
             $"failed to {(entry.Enable != 0 ? "enable" : "disable")} auto-send entry {entry.Index}.");
 
-    private void DisableAutoSendEntries()
+    private void DisableAutoSendEntries(bool unownedOnly = false)
     {
         lock (_autoSendGate)
         {
             foreach (var saved in _autoSendEntries.Values.ToArray())
             {
+                if (unownedOnly && _autoSendIndexes.Contains(saved.Index)) continue;
                 var entry = saved;
                 entry.Enable = 0;
                 TryCleanup($"disable auto-send entry {entry.Index}", () =>

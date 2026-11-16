@@ -5,10 +5,12 @@ using System.Linq;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
+using CanKit.Abstractions.API.Can;
 using CanKit.Abstractions.API.Can.Definitions;
 using CanKit.Abstractions.API.Common;
 using CanKit.Abstractions.API.Common.Definitions;
 using CanKit.Adapter.ControlCAN;
+using CanKit.Adapter.ControlCAN.Diagnostics;
 using CanKit.Core;
 using CanKit.Core.Diagnostics;
 using CanKit.Core.Exceptions;
@@ -141,6 +143,73 @@ public partial class ControlCanFilterRulesTests
             await Task.WhenAll(first, second);
             InvokeNative("SetTransmitHook", 21U, 2U, 0U, null!);
         }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Failed_Periodic_Construction_Disables_Or_Retries_The_Unowned_Entry(bool rejectRollback)
+    {
+        using var bus = CanBus.Open(RangeRx, cfg => Configure(cfg));
+        var options = new PeriodicTxOptions(TimeSpan.FromSeconds(10), -1, false);
+        using var existing = bus.TransmitPeriodic(CanFrame.Classic(0x105), options);
+        InvokeNative("SetAutoSendFailures", 21U, 2U, 0U, true, rejectRollback);
+        try
+        {
+            Action create = () => { using var failed = bus.TransmitPeriodic(CanFrame.Classic(0x106), options); };
+            create.Should().Throw<ControlCanException>().WithMessage("*failed to enable auto-send entry 1*");
+            InvokeNative("AutoSendCount", 21U, 2U, 0U).Should().Be(rejectRollback ? 2 : 1,
+                "constructor rollback should disable even a write that took effect before reporting failure");
+
+            // Keep rejecting disables: an uncertain entry must not be reused or forgotten.
+            InvokeNative("SetAutoSendFailures", 21U, 2U, 0U, false, rejectRollback);
+            using var other = bus.TransmitPeriodic(CanFrame.Classic(0x107), options);
+            InvokeNative("AutoSendCount", 21U, 2U, 0U).Should().Be(rejectRollback ? 3 : 2);
+
+            InvokeNative("SetAutoSendFailures", 21U, 2U, 0U, false, false);
+            using var recovered = bus.TransmitPeriodic(CanFrame.Classic(0x108), options);
+            InvokeNative("AutoSendCount", 21U, 2U, 0U).Should().Be(3,
+                "allocation should reclaim only the unowned entry while preserving both live transmitters");
+            existing.Stop();
+            other.Stop();
+            InvokeNative("AutoSendCount", 21U, 2U, 0U).Should().Be(1);
+            recovered.Stop();
+            InvokeNative("AutoSendCount", 21U, 2U, 0U).Should().Be(0);
+        }
+        finally { InvokeNative("SetAutoSendFailures", 21U, 2U, 0U, false, false); }
+    }
+
+    [Fact]
+    public void Failed_Periodic_Construction_Reclaims_All_Slots_After_Native_Recovery()
+    {
+        using var bus = CanBus.Open(RangeRx, cfg => Configure(cfg));
+        var options = new PeriodicTxOptions(TimeSpan.FromSeconds(10), -1, false);
+        InvokeNative("RejectReference", 21U, 2U, 0U, 5U);
+        try
+        {
+            for (var index = 0; index < 32; index++)
+            {
+                Action create = () => { using var failed = bus.TransmitPeriodic(CanFrame.Classic(0x105), options); };
+                create.Should().Throw<ControlCanException>().WithMessage($"*failed to enable auto-send entry {index}*");
+            }
+        }
+        finally { InvokeNative("AllowReference", 21U, 2U, 0U, 5U); }
+
+        var transmitters = new List<IPeriodicTx>();
+        try
+        {
+            for (var index = 0; index < 32; index++)
+                transmitters.Add(bus.TransmitPeriodic(CanFrame.Classic(0x200 + index), options));
+            InvokeNative("AutoSendCount", 21U, 2U, 0U).Should().Be(32,
+                "all slots should be available again without disposing or reopening the bus");
+            Action overflow = () => { using var extra = bus.TransmitPeriodic(CanFrame.Classic(0x300), options); };
+            overflow.Should().Throw<CanBusException>().WithMessage("*32*");
+        }
+        finally
+        {
+            foreach (var transmitter in transmitters) transmitter.Dispose();
+        }
+        InvokeNative("AutoSendCount", 21U, 2U, 0U).Should().Be(0);
     }
 
     [Theory]
