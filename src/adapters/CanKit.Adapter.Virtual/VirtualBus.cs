@@ -222,8 +222,9 @@ public sealed class VirtualBus : ICanBus<VirtualBusRtConfigurator>, IOwnership
             {
                 _disposed = true;
             }
+            _asyncRx.Complete();
             // release the copies this bus received but nobody read
-            _asyncRx.Clear(static data => data.CanFrame.Dispose());
+            _asyncRx.Clear();
             _owner?.Dispose();
         }
     }

@@ -232,6 +232,7 @@ public partial class ControlCanFilterRulesTests
             release.Wait(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
         };
 #pragma warning restore CS0618
+        var receiving = rx.ReceiveAsync(1, -1, TestContext.Current.CancellationToken);
         Task? disposeTask = null;
         try
         {
@@ -250,6 +251,9 @@ public partial class ControlCanFilterRulesTests
             InvokeNative("ActiveRangeCount", 21U, 2U, 0U).Should().Be(1);
             InvokeNative("IsStarted", 21U, 2U, 0U).Should().Be(true);
             owner.DisposeCount.Should().Be(0, "the device lease must outlive the active receive task");
+            (await Task.WhenAny(receiving, Task.Delay(2000, TestContext.Current.CancellationToken)))
+                .Should().BeSameAs(receiving, "pending readers must finish while native cleanup is deferred");
+            (await receiving).Should().BeEmpty("the blocked callback's frame must not be published after disposal");
             Action reopen = () => { using var duplicate = CanBus.Open(RangeRx, cfg => Configure(cfg)); };
             reopen.Should().Throw<CanBusCreationException>().WithMessage("*already open or still stopping*");
 

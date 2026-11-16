@@ -419,6 +419,9 @@ public sealed class ControlCanBus : ICanBus<ControlCanBusRtConfigurator>, IOwner
     public void Dispose()
     {
         if (Interlocked.Exchange(ref _disposeRequested, 1) != 0) return;
+        // Release pending readers even when native cleanup must wait for active operations.
+        // A terminal receive failure must not turn into a successful empty read during shutdown.
+        _asyncRx.Complete(Volatile.Read(ref _startupFailure));
         CleanupChannel();
     }
 
