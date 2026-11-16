@@ -388,6 +388,7 @@ public sealed class ControlCanBus : ICanBus<ControlCanBusRtConfigurator>, IOwner
         try
         {
             _isDisposed = true;
+            _asyncRx.Complete();
             StopReceiveLoop();
         }
         finally
