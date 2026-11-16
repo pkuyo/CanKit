@@ -11,6 +11,7 @@
 
   <ItemGroup>
     <ProjectReference Include="$(MSBuildThisFileDirectory)..\src\core\CanKit.Core\CanKit.Core.csproj" />
+    <ProjectReference Include="$(MSBuildThisFileDirectory)..\src\adapters\CanKit.Adapter.Candlelight\CanKit.Adapter.Candlelight.csproj" />
     <ProjectReference Include="$(MSBuildThisFileDirectory)..\src\adapters\CanKit.Adapter.Virtual\CanKit.Adapter.Virtual.csproj" />
     <ProjectReference Include="$(MSBuildThisFileDirectory)..\src\adapters\CanKit.Adapter.SocketCAN\CanKit.Adapter.SocketCAN.csproj" />
     <ProjectReference Include="$(MSBuildThisFileDirectory)..\src\adapters\CanKit.Adapter.PCAN\CanKit.Adapter.PCAN.csproj" />

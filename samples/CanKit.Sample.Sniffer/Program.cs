@@ -15,7 +15,7 @@ namespace CanKit.Sample.Sniffer
     {
         private static async Task<int> Main(string[] args)
         {
-            // Usage: Sniffer --endpoint <ep> [--listen-only] [--bitrate 500000] [--dbitrate 2000000] [--fd] [--range 0x100-0x200] [--mask 0x123:0x7FF] [--seconds 0] [--res 1]
+            // Usage: Sniffer --endpoint <ep> [--listen-only] [--bitrate 500000] [--dbitrate 2000000] [--fd] [--range 0x100-0x200] [--mask 0x123:0x7FF] [--seconds 0] [--res 1 (enable termination)]
             var endpoint = GetArg(args, "--endpoint") ?? "virtual://alpha/0";
             bool listenOnly = HasFlag(args, "--listen-only");
             bool useFd = HasFlag(args, "--fd");
@@ -24,15 +24,14 @@ namespace CanKit.Sample.Sniffer
             int bitrate = ParseInt(GetArg(args, "--bitrate"), 500_000);
             int dbitrate = ParseInt(GetArg(args, "--dbitrate"), 2_000_000);
             int seconds = ParseInt(GetArg(args, "--seconds"), 0);
-            bool enableRes = (ParseInt(GetArg(args, "--res"), 1) == 1);
+            bool enableRes = (ParseInt(GetArg(args, "--res"), 0) == 1);
 
             using var bus = CanBus.Open(endpoint, cfg =>
             {
                 if (useFd) cfg.SetProtocolMode(CanProtocolMode.CanFd).Fd(bitrate, dbitrate);
                 else cfg.SetProtocolMode(CanProtocolMode.Can20).Baud(bitrate);
                 if (listenOnly) cfg.SetWorkMode(ChannelWorkMode.ListenOnly);
-                cfg.EnableErrorInfo()
-                    .InternalRes(enableRes);
+                cfg.InternalRes(enableRes);
                 if (!string.IsNullOrWhiteSpace(range))
                 {
                     var (min, max, ext) = ParseRange(range!);
@@ -51,10 +50,14 @@ namespace CanKit.Sample.Sniffer
             Console.WriteLine($"Sniffing on {endpoint} (Press Ctrl+C to stop)");
 
 #if NET8_0_OR_GREATER
-            await foreach (var e in bus.GetFramesAsync(cts.Token))
+            try
             {
-                LogFrame(new CanReceiveDataView(e));
+                await foreach (var e in bus.GetFramesAsync(cts.Token))
+                {
+                    LogFrame(new CanReceiveDataView(e));
+                }
             }
+            catch (OperationCanceledException) when (cts.IsCancellationRequested) { }
 #else
             bus.FrameObserved += (_, e) => LogFrame(e);
             cts.Token.WaitHandle.WaitOne();

@@ -1,0 +1,3 @@
+<linker>
+  <assembly fullname="CanKit.Adapter.Candlelight" preserve="all" />
+</linker>

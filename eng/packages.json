@@ -33,6 +33,17 @@
       "publish": false
     },
     {
+      "id": "CanKit.Adapter.Candlelight",
+      "project": "src/adapters/CanKit.Adapter.Candlelight/CanKit.Adapter.Candlelight.csproj",
+      "versionProperty": "CanKitAdapterCandlelightVersion",
+      "pathPrefixes": [
+        "src/adapters/CanKit.Adapter.Candlelight/"
+      ],
+      "dependsOn": [
+        "CanKit.Core"
+      ]
+    },
+    {
       "id": "CanKit.Adapter.ControlCAN",
       "project": "src/adapters/CanKit.Adapter.ControlCAN/CanKit.Adapter.ControlCAN.csproj",
       "versionProperty": "CanKitAdapterControlCANVersion",

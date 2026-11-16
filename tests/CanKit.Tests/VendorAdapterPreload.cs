@@ -9,6 +9,7 @@ internal static class VendorAdapterPreload
     [ModuleInitializer]
     internal static void Load()
     {
+        TryLoad("CanKit.Adapter.Candlelight");
         TryLoad("CanKit.Adapter.Kvaser");
         TryLoad("CanKit.Adapter.PCAN");
         TryLoad("CanKit.Adapter.Vector");
