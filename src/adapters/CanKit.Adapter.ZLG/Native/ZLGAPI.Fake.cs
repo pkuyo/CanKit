@@ -341,13 +341,28 @@ public static class ZLGCAN
         // Apply initial config
         ch.FdEnabled = pInitConfig.can_type != 0; // 0=Classic, 1=FD (adapter convention)
 
-        // possible initial mask filter
-        if (pInitConfig.config.can.acc_mask != 0xffffffff || pInitConfig.config.can.acc_code != 0)
+        // possible initial mask filter; like the driver, read the union member selected by can_type
+        uint accCode, accMask;
+        byte filter;
+        if (ch.FdEnabled)
+        {
+            accCode = pInitConfig.config.canfd.acc_code;
+            accMask = pInitConfig.config.canfd.acc_mask;
+            filter = pInitConfig.config.canfd.filter;
+        }
+        else
+        {
+            accCode = pInitConfig.config.can.acc_code;
+            accMask = pInitConfig.config.can.acc_mask;
+            filter = pInitConfig.config.can.filter;
+        }
+
+        if (accMask != 0xffffffff || accCode != 0)
         {
             ch.HasMaskFilter = true;
-            ch.MaskAccCode = pInitConfig.config.can.acc_code;
-            ch.MaskAccMask = pInitConfig.config.can.acc_mask;
-            ch.MaskIdType = (CanFilterIDType)pInitConfig.config.can.filter;
+            ch.MaskAccCode = accCode;
+            ch.MaskAccMask = accMask;
+            ch.MaskIdType = (CanFilterIDType)filter;
         }
 
         var ret = new ZlgChannelHandle();
@@ -731,11 +746,12 @@ public static class ZLGCAN
         public _ZCAN_CHANNEL_INIT_CONFIG config;
     }
 
-    [StructLayout(LayoutKind.Sequential)]
+    // Same union layout as the real binding (see ZLGAPI.cs).
+    [StructLayout(LayoutKind.Explicit)]
     public struct _ZCAN_CHANNEL_INIT_CONFIG
     {
-        public _ZCAN_CHANNEL_CAN_INIT_CONFIG can;
-        public _ZCAN_CHANNEL_CANFD_INIT_CONFIG canfd;
+        [FieldOffset(0)] public _ZCAN_CHANNEL_CAN_INIT_CONFIG can;
+        [FieldOffset(0)] public _ZCAN_CHANNEL_CANFD_INIT_CONFIG canfd;
     }
 
     [StructLayout(LayoutKind.Sequential)]
