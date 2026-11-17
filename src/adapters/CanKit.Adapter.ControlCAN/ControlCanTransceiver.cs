@@ -106,6 +106,8 @@ internal sealed class ControlCanTransceiver : ITransceiver
             for (int i = 0; i < got; i++)
             {
                 var obj = arr[i];
+                // Allocate only as this entry is enumerated. Disposing the iterator early
+                // leaves only native value structs in arr, not undisposed owning frames.
                 var frame = obj.FromNative(bus.Options.BufferAllocator);
                 yield return new CanReceiveData(frame)
                 {

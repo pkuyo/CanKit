@@ -39,6 +39,34 @@ public class AsyncFramePipeTests
         items.Should().Equal(1, 2);
     }
 
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public async Task Completion_Preserves_The_Terminal_Error_For_Pending_And_Future_Readers(
+        bool readAll, bool alreadyCompleted)
+    {
+        var pipe = new AsyncFramePipe<int>();
+        var failure = new InvalidOperationException("Terminal receive failure");
+        if (alreadyCompleted) pipe.Complete(failure);
+        Task reading = readAll
+            ? ReadAllAsync(pipe)
+            : pipe.ReceiveBatchAsync(1, -1, TestContext.Current.CancellationToken);
+        if (!alreadyCompleted)
+        {
+            reading.IsCompleted.Should().BeFalse();
+            pipe.ExceptionOccured(failure);
+            pipe.Complete(failure);
+        }
+        pipe.Complete(); // A later normal completion must not erase the original error.
+
+        (await Task.WhenAny(reading, Task.Delay(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken)))
+            .Should().BeSameAs(reading);
+        Func<Task> receive = () => reading;
+        (await receive.Should().ThrowAsync<InvalidOperationException>()).Which.Should().BeSameAs(failure);
+    }
+
     [Fact]
     public async Task Pending_Infinite_ReceiveBatch_Returns_What_It_Has_After_Complete()
     {

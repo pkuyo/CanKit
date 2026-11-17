@@ -9,6 +9,23 @@
 
 ### Fixed
 
+* ControlCAN periodic `Stop` and `Dispose` retain retry state and their reserved index after a failed hardware disable, log the failure, and release the index only once after successful disposal.
+* ControlCAN explicitly disables tracked hardware auto-send entries before resetting and releasing a channel, including entries whose earlier stop failed.
+* ControlCAN reports an opening failure when a terminal receive fault precedes device-lease attachment, retaining the lease until pending cleanup finishes.
+* ControlCAN preserves OR semantics for mixed filter lists and multiple mask rules without modifying caller options; rejected frames release their buffers.
+* ControlCAN uses SJA1000 single-filter mode for hardware masks and preserves register-format ID, RTR and data-byte constraints in software fallback, including the requested ID type. See the [adapter README](src/adapters/CanKit.Adapter.ControlCAN/README.md) for mask formats and device-specific behavior.
+* ControlCAN routes a single mask on range-only devices through software fallback using plain CAN IDs.
+* ControlCAN validates fallback authorization before native initialization, including multiple hardware masks and ranges on the 8E-U; unsupported rule types require their explicit software-fallback flags.
+* ControlCAN also requires explicit filter fallback for mixed mask/range lists when a provider advertises both hardware capabilities, since their OR cannot be programmed together.
+* ControlCAN applies explicit `SoftwareFilterRules` once as an additional AND stage, including when `FilterRules` is empty (previously ignored).
+* ControlCAN disposes frames whose software predicate throws and reports the error through the callback exception policy; receiving continues at the default severity.
+* ControlCAN checks cancellation again after software predicates return, so disposal during a predicate prevents subsequent frame callbacks.
+* ControlCAN programs range tables after resetting the channel and cleans up staged and active E-U/2E-U/4E-U tables across channel lifetimes, retrying failed cleanup before reopening. Fresh channels do not require clear commands; the 8E-U uses explicit software fallback.
+* ControlCAN releases the channel and device lease after terminal receive faults as well as disposal, once receiving has exited, and logs cleanup failures. Endpoint and typed channel-creation failures release acquired resources.
+* ControlCAN defers native cleanup until active transmissions and other native operations finish; disposed instances also reject periodic-transmit updates before they can affect a reopened channel.
+* ControlCAN drains rejected receive batches and checks errors after at most 64 batches, skipping the idle polling delay when that budget is reached.
+* ControlCAN validates filters before native initialization and requires closing and reopening to change them; `ApplyConfigAfterInit` rejects live changes.
+* ControlCAN `ClearBuffer` discards queued and unpublished frames from an in-flight receive batch without stopping the channel, including when called from a receive callback.
 * RX pipe drop callbacks now log failures per item and continue cleanup. A throwing custom buffer owner no longer leaves later queued frames unreleased or prevents receive-loop cancellation during shutdown.
 * `CanFrame.Dispose()` released the backing `IMemoryOwner<byte>` even for frames created with `ownMemory: false`. It now does nothing for frames that do not own their memory. Code that relied on `ownMemory: false` frames releasing the owner must dispose the owner itself.
 * Virtual bus `VirtualBusHub.Broadcast` handed the same frame memory to every recipient and to the echo, so one consumer disposing its frame invalidated all others. Each recipient now gets its own copy (new `CanFrame.Copy(IBufferAllocator)`), and the echoed frame is marked `IsEcho = true`. Frames dropped by the software filter are disposed.
