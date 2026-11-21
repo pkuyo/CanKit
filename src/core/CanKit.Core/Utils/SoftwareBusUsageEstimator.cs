@@ -101,7 +101,11 @@ internal sealed class SoftwareBusUsageEstimator
             }
 
             if (includeInCrc)
-                crc = ((crc << 1) | bit) ^ (((crc & 0x4000) != 0) ? 0x4599 : 0);
+            {
+                var feedback = ((crc & 0x4000) != 0) ^ (bit != 0);
+                crc = (crc << 1) & 0x7fff;
+                if (feedback) crc ^= 0x4599;
+            }
         }
 
         ProcessBit(0); // SOF

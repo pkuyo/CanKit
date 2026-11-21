@@ -1,5 +1,7 @@
 using System;
+using System.Threading;
 using CanKit.Abstractions.API.Can.Definitions;
+using CanKit.Abstractions.API.Common;
 using CanKit.Abstractions.API.Common.Definitions;
 using CanKit.Core;
 using CanKit.Core.Utils;
@@ -23,6 +25,14 @@ public class SoftwareBusUsageTests : IClassFixture<TestCaseProvider>
 
         SoftwareBusUsageEstimator.FrameBitCount(new CanFrameView(frame))
             .Should().BeInRange(lowerBound, upperBound);
+    }
+
+    [Fact]
+    public void Standard_Frame_Uses_The_Actual_Crc_Remainder_For_Stuffing()
+    {
+        var frame = CanFrame.Classic(0x123, new byte[8]);
+
+        SoftwareBusUsageEstimator.FrameBitCount(new CanFrameView(frame)).Should().Be(125);
     }
 
     [Fact]
@@ -63,5 +73,18 @@ public class SoftwareBusUsageTests : IClassFixture<TestCaseProvider>
 
         bus.BusUsage().Should().BeGreaterThan(0);
         bus.Options.Capabilities.Custom["bus_usage_source"].Should().Be("software");
+    }
+
+    [Fact]
+    public void Software_Periodic_Tx_Is_Included_In_The_Estimate()
+    {
+        using var bus = CanBus.Open($"virtual://{Guid.NewGuid()}/0", cfg => cfg
+            .SetProtocolMode(CanProtocolMode.Can20).Baud(500_000)
+            .SoftwareFeaturesFallBack(CanFeature.BusUsage | CanFeature.CyclicTx));
+        using var periodic = bus.TransmitPeriodic(CanFrame.Classic(0x123, new byte[8]),
+            new PeriodicTxOptions(TimeSpan.FromMilliseconds(10), repeat: 1));
+
+        SpinWait.SpinUntil(() => bus.BusUsage() > 0, TimeSpan.FromSeconds(1))
+            .Should().BeTrue();
     }
 }

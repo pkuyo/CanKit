@@ -72,7 +72,11 @@ internal sealed class SoftwareBusUsageCanBus : ICanBus
     public IAsyncEnumerable<CanReceiveData> GetFramesAsync(CancellationToken cancellationToken = default)
         => _inner.GetFramesAsync(cancellationToken);
     public IPeriodicTx TransmitPeriodic(CanFrame frame, PeriodicTxOptions options)
-        => _inner.TransmitPeriodic(frame, options);
+    {
+        if ((_inner.Options.EnabledSoftwareFallback & CanFeature.CyclicTx) != 0)
+            return SoftwarePeriodicTx.Start(this, frame, options);
+        return _inner.TransmitPeriodic(frame, options);
+    }
 
     public int Transmit(IEnumerable<CanFrame> frames, int timeOut = 0) => Transmit(frames.ToArray(), timeOut);
     public int Transmit(ReadOnlySpan<CanFrame> frames, int timeOut = 0)
