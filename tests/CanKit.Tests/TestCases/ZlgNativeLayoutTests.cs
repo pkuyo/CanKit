@@ -1,3 +1,4 @@
+using System;
 using System.Linq;
 using System.Runtime.InteropServices;
 using CanKit.Adapter.ZLG.Native;
@@ -24,6 +25,35 @@ public class ZlgNativeLayoutTests
         Offset<ZLGCAN.ZCAN_CHANNEL_INIT_CONFIG>(nameof(ZLGCAN.ZCAN_CHANNEL_INIT_CONFIG.config)).Should().Be(4);
         Offset<ZLGCAN._ZCAN_CHANNEL_INIT_CONFIG>(nameof(ZLGCAN._ZCAN_CHANNEL_INIT_CONFIG.can)).Should().Be(0);
         Offset<ZLGCAN._ZCAN_CHANNEL_INIT_CONFIG>(nameof(ZLGCAN._ZCAN_CHANNEL_INIT_CONFIG.canfd)).Should().Be(0);
+    }
+
+    [Fact]
+    public void Device_Info_Uses_Natural_Alignment_And_Ushort_Reserved_Values()
+    {
+        Marshal.SizeOf<ZLGCAN.ZCAN_DEVICE_INFO>().Should().Be(80);
+        Offset<ZLGCAN.ZCAN_DEVICE_INFO>(nameof(ZLGCAN.ZCAN_DEVICE_INFO.reserved)).Should().Be(72);
+        typeof(ZLGCAN.ZCAN_DEVICE_INFO).GetField(nameof(ZLGCAN.ZCAN_DEVICE_INFO.reserved))!
+            .FieldType.Should().Be(typeof(ushort[]));
+    }
+
+    [Fact]
+    public void Cloud_Structures_Match_The_Native_Strides_And_Device_Array_Offset()
+    {
+        Marshal.SizeOf<ZLGCAN.ZCLOUD_CHNINFO>().Should().Be(4);
+        Marshal.SizeOf<ZLGCAN.ZCLOUD_DEVINFO>().Should().Be(492);
+        Offset<ZLGCAN.ZCLOUD_DEVINFO>(nameof(ZLGCAN.ZCLOUD_DEVINFO.channels)).Should().Be(426);
+
+        var is64Bit = IntPtr.Size == 8;
+        Offset<ZLGCAN.ZCLOUD_USER_DATA>(nameof(ZLGCAN.ZCLOUD_USER_DATA.devices)).Should().Be(is64Bit ? 152 : 148);
+        Marshal.SizeOf<ZLGCAN.ZCLOUD_USER_DATA>().Should().Be(is64Bit ? 49352 : 49348);
+    }
+
+    [Fact]
+    public void Get_User_Data_Declares_The_Update_Parameter()
+    {
+        typeof(ZLGCAN).GetMethod(nameof(ZLGCAN.ZCLOUD_GetUserData))!
+            .GetParameters().Select(parameter => parameter.ParameterType)
+            .Should().Equal(typeof(int));
     }
 
     [Fact]

@@ -733,9 +733,9 @@ public static class ZLGCAN
         return 0;
     }
 
-    public static unsafe IntPtr ZCLOUD_GetUserData()
+    public static IntPtr ZCLOUD_GetUserData(int update)
     {
-        return  IntPtr.Zero;
+        return IntPtr.Zero;
     }
 
     // ---- Structs (mirror a subset so consumers compile) ----
@@ -747,7 +747,7 @@ public static class ZLGCAN
     }
 
     // Same union layout as the real binding (see ZLGAPI.cs).
-    [StructLayout(LayoutKind.Explicit)]
+    [StructLayout(LayoutKind.Explicit, Size = 28)]
     public struct _ZCAN_CHANNEL_INIT_CONFIG
     {
         [FieldOffset(0)] public _ZCAN_CHANNEL_CAN_INIT_CONFIG can;

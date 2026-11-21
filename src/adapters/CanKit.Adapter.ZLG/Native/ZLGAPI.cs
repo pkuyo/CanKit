@@ -204,7 +204,7 @@ namespace CanKit.Adapter.ZLG.Native
         public static extern uint ZCLOUD_DisconnectServer();
 
         [DllImport(DllName, CallingConvention = CallingConvention.StdCall, CharSet = CharSet.Ansi)]
-        public static extern IntPtr ZCLOUD_GetUserData();
+        public static extern IntPtr ZCLOUD_GetUserData(int update);
         #endregion
 
         #region 结构体
@@ -217,7 +217,7 @@ namespace CanKit.Adapter.ZLG.Native
 
         // zlgcan.h declares this member as `union { can; canfd; }`: both views start at offset 0
         // and the driver picks one by can_type. The whole init config is 4 + 28 = 32 bytes.
-        [StructLayout(LayoutKind.Explicit)]
+        [StructLayout(LayoutKind.Explicit, Size = 28)]
         public struct _ZCAN_CHANNEL_INIT_CONFIG
         {
             [FieldOffset(0)] public _ZCAN_CHANNEL_CAN_INIT_CONFIG can;
@@ -438,7 +438,7 @@ namespace CanKit.Adapter.ZLG.Native
             public uint   nFrameCount;
         }
 
-        [StructLayout(LayoutKind.Sequential, Pack = 1)]
+        [StructLayout(LayoutKind.Sequential)]
         public struct ZCAN_DEVICE_INFO
         {
             public ushort hw_Version;
@@ -455,7 +455,7 @@ namespace CanKit.Adapter.ZLG.Native
             public char[] str_hw_Type;
 
             [MarshalAs(UnmanagedType.ByValArray, SizeConst = 4)]
-            public byte[] reserved;
+            public ushort[] reserved;
         }
 
         public const int ZCLOUD_MAX_DEVICES = 100;
@@ -470,7 +470,7 @@ namespace CanKit.Adapter.ZLG.Native
             public byte isDownload;
         }
 
-        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
         public struct ZCLOUD_DEVINFO
         {
             public int            devIndex;
@@ -498,8 +498,7 @@ namespace CanKit.Adapter.ZLG.Native
             public ZCLOUD_CHNINFO[] channels;
         }
 
-        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
-
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi)]
         public struct ZCLOUD_USER_DATA
         {
             [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)]

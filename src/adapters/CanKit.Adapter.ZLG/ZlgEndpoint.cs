@@ -119,7 +119,7 @@ internal static class ZlgEndpoint
         try
         {
             if (!ZLGCAN.ZCLOUD_IsConnected()) return [];
-            var userData = Marshal.PtrToStructure<ZCLOUD_USER_DATA>(ZLGCAN.ZCLOUD_GetUserData());
+            var userData = Marshal.PtrToStructure<ZCLOUD_USER_DATA>(ZLGCAN.ZCLOUD_GetUserData(0));
             List<BusEndpointInfo> infos = new();
             for (ulong i = 0; i < userData.devCnt; i++)
             {
