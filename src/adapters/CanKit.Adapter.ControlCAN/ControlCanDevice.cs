@@ -1,6 +1,7 @@
 using CanKit.Abstractions.API.Can;
 using CanKit.Abstractions.API.Common;
 using System;
+using System.Collections.Generic;
 using CanKit.Adapter.ControlCAN.Definitions;
 using CanKit.Adapter.ControlCAN.Native;
 using CanKit.Adapter.ControlCAN.Diagnostics;
@@ -14,6 +15,43 @@ public sealed class ControlCanDevice : ICanDevice<ControlCanDeviceRTOptionsConfi
 {
     private bool _isDisposed;
     private readonly IDeviceOptions _options;
+    // A failed native clear must survive disposal/recreation of the managed device.
+    // Only a successful clear removes an entry; closing the device is not proof that
+    // firmware discarded its table. Identity is scoped to this process and driver index.
+    private static readonly HashSet<(uint Type, uint Index, uint Channel)> ChannelsWithRangeFilters = new();
+    private static readonly HashSet<(uint Type, uint Index, uint Channel)> OpenChannels = new();
+    private readonly uint _rawDeviceType;
+    private readonly uint _deviceIndex;
+
+    internal void AcquireChannel(uint channel)
+    {
+        lock (OpenChannels)
+        {
+            if (!OpenChannels.Add((_rawDeviceType, _deviceIndex, channel)))
+                throw new CanBusCreationException($"ControlCAN channel {channel} is already open or still stopping.");
+        }
+    }
+
+    internal void ReleaseChannel(uint channel)
+    {
+        lock (OpenChannels) OpenChannels.Remove((_rawDeviceType, _deviceIndex, channel));
+    }
+
+    internal bool HasRangeFilters(uint channel)
+    {
+        lock (ChannelsWithRangeFilters)
+            return ChannelsWithRangeFilters.Contains((_rawDeviceType, _deviceIndex, channel));
+    }
+
+    internal void SetRangeFilterState(uint channel, bool configured)
+    {
+        lock (ChannelsWithRangeFilters)
+        {
+            var key = (_rawDeviceType, _deviceIndex, channel);
+            if (configured) ChannelsWithRangeFilters.Add(key);
+            else ChannelsWithRangeFilters.Remove(key);
+        }
+    }
 
     public ControlCanDevice(IDeviceOptions options)
     {
@@ -21,6 +59,8 @@ public sealed class ControlCanDevice : ICanDevice<ControlCanDeviceRTOptionsConfi
         Options = new ControlCanDeviceRTOptionsConfigurator();
         Options.Init((ControlCanDeviceOptions)options);
         _options = options;
+        _rawDeviceType = (uint)((ControlCanDeviceType)Options.DeviceType).Code;
+        _deviceIndex = Options.DeviceIndex;
 
         try
         {

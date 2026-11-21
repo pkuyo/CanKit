@@ -12,6 +12,7 @@ using CanKit.Abstractions.SPI.Registry.Core.Endpoints;
 using CanKit.Adapter.ControlCAN.Options;
 using CanKit.Adapter.ControlCAN.Definitions;
 using CanKit.Core.Definitions;
+using CanKit.Core.Diagnostics;
 using CanKit.Core.Endpoints;
 using CanKit.Core.Exceptions;
 using CanKit.Core.Registry;
@@ -56,8 +57,11 @@ public static class ControlCanEndpoint
     }
 
     public static ICanBus Open(CanEndpoint ep, Action<IBusInitOptionsConfigurator>? configure)
+        => OpenPrepared(Prepare(ep, configure));
+
+    internal static ICanBus OpenPrepared(PreparedBusContext prepared)
     {
-        var (provider, devOpt, _, chOpt, chCfg) = Prepare(ep, configure);
+        var (provider, devOpt, _, chOpt, chCfg) = prepared;
 
         var (device, lease) = ControlCanDeviceMultiplexer.Acquire(devOpt.DeviceType, ((ControlCanDeviceOptions)devOpt).DeviceIndex, () =>
         {
@@ -67,17 +71,46 @@ public static class ControlCanEndpoint
             return d;
         });
 
-        var transceiver = provider.Factory.CreateTransceivers(device.Options, chCfg);
-        if (transceiver == null)
-            throw new CanFactoryException(CanKitErrorCode.TransceiverMismatch, $"Factory '{provider.Factory.GetType().FullName}' returned null transceiver.");
+        ITransceiver? transceiver = null;
+        ICanBus? channel = null;
+        var leaseTransferred = false;
+        try
+        {
+            transceiver = provider.Factory.CreateTransceivers(device.Options, chCfg);
+            if (transceiver == null)
+                throw new CanFactoryException(CanKitErrorCode.TransceiverMismatch, $"Factory '{provider.Factory.GetType().FullName}' returned null transceiver.");
 
-        var channel = provider.Factory.CreateBus(device, chOpt, transceiver, provider);
-        if (channel == null)
-            throw new CanBusCreationException($"Factory '{provider.Factory.GetType().FullName}' returned null channel.");
+            channel = provider.Factory.CreateBus(device, chOpt, transceiver, provider);
+            if (channel == null)
+                throw new CanBusCreationException($"Factory '{provider.Factory.GetType().FullName}' returned null channel.");
 
-        if (channel is IOwnership own)
-            own.AttachOwner(lease);
-        return channel;
+            if (channel is IOwnership own)
+            {
+                // ControlCanBus accepts ownership even when reporting an early fault;
+                // its deferred cleanup must retain the lease until native work exits.
+                if (channel is ControlCanBus) leaseTransferred = true;
+                own.AttachOwner(lease);
+                leaseTransferred = true;
+            }
+            return channel;
+        }
+        catch
+        {
+            // A factory may return a custom bus whose owner attachment throws. Dispose
+            // the completed bus before releasing the device it may still be polling.
+            try
+            {
+                if (channel != null) channel.Dispose();
+                else if (transceiver is IDisposable disposable) disposable.Dispose();
+            }
+            catch (Exception cleanupError)
+            {
+                try { CanKitLogger.LogWarning("ControlCAN: Failed to dispose a channel or transceiver after opening failed.", cleanupError); }
+                catch { /* Preserve the original creation/attachment error. */ }
+            }
+            if (!leaseTransferred) lease.Dispose();
+            throw;
+        }
     }
 
     private static DeviceType ResolveDeviceType(string path, CanEndpoint ep)

@@ -57,9 +57,15 @@ public sealed class AsyncFramePipe<T>
     /// Frames published afterwards are handed to the drop callback. Items still queued stay
     /// readable until <see cref="Clear()"/> releases them. Idempotent.
     /// </summary>
-    public void Complete()
+    public void Complete() => Complete(null);
+
+    /// <summary>
+    /// Completes the pipe with an optional terminal error. Pending and future asynchronous
+    /// reads observe that error after queued items are drained, even if a fault pulse races completion.
+    /// </summary>
+    public void Complete(Exception? error)
     {
-        _ = _channel.Writer.TryComplete();
+        _ = _channel.Writer.TryComplete(error);
     }
 
     /// <summary>
