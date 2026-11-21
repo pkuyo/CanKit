@@ -102,6 +102,20 @@ Notes:
 - ZLG: without software fallback, a single rule type (mask OR range) per channel; some models limit rule count.
 - Virtual: software filter only.
 
+Bus usage estimation is also available for classical CAN buses without hardware counters. It is opt-in:
+
+```csharp
+var bus = CanBus.Open("socketcan://can0", cfg => cfg
+    .Baud(500_000)
+    .SoftwareFeaturesFallBack(CanKit.Core.Definitions.CanFeature.BusUsage));
+
+float usage = bus.BusUsage();
+// "software" when the estimator is active
+var source = bus.Options.Capabilities.Custom["bus_usage_source"];
+```
+
+The estimator counts non-echo RX frames and TX frames accepted through the bus over a one-second sliding window. It includes dynamic bit stuffing and CRC bits. Hardware-filtered traffic, error frames, unsuccessful transmissions, and traffic on other nodes that is not observed by this bus are not included. The result is guidance rather than a hardware measurement. A resolvable classical CAN bitrate is required.
+
 ## 6) Periodic Transmit
 
 Some adapters support hardware periodic transmit. If not, use software periodic TX:
