@@ -135,6 +135,14 @@ namespace CanKit.Adapter.ZLG
                     config.config.can.acc_code = accCode;
                     config.config.can.acc_mask = accMask;
                     config.config.can.filter = filterIdType;
+                    var zlgOption = (ZlgBusOptions)options;
+                    if (!zlgOption.ZlgFeatures.HasFlag(ZlgFeature.SkipBitRate))
+                    {
+                        var bitRate = zlgOption.BitTiming.Classic?.Nominal.Bitrate
+                                      ?? throw new CanBusConfigurationException(
+                                          "Bitrate must be specified when configuring classic CAN timing.");
+                        (config.config.can.timing0, config.config.can.timing1) = GetClassicTiming(bitRate);
+                    }
                     config.config.can.mode = (byte)options.WorkMode;
                 }
                 else
@@ -404,6 +412,18 @@ namespace CanKit.Adapter.ZLG
                 return BusState.Unknown;
             }
         }
+
+        private static (byte Timing0, byte Timing1) GetClassicTiming(uint bitRate) => bitRate switch
+        {
+            1_000_000 => (0x00, 0x14),
+            800_000 => (0x00, 0x16),
+            500_000 => (0x00, 0x1C),
+            250_000 => (0x01, 0x1C),
+            125_000 => (0x03, 0x1C),
+            100_000 => (0x04, 0x1C),
+            50_000 => (0x09, 0x1C),
+            _ => throw new CanBusConfigurationException($"Unsupported ZLG classic bitrate: {bitRate} bps.")
+        };
 
         private void ApplyBitRate(ZlgBusOptions zlgOption)
         {

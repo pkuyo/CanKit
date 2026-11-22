@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using System.Runtime.InteropServices;
+using CanKit.Adapter.ZLG;
 using CanKit.Adapter.ZLG.Native;
 using FluentAssertions;
 using Xunit;
@@ -81,6 +82,26 @@ public class ZlgNativeLayoutTests
         raw[4 + 21].Should().Be(1, "canfd.mode is at union offset 21");
         // dbit_timing (union offset 12..15) must stay untouched.
         raw.Skip(4 + 12).Take(4).Should().OnlyContain(b => b == 0);
+    }
+
+    [Theory]
+    [InlineData(1_000_000, 0x00, 0x14)]
+    [InlineData(800_000, 0x00, 0x16)]
+    [InlineData(500_000, 0x00, 0x1C)]
+    [InlineData(250_000, 0x01, 0x1C)]
+    [InlineData(125_000, 0x03, 0x1C)]
+    [InlineData(100_000, 0x04, 0x1C)]
+    [InlineData(50_000, 0x09, 0x1C)]
+    public void Classic_Init_Uses_The_Btr_Timing_For_The_Configured_Bitrate(
+        uint bitRate, byte expectedTiming0, byte expectedTiming1)
+    {
+        var getTiming = typeof(ZlgCanBus).GetMethod("GetClassicTiming",
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
+
+        var timing = ((byte Timing0, byte Timing1))getTiming.Invoke(null, new object[] { bitRate })!;
+
+        timing.Timing0.Should().Be(expectedTiming0);
+        timing.Timing1.Should().Be(expectedTiming1);
     }
 
     private static byte[] ToBytes<T>(T value) where T : struct
