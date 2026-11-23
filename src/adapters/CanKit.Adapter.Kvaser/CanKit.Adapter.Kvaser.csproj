@@ -30,4 +30,8 @@
     <ItemGroup>
         <None Include="README.md" Pack="true" PackagePath="" />
     </ItemGroup>
+    <ItemGroup>
+        <!-- Lets lifecycle tests await the internal receive task without timing assumptions. -->
+        <InternalsVisibleTo Include="CanKit.Tests" />
+    </ItemGroup>
 </Project>
