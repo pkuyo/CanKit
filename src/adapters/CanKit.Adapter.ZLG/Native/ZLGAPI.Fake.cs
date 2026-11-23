@@ -111,6 +111,8 @@ public static class ZLGCAN
         // Error counters
         public byte Rec; // receive error counter
         public byte Tec; // transmit error counter
+        public uint ErrorResult = OK;
+        public uint ErrorCode;
     }
 
     private sealed class RangeRule
@@ -662,6 +664,15 @@ public static class ZLGCAN
     // ---- API: Errors/Status ----
     public static uint ZCAN_IsDeviceOnLine(ZlgDeviceHandle device_handle) => device_handle is { IsInvalid: false } ? OK : 0u;
 
+    public static void SetErrorInfo(ZlgChannelHandle channel, uint result, uint errorCode, byte rec = 0, byte tec = 0)
+    {
+        if (!TryGetChannel(channel.DangerousGetHandle(), out var ch)) throw new ArgumentException(nameof(channel));
+        ch.ErrorResult = result;
+        ch.ErrorCode = errorCode;
+        ch.Rec = rec;
+        ch.Tec = tec;
+    }
+
     public static uint ZCAN_ReadChannelErrInfo(ZlgChannelHandle channel_handle, out ZCAN_CHANNEL_ERROR_INFO pErrInfo)
     {
         pErrInfo = new ZCAN_CHANNEL_ERROR_INFO
@@ -672,10 +683,12 @@ public static class ZLGCAN
         };
         if (TryGetChannel(channel_handle.DangerousGetHandle(), out var ch))
         {
+            pErrInfo.error_code = ch.ErrorCode;
             pErrInfo.passive_ErrData[1] = ch.Tec;
             pErrInfo.passive_ErrData[2] = ch.Rec;
+            return ch.ErrorResult;
         }
-        return OK;
+        return 0;
     }
 
     public static uint ZCAN_ReadChannelStatus(ZlgChannelHandle channel_handle, out ZCAN_CHANNEL_STATUS pCANStatus)

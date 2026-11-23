@@ -218,8 +218,10 @@ public sealed class VectorFdTransceiver : IVectorTransceiver
             controllerStatus = CanControllerStatus.TxPassive | CanControllerStatus.RxPassive;
         else if ((busStatus & VxlApi.XL_CHIPSTAT_ERROR_WARNING) != 0)
             controllerStatus = CanControllerStatus.TxWarning | CanControllerStatus.RxWarning;
-        else
+        else if (busStatus == VxlApi.XL_CHIPSTAT_ERROR_ACTIVE)
             controllerStatus = CanControllerStatus.Active;
+        else
+            controllerStatus = CanControllerStatus.Unknown;
 
         var counters = new CanErrorCounters
         {

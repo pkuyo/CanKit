@@ -9,6 +9,8 @@
 
 ### Fixed
 
+* PCAN now reports `ErrActive` for an explicit normal controller status, `ErrWarning` for both `BusLight` and `BusWarning`, and `Unknown` for unrecognized status errors. Kvaser reports `Unknown` when its controller-status query fails, so unavailable status cannot be mistaken for recovery.
+* Vector reports `Unknown` before its first chip-state event and for unrecognized chip states (classical CAN and CAN FD). SocketCAN reports `Unknown` for stopped, sleeping, or unrecognized states. ZLG reports `Unknown` for diagnostics without controller fault evidence, including empty diagnostics; these are not proof of error-active operation or bus-off recovery.
 * ControlCAN periodic `Stop` and `Dispose` retain retry state and their reserved index after a failed hardware disable, log the failure, and release the index only once after successful disposal.
 * ControlCAN explicitly disables tracked hardware auto-send entries before resetting and releasing a channel, including entries whose earlier stop failed.
 * ControlCAN reports an opening failure when a terminal receive fault precedes device-lease attachment, retaining the lease until pending cleanup finishes.

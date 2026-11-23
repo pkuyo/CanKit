@@ -178,6 +178,8 @@ public static class Canlib
         public int HandleId;
         public int Channel; // 0,1,2
         public bool BusOn;
+        public canStatus? StatusResult;
+        public int StatusFlags;
         public uint DriverType = canDRIVER_NORMAL;
         public int TimerScaleUs = 1000; // default
         public int RxQueueSize = 0; // 0 => unlimited
@@ -331,10 +333,22 @@ public static class Canlib
         return canStatus.canOK;
     }
 
+    public static void SetStatus(int hnd, canStatus result, int flags)
+    {
+        if (!TryGetHandle(hnd, out var h)) throw new ArgumentException(nameof(hnd));
+        h.StatusResult = result;
+        h.StatusFlags = flags;
+    }
+
     public static canStatus canReadStatus(int hnd, out int status)
     {
         status = 0;
         if (!TryGetHandle(hnd, out var h)) return canStatus.canERR_INVHANDLE;
+        if (h.StatusResult is { } result)
+        {
+            status = h.StatusFlags;
+            return result;
+        }
         status |= h.BusOn ? canSTAT_ERROR_ACTIVE : canSTAT_BUS_OFF;
         return canStatus.canOK;
     }

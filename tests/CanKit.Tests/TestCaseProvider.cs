@@ -23,6 +23,7 @@ public class TestCaseProvider : IDisposable
         SafeLoad(new AssemblyName("CanKit.Adapter.Vector"));
         SafeLoad(new AssemblyName("CanKit.Adapter.ControlCAN"));
         SafeLoad(new AssemblyName("CanKit.Adapter.ZLG"));
+        SafeLoad(new AssemblyName("CanKit.Adapter.SocketCAN"));
 
         var env = Environment.GetEnvironmentVariable("CANKIT_TEST_ADAPTERS");
         if (env is null)

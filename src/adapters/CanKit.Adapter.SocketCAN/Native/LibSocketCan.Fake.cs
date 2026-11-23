@@ -98,6 +98,7 @@ namespace CanKit.Adapter.SocketCAN.Native
             public uint DataBitrate = 500_000;
             public uint Clock = 80_000_000;
             public can_state State = can_state.CAN_STATE_STOPPED;
+            public int StatusResult;
             public UInt32 CtrlMask = CAN_CTRLMODE_LOOPBACK | CAN_CTRLMODE_LISTENONLY | CAN_CTRLMODE_FD | CAN_CTRLMODE_BERR_REPORTING;
             public UInt32 CtrlFlags = 0;
         }
@@ -164,8 +165,15 @@ namespace CanKit.Adapter.SocketCAN.Native
             return 0;
         }
 
+        public static void SetStatus(string name, int result, int state)
+        {
+            var s = Get(name);
+            s.State = (can_state)state;
+            s.StatusResult = result;
+        }
+
         public static int can_get_state(string name, out int state)
-        { state = (int)Get(name).State; return 0; }
+        { var s = Get(name); state = (int)s.State; return s.StatusResult; }
 
         public static int can_get_clock(string name, out can_clock clock)
         { var s = Get(name); clock = new can_clock { freq = s.Clock }; return 0; }

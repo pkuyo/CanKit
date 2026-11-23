@@ -62,3 +62,13 @@ foreach (var ep in BusEndpointEntry.Enumerate("pcan"))
 ## Notes
 
 - Classical and FD support depend on hardware and PCAN-Basic capabilities.
+
+## Controller status
+
+`BusState` reports `ErrActive` only when PCAN-Basic returns exactly `PcanStatus.OK`.
+Known bus fault flags retain their priority: bus-off, passive, then warning. Both
+`BusLight` and `BusWarning` map to `ErrWarning`. Other
+status/error values report `Unknown`; they are not evidence that the controller
+has recovered. A successful `Reset()` call alone does not confirm recovery.
+
+See [PCAN-Basic GetStatus](https://www.peak-system.com/documentation/API/PCAN-Basic.Net/html/8e9e8746-4599-2d4f-0df4-4c9e68a19376.htm).

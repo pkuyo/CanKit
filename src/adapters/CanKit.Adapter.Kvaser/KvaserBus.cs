@@ -420,7 +420,7 @@ public sealed class KvaserBus : ICanBus<KvaserBusRtConfigurator>, IOwnership
         {
             ThrowIfDisposed();
             var st = Canlib.canReadStatus(_handle, out var status);
-            if (st != Canlib.canStatus.canOK) return BusState.None;
+            if (st != Canlib.canStatus.canOK) return BusState.Unknown;
 
             if ((status & Canlib.canSTAT_BUS_OFF) != 0) return BusState.BusOff;
             if ((status & Canlib.canSTAT_ERROR_PASSIVE) != 0) return BusState.ErrPassive;

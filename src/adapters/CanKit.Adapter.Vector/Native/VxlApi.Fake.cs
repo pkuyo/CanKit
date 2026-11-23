@@ -437,6 +437,15 @@ internal static class VxlApi
 
     public static int xlCanRequestChipState(int portHandle, ulong channelMask) => XL_SUCCESS;
 
+    public static void InjectChipState(int portHandle, byte status)
+    {
+        if (!World.Handles.TryGetValue(portHandle, out var handle)) throw new ArgumentException(nameof(portHandle));
+        var ev = new XLcanRxEvent { Tag = XL_CAN_EV_TAG_CHIP_STATE };
+        ev.TagData.ChipState.BusStatus = status;
+        handle.RxQueue.Enqueue(ev);
+        TrySignal(handle.NotificationEvent);
+    }
+
     public static int xlClosePort(int portHandle)
     {
         lock (World.Gate)
@@ -575,6 +584,16 @@ internal static class VxlApi
         {
             if (!handle.RxQueue.TryDequeue(out var rxEv))
                 break;
+
+            if (rxEv.Tag == XL_CAN_EV_TAG_CHIP_STATE)
+            {
+                var chipEvent = new XLevent { Tag = (byte)XLeventType.XL_CHIP_STATE };
+                chipEvent.TagData.ChipState.BusStatus = rxEv.TagData.ChipState.BusStatus;
+                chipEvent.TagData.ChipState.TxErrorCounter = rxEv.TagData.ChipState.TxErrorCounter;
+                chipEvent.TagData.ChipState.RxErrorCounter = rxEv.TagData.ChipState.RxErrorCounter;
+                events[produced++] = chipEvent;
+                continue;
+            }
 
             var msg = rxEv.TagData.CanRxOkMsg;
             var e = new XLevent

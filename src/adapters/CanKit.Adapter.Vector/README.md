@@ -49,6 +49,11 @@ foreach (var rx in bus.Receive(1, 100))
 ## Bus State & Error Counters
 
 - VectorBus updates `BusState` and `ErrorCounters` upon receiving a chip-state event.
+- Before the first chip-state event, `BusState` is `Unknown`. Only the explicit
+  `XL_CHIPSTAT_ERROR_ACTIVE` code reports `ErrActive`; unrecognized codes report
+  `Unknown`. This applies to both classical CAN and CAN FD.
+- The property retains the last received chip state. A successful request or
+  reset alone does not confirm bus-off recovery or provide a transition history.
 - Call `RequestBusState()` first, then wait briefly before reading:
 
 ```csharp

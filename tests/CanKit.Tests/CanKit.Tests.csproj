@@ -29,7 +29,8 @@
     <ProjectReference Include="..\..\src\adapters\CanKit.Adapter.Vector\CanKit.Adapter.Vector.csproj" />
     <ProjectReference Include="..\..\src\adapters\CanKit.Adapter.Virtual\CanKit.Adapter.Virtual.csproj" />
     <ProjectReference Include="..\..\src\adapters\CanKit.Adapter.SocketCAN\CanKit.Adapter.SocketCAN.csproj" />
-    <ProjectReference Include="..\..\src\adapters\CanKit.Adapter.PCAN\CanKit.Adapter.PCAN.csproj" />
+    <ProjectReference Include="..\..\src\adapters\CanKit.Adapter.PCAN\CanKit.Adapter.PCAN.csproj" Aliases="global,PcanFake" Condition="'$(Configuration)' == 'Fake'" />
+    <ProjectReference Include="..\..\src\adapters\CanKit.Adapter.PCAN\CanKit.Adapter.PCAN.csproj" Condition="'$(Configuration)' != 'Fake'" />
     <ProjectReference Include="..\..\src\adapters\CanKit.Adapter.Kvaser\CanKit.Adapter.Kvaser.csproj" />
     <ProjectReference Include="..\..\src\adapters\CanKit.Adapter.ZLG\CanKit.Adapter.ZLG.csproj" />
   </ItemGroup>
