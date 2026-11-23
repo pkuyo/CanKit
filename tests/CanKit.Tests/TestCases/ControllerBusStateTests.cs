@@ -1,4 +1,5 @@
 #if FAKE
+extern alias PcanFake;
 using System;
 using System.Reflection;
 using System.Threading;
@@ -14,8 +15,10 @@ using CanKit.Adapter.ZLG;
 using CanKit.Adapter.ZLG.Definitions;
 using CanKit.Adapter.ZLG.Native;
 using FluentAssertions;
-using Peak.Can.Basic;
 using Xunit;
+using Api = PcanFake::Peak.Can.Basic.Api;
+using PcanChannel = PcanFake::Peak.Can.Basic.PcanChannel;
+using PcanStatus = PcanFake::Peak.Can.Basic.PcanStatus;
 
 namespace CanKit.Tests.TestCases;
 

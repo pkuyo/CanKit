@@ -17,8 +17,9 @@ namespace CanKit.Tests.TestCases;
 /// </summary>
 public class ControlCanRangeFilterTests
 {
-    private const string Rx = "controlcan://VCI_USBCAN_2E_U?index=0#ch0";
-    private const string Tx = "controlcan://VCI_USBCAN_2E_U?index=0#ch1";
+    // Dedicated fake device; index 2 belongs to ControlCanFilterRulesTests.
+    private const string Rx = "controlcan://VCI_USBCAN_2E_U?index=1#ch0";
+    private const string Tx = "controlcan://VCI_USBCAN_2E_U?index=1#ch1";
 
     [Fact]
     public async Task Standard_Range_Filter_Record_Reaches_The_Driver()
