@@ -1,10 +1,8 @@
 using System;
-using System.Linq;
 using CanKit.Abstractions.API.Common;
 using CanKit.Abstractions.API.Common.Definitions;
 using CanKit.Core.Definitions;
 using CanKit.Core.Diagnostics;
-using CanKit.Core.Exceptions;
 
 namespace CanKit.Adapter.ControlCAN.Options;
 
@@ -37,17 +35,6 @@ public sealed class ControlCanBusInitConfigurator
             throw new ArgumentOutOfRangeException(nameof(newPollingInterval));
         Options.PollingInterval = newPollingInterval;
         return this;
-    }
-
-    public override ControlCanBusInitConfigurator AccMask(int accCode, int accMask, CanFilterIDType idType = CanFilterIDType.Standard)
-    {
-        if ((EnabledSoftwareFallback & CanFeature.MaskFilter) == 0)
-        {
-            if (Filter.FilterRules.Any(i => i is FilterRule.Range))
-                throw new CanFilterConfigurationException(
-                    "ControlCAN only supports mask filter on hardware");
-        }
-        return base.AccMask(accCode, accMask, idType);
     }
 
     public override IBusInitOptionsConfigurator Custom(string key, object value)

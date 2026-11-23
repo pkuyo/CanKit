@@ -54,7 +54,7 @@ foreach (var rx in bus.Receive(1, 100))
 备注
 
 * 仅支持经典 CAN；ControlCAN 适配器不支持 CAN FD。
-* 硬件过滤为**基于掩码**。若需按 ID 区间过滤，请启用**软件兜底**并添加区间规则，例如：
+* USBCAN1/2 等 SJA1000 设备使用硬件掩码过滤；USBCAN-E-U/2E-U/4E-U 使用硬件范围过滤。若设备不支持所需规则，请启用**软件兜底**，例如：
 
 ```csharp
 using var bus = CanBus.Open("controlcan://USBCAN2?index=0#ch0", cfg =>
@@ -62,6 +62,9 @@ using var bus = CanBus.Open("controlcan://USBCAN2?index=0#ch0", cfg =>
        .RangeFilter(0x100, 0x200));
 ```
 
+* `AccMask` 格式：SJA1000 设备采用 32 位单滤波寄存器格式（标准 ID 左移 21 位、扩展 ID 左移 3 位，掩码 `1` 忽略、`0` 比较，如 `AccMask(0x24600000U, 0x001FFFFFU, CanFilterIDType.Standard)` 匹配 `0x123`，转软件兜底时不变）；仅范围过滤设备在 `MaskFilter` 软件兜底下使用普通 CAN ID（掩码 `1` 比较，如 `AccMask(0x123, 0x7FF, CanFilterIDType.Standard)`）。详见 [ControlCAN 手册](https://www.zlg.cn/data/upload/software/Can/CAN-gqsysc-V3.12.pdf) 与 [SJA1000 手册](https://www.nxp.com/docs/en/data-sheet/SJA1000.pdf)。
+* 多条掩码、混合规则或 `USBCAN-8E-U` 范围过滤需启用对应的 `SoftwareFeaturesFallBack`；过滤规则在打开时固定，修改需重开通道。
+* 接收回调中的帧为借用内容，请勿释放；跨回调保存需复制数据。
 * 不支持读取总线使用率（bus load）。
 * `ErrorCounters()` 通过 `VCI_ReadErrInfo` 读取；可用性和准确性可能因设备/驱动而异。
 * 如需可调整轮询间隔：`cfg.Custom("PollingInterval", 10)`（毫秒）。
