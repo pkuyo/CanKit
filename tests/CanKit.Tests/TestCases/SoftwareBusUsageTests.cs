@@ -36,6 +36,32 @@ public class SoftwareBusUsageTests : IClassFixture<TestCaseProvider>
     }
 
     [Fact]
+    public void Remote_Frame_Dlc_Does_Not_Add_Payload_Bits()
+    {
+        var remote = new CanFrameView(CanFrameType.Can20, 0x123, new byte[8], FrameFlags.Rtr);
+
+        SoftwareBusUsageEstimator.FrameBitCount(remote)
+            .Should().BeInRange(47, 55, "DLC 8 requests eight bytes but transmits no payload");
+    }
+
+    [Fact]
+    public void Mixed_Batch_Counts_The_Accepted_Classical_Frame()
+    {
+        using var bus = CanBus.Open($"virtual://{Guid.NewGuid()}/0", cfg => cfg
+            .SetProtocolMode(CanProtocolMode.Can20).Baud(500_000)
+            .SoftwareFeaturesFallBack(CanFeature.BusUsage));
+        var frames = new[]
+        {
+            CanFrame.Fd(0x100, new byte[8]),
+            CanFrame.Classic(0x123, new byte[8])
+        };
+
+        bus.Transmit(frames).Should().Be(0);
+
+        bus.BusUsage().Should().Be(0);
+    }
+
+    [Fact]
     public void Estimator_Uses_A_One_Second_Sliding_Window()
     {
         var now = 0L;

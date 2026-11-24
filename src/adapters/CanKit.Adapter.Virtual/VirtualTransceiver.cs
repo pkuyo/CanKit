@@ -17,7 +17,7 @@ internal sealed class VirtualTransceiver : ITransceiver
         {
             // validate frame kind vs protocol mode
             if (f.FrameKind is CanFrameType.CanFd && vBus.Options.ProtocolMode != CanProtocolMode.CanFd)
-                continue;
+                break;
 
             vBus.Hub.Broadcast(vBus, f);
             n++;
@@ -32,7 +32,7 @@ internal sealed class VirtualTransceiver : ITransceiver
         {
             // validate frame kind vs protocol mode
             if (f.FrameKind is CanFrameType.CanFd && vBus.Options.ProtocolMode != CanProtocolMode.CanFd)
-                continue;
+                break;
 
             vBus.Hub.Broadcast(vBus, f);
             n++;

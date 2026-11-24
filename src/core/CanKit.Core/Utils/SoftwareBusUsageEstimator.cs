@@ -136,7 +136,7 @@ internal sealed class SoftwareBusUsageEstimator
         }
 
         for (var shift = 14; shift >= 0; shift--) ProcessBit((crc >> shift) & 1, false);
-        return (extended ? 67 : 47) + 8 * data.Length + stuffBits;
+        return (extended ? 67 : 47) + (frame.IsRemoteFrame ? 0 : 8 * data.Length) + stuffBits;
     }
 
     private readonly struct FrameSample(long timestamp, int bits)
