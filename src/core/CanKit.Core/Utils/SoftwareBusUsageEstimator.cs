@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using CanKit.Abstractions.API.Can.Definitions;
 using CanKit.Abstractions.API.Common.Definitions;
 
@@ -18,7 +19,10 @@ internal sealed class SoftwareBusUsageEstimator
     private long _bits;
     private readonly long _startedAt;
 
-    internal SoftwareBusUsageEstimator() : this(() => DateTime.UtcNow.Ticks) { }
+    internal SoftwareBusUsageEstimator() : this(MonotonicTimestamp) { }
+
+    private static long MonotonicTimestamp() =>
+        (long)(Stopwatch.GetTimestamp() * (double)TimeSpan.TicksPerSecond / Stopwatch.Frequency);
 
     internal SoftwareBusUsageEstimator(Func<long> timestamp)
     {

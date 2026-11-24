@@ -7,6 +7,11 @@ using CanKit.Core;
 using CanKit.Core.Utils;
 using FluentAssertions;
 using Xunit;
+#if FAKE
+using CanKit.Adapter.ZLG;
+using CanKit.Adapter.ZLG.Definitions;
+using CanKit.Adapter.ZLG.Utils;
+#endif
 
 namespace CanKit.Tests.TestCases;
 
@@ -113,4 +118,19 @@ public class SoftwareBusUsageTests : IClassFixture<TestCaseProvider>
         SpinWait.SpinUntil(() => bus.BusUsage() > 0, TimeSpan.FromSeconds(1))
             .Should().BeTrue();
     }
+
+#if FAKE
+    [Fact]
+    public void Native_Periodic_Tx_Remains_Hardware_First_When_Usage_Fallback_Is_Enabled()
+    {
+        using var bus = ZlgCan.Open(ZlgDeviceType.ZCAN_USBCAN_2E_U, 0, 0, cfg => cfg
+            .SetProtocolMode(CanProtocolMode.Can20).Baud(500_000)
+            .SoftwareFeaturesFallBack(CanFeature.BusUsage | CanFeature.CyclicTx));
+
+        using var periodic = bus.TransmitPeriodic(CanFrame.Classic(0x123, new byte[8]),
+            new PeriodicTxOptions(TimeSpan.FromMilliseconds(10), repeat: -1));
+
+        periodic.Should().BeOfType<ZlgPeriodicTx>();
+    }
+#endif
 }

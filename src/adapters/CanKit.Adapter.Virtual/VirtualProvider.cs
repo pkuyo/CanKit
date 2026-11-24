@@ -13,7 +13,7 @@ public sealed class VirtualProvider : ICanModelProvider
     public DeviceType DeviceType => VirtualDeviceType.Virtual;
 
     public CanFeature StaticFeatures => CanFeature.CanClassic | CanFeature.CanFd | CanFeature.RangeFilter | CanFeature.MaskFilter |
-                                        CanFeature.ErrorFrame | CanFeature.ErrorCounters | CanFeature.CyclicTx;
+                                        CanFeature.ErrorFrame | CanFeature.ErrorCounters;
 
     public ICanFactory Factory => CanRegistry.Registry.Factory("Virtual");
 
