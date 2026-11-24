@@ -25,7 +25,13 @@ public static class CanBus
     public static ICanBus Open(string endpoint, Action<IBusInitOptionsConfigurator>? configure = null)
     {
         if (BusEndpointEntry.TryOpen(endpoint, configure, out var bus) && bus != null)
+        {
+            if (bus is not SoftwareBusUsageCanBus &&
+                (bus.Options.EnabledSoftwareFallback & CanFeature.BusUsage) != 0 &&
+                (bus.Options.Features & CanFeature.BusUsage) == 0)
+                return new SoftwareBusUsageCanBus(bus);
             return bus;
+        }
         throw new CanFactoryException(CanKitErrorCode.DeviceCreationFailed, $"No endpoint handler registered for '{endpoint}'.");
     }
 
@@ -104,6 +110,20 @@ public static class CanBus
         if (typedBus is IOwnership own)
         {
             own.AttachOwner(new DeviceOwner(device));
+        }
+
+        if ((options.EnabledSoftwareFallback & CanFeature.BusUsage) != 0 &&
+            (options.Features & CanFeature.BusUsage) == 0)
+        {
+            if (!typeof(TBus).IsAssignableFrom(typeof(SoftwareBusUsageCanBus)))
+            {
+                typedBus.Dispose();
+                throw new CanBusConfigurationException(
+                    $"Software BusUsage fallback cannot preserve typed bus '{typeof(TBus).FullName}'. " +
+                    "Open the bus as ICanBus or use an adapter with native BusUsage support.");
+            }
+
+            return (TBus)(ICanBus)new SoftwareBusUsageCanBus(typedBus);
         }
 
         return typedBus;

@@ -48,7 +48,7 @@ internal static class PcanEndpoint
         {
             throw new CanFactoryException(CanKitErrorCode.DeviceCreationFailed, $"Factory '{provider.Factory.GetType().FullName}' returned null device.");
         }
-        return CanBus.Open<PcanBus, PcanBusOptions, PcanBusInitConfigurator>(
+        return CanBus.Open<ICanBus, PcanBusOptions, PcanBusInitConfigurator>(
             device, (PcanBusOptions)chOpt, (PcanBusInitConfigurator)chCfg);
     }
 
