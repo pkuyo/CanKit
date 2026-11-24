@@ -79,12 +79,12 @@ public class CandlelightAdapterTests : IClassFixture<TestCaseProvider>
     {
         var api = new FakeCandleApi();
         var provider = new CandlelightProvider();
-        using var firstDevice = new CandlelightDevice(new CandlelightDeviceOptions(provider), api);
-        using var secondDevice = new CandlelightDevice(new CandlelightDeviceOptions(provider), api);
-        using var first = NewBus(firstDevice, provider, 0);
-        using var second = NewBus(secondDevice, provider, 1);
+        var (device, seedLease) = CandlelightDeviceMultiplexer.Acquire(0, () => new CandlelightDevice(new CandlelightDeviceOptions(provider), api));
+        using var seed = seedLease;
+        using var first = (CandlelightBus)CandlelightEndpoint.Open(CanEndpoint.Parse("candlelight://0/0"), null);
+        using var second = (CandlelightBus)CandlelightEndpoint.Open(CanEndpoint.Parse("candlelight://0/1"), null);
         api.OpenCount.Should().Be(1);
-        Action duplicate = () => NewBus(firstDevice, provider, 0);
+        Action duplicate = () => CandlelightEndpoint.Open(CanEndpoint.Parse("candlelight://0/0"), null);
         duplicate.Should().Throw<InvalidOperationException>();
 
         api.Push(Frame(1, 0x321, 123));
@@ -100,14 +100,71 @@ public class CandlelightAdapterTests : IClassFixture<TestCaseProvider>
         sent.CanId.Should().Be(0x456);
         sent.Channel.Should().Be(0);
 
-        firstDevice.Dispose();
-        secondDevice.Dispose();
+        seed.Dispose();
         first.Dispose();
         api.CloseCount.Should().Be(0);
         api.Push(Frame(1, 0x322));
         (await second.ReceiveAsync(1, 2000)).Should().ContainSingle().Which.CanFrame.ID.Should().Be(0x322);
         second.Dispose();
         api.StopCount.Should().Be(2);
+        api.CloseCount.Should().Be(1);
+        api.FreeDeviceCount.Should().Be(1);
+        Action startAfterClose = () => NewBus((CandlelightDevice)device, provider, 0);
+        startAfterClose.Should().Throw<ObjectDisposedException>();
+    }
+
+    [Fact]
+    public async Task Disposing_Device_Closes_Handle_And_Faults_Active_Bus()
+    {
+        var api = new FakeCandleApi();
+        var provider = new CandlelightProvider();
+        using var device = new CandlelightDevice(new CandlelightDeviceOptions(provider), api);
+        using var bus = NewBus(device, provider, 0);
+        var receive = bus.ReceiveAsync(1, -1);
+
+        device.Dispose();
+        device.Dispose();
+        api.CloseCount.Should().Be(1);
+        api.FreeDeviceCount.Should().Be(1);
+        (await Task.WhenAny(receive, Task.Delay(3000))).Should().Be(receive);
+        await Assert.ThrowsAsync<ObjectDisposedException>(async () => await receive);
+        Action transmit = () => bus.Transmit(CanFrame.Classic(0x123));
+        transmit.Should().Throw<ObjectDisposedException>();
+        bus.Dispose();
+        api.StopCount.Should().Be(0);
+    }
+
+    [Fact]
+    public void Independently_Created_Devices_Own_Separate_Handles()
+    {
+        var api = new FakeCandleApi();
+        var provider = new CandlelightProvider();
+        using var first = new CandlelightDevice(new CandlelightDeviceOptions(provider), api);
+        using var second = new CandlelightDevice(new CandlelightDeviceOptions(provider), api);
+        api.OpenCount.Should().Be(2);
+        first.Dispose();
+        api.CloseCount.Should().Be(1);
+        second.Dispose();
+        api.CloseCount.Should().Be(2);
+        api.FreeDeviceCount.Should().Be(2);
+    }
+
+    [Fact]
+    public void Concurrent_Leases_Share_One_Device_And_Close_Once()
+    {
+        var api = new FakeCandleApi();
+        var provider = new CandlelightProvider();
+        var leases = new IDisposable[32];
+        var devices = new CandlelightDevice[leases.Length];
+        Parallel.For(0, leases.Length, i =>
+        {
+            var (device, lease) = CandlelightDeviceMultiplexer.Acquire(0, () => new CandlelightDevice(new CandlelightDeviceOptions(provider), api));
+            devices[i] = (CandlelightDevice)device;
+            leases[i] = lease;
+        });
+        foreach (var device in devices) device.Should().BeSameAs(devices[0]);
+        api.OpenCount.Should().Be(1);
+        Parallel.ForEach(leases, lease => { lease.Dispose(); lease.Dispose(); });
         api.CloseCount.Should().Be(1);
         api.FreeDeviceCount.Should().Be(1);
     }
@@ -146,6 +203,94 @@ public class CandlelightAdapterTests : IClassFixture<TestCaseProvider>
         allocator.Returns.Should().Be(0);
         result[0].CanFrame.Dispose();
         allocator.Returns.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Full_Receive_Queues_Drop_Oldest_Without_Blocking_Other_Channels()
+    {
+        var api = new FakeCandleApi();
+        var provider = new CandlelightProvider();
+        using var device = new CandlelightDevice(new CandlelightDeviceOptions(provider), api);
+        using var bus = new CandlelightBus(device, new CandlelightBusOptions(provider) { AsyncBufferCapacity = 2 }, new CandlelightTransceiver());
+        using var other = NewBus(device, provider, 1);
+        using var firstEntered = new ManualResetEventSlim();
+        using var releaseFirst = new ManualResetEventSlim();
+        using var lastEntered = new ManualResetEventSlim();
+        using var releaseLast = new ManualResetEventSlim();
+        var delivered = new ConcurrentQueue<int>();
+        var fourth = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        bus.FrameReceived += (_, data) =>
+        {
+            var id = data.CanFrame.ID;
+            delivered.Enqueue(id);
+            if (id == 1) { firstEntered.Set(); releaseFirst.Wait(TimeSpan.FromSeconds(5)); }
+            if (id == 4) fourth.TrySetResult(true);
+            if (id == 5) { lastEntered.Set(); releaseLast.Wait(TimeSpan.FromSeconds(5)); }
+        };
+
+        try
+        {
+            api.Push(Frame(0, 1));
+            firstEntered.Wait(TimeSpan.FromSeconds(3)).Should().BeTrue();
+            api.Push(Frame(0, 2));
+            api.Push(Frame(0, 3));
+            api.Push(Frame(0, 4));
+            api.Push(Frame(1, 10));
+            var otherFrames = await other.ReceiveAsync(1, 2000);
+            otherFrames.Should().ContainSingle().Which.CanFrame.ID.Should().Be(10);
+            otherFrames[0].CanFrame.Dispose();
+
+            releaseFirst.Set();
+            (await Task.WhenAny(fourth.Task, Task.Delay(3000))).Should().Be(fourth.Task);
+            api.Push(Frame(0, 5));
+            lastEntered.Wait(TimeSpan.FromSeconds(3)).Should().BeTrue();
+            delivered.Should().Equal(1, 3, 4, 5);
+            var received = await bus.ReceiveAsync(2, 0);
+            received.Should().HaveCount(2);
+            received[0].CanFrame.ID.Should().Be(3);
+            received[1].CanFrame.ID.Should().Be(4);
+            foreach (var item in received) item.CanFrame.Dispose();
+        }
+        finally
+        {
+            releaseFirst.Set();
+            releaseLast.Set();
+        }
+    }
+
+    [Fact]
+    public async Task Full_Incoming_Queue_Does_Not_Lose_Fault_When_Buffer_Is_Cleared()
+    {
+        var api = new FakeCandleApi();
+        var provider = new CandlelightProvider();
+        using var device = new CandlelightDevice(new CandlelightDeviceOptions(provider), api);
+        using var bus = new CandlelightBus(device, new CandlelightBusOptions(provider) { AsyncBufferCapacity = 1 }, new CandlelightTransceiver());
+        using var entered = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        var reported = new TaskCompletionSource<Exception>(TaskCreationOptions.RunContinuationsAsynchronously);
+        bus.FrameReceived += (_, _) => { entered.Set(); release.Wait(TimeSpan.FromSeconds(5)); };
+        bus.FaultOccurred += (_, error) => reported.TrySetResult(error);
+        var expected = new InvalidOperationException("reader failed");
+
+        try
+        {
+            bus.Enqueue(Frame(0, 1));
+            entered.Wait(TimeSpan.FromSeconds(3)).Should().BeTrue();
+            bus.Enqueue(Frame(0, 2));
+            bus.EnqueueFault(expected);
+            bus.ClearBuffer();
+            release.Set();
+            (await Task.WhenAny(reported.Task, Task.Delay(3000))).Should().Be(reported.Task);
+            (await reported.Task).Should().BeSameAs(expected);
+        }
+        finally { release.Set(); }
+    }
+
+    [Fact]
+    public void Candlelight_Default_Receive_Capacity_Is_Bounded()
+    {
+        var options = new CandlelightBusOptions(new CandlelightProvider());
+        options.AsyncBufferCapacity.Should().Be(1024);
     }
 
     [Fact]

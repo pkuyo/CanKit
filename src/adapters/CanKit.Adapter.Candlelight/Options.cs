@@ -31,6 +31,8 @@ public sealed class CandlelightDeviceRtConfigurator : DeviceRTOptionsConfigurato
 
 public sealed class CandlelightBusOptions(ICanModelProvider provider) : IBusOptions
 {
+    internal const int DefaultAsyncBufferCapacity = 1024;
+
     public int ChannelIndex { get; set; }
     public string? ChannelName { get; set; }
     public CanBusTiming BitTiming { get; set; } = CanBusTiming.ClassicDefault();
@@ -43,7 +45,7 @@ public sealed class CandlelightBusOptions(ICanModelProvider provider) : IBusOpti
     public Capability Capabilities { get; set; } = new(provider.StaticFeatures);
     public CanFeature Features { get; set; } = provider.StaticFeatures;
     public bool AllowErrorInfo { get; set; }
-    public int AsyncBufferCapacity { get; set; }
+    public int AsyncBufferCapacity { get; set; } = DefaultAsyncBufferCapacity;
     public IBufferAllocator BufferAllocator { get; set; } = new DefaultBufferAllocator();
     public CanExceptionPolicy? ExceptionPolicy { get; set; }
 }

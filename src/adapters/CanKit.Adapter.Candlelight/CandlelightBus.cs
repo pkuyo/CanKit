@@ -19,16 +19,18 @@ namespace CanKit.Adapter.Candlelight;
 
 public sealed class CandlelightBus : ICanBus<CandlelightBusRtConfigurator>, IOwnership
 {
-    private readonly CandlelightSession _session;
+    private readonly CandlelightDevice _device;
     private readonly byte _channel;
     private readonly ITransceiver _transceiver;
-    private readonly BlockingCollection<(CandleNative.Frame Frame, Exception? Error)> _incoming = new();
+    private readonly BlockingCollection<CandleNative.Frame> _incoming;
+    private readonly object _incomingGate = new();
     private readonly AsyncFramePipe<CanReceiveData> _receive;
     private readonly object _publishGate = new();
     private readonly CanExceptionPolicy _policy;
     private readonly CanBusExceptionDispatcher _exceptions;
     private Func<CanFrame, bool> _filter = _ => true;
     private IDisposable? _owner;
+    private Exception? _incomingFault;
     private int _disposed;
 
     internal CandlelightBus(CandlelightDevice device, CandlelightBusOptions options, ITransceiver transceiver)
@@ -41,11 +43,14 @@ public sealed class CandlelightBus : ICanBus<CandlelightBusRtConfigurator>, IOwn
             throw new NotSupportedException("Candle.dll does not expose termination control.");
         if (options.WorkMode != ChannelWorkMode.Normal && options.WorkMode != ChannelWorkMode.ListenOnly && options.WorkMode != ChannelWorkMode.Echo)
             throw new NotSupportedException("Unsupported Candlelight work mode.");
+        if (options.AsyncBufferCapacity <= 0)
+            options.AsyncBufferCapacity = CandlelightBusOptions.DefaultAsyncBufferCapacity;
         _channel = (byte)options.ChannelIndex;
         Options = new CandlelightBusRtConfigurator();
         Options.Init(options);
         _transceiver = transceiver;
-        _receive = new AsyncFramePipe<CanReceiveData>(options.AsyncBufferCapacity > 0 ? options.AsyncBufferCapacity : null,
+        _incoming = new BlockingCollection<CandleNative.Frame>(options.AsyncBufferCapacity);
+        _receive = new AsyncFramePipe<CanReceiveData>(options.AsyncBufferCapacity,
             static item => item.CanFrame.Dispose());
         _policy = options.ExceptionPolicy ?? CanExceptionPolicy.Default;
         _exceptions = new CanBusExceptionDispatcher("Candlelight CAN bus", _policy,
@@ -54,25 +59,24 @@ public sealed class CandlelightBus : ICanBus<CandlelightBusRtConfigurator>, IOwn
             () => _incoming.CompleteAdding(),
             ex => _receive.ExceptionOccured(ex));
         ApplyConfig(options);
-        _session = device.RetainSession();
+        _device = device;
         var started = false;
         try
         {
-            _session.Start(_channel, this, options);
+            _device.Start(_channel, this, options);
             started = true;
             _ = Task.Factory.StartNew(ReceiveLoop, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
         }
         catch
         {
-            try { if (started) _session.Stop(_channel, this); }
-            finally { _session.Release(); }
+            if (started) _device.Stop(_channel, this);
             throw;
         }
     }
 
     public CandlelightBusRtConfigurator Options { get; }
     IBusRTOptionsConfigurator ICanBus.Options => Options;
-    public BusNativeHandle NativeHandle => new(_session.Handle);
+    public BusNativeHandle NativeHandle => new(_device.Handle);
     public BusState BusState => BusState.Unknown;
     public event EventHandler<CanReceiveData>? FrameReceived;
     public event EventHandler<CanReceiveDataView>? FrameObserved;
@@ -98,29 +102,42 @@ public sealed class CandlelightBus : ICanBus<CandlelightBusRtConfigurator>, IOwn
 
     internal void Enqueue(CandleNative.Frame frame)
     {
-        try { if (Volatile.Read(ref _disposed) == 0) _incoming.TryAdd((frame, null)); }
-        catch (InvalidOperationException) { }
+        lock (_incomingGate)
+        {
+            try
+            {
+                if (Volatile.Read(ref _disposed) != 0 || _incoming.IsAddingCompleted) return;
+                if (!_incoming.TryAdd(frame))
+                {
+                    _incoming.TryTake(out _);
+                    _incoming.TryAdd(frame);
+                }
+            }
+            catch (InvalidOperationException) { }
+        }
     }
 
     internal void EnqueueFault(Exception ex)
     {
-        try { if (Volatile.Read(ref _disposed) == 0) _incoming.TryAdd((default, ex)); }
-        catch (InvalidOperationException) { }
+        lock (_incomingGate)
+        {
+            if (Volatile.Read(ref _disposed) != 0 || _incoming.IsAddingCompleted) return;
+            Volatile.Write(ref _incomingFault, ex);
+            _incoming.CompleteAdding();
+        }
     }
 
     private void ReceiveLoop()
     {
-        foreach (var item in _incoming.GetConsumingEnumerable())
+        foreach (var frame in _incoming.GetConsumingEnumerable())
         {
             if (Volatile.Read(ref _disposed) != 0) break;
-            if (item.Error != null)
-            {
-                _exceptions.Report(item.Error, CanExceptionSource.BackgroundLoop, CanExceptionSeverity.Fault);
-                break;
-            }
-            try { Deliver(item.Frame); }
+            try { Deliver(frame); }
             catch (Exception ex) { _exceptions.Report(ex, CanExceptionSource.BackgroundLoop); }
         }
+        var fault = Volatile.Read(ref _incomingFault);
+        if (fault != null && Volatile.Read(ref _disposed) == 0)
+            _exceptions.Report(fault, CanExceptionSource.BackgroundLoop, CanExceptionSeverity.Fault);
     }
 
     private void Deliver(CandleNative.Frame native)
@@ -174,7 +191,7 @@ public sealed class CandlelightBus : ICanBus<CandlelightBusRtConfigurator>, IOwn
         if (Options.WorkMode == ChannelWorkMode.ListenOnly)
             throw new InvalidOperationException("Cannot transmit in listen-only mode.");
         var native = CandleFrameConverter.ToNative(frame, _channel);
-        _session.Send(_channel, ref native);
+        _device.Send(_channel, ref native);
     }
 
     public int Transmit(IEnumerable<CanFrame> frames, int timeOut = 0) { ThrowIfDisposed(); return _transceiver.Transmit(this, frames); }
@@ -211,20 +228,19 @@ public sealed class CandlelightBus : ICanBus<CandlelightBusRtConfigurator>, IOwn
             _receive.Clear(static item => item.CanFrame.Dispose());
         }
     }
-    public float BusUsage() => throw new NotSupportedException();
-    public CanErrorCounters ErrorCounters() => throw new NotSupportedException();
+    public float BusUsage() => throw new CanFeatureNotSupportedException(CanFeature.BusUsage, Options.Features);
+    public CanErrorCounters ErrorCounters() => throw new CanFeatureNotSupportedException(CanFeature.ErrorCounters, Options.Features);
 
     public void Dispose()
     {
         if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
         _incoming.CompleteAdding();
-        try { _session.Stop(_channel, this); }
+        try { _device.Stop(_channel, this); }
         finally
         {
             lock (_publishGate) _receive.Clear(static item => item.CanFrame.Dispose());
             _receive.ExceptionOccured(new ObjectDisposedException(nameof(CandlelightBus)));
-            try { _session.Release(); }
-            finally { Interlocked.Exchange(ref _owner, null)?.Dispose(); }
+            Interlocked.Exchange(ref _owner, null)?.Dispose();
         }
     }
 

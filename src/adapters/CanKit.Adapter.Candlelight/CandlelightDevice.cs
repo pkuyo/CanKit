@@ -11,7 +11,13 @@ namespace CanKit.Adapter.Candlelight;
 
 public sealed class CandlelightDevice : ICanDevice<CandlelightDeviceRtConfigurator>
 {
-    private CandlelightSession? _session;
+    private readonly object _gate = new();
+    private readonly Dictionary<byte, CandlelightBus> _channels = new();
+    private readonly IntPtr _handle;
+    private readonly ICandleApi _api;
+    private readonly Thread _reader;
+    private bool _stopping;
+    private Exception? _fault;
 
     internal CandlelightDevice(CandlelightDeviceOptions options) : this(options, CandleApi.Instance) { }
 
@@ -19,43 +25,11 @@ public sealed class CandlelightDevice : ICanDevice<CandlelightDeviceRtConfigurat
     {
         Options = new CandlelightDeviceRtConfigurator();
         Options.Init(options);
-        _session = CandlelightSession.Acquire(options.DeviceIndex, api);
-    }
-
-    public CandlelightDeviceRtConfigurator Options { get; }
-    IDeviceRTOptionsConfigurator ICanDevice.Options => Options;
-    internal CandlelightSession RetainSession()
-    {
-        var session = Volatile.Read(ref _session) ?? throw new ObjectDisposedException(nameof(CandlelightDevice));
-        session.Retain();
-        return session;
-    }
-
-    public void ApplyConfig(ICanOptions options) => throw new NotSupportedException("Candlelight device options cannot be changed after opening.");
-    public void Dispose() => Interlocked.Exchange(ref _session, null)?.Release();
-}
-
-internal sealed class CandlelightSession
-{
-    private static readonly object SessionsGate = new();
-    private static readonly Dictionary<uint, CandlelightSession> Sessions = new();
-    private readonly object _gate = new();
-    private readonly Dictionary<byte, CandlelightBus> _channels = new();
-    private readonly uint _index;
-    private readonly IntPtr _handle;
-    private readonly ICandleApi _api;
-    private readonly Thread _reader;
-    private int _references = 1;
-    private bool _stopping;
-    private Exception? _fault;
-
-    private CandlelightSession(uint index, ICandleApi api)
-    {
+        var index = options.DeviceIndex;
         if (ReferenceEquals(api, CandleApi.Instance) && !RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             throw new PlatformNotSupportedException("Candle.dll is supported only on Windows.");
         if (index > byte.MaxValue)
-            throw new ArgumentOutOfRangeException(nameof(index));
-        _index = index;
+            throw new ArgumentOutOfRangeException(nameof(options.DeviceIndex));
         _api = api;
         IntPtr list = IntPtr.Zero;
         IntPtr device = IntPtr.Zero;
@@ -84,53 +58,35 @@ internal sealed class CandlelightSession
             if (list != IntPtr.Zero) api.FreeList(list);
         }
         _reader = new Thread(ReadLoop) { IsBackground = true, Name = $"Candlelight {index}" };
-        _reader.Start();
-    }
-
-    internal static CandlelightSession Acquire(uint index, ICandleApi api)
-    {
-        lock (SessionsGate)
+        try { _reader.Start(); }
+        catch
         {
-            if (Sessions.TryGetValue(index, out var session))
-            {
-                if (!ReferenceEquals(session._api, api)) throw new InvalidOperationException("The device is already open with a different native API.");
-                session._references++;
-                return session;
-            }
-            var created = new CandlelightSession(index, api);
-            Sessions.Add(index, created);
-            return created;
+            try { api.Close(_handle); }
+            finally { api.FreeDevice(_handle); }
+            throw;
         }
     }
 
-    internal void Retain()
-    {
-        lock (SessionsGate)
-        {
-            if (!Sessions.TryGetValue(_index, out var current) || !ReferenceEquals(current, this))
-                throw new ObjectDisposedException(nameof(CandlelightDevice));
-            _references++;
-        }
-    }
+    public CandlelightDeviceRtConfigurator Options { get; }
+    IDeviceRTOptionsConfigurator ICanDevice.Options => Options;
+    public void ApplyConfig(ICanOptions options) => throw new NotSupportedException("Candlelight device options cannot be changed after opening.");
 
-    internal void Release()
+    public void Dispose()
     {
-        lock (SessionsGate)
+        CandlelightBus[] channels;
+        lock (_gate)
         {
-            if (--_references != 0) return;
-            Sessions.Remove(_index);
-            lock (_gate)
-            {
-                _stopping = true;
-                Monitor.PulseAll(_gate);
-            }
-            _reader.Join();
-            lock (_gate)
-            {
-                _api.Close(_handle);
-                _api.FreeDevice(_handle);
-            }
+            if (_stopping) return;
+            _stopping = true;
+            channels = new CandlelightBus[_channels.Count];
+            _channels.Values.CopyTo(channels, 0);
+            _channels.Clear();
+            Monitor.PulseAll(_gate);
         }
+        foreach (var channel in channels) channel.EnqueueFault(new ObjectDisposedException(nameof(CandlelightDevice)));
+        _reader.Join();
+        try { _api.Close(_handle); }
+        finally { _api.FreeDevice(_handle); }
     }
 
     internal IntPtr Handle => _handle;
@@ -223,7 +179,7 @@ internal sealed class CandlelightSession
                 {
                     while (!_stopping && _channels.Count == 0) Monitor.Wait(_gate);
                     if (_stopping) return;
-                    if (_api.Read(_handle, out frame, 10))
+                    if (_api.Read(_handle, out frame, 0))
                         _channels.TryGetValue(frame.Channel, out destination);
                     else if (_api.LastError(_handle) != CandleNative.ReadTimeout)
                         throw Error(_api, _handle, "read frame");
@@ -247,7 +203,7 @@ internal sealed class CandlelightSession
 
     private void ThrowIfUnavailable()
     {
-        if (_stopping) throw new ObjectDisposedException(nameof(CandlelightSession));
+        if (_stopping) throw new ObjectDisposedException(nameof(CandlelightDevice));
         if (_fault != null) throw new InvalidOperationException("The Candle device reader has stopped.", _fault);
     }
 

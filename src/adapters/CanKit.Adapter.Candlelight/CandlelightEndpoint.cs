@@ -42,19 +42,21 @@ internal static class CandlelightEndpoint
     public static ICanBus Open(CanEndpoint endpoint, Action<IBusInitOptionsConfigurator>? configure)
     {
         var (provider, deviceOptions, _, busOptions, busConfigurator) = Prepare(endpoint, configure);
-        var device = provider.Factory.CreateDevice(deviceOptions);
+        var (device, lease) = CandlelightDeviceMultiplexer.Acquire(
+            ((CandlelightDeviceOptions)deviceOptions).DeviceIndex,
+            () => provider.Factory.CreateDevice(deviceOptions));
         try
         {
             var transceiver = provider.Factory.CreateTransceivers(device.Options, busConfigurator);
             var bus = provider.Factory.CreateBus(device, busOptions, transceiver, provider);
             if (bus is not IOwnership ownership)
                 throw new InvalidOperationException("Candlelight bus does not support device ownership.");
-            ownership.AttachOwner(device);
+            ownership.AttachOwner(lease);
             return bus;
         }
         catch
         {
-            device.Dispose();
+            lease.Dispose();
             throw;
         }
     }

@@ -21,6 +21,8 @@ foreach (var item in bus.Receive(1, 100))
 
 Endpoints use `candlelight://<device-index>/<channel-index>`; the channel defaults to zero. `candlelight://0#ch1` is also supported. Device indexes follow the current Candle device scan order and can change when devices are connected or disconnected. Enumerating `candlelight` reports channel zero for each discovered device without opening it; additional channels can be opened explicitly.
 
+Each bus has a native receive staging queue and an async receive queue. Each queue holds up to 1024 frames by default; `SetAsyncBufferCapacity` changes the capacity of both queues. When either queue is full, its oldest frame is dropped to make room for the new frame. The native reader does not wait for slow subscribers, and device reader faults are still reported if the staging queue is full.
+
 ## Capabilities
 
 The included native API exposes classic CAN only, with up to eight data bytes. Listen-only, one-shot transmission, error reporting, and hardware timestamps depend on the channel's capabilities. Software filtering and periodic transmission are available through CanKit's fallback options. The native API does not expose CAN FD, termination control, bus state, error counters, or bus load. The configured transmit timeout is not applied by Candle.dll. Timestamp values are device-relative microseconds when the device supports hardware timestamps; otherwise they may be zero. The underlying 32-bit timestamp wraps.
