@@ -26,7 +26,8 @@ public static class CanBus
     {
         if (BusEndpointEntry.TryOpen(endpoint, configure, out var bus) && bus != null)
         {
-            if ((bus.Options.EnabledSoftwareFallback & CanFeature.BusUsage) != 0 &&
+            if (bus is not SoftwareBusUsageCanBus &&
+                (bus.Options.EnabledSoftwareFallback & CanFeature.BusUsage) != 0 &&
                 (bus.Options.Features & CanFeature.BusUsage) == 0)
                 return new SoftwareBusUsageCanBus(bus);
             return bus;
@@ -112,9 +113,16 @@ public static class CanBus
         }
 
         if ((options.EnabledSoftwareFallback & CanFeature.BusUsage) != 0 &&
-            (options.Features & CanFeature.BusUsage) == 0 &&
-            typeof(TBus).IsAssignableFrom(typeof(SoftwareBusUsageCanBus)))
+            (options.Features & CanFeature.BusUsage) == 0)
         {
+            if (!typeof(TBus).IsAssignableFrom(typeof(SoftwareBusUsageCanBus)))
+            {
+                typedBus.Dispose();
+                throw new CanBusConfigurationException(
+                    $"Software BusUsage fallback cannot preserve typed bus '{typeof(TBus).FullName}'. " +
+                    "Open the bus as ICanBus or use an adapter with native BusUsage support.");
+            }
+
             return (TBus)(ICanBus)new SoftwareBusUsageCanBus(typedBus);
         }
 

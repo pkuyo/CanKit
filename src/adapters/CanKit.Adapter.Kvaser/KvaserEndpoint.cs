@@ -73,7 +73,7 @@ internal static class KvaserEndpoint
         {
             throw new CanFactoryException(CanKitErrorCode.DeviceCreationFailed, $"Factory '{provider.Factory.GetType().FullName}' returned null device.");
         }
-        return CanBus.Open<KvaserBus, KvaserBusOptions, KvaserBusInitConfigurator>(
+        return CanBus.Open<ICanBus, KvaserBusOptions, KvaserBusInitConfigurator>(
             device, (KvaserBusOptions)chOpt, (KvaserBusInitConfigurator)chCfg);
     }
 

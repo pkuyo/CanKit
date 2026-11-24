@@ -71,7 +71,7 @@ internal static class SocketCanEndpoint
         {
             throw new CanFactoryException(CanKitErrorCode.DeviceCreationFailed, $"Factory '{provider.Factory.GetType().FullName}' returned null device.");
         }
-        return CanBus.Open<SocketCanBus, SocketCanBusOptions, SocketCanBusInitConfigurator>
+        return CanBus.Open<ICanBus, SocketCanBusOptions, SocketCanBusInitConfigurator>
             (device, (SocketCanBusOptions)chOpt, (SocketCanBusInitConfigurator)chCfg);
     }
 

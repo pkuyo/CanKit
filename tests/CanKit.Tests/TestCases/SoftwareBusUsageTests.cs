@@ -107,6 +107,20 @@ public class SoftwareBusUsageTests : IClassFixture<TestCaseProvider>
     }
 
     [Fact]
+    public void Typed_Open_Rejects_Bus_Usage_Fallback_That_Cannot_Preserve_The_Type()
+    {
+        var open = () => CanBus.Open<CanKit.Adapter.Virtual.VirtualBus,
+            CanKit.Adapter.Virtual.VirtualBusOptions,
+            CanKit.Adapter.Virtual.VirtualBusInitConfigurator>(
+            CanKit.Adapter.Virtual.Definitions.VirtualDeviceType.Virtual,
+            cfg => cfg.SetProtocolMode(CanProtocolMode.Can20).Baud(500_000)
+                .SoftwareFeaturesFallBack(CanFeature.BusUsage));
+
+        open.Should().Throw<CanKit.Core.Exceptions.CanBusConfigurationException>()
+            .WithMessage("*typed bus*ICanBus*");
+    }
+
+    [Fact]
     public void Software_Periodic_Tx_Is_Included_In_The_Estimate()
     {
         using var bus = CanBus.Open($"virtual://{Guid.NewGuid()}/0", cfg => cfg

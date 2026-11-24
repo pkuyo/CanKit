@@ -56,7 +56,7 @@ internal static class VirtualEndpoint
             throw new CanFactoryException(CanKitErrorCode.DeviceCreationFailed, $"Factory '{provider.Factory.GetType().FullName}' returned null device.");
         }
 
-        return CanBus.Open<VirtualBus, VirtualBusOptions, VirtualBusInitConfigurator>(
+        return CanBus.Open<ICanBus, VirtualBusOptions, VirtualBusInitConfigurator>(
             device, (VirtualBusOptions)chOpt, (VirtualBusInitConfigurator)chCfg);
     }
 

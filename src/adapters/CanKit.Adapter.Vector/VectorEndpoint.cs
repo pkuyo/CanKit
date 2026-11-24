@@ -51,7 +51,7 @@ internal static class VectorEndpoint
     {
         var (provider, devOpt, _, chOpt, chCfg) = Prepare(ep, configure);
         var device = provider.Factory.CreateDevice(devOpt);
-        return CanBus.Open<VectorBus, VectorBusOptions, VectorBusInitConfigurator>(device, (VectorBusOptions)chOpt, (VectorBusInitConfigurator)chCfg);
+        return CanBus.Open<ICanBus, VectorBusOptions, VectorBusInitConfigurator>(device, (VectorBusOptions)chOpt, (VectorBusInitConfigurator)chCfg);
     }
 
     public static IEnumerable<BusEndpointInfo> Enumerate()
