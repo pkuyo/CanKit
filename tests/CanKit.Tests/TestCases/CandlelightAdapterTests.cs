@@ -59,6 +59,16 @@ public class CandlelightAdapterTests : IClassFixture<TestCaseProvider>
         var quanta = 1 + timing.PropSeg + timing.PhaseSeg1 + timing.PhaseSeg2;
         (16_000_000U / (timing.Brp * quanta)).Should().Be(500_000);
         (1000U * (1 + timing.PropSeg + timing.PhaseSeg1) / quanta).Should().Be(875);
+
+        var fractionalBitrateCapabilities = FakeCandleApi.DefaultCapabilities;
+        fractionalBitrateCapabilities.Clock = 48_000_000;
+        var fractionalBitrateTiming = CandleTiming.Calculate(fractionalBitrateCapabilities, 83_333, 875);
+        var fractionalQuanta = 1 + fractionalBitrateTiming.PropSeg + fractionalBitrateTiming.PhaseSeg1 + fractionalBitrateTiming.PhaseSeg2;
+        fractionalBitrateTiming.Brp.Should().Be(36);
+        fractionalQuanta.Should().Be(16);
+        ((fractionalBitrateCapabilities.Clock + fractionalBitrateTiming.Brp * fractionalQuanta / 2) /
+            (fractionalBitrateTiming.Brp * fractionalQuanta)).Should().Be(83_333);
+
         Action unsupported = () => CandleTiming.Calculate(FakeCandleApi.DefaultCapabilities, 123_457);
         unsupported.Should().Throw<InvalidOperationException>();
     }

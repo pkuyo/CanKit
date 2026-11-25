@@ -24,10 +24,13 @@ internal static class CandleTiming
             {
                 var quanta = 1UL + tseg1 + tseg2;
                 var divisor = (ulong)bitrate * quanta;
-                if (capabilities.Clock % divisor != 0)
-                    continue;
-                var brp = capabilities.Clock / divisor;
+                var brpDivisor = divisor * capabilities.BrpIncrement;
+                var brp = ((capabilities.Clock + brpDivisor / 2) / brpDivisor) * capabilities.BrpIncrement;
                 if (brp < capabilities.BrpMin || brp > capabilities.BrpMax || brp % capabilities.BrpIncrement != 0)
+                    continue;
+                var actualDivisor = brp * quanta;
+                var actualBitrate = (capabilities.Clock + actualDivisor / 2) / actualDivisor;
+                if (actualBitrate != bitrate)
                     continue;
                 var sampleError = Math.Abs(1000L * (1 + (long)tseg1) - samplePointPermille * (long)quanta);
                 if (bestQuanta != 0 && (sampleError * (long)bestQuanta > bestSampleError * (long)quanta ||
