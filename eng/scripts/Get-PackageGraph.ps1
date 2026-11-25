@@ -23,7 +23,8 @@ function Normalize-RelativePath {
 function Get-VersionMap {
     param(
         [string]$XmlContent,
-        [object[]]$Packages
+        [object[]]$Packages,
+        [switch]$AllowMissingProperties
     )
 
     $document = New-Object System.Xml.XmlDocument
@@ -34,6 +35,10 @@ function Get-VersionMap {
         $propertyName = [string]$package.versionProperty
         $propertyNode = $document.SelectSingleNode("//$propertyName")
         if ($null -eq $propertyNode) {
+            if ($AllowMissingProperties) {
+                continue
+            }
+
             throw "Version property '$propertyName' was not found in package version file."
         }
 
@@ -133,7 +138,7 @@ if (-not [string]::IsNullOrWhiteSpace($BaseRef) -and $BaseRef -notmatch "^0+$") 
 }
 
 $baseVersionMap = if ($null -ne $baseVersionContent) {
-    Get-VersionMap -XmlContent $baseVersionContent -Packages $packages
+    Get-VersionMap -XmlContent $baseVersionContent -Packages $packages -AllowMissingProperties
 }
 else {
     @{}

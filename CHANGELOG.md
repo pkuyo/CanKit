@@ -4,6 +4,7 @@
 
 ### Added
 
+* New `CanKit.Adapter.Candlelight` package for Candlelight-compatible USB-CAN devices, supporting classic CAN and `candlelight://<device-index>/<channel-index>` endpoints.
 * Kvaser CANlib adapter binds `canlib32` (Windows, stdcall) and `libcanlib.so` (Linux, cdecl), including cdecl notify callbacks on Linux. Opening on Linux no longer depends on the Windows `canlib32` ABI. Fake builds are unchanged.
 * Vendor adapters wrap a missing or wrong-bitness native library (`DllNotFoundException` / `BadImageFormatException`) at the first Open/constructor native call as adapter-specific `CanNativeCallException` types, with `CanKitErrorCode.NativeLibraryNotFound`, the original exception retained, and a message that names the DLL and the vendor runtime. Fake builds are unchanged.
 
