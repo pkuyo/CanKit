@@ -163,7 +163,7 @@ public sealed class CandlelightBus : ICanBus<CandlelightBusRtConfigurator>, IOwn
             return;
         }
         if (!Volatile.Read(ref _filter)(frame)) { frame.Dispose(); return; }
-        frame = frame.Copy(Options.BufferAllocator);
+        frame = CopyFrame(frame, Options.BufferAllocator);
         var data = new CanReceiveData(frame)
         {
             ReceiveTimestamp = TimeSpan.FromTicks((long)native.TimestampMicroseconds * 10),
@@ -177,6 +177,24 @@ public sealed class CandlelightBus : ICanBus<CandlelightBusRtConfigurator>, IOwn
             if (_disposed == 0) { _receive.Publish(data); return; }
         }
         frame.Dispose();
+    }
+
+    private static CanFrame CopyFrame(in CanFrame source, IBufferAllocator allocator)
+    {
+        var owner = allocator.Rent(source.Len);
+        try
+        {
+            source.Data.CopyTo(owner.Memory);
+            return CanFrame.Classic(source.ID, owner,
+                isExtendedFrame: source.IsExtendedFrame,
+                isRemoteFrame: source.IsRemoteFrame,
+                isErrorFrame: source.IsErrorFrame);
+        }
+        catch
+        {
+            owner.Dispose();
+            throw;
+        }
     }
 
     private void InvokeSubscriber(Action action)
@@ -225,8 +243,14 @@ public sealed class CandlelightBus : ICanBus<CandlelightBusRtConfigurator>, IOwn
         lock (_publishGate)
         {
             while (_incoming.TryTake(out _)) { }
-            _receive.Clear(static item => item.CanFrame.Dispose());
+            ClearReceiveBuffer();
         }
+    }
+
+    private void ClearReceiveBuffer()
+    {
+        var frames = _receive.ReceiveBatchAsync(0, 0, CancellationToken.None).GetAwaiter().GetResult();
+        foreach (var frame in frames) frame.CanFrame.Dispose();
     }
     public float BusUsage() => throw new CanFeatureNotSupportedException(CanFeature.BusUsage, Options.Features);
     public CanErrorCounters ErrorCounters() => throw new CanFeatureNotSupportedException(CanFeature.ErrorCounters, Options.Features);
@@ -238,7 +262,7 @@ public sealed class CandlelightBus : ICanBus<CandlelightBusRtConfigurator>, IOwn
         try { _device.Stop(_channel, this); }
         finally
         {
-            lock (_publishGate) _receive.Clear(static item => item.CanFrame.Dispose());
+            lock (_publishGate) ClearReceiveBuffer();
             _receive.ExceptionOccured(new ObjectDisposedException(nameof(CandlelightBus)));
             Interlocked.Exchange(ref _owner, null)?.Dispose();
         }
