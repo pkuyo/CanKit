@@ -175,17 +175,19 @@ public sealed class CandlelightDevice : ICanDevice<CandlelightDeviceRtConfigurat
             {
                 CandleNative.Frame frame;
                 CandlelightBus? destination = null;
+                bool received;
                 lock (_gate)
                 {
                     while (!_stopping && _channels.Count == 0) Monitor.Wait(_gate);
                     if (_stopping) return;
-                    if (_api.Read(_handle, out frame, 0))
+                    received = _api.Read(_handle, out frame, 0);
+                    if (received)
                         _channels.TryGetValue(frame.Channel, out destination);
                     else if (_api.LastError(_handle) != CandleNative.ReadTimeout)
                         throw Error(_api, _handle, "read frame");
                 }
                 destination?.Enqueue(frame);
-                Thread.Yield();
+                if (!received) Thread.Sleep(1);
             }
         }
         catch (Exception ex)
