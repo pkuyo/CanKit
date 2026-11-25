@@ -115,6 +115,22 @@ public class CandlelightAdapterTests : IClassFixture<TestCaseProvider>
     }
 
     [Fact]
+    public void Send_Rejects_A_Disposed_Bus_After_Channel_Is_Reopened()
+    {
+        var api = new FakeCandleApi();
+        var provider = new CandlelightProvider();
+        using var device = new CandlelightDevice(new CandlelightDeviceOptions(provider), api);
+        var oldBus = NewBus(device, provider, 0);
+        oldBus.Dispose();
+        using var replacementBus = NewBus(device, provider, 0);
+        var frame = CandleFrameConverter.ToNative(CanFrame.Classic(0x123), 0);
+
+        Action send = () => device.Send(0, oldBus, ref frame);
+        send.Should().Throw<ObjectDisposedException>();
+        api.Sent.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task Disposing_Device_Closes_Handle_And_Faults_Active_Bus()
     {
         var api = new FakeCandleApi();

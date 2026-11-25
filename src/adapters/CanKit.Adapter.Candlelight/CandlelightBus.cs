@@ -209,7 +209,7 @@ public sealed class CandlelightBus : ICanBus<CandlelightBusRtConfigurator>, IOwn
         if (Options.WorkMode == ChannelWorkMode.ListenOnly)
             throw new InvalidOperationException("Cannot transmit in listen-only mode.");
         var native = CandleFrameConverter.ToNative(frame, _channel);
-        _device.Send(_channel, ref native);
+        _device.Send(_channel, this, ref native);
     }
 
     public int Transmit(IEnumerable<CanFrame> frames, int timeOut = 0) { ThrowIfDisposed(); return _transceiver.Transmit(this, frames); }

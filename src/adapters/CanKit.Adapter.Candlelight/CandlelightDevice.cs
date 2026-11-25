@@ -194,12 +194,13 @@ public sealed class CandlelightDevice : ICanDevice<CandlelightDeviceRtConfigurat
         }
     }
 
-    internal void Send(byte channel, ref CandleNative.Frame frame)
+    internal void Send(byte channel, CandlelightBus bus, ref CandleNative.Frame frame)
     {
         lock (_gate)
         {
             ThrowIfUnavailable();
-            if (!_channels.ContainsKey(channel)) throw new ObjectDisposedException(nameof(CandlelightBus));
+            if (!_channels.TryGetValue(channel, out var current) || !ReferenceEquals(current, bus))
+                throw new ObjectDisposedException(nameof(CandlelightBus));
             if (!_api.Send(_handle, channel, ref frame))
                 throw Error(_api, _handle, "send frame");
         }
