@@ -8,19 +8,19 @@ namespace CanKit.Adapter.Candlelight;
 internal static class CandlelightDeviceMultiplexer
 {
     private static readonly object Gate = new();
-    private static readonly Dictionary<uint, Entry> Devices = new();
+    private static readonly Dictionary<string, Entry> Devices = new(StringComparer.Ordinal);
 
-    public static (ICanDevice device, IDisposable lease) Acquire(uint index, Func<ICanDevice> createAndOpen)
+    public static (ICanDevice device, IDisposable lease) Acquire(string path, Func<ICanDevice> createAndOpen)
     {
         lock (Gate)
         {
-            if (!Devices.TryGetValue(index, out var entry))
+            if (!Devices.TryGetValue(path, out var entry))
             {
                 entry = new Entry(createAndOpen());
-                Devices.Add(index, entry);
+                Devices.Add(path, entry);
             }
             entry.RefCount++;
-            return (entry.Device, new DeviceLease(index, entry));
+            return (entry.Device, new DeviceLease(path, entry));
         }
     }
 
@@ -33,10 +33,10 @@ internal static class CandlelightDeviceMultiplexer
 
     private sealed class DeviceLease : IDisposable
     {
-        private readonly uint _index;
+        private readonly string _path;
         private Entry? _entry;
 
-        public DeviceLease(uint index, Entry entry) { _index = index; _entry = entry; }
+        public DeviceLease(string path, Entry entry) { _path = path; _entry = entry; }
 
         public void Dispose()
         {
@@ -45,7 +45,7 @@ internal static class CandlelightDeviceMultiplexer
             lock (Gate)
             {
                 if (--entry.RefCount != 0) return;
-                Devices.Remove(_index);
+                Devices.Remove(_path);
                 entry.Device.Dispose();
             }
         }

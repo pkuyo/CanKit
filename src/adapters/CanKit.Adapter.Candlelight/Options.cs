@@ -11,6 +11,7 @@ namespace CanKit.Adapter.Candlelight;
 public sealed class CandlelightDeviceOptions(ICanModelProvider provider) : IDeviceOptions
 {
     public uint DeviceIndex { get; set; }
+    internal string? DevicePath { get; set; }
     public DeviceType DeviceType { get; } = provider.DeviceType;
     public CanFeature Features { get; set; } = provider.StaticFeatures;
 }

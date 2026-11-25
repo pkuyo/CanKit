@@ -38,10 +38,35 @@ public sealed class CandlelightDevice : ICanDevice<CandlelightDeviceRtConfigurat
         {
             if (!api.Scan(out list))
                 throw new InvalidOperationException("Candle device scan failed.");
-            if (!api.ListLength(list, out var count) || index >= count)
+            if (!api.ListLength(list, out var count))
+                throw new InvalidOperationException("Could not retrieve Candle device list length.");
+            if (options.DevicePath == null && index >= count)
                 throw new InvalidOperationException($"Candle device index {index} is not available.");
-            if (!api.GetDevice(list, (byte)index, out device))
-                throw new InvalidOperationException($"Could not retrieve Candle device {index}.");
+            if (options.DevicePath == null)
+            {
+                if (!api.GetDevice(list, (byte)index, out device))
+                    throw new InvalidOperationException($"Could not retrieve Candle device {index}.");
+            }
+            else
+            {
+                for (byte candidateIndex = 0; candidateIndex < count; candidateIndex++)
+                {
+                    if (!api.GetDevice(list, candidateIndex, out var candidate)) continue;
+                    var matched = false;
+                    try
+                    {
+                        matched = string.Equals(api.GetPath(candidate), options.DevicePath, StringComparison.Ordinal);
+                        if (matched) device = candidate;
+                    }
+                    finally
+                    {
+                        if (!matched) api.FreeDevice(candidate);
+                    }
+                    if (matched) break;
+                }
+                if (device == IntPtr.Zero)
+                    throw new InvalidOperationException($"Candle device path '{options.DevicePath}' is not available.");
+            }
             if (!api.Open(device))
                 throw Error(api, device, "open device");
             opened = true;

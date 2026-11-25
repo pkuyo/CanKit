@@ -40,10 +40,18 @@ internal static class CandlelightEndpoint
     }
 
     public static ICanBus Open(CanEndpoint endpoint, Action<IBusInitOptionsConfigurator>? configure)
+        => Open(endpoint, configure, ResolveDevicePath);
+
+    internal static ICanBus Open(CanEndpoint endpoint, Action<IBusInitOptionsConfigurator>? configure, Func<uint, string> resolveDevicePath)
     {
         var (provider, deviceOptions, _, busOptions, busConfigurator) = Prepare(endpoint, configure);
+        var options = (CandlelightDeviceOptions)deviceOptions;
+        var path = resolveDevicePath(options.DeviceIndex);
+        if (string.IsNullOrWhiteSpace(path))
+            throw new InvalidOperationException($"Candle device index {options.DeviceIndex} has no stable device path.");
+        options.DevicePath = path;
         var (device, lease) = CandlelightDeviceMultiplexer.Acquire(
-            ((CandlelightDeviceOptions)deviceOptions).DeviceIndex,
+            path,
             () => provider.Factory.CreateDevice(deviceOptions));
         try
         {
@@ -58,6 +66,35 @@ internal static class CandlelightEndpoint
         {
             lease.Dispose();
             throw;
+        }
+    }
+
+    private static string ResolveDevicePath(uint index)
+    {
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            throw new PlatformNotSupportedException("Candle.dll is supported only on Windows.");
+        if (index > byte.MaxValue)
+            throw new ArgumentOutOfRangeException(nameof(index));
+
+        var api = CandleApi.Instance;
+        IntPtr list = IntPtr.Zero;
+        IntPtr device = IntPtr.Zero;
+        try
+        {
+            if (!api.Scan(out list))
+                throw new InvalidOperationException("Candle device scan failed.");
+            if (!api.ListLength(list, out var count) || index >= count)
+                throw new InvalidOperationException($"Candle device index {index} is not available.");
+            if (!api.GetDevice(list, (byte)index, out device))
+                throw new InvalidOperationException($"Could not retrieve Candle device {index}.");
+            return api.GetPath(device) is { Length: > 0 } path
+                ? path
+                : throw new InvalidOperationException($"Candle device index {index} has no stable device path.");
+        }
+        finally
+        {
+            if (device != IntPtr.Zero) api.FreeDevice(device);
+            if (list != IntPtr.Zero) api.FreeList(list);
         }
     }
 

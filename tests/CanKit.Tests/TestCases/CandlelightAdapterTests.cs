@@ -79,12 +79,13 @@ public class CandlelightAdapterTests : IClassFixture<TestCaseProvider>
     {
         var api = new FakeCandleApi();
         var provider = new CandlelightProvider();
-        var (device, seedLease) = CandlelightDeviceMultiplexer.Acquire(0, () => new CandlelightDevice(new CandlelightDeviceOptions(provider), api));
+        var path = Guid.NewGuid().ToString("N");
+        var (device, seedLease) = CandlelightDeviceMultiplexer.Acquire(path, () => new CandlelightDevice(new CandlelightDeviceOptions(provider), api));
         using var seed = seedLease;
-        using var first = (CandlelightBus)CandlelightEndpoint.Open(CanEndpoint.Parse("candlelight://0/0"), null);
-        using var second = (CandlelightBus)CandlelightEndpoint.Open(CanEndpoint.Parse("candlelight://0/1"), null);
+        using var first = (CandlelightBus)CandlelightEndpoint.Open(CanEndpoint.Parse("candlelight://0/0"), null, _ => path);
+        using var second = (CandlelightBus)CandlelightEndpoint.Open(CanEndpoint.Parse("candlelight://0/1"), null, _ => path);
         api.OpenCount.Should().Be(1);
-        Action duplicate = () => CandlelightEndpoint.Open(CanEndpoint.Parse("candlelight://0/0"), null);
+        Action duplicate = () => CandlelightEndpoint.Open(CanEndpoint.Parse("candlelight://0/0"), null, _ => path);
         duplicate.Should().Throw<InvalidOperationException>();
 
         api.Push(Frame(1, 0x321, 123));
@@ -173,11 +174,12 @@ public class CandlelightAdapterTests : IClassFixture<TestCaseProvider>
     {
         var api = new FakeCandleApi();
         var provider = new CandlelightProvider();
+        var path = Guid.NewGuid().ToString("N");
         var leases = new IDisposable[32];
         var devices = new CandlelightDevice[leases.Length];
         Parallel.For(0, leases.Length, i =>
         {
-            var (device, lease) = CandlelightDeviceMultiplexer.Acquire(0, () => new CandlelightDevice(new CandlelightDeviceOptions(provider), api));
+            var (device, lease) = CandlelightDeviceMultiplexer.Acquire(path, () => new CandlelightDevice(new CandlelightDeviceOptions(provider), api));
             devices[i] = (CandlelightDevice)device;
             leases[i] = lease;
         });
@@ -186,6 +188,24 @@ public class CandlelightAdapterTests : IClassFixture<TestCaseProvider>
         Parallel.ForEach(leases, lease => { lease.Dispose(); lease.Dispose(); });
         api.CloseCount.Should().Be(1);
         api.FreeDeviceCount.Should().Be(1);
+    }
+
+    [Fact]
+    public void Same_Scan_Index_With_Different_Device_Paths_Does_Not_Reuse_Device()
+    {
+        var provider = new CandlelightProvider();
+        var api = new FakeCandleApi();
+        var scanIndex = 0;
+        var firstPath = $"device-{scanIndex}-first";
+        var secondPath = $"device-{scanIndex}-second";
+        var (firstDevice, firstLease) = CandlelightDeviceMultiplexer.Acquire(firstPath, () => new CandlelightDevice(new CandlelightDeviceOptions(provider), api));
+        var (secondDevice, secondLease) = CandlelightDeviceMultiplexer.Acquire(secondPath, () => new CandlelightDevice(new CandlelightDeviceOptions(provider), api));
+
+        firstDevice.Should().NotBeSameAs(secondDevice);
+        api.OpenCount.Should().Be(2);
+        firstLease.Dispose();
+        secondLease.Dispose();
+        api.CloseCount.Should().Be(2);
     }
 
     [Fact]
@@ -426,6 +446,7 @@ public class CandlelightAdapterTests : IClassFixture<TestCaseProvider>
         public bool FreeList(IntPtr list) { FreeListCount++; return true; }
         public bool ListLength(IntPtr list, out byte length) { length = 1; return true; }
         public bool GetDevice(IntPtr list, byte index, out IntPtr device) { device = (IntPtr)2; return true; }
+        public string? GetPath(IntPtr device) => "fake-device-path";
         public bool Open(IntPtr device) { OpenCount++; if (FailOpen) _error = 17; return !FailOpen; }
         public bool Close(IntPtr device) { StopCountAtClose = StopCount; CloseCount++; return true; }
         public bool FreeDevice(IntPtr device) { FreeDeviceCount++; return true; }

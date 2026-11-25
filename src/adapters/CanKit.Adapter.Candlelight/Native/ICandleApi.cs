@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.InteropServices;
 
 namespace CanKit.Adapter.Candlelight.Native;
 
@@ -8,6 +9,7 @@ internal interface ICandleApi
     bool FreeList(IntPtr list);
     bool ListLength(IntPtr list, out byte length);
     bool GetDevice(IntPtr list, byte index, out IntPtr device);
+    string? GetPath(IntPtr device);
     bool Open(IntPtr device);
     bool Close(IntPtr device);
     bool FreeDevice(IntPtr device);
@@ -29,6 +31,7 @@ internal sealed class CandleApi : ICandleApi
     public bool FreeList(IntPtr list) => CandleNative.candle_list_free(list);
     public bool ListLength(IntPtr list, out byte length) => CandleNative.candle_list_length(list, out length);
     public bool GetDevice(IntPtr list, byte index, out IntPtr device) => CandleNative.candle_dev_get(list, index, out device);
+    public string? GetPath(IntPtr device) => Marshal.PtrToStringUni(CandleNative.candle_dev_get_path(device));
     public bool Open(IntPtr device) => CandleNative.candle_dev_open(device);
     public bool Close(IntPtr device) => CandleNative.candle_dev_close(device);
     public bool FreeDevice(IntPtr device) => CandleNative.candle_dev_free(device);
