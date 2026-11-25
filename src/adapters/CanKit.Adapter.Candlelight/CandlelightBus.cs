@@ -154,7 +154,7 @@ public sealed class CandlelightBus : ICanBus<CandlelightBusRtConfigurator>, IOwn
                     RawErrorCode = native.CanId & 0x1FFFFFFFu,
                     SystemTimestamp = DateTime.UtcNow,
                     DeviceTimeSpan = TimeSpan.FromTicks((long)native.TimestampMicroseconds * 10),
-                    Direction = FrameDirection.Rx,
+                    Direction = InferFrameDirection(native.CanId & 0x1FFFFFFFu, frame.Data.Span),
                     Frame = frame
                 };
                 InvokeSubscriber(() => ErrorFrameReceived?.Invoke(this, info));
@@ -177,6 +177,28 @@ public sealed class CandlelightBus : ICanBus<CandlelightBusRtConfigurator>, IOwn
             if (_disposed == 0) { _receive.Publish(data); return; }
         }
         frame.Dispose();
+    }
+
+    private static FrameDirection InferFrameDirection(uint errorMask, ReadOnlySpan<byte> data)
+    {
+        if ((errorMask & 0x01) != 0 || (errorMask & 0x20) != 0 || (errorMask & 0x02) != 0)
+            return FrameDirection.Tx;
+
+        if ((errorMask & 0x08) != 0 && data.Length >= 3 && (data[2] & 0x80) != 0)
+            return FrameDirection.Tx;
+
+        if ((errorMask & 0x04) != 0 && data.Length >= 2)
+        {
+            const byte rxFlags = 0x01 | 0x04 | 0x10;
+            const byte txFlags = 0x02 | 0x08 | 0x20;
+            var rx = (data[1] & rxFlags) != 0;
+            var tx = (data[1] & txFlags) != 0;
+
+            if (rx && !tx) return FrameDirection.Rx;
+            if (tx && !rx) return FrameDirection.Tx;
+        }
+
+        return FrameDirection.Unknown;
     }
 
     private static CanFrame CopyFrame(in CanFrame source, IBufferAllocator allocator)

@@ -52,6 +52,35 @@ public class CandlelightAdapterTests : IClassFixture<TestCaseProvider>
         fd.Should().Throw<NotSupportedException>();
     }
 
+    [Theory]
+    [InlineData(0x20u, 0, FrameDirection.Tx)]
+    [InlineData(0x02u, 0, FrameDirection.Tx)]
+    [InlineData(0x08u, 0x80, FrameDirection.Tx)]
+    [InlineData(0x40u, 0, FrameDirection.Unknown)]
+    public async Task Error_Frame_Direction_Is_Inferred(uint errorMask, byte protocolFlags, FrameDirection expectedDirection)
+    {
+        var api = new FakeCandleApi();
+        var provider = new CandlelightProvider();
+        using var device = new CandlelightDevice(new CandlelightDeviceOptions(provider), api);
+        using var bus = new CandlelightBus(device,
+            new CandlelightBusOptions(provider) { AllowErrorInfo = true }, new CandlelightTransceiver());
+        var direction = new TaskCompletionSource<FrameDirection>(TaskCreationOptions.RunContinuationsAsynchronously);
+        bus.ErrorFrameReceived += (_, info) => direction.TrySetResult(info.Direction);
+        var data = new byte[8];
+        data[2] = protocolFlags;
+        api.Push(new CandleNative.Frame
+        {
+            EchoId = uint.MaxValue,
+            CanId = CandleNative.ErrorId | errorMask,
+            Channel = 0,
+            Dlc = 8,
+            Data = data
+        });
+
+        (await Task.WhenAny(direction.Task, Task.Delay(3000))).Should().Be(direction.Task);
+        (await direction.Task).Should().Be(expectedDirection);
+    }
+
     [Fact]
     public void Timing_Uses_Requested_Bitrate_And_Sample_Point()
     {
