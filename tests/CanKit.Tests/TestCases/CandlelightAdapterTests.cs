@@ -131,7 +131,26 @@ public class CandlelightAdapterTests : IClassFixture<TestCaseProvider>
         Action transmit = () => bus.Transmit(CanFrame.Classic(0x123));
         transmit.Should().Throw<ObjectDisposedException>();
         bus.Dispose();
-        api.StopCount.Should().Be(0);
+        api.StopCount.Should().Be(1);
+        api.StopCountAtClose.Should().Be(1);
+    }
+
+    [Fact]
+    public void Disposing_Device_Stops_Every_Channel_And_Closes_After_Stop_Failure()
+    {
+        var api = new FakeCandleApi { FailStopChannel = 0 };
+        var provider = new CandlelightProvider();
+        using var device = new CandlelightDevice(new CandlelightDeviceOptions(provider), api);
+        using var first = NewBus(device, provider, 0);
+        using var second = NewBus(device, provider, 1);
+
+        device.Dispose();
+
+        api.StopCount.Should().Be(2);
+        api.StoppedChannels.Should().BeEquivalentTo(new byte[] { 0, 1 });
+        api.StopCountAtClose.Should().Be(2);
+        api.CloseCount.Should().Be(1);
+        api.FreeDeviceCount.Should().Be(1);
     }
 
     [Fact]
@@ -393,25 +412,34 @@ public class CandlelightAdapterTests : IClassFixture<TestCaseProvider>
         public readonly ConcurrentQueue<CandleNative.Frame> Sent = new();
         public bool FailOpen { get; set; }
         public bool FailStart { get; set; }
+        public byte? FailStopChannel { get; set; }
         public volatile bool FailRead;
         public int OpenCount { get; private set; }
         public int CloseCount { get; private set; }
         public int FreeDeviceCount { get; private set; }
         public int FreeListCount { get; private set; }
         public int StopCount { get; private set; }
+        public int StopCountAtClose { get; private set; }
+        public readonly ConcurrentQueue<byte> StoppedChannels = new();
         public void Push(CandleNative.Frame frame) => _frames.Enqueue(frame);
         public bool Scan(out IntPtr list) { list = (IntPtr)1; return true; }
         public bool FreeList(IntPtr list) { FreeListCount++; return true; }
         public bool ListLength(IntPtr list, out byte length) { length = 1; return true; }
         public bool GetDevice(IntPtr list, byte index, out IntPtr device) { device = (IntPtr)2; return true; }
         public bool Open(IntPtr device) { OpenCount++; if (FailOpen) _error = 17; return !FailOpen; }
-        public bool Close(IntPtr device) { CloseCount++; return true; }
+        public bool Close(IntPtr device) { StopCountAtClose = StopCount; CloseCount++; return true; }
         public bool FreeDevice(IntPtr device) { FreeDeviceCount++; return true; }
         public bool ChannelCount(IntPtr device, out byte count) { count = 2; return true; }
         public bool GetCapabilities(IntPtr device, byte channel, out CandleNative.Capabilities capabilities) { capabilities = DefaultCapabilities; return true; }
         public bool SetTiming(IntPtr device, byte channel, ref CandleNative.BitTiming timing) => true;
         public bool Start(IntPtr device, byte channel, CandleNative.Mode mode) { if (FailStart) _error = 17; return !FailStart; }
-        public bool Stop(IntPtr device, byte channel) { StopCount++; return true; }
+        public bool Stop(IntPtr device, byte channel)
+        {
+            StopCount++;
+            StoppedChannels.Enqueue(channel);
+            if (FailStopChannel == channel) _error = 17;
+            return FailStopChannel != channel;
+        }
         public bool Send(IntPtr device, byte channel, ref CandleNative.Frame frame) { Sent.Enqueue(frame); return true; }
         public bool Read(IntPtr device, out CandleNative.Frame frame, uint timeoutMilliseconds)
         {

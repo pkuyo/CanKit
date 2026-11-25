@@ -74,17 +74,30 @@ public sealed class CandlelightDevice : ICanDevice<CandlelightDeviceRtConfigurat
     public void Dispose()
     {
         CandlelightBus[] channels;
+        byte[] channelIds;
         lock (_gate)
         {
             if (_stopping) return;
             _stopping = true;
             channels = new CandlelightBus[_channels.Count];
-            _channels.Values.CopyTo(channels, 0);
+            channelIds = new byte[_channels.Count];
+            var index = 0;
+            foreach (var channel in _channels)
+            {
+                channels[index] = channel.Value;
+                channelIds[index] = channel.Key;
+                index++;
+            }
             _channels.Clear();
             Monitor.PulseAll(_gate);
         }
         foreach (var channel in channels) channel.EnqueueFault(new ObjectDisposedException(nameof(CandlelightDevice)));
         _reader.Join();
+        foreach (var channel in channelIds)
+        {
+            try { _api.Stop(_handle, channel); }
+            catch { }
+        }
         try { _api.Close(_handle); }
         finally { _api.FreeDevice(_handle); }
     }
